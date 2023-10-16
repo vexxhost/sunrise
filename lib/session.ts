@@ -1,13 +1,13 @@
-import { getServerSession } from "next-auth/next";
+import nextAppSession, { MemoryStore } from 'next-app-session';
 
-import { SunriseSession, authOptions } from "@/lib/auth";
-
-export async function getSession() {
-  return await getServerSession(authOptions) as SunriseSession;
+type SunriseSession = {
+  keystone_unscoped_token?: string;
+  keystone_token?: string;
 }
 
-export async function getCurrentUser() {
-  const session = await getSession();
-
-  return session?.user;
-}
+// Setup the config for your session and cookie
+export const session = nextAppSession<SunriseSession>({
+   secret: process.env.SESSION_SECRET,
+   // TODO(mnaser): Make this configurable for production setups
+   store: new MemoryStore(),
+}); 

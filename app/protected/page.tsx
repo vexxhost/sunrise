@@ -1,24 +1,14 @@
 import {
   IdentityClient,
   fetchProjectScopedToken,
-  fetchUnscopedTokenWithIdToken,
 } from "@/lib/keystone";
-import { getSession } from "@/lib/session";
+import { session } from "@/lib/session";
+import { startFederatedAuth } from "@/lib/auth";
 
 export default async function Page() {
-  const session = await getSession();
-
-  const idToken = session?.idToken;
-  if (!idToken) {
-    return <p>Not logged in</p>;
-  }
-
-  const unscopedToken = await fetchUnscopedTokenWithIdToken(
-    process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDER || "atmosphere",
-    idToken
-  );
+  const unscopedToken = await session().get('keystone_unscoped_token');
   if (!unscopedToken) {
-    return <p>Failed to fetch unscoped token</p>;
+    return startFederatedAuth();
   }
 
   const identity = new IdentityClient(
@@ -37,13 +27,6 @@ export default async function Page() {
 
   return (
     <>
-      <div className="p-4">
-        <p className="font-bold">ID token</p>
-        <pre className="bg-gray-100 p-4 rounded-md overflow-y-auto">
-          {idToken}
-        </pre>
-      </div>
-
       <div className="p-4">
         <p className="font-bold">Keystone Unscoped Token</p>
         <pre className="bg-gray-100 p-4 rounded-md overflow-y-auto">

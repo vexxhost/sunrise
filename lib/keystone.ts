@@ -15,22 +15,6 @@ export class IdentityClient {
   }
 }
 
-export async function fetchUnscopedTokenWithIdToken(identityProvider: string, idToken: string) {
-  const response = await fetch(
-    process.env.KEYSTONE_API +
-      `/v3/OS-FEDERATION/identity_providers/${identityProvider}/protocols/openid/auth`,
-    {
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-      },
-    }
-  );
-
-  console.log(idToken);
-
-  return response.headers.get("X-Subject-Token");
-}
-
 export async function fetchProjectScopedToken(token: string, project: string) {
   const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
     method: "POST",
