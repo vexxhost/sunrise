@@ -6,5 +6,6 @@ export async function POST(request: Request) {
   const token = formData.get('token');
   await session().set('keystone_unscoped_token', token);
 
-  return Response.redirect(process.env.DASHBOARD_URL + '/protected', 303);
+  const redirectTo = await session().get('redirect_to');
+  return Response.redirect(process.env.DASHBOARD_URL + redirectTo, 303);
 }

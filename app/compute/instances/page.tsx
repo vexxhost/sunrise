@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react';
-import MainWrapper from '@/components/MainWrapper'
 import {
   Table,
   TableHeader,
@@ -286,7 +285,7 @@ export default function Page() {
     );
   }, [selectedKeys, items.length, page, pages, hasSearchFilter]);
 
-  return <MainWrapper>
+  return <>
     <div>
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
@@ -329,6 +328,5 @@ export default function Page() {
         </TableBody>
       </Table>
     </div>
-  </MainWrapper>
+  </>
 }
-  

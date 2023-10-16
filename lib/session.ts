@@ -3,6 +3,8 @@ import nextAppSession, { MemoryStore } from 'next-app-session';
 type SunriseSession = {
   keystone_unscoped_token?: string;
   keystone_token?: string;
+
+  redirect_to?: string;
 }
 
 // Setup the config for your session and cookie
