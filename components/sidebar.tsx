@@ -14,17 +14,40 @@ import { navigation } from "@/lib/navigation";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import SearchBar from "@/components/MainWrapper/SearchBar";
 import Profile from "@/components/MainWrapper/Profile";
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { type Project } from '@/lib/keystone'
 
 function classNames(...classes: any) {
   return classes.filter(Boolean).join(" ");
 }
 
 export const Sidebar = (props: {
-  projects: any[];
+  selectedProjectIdx: number,
+  projects: Project[]
 }) => {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams()
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  console.log(props.projects);
-  const [selectedProject, setSelectedProject] = useState(props.projects.projects[0]);
+  //const [selectedProject, setSelectedProject] = useState(props.projects[0]);
+  const setSelectedProject = async (selectedProject: Project) => {
+    // post project change
+    const data = {
+      projectId: selectedProject.id
+    }
+    const response = await fetch('/auth/change-project', {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+    const url = `${pathname}?${searchParams}`
+    window.location.reload()
+    //router.replace(url)
+  }
+  const selectedProject = props.projects[props.selectedProjectIdx]
 
   return (
     <>
@@ -121,7 +144,7 @@ export const Sidebar = (props: {
                               leaveTo="opacity-0"
                             >
                               <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
-                                {props.projects.projects.map((project) => (
+                                {props.projects.map((project) => (
                                   <Listbox.Option
                                     key={project.id}
                                     className={({ active }) =>
@@ -259,7 +282,7 @@ export const Sidebar = (props: {
                       leaveTo="opacity-0"
                     >
                       <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
-                        {props.projects.projects.map((project) => (
+                        {props.projects.map((project) => (
                           <Listbox.Option
                             key={project.id}
                             className={({ active }) =>
