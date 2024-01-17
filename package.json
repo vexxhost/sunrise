@@ -10,22 +10,22 @@
   },
   "dependencies": {
     "next": "latest",
-    "next-app-session": "^1.0.6",
+    "next-app-session": "^1.0.7",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
-    "@headlessui/react": "^1.7.17",
-    "@heroicons/react": "^2.0.18",
-    "@nextui-org/react": "^2.1.13",
-    "@tailwindcss/forms": "^0.5.6",
+    "@headlessui/react": "^1.7.18",
+    "@heroicons/react": "^2.1.1",
+    "@nextui-org/react": "^2.2.9",
+    "@tailwindcss/forms": "^0.5.7",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "autoprefixer": "latest",
     "eslint": "latest",
     "eslint-config-next": "latest",
-    "framer-motion": "^10.16.4",
+    "framer-motion": "^10.18.0",
     "postcss": "latest",
     "tailwindcss": "latest",
     "typescript": "latest"

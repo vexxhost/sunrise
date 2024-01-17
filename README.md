@@ -11,7 +11,7 @@
 3. Start the development server
 
    ```bash
-   npm run dev
+   npm run dev -- -p 9990
    ```
 
 4. Navigate to the following URL and login with Keycloak:
