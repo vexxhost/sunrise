@@ -95,7 +95,7 @@ export interface ListFlavorsOptions {
     is_public?: string
 }
 
-export async function listServers(options?:ListFlavorsOptions) {
+export async function listServers(options?:ListServersOptions) {
   const response = await fetchProjectScopedToken();
 
   const scopedToken = response.headers.get('X-Subject-Token');

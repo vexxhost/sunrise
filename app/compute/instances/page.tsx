@@ -1,9 +1,12 @@
 import { session } from "@/lib/session"
 import { startFederatedAuth } from "@/lib/auth";
-import { type Server, Flavor, listFlavors, listServers } from "@/lib/nova"
+import { type ListServersOptions, type Server, Flavor, listFlavors, listServers } from "@/lib/nova"
 import { Image, listImages } from "@/lib/glance"
-
+import { Suspense } from "react";
+import { Loader } from "@/components/Loader"
 import Table from "./Table";
+
+export const revalidate = 10;
 
 export default async function Page({ 
   searchParams 
@@ -11,8 +14,6 @@ export default async function Page({
   searchParams?: {
     sort_dir?: string, 
     sort_key?: string
-    limit?: number,
-    marker?: string,
   }
 }) {
   const unscopedToken = await session().get('keystone_unscoped_token');
@@ -33,8 +34,21 @@ export default async function Page({
   // @todo filter searchParams against searchOptions + sort_key, sort_dir
   const serverOptions = Object.assign(defaultServerOptions, searchParams)
 
+  return <div>
+    <div className="sm:flex sm:items-center">
+      <div className="sm:flex-auto">
+        <h1 className="text-4xl font-semibold leading-6 text-gray-900">Instances</h1>
+      </div>
+    </div>
+    <Suspense fallback={<div className="p-20 flex justify-center items-center"><Loader /></div>}>
+      <InstancesTable options={serverOptions} />
+    </Suspense>
+  </div>
+}
+
+async function InstancesTable({options}: { options: ListServersOptions}) {
   // Get Servers
-  const servers = await listServers(serverOptions);
+  const servers = await listServers(options);
 
   // Get Attached Volumes for getting volume images
   const attachedVolumeIds = servers["servers"].reduce((acc: string[], server: Server) => {
@@ -71,6 +85,5 @@ export default async function Page({
     flavors[flavor.id] = flavor.name
   })
   
-  // @todo figure out Suspense
-  return <Table servers={servers["servers"]} images={images} flavors={flavors} options={serverOptions} />
+  return <Table servers={servers["servers"]} images={images} flavors={flavors} options={options} />
 }

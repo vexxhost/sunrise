@@ -22,7 +22,7 @@ import {
   statusColorMap,
   columns 
 } from './meta'
-import { type Server } from '@/lib/nova'
+import { type ListServersOptions, type Server } from '@/lib/nova'
 import { PlusIcon } from "@/components/PlusIcon";
 import { VerticalDotsIcon } from "@/components/VerticalDotsIcon";
 import { SearchIcon } from "@/components/SearchIcon";
@@ -31,7 +31,7 @@ import { capitalize } from "@/lib/utils";
 import { useRouter, usePathname } from "next/navigation";
 import { getRelativeTimeString } from '@/lib/date';
  
-const INITIAL_VISIBLE_COLUMNS = ["display_name", "ip_address", "flavor", "status", "availability_zone", "power_state", "created_at", "actions"];
+const INITIAL_VISIBLE_COLUMNS = ["display_name", "ip_address", "flavor", "status", "power_state", "created_at", "actions"];
 
 const IpAddress = ({ addresses }: {addresses: {[key: string]: {version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string}[]}}) => {
   return Object.keys(addresses).map((key: string) => {
@@ -46,7 +46,7 @@ interface AppProps {
   servers: Server[]
   images: {[key: string]: string},
   flavors: {[key: string]: string},
-  options: {[key: string]: string | number}
+  options: ListServersOptions
 }
 
 export default function TableComponent({servers, images, flavors, options}: AppProps) {
@@ -232,40 +232,33 @@ export default function TableComponent({servers, images, flavors, options}: AppP
   ]);
 
   return <>
-    <div>
-      <div className="sm:flex sm:items-center">
-        <div className="sm:flex-auto">
-          <h1 className="text-4xl font-semibold leading-6 text-gray-900">Instances</h1>
-        </div>
-      </div>
-      <Table
-        aria-label="Compute Instances"
-        isHeaderSticky
-        bottomContentPlacement="outside"
-        sortDescriptor={sortDescriptor as any}
-        topContent={topContent}
-        topContentPlacement="outside"
-        onSortChange={handleSortChange as any}
-      >
-        <TableHeader columns={headerColumns}>
-          {(column) => (
-            <TableColumn
-              key={column.uid}
-              align={column.uid === "actions" ? "center" : "start"}
-              allowsSorting={column.sortable}
-            >
-              {column.name}
-            </TableColumn>
-          )}
-        </TableHeader>
-        <TableBody emptyContent={"No instances found"} items={servers}>
-          {(item:Server) => (
-            <TableRow key={item.id}>
-              {(columnKey) => <TableCell>{renderCell(item, columnKey as string)}</TableCell>}
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
+    <Table
+      aria-label="Compute Instances"
+      isHeaderSticky
+      bottomContentPlacement="outside"
+      sortDescriptor={sortDescriptor as any}
+      topContent={topContent}
+      topContentPlacement="outside"
+      onSortChange={handleSortChange as any}
+    >
+      <TableHeader columns={headerColumns}>
+        {(column) => (
+          <TableColumn
+            key={column.uid}
+            align={column.uid === "actions" ? "center" : "start"}
+            allowsSorting={column.sortable}
+          >
+            {column.name}
+          </TableColumn>
+        )}
+      </TableHeader>
+      <TableBody emptyContent={"No instances found"} items={servers}>
+        {(item:Server) => (
+          <TableRow key={item.id}>
+            {(columnKey) => <TableCell>{renderCell(item, columnKey as string)}</TableCell>}
+          </TableRow>
+        )}
+      </TableBody>
+    </Table>
   </>
 }
