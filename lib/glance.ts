@@ -15,7 +15,7 @@ export async function listImages() {
   const imageEndpoint = imageEndpoints.endpoints.find((endpoint: {interface: string}) => endpoint.interface == 'public')
 
   // @TODO query params for ids
-  const imageResponse = await fetch(`${imageEndpoint.url}/images?id=in%3A`, {
+  const imageResponse = await fetch(`${imageEndpoint.url}/v2/images`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",

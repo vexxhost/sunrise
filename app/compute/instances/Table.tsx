@@ -31,7 +31,7 @@ import { capitalize } from "@/lib/utils";
 import { useRouter, usePathname } from "next/navigation";
 import { getRelativeTimeString } from '@/lib/date';
  
-const INITIAL_VISIBLE_COLUMNS = ["display_name", "ip_address", "flavor", "status", "power_state", "created_at", "actions"];
+const INITIAL_VISIBLE_COLUMNS = ["display_name", "image_name", "ip_address", "flavor", "status", "power_state", "created_at", "actions"];
 
 const IpAddress = ({ addresses }: {addresses: {[key: string]: {version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string}[]}}) => {
   return Object.keys(addresses).map((key: string) => {
@@ -46,10 +46,11 @@ interface AppProps {
   servers: Server[]
   images: {[key: string]: string},
   flavors: {[key: string]: string},
+  volumeImageIds: {[key: string]: string},
   options: ListServersOptions
 }
 
-export default function TableComponent({servers, images, flavors, options}: AppProps) {
+export default function TableComponent({servers, images, flavors, volumeImageIds, options}: AppProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [filterValue, setFilterValue] = useState('')
@@ -72,7 +73,7 @@ export default function TableComponent({servers, images, flavors, options}: AppP
       case "display_name":
         return item['name']
       case "image_name":
-        return item['image']
+        return item['image'] && (typeof item.image == 'object') ? images[item.image.id] : images[volumeImageIds[item['os-extended-volumes:volumes_attached'][0]['id']]]
       case "ip_address":
         return <IpAddress addresses={item['addresses']} />
       case "flavor":
@@ -81,8 +82,8 @@ export default function TableComponent({servers, images, flavors, options}: AppP
         return item['key_name']
       case "status":
         return (
-          <Chip className="capitalize" color={statusColorMap[item.status] as any} size="sm" variant="flat">
-            {item['status']}
+          <Chip className="text-xs capitalize" color={statusColorMap[item.status] as any} size="sm" variant="flat">
+            <span className="font-bold">{item['status']}</span>
           </Chip>
         );
       case "alert":

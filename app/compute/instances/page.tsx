@@ -1,6 +1,7 @@
 import { session } from "@/lib/session"
 import { startFederatedAuth } from "@/lib/auth";
-import { type ListServersOptions, type Server, Flavor, listFlavors, listServers } from "@/lib/nova"
+import { type ListServersOptions, Flavor, listFlavors, listServers } from "@/lib/nova"
+import { type Volume, listVolumes } from "@/lib/cinder"
 import { Image, listImages } from "@/lib/glance"
 import { Suspense } from "react";
 import { Loader } from "@/components/Loader"
@@ -50,26 +51,17 @@ async function InstancesTable({options}: { options: ListServersOptions}) {
   // Get Servers
   const servers = await listServers(options);
 
-  // Get Attached Volumes for getting volume images
-  const attachedVolumeIds = servers["servers"].reduce((acc: string[], server: Server) => {
-    server['os-extended-volumes:volumes_attached'].map((volume: {id: string}) => {
-      acc.push(volume.id)
-    })
-    return acc
-  }, [] as string[])
-  // @todo query volumes for image ids
-  // @todo from volumes, get boot volume, then image_id from boot volume
-  // @todo OR create array of volume images used by server as reference
-
-  // Get unique images from servers for images query
-  const serverImageIds = servers["servers"].reduce((acc: string[], server: Server) => {
-    if (server.image !== '') {
-      acc.push(server.image)
+  
+  // Get all volumes and extract image ids for boot volumes
+  const volumes = await listVolumes()
+  const volumeImageIds = volumes.reduce((acc: {[key: string]: string}, volume: Volume) => {
+    // @todo make sure we have the boot volume
+    if (volume.volume_image_metadata) {
+      acc[volume.id] = volume.volume_image_metadata.image_id
     }
-    return acc
-  }, [] as string[])
+    return acc;
+  }, {})
 
-  // @todo merge attachedVolumeIds and serverImageIds before fetching images
 
   // Get Associated Images
   const imagesFull = await listImages();
@@ -85,5 +77,5 @@ async function InstancesTable({options}: { options: ListServersOptions}) {
     flavors[flavor.id] = flavor.name
   })
   
-  return <Table servers={servers["servers"]} images={images} flavors={flavors} options={options} />
+  return <Table servers={servers["servers"]} images={images} flavors={flavors} volumeImageIds={volumeImageIds} options={options} />
 }
