@@ -8,7 +8,7 @@ export interface Server {
   user_id: string,
   metadata: {},
   hostId: string,
-  image: string,
+  image: {id: string} | "",
   flavor: {id: string, links: []},
   created: string,
   updated: string,
@@ -106,7 +106,7 @@ export async function listServers(options?:ListServersOptions) {
   const computeEndpoints = data.token.catalog.find((item: {name: string}) => item.name == 'nova')
   const computeEndpoint = computeEndpoints.endpoints.find((endpoint: {interface: string}) => endpoint.interface == 'public')
 
-  const params = new URLSearchParams(options as [])
+  const params = new URLSearchParams(options as {})
 
   const computeResponse = await fetch(`${computeEndpoint.url}/servers/detail?${params}`, {
     method: "GET",
