@@ -14,14 +14,6 @@
    npm run dev -- -p 9990
    ```
 
-4. Navigate to the following URL and login with Keycloak:
+4. Navigate to the following URL.  You will be redirected to login with Keycloak:
 
-   [http://localhost:3000/api/auth/signin](http://localhost:3000/api/auth/signin)
-
-5. Go to the following URL to see the user's information:
-
-   [http://localhost:3000/protected](http://localhost:3000/protected)
-
-6. Go to the following URL to signout:
-
-   [http://localhost:3000/api/auth/signout](http://localhost:3000/api/auth/signout)
+   [http://localhost:9990](http://localhost:9990)
