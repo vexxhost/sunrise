@@ -5,7 +5,6 @@ import { Providers } from "./providers";
 import { session } from "@/lib/session";
 import { startFederatedAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
-import { IdentityClient } from "@/lib/keystone";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -27,14 +26,14 @@ export default async function RootLayout({
     return startFederatedAuth();
   }
 
-  const identity = new IdentityClient(process.env.KEYSTONE_API, unscopedToken);
-  const projects = await identity.listUserProjects();
+  const projects = await session().get('projects')
+  const selectedProject = await session().get('selectedProject')
 
   return (
     <html lang="en" className="h-full light">
       <body className={inter.className + " h-full"}>
         <Providers>
-          <Sidebar projects={projects} />
+          <Sidebar selectedProjectIdx={selectedProject} projects={projects} />
           <div className="lg:pl-72">
             <main className="py-10">
               <div className="px-4 sm:px-6 lg:px-8">{children}</div>

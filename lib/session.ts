@@ -1,8 +1,10 @@
 import nextAppSession, { MemoryStore } from 'next-app-session';
 
-type SunriseSession = {
+export type SunriseSession = {
   keystone_unscoped_token?: string;
   keystone_token?: string;
+  projects?: [],
+  selectedProject?: number
 
   redirect_to?: string;
 }
