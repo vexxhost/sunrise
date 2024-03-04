@@ -15,21 +15,21 @@ import { Bars3Icon } from "@heroicons/react/24/outline";
 import SearchBar from "@/components/MainWrapper/SearchBar";
 import Profile from "@/components/MainWrapper/Profile";
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { type Project } from '@/lib/keystone'
+import { Project } from '@/lib/keystone'
 
 function classNames(...classes: any) {
   return classes.filter(Boolean).join(" ");
 }
 
-export const Sidebar = (props: {
-  selectedProjectIdx: number,
+export const Sidebar = ({ selectedProject, projects }: {
+  selectedProject: Project,
   projects: Project[]
 }) => {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams()
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  //const [selectedProject, setSelectedProject] = useState(props.projects[0]);
+  //const [selectedProject, setSelectedProject] = useState(projects[0]);
   const setSelectedProject = async (selectedProject: Project) => {
     // post project change
     const data = {
@@ -47,7 +47,6 @@ export const Sidebar = (props: {
     window.location.reload()
     //router.replace(url)
   }
-  const selectedProject = props.projects[props.selectedProjectIdx]
 
   return (
     <>
@@ -126,7 +125,7 @@ export const Sidebar = (props: {
                           <div className="relative">
                             <Listbox.Button className="relative w-full cursor-default rounded-md bg-gray-900 py-1.5 pl-3 pr-10 text-left text-white shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-gray sm:text-sm sm:leading-6">
                               <span className="block truncate">
-                                {selectedProject.name}
+                                {selectedProject ? selectedProject.name : "No project selected"}
                               </span>
                               <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                                 <ChevronUpDownIcon
@@ -144,7 +143,7 @@ export const Sidebar = (props: {
                               leaveTo="opacity-0"
                             >
                               <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
-                                {props.projects.map((project) => (
+                                {projects.map((project) => (
                                   <Listbox.Option
                                     key={project.id}
                                     className={({ active }) =>
@@ -264,7 +263,7 @@ export const Sidebar = (props: {
                   <div className="relative">
                     <Listbox.Button className="relative w-full cursor-default rounded-md bg-dark-gray py-1.5 pl-3 pr-10 text-left text-white shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 sm:text-sm sm:leading-6">
                       <span className="block truncate">
-                        {selectedProject.name}
+                        {selectedProject ? selectedProject.name : "No project selected"}
                       </span>
                       <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                         <ChevronUpDownIcon
@@ -282,7 +281,7 @@ export const Sidebar = (props: {
                       leaveTo="opacity-0"
                     >
                       <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm">
-                        {props.projects.map((project) => (
+                        {projects.map((project) => (
                           <Listbox.Option
                             key={project.id}
                             className={({ active }) =>

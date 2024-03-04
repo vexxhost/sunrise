@@ -1,4 +1,4 @@
-import { fetchProjectScopedToken } from "./keystone";
+import { getProjectToken, getServiceEndpoint } from "@/lib/session";
 
 const statuses: {[key: string]: string} = {
   creating: "The volume is being created.",
@@ -93,23 +93,16 @@ export type Volume = {
 }
 
 export async function listVolumes(options?:ListVolumesOptions): Promise<Volume[]> {
-  const response = await fetchProjectScopedToken();
-
-  const scopedToken = response.headers.get('X-Subject-Token');
-
-  const data = await response.json();
-
-  // Get Volumes Detail
-  const blockStorageEndpoints = data.token.catalog.find((item: {name: string}) => item.name == 'cinderv3')
-  const blockStorageEndpoint = blockStorageEndpoints.endpoints.find((endpoint: {interface: string}) => endpoint.interface == 'public')
+  const token = await getProjectToken()
+  const endpoint = await getServiceEndpoint('cinderv3', 'public')
 
   const params = new URLSearchParams(options as {})
 
-  const volumesResponse = await fetch(`${blockStorageEndpoint.url}/volumes/detail?${params}`, {
+  const volumesResponse = await fetch(`${endpoint.url}/volumes/detail?${params}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": scopedToken
+      "X-Auth-Token": token
     } as HeadersInit,
   })
 

@@ -1,11 +1,29 @@
 import { session } from "@/lib/session"
 
-export interface Project {
+export type Project = {
   id: string,
-  name: string
+  name: string,
+  domain_id: string,
+  description: string,
+  enabled: boolean,
+  parent_id: string,
+  is_domain: boolean,
+  tags: [],
+  options: {},
+  links: {
+    self: string
+  }
 }
 
-export async function listUserProjects(token?: string) {
+export type Endpoint = {
+  id: string,
+  interface: string,
+  region_id: string,
+  url: string,
+  region: string
+}
+
+export async function listUserProjects(token?: string): Promise<Project[]> {
   if (!token) {
     const token = await session().get('token')
   }
@@ -18,14 +36,12 @@ export async function listUserProjects(token?: string) {
     }
   );
 
-  return response.json();
+  const json = await response.json();
+
+  return json.projects
 }
 
-export async function fetchProjectScopedToken() {
-  const token = await session().get('keystone_unscoped_token')
-  const projects = await session().get('projects')
-  const selectedProject = await session().get('selectedProject')
-
+export async function fetchProjectScopedToken(token: string, projects: {id: string}[], selectedProject: Project): Promise<{ token: string, data: {}}> {
   const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
     method: "POST",
     headers: {
@@ -41,12 +57,15 @@ export async function fetchProjectScopedToken() {
         },
         scope: {
           project: {
-            id: projects[selectedProject].id,
+            id: selectedProject.id,
           },
         },
       },
     }),
   });
 
-  return response;
+  const scopedToken = response.headers.get('X-Subject-Token');
+  const data = await response.json();
+
+  return { token: scopedToken as string, data: data.token }
 }
