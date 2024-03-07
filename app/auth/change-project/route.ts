@@ -1,25 +1,25 @@
 import { session } from '@/lib/session';
-import { listUserProjects } from '@/lib/keystone'
-import { type Project } from '@/lib/keystone'
+import { fetchProjectScopedToken } from '@/lib/keystone'
+import { Project } from '@/lib/keystone'
 
 export async function POST(request: Request) {
   const jsonData = await request.json()
 
-  const projectId = jsonData.projectId
+  const targetProjectId = jsonData.projectId
   const token = await session().get('keystone_unscoped_token');
+  const projects = await session().get('projects');
 
-  // Get Projects
-  const projects = await listUserProjects(token)
-  await session().set('projects', projects.projects)
-
-  const projectIds = projects.projects.map((project: Project) => {
-    return project.id
+  const selectedProject = projects.find((project: Project) => {
+    return targetProjectId === project.id
   })
 
-  const selectedProjectIndex = projectIds.indexOf(projectId)
-  // @todo ensure selected project is found
+  if (selectedProject !== null) {
+    const { token: projectToken, data: projectData } = await fetchProjectScopedToken(token as string, projects, selectedProject)
 
-  await session().set('selectedProject', selectedProjectIndex)
-  
+    await session().set('selectedProject', selectedProject)
+    await session().set('projectToken', projectToken)
+    await session().set('projectData', projectData)
+  }
+
   return Response.json({})
 }

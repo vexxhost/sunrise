@@ -1,4 +1,4 @@
-import { fetchProjectScopedToken } from "./keystone";
+import { getProjectToken, getServiceEndpoint } from "@/lib/session";
 
 export interface Server {
   id: number,
@@ -96,23 +96,16 @@ export interface ListFlavorsOptions {
 }
 
 export async function listServers(options?:ListServersOptions) {
-  const response = await fetchProjectScopedToken();
-
-  const scopedToken = response.headers.get('X-Subject-Token');
-
-  const data = await response.json();
-
-  // Get Servers Detail
-  const computeEndpoints = data.token.catalog.find((item: {name: string}) => item.name == 'nova')
-  const computeEndpoint = computeEndpoints.endpoints.find((endpoint: {interface: string}) => endpoint.interface == 'public')
+  const token = await getProjectToken()
+  const endpoint = await getServiceEndpoint('nova', 'public')
 
   const params = new URLSearchParams(options as {})
 
-  const computeResponse = await fetch(`${computeEndpoint.url}/servers/detail?${params}`, {
+  const computeResponse = await fetch(`${endpoint.url}/servers/detail?${params}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": scopedToken
+      "X-Auth-Token": token
     } as HeadersInit,
   })
 
@@ -122,21 +115,14 @@ export async function listServers(options?:ListServersOptions) {
 }
 
 export async function listFlavors(options?:ListFlavorsOptions) {
-  const response = await fetchProjectScopedToken();
+  const token = await getProjectToken()
+  const endpoint = await getServiceEndpoint('nova', 'public')
 
-  const scopedToken = response.headers.get('X-Subject-Token');
-
-  const data = await response.json();
-
-  // Get Servers Detail
-  const computeEndpoints = data.token.catalog.find((item: {name: string}) => item.name == 'nova')
-  const computeEndpoint = computeEndpoints.endpoints.find((endpoint: {interface: string}) => endpoint.interface == 'public')
-
-  const computeResponse = await fetch(`${computeEndpoint.url}/flavors/detail`, {
+  const computeResponse = await fetch(`${endpoint.url}/flavors/detail`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": scopedToken
+      "X-Auth-Token": token
     } as HeadersInit,
   })
 
