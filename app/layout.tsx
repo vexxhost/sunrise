@@ -1,9 +1,8 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { session } from "@/lib/session"
 import { Providers } from "./providers";
-import { session } from "@/lib/session";
-import { startFederatedAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -21,10 +20,6 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const unscopedToken = await session().get("keystone_unscoped_token");
-  if (!unscopedToken) {
-    return startFederatedAuth();
-  }
 
   const projects = await session().get('projects')
   const selectedProject = await session().get('selectedProject')

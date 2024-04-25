@@ -1,5 +1,4 @@
 import { session } from "@/lib/session"
-import { startFederatedAuth } from "@/lib/auth";
 import { type ListServersOptions, Flavor, listFlavors, listServers } from "@/lib/nova"
 import { type Volume, listVolumes } from "@/lib/cinder"
 import { Image, listImages } from "@/lib/glance"
@@ -17,11 +16,6 @@ export default async function Page({
     sort_key?: string
   }
 }) {
-  const unscopedToken = await session().get('keystone_unscoped_token');
-  if (!unscopedToken) {
-    return startFederatedAuth();
-  }
-
   const project = await session().get('selectedProject')
 
   // @bug? the only working searchOption for nova api is name at the moment
