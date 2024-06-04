@@ -1,11 +1,22 @@
 import React from "react";
 
-import {CircularProgress, Card, CardBody, CardFooter, Chip} from "@nextui-org/react";
+import { Badge } from "@/components/ui/badge"
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+
+import {CircularProgress} from "@/components/ui/circular-progress";
 
 export default function ProgressCard({label, used, limit, units}) {
   return (
     <Card className="w-[240px] h-[260px] border-none">
-      <CardBody className="justify-center items-center pb-0">
+      <CardContent className="justify-center items-center pb-0">
         <CircularProgress
           classNames={{
             svg: "w-36 h-36 drop-shadow-md",
@@ -18,20 +29,14 @@ export default function ProgressCard({label, used, limit, units}) {
           showValueLabel={true}
           aria-label={label}
         />
-      </CardBody>
+      </CardContent>
       <CardFooter className="justify-center items-center pt-0">
         <div className="sm:flex sm:items-center">
             <div className="sm:flex-auto">
                 <h3 className="font-bold p-2">{label}</h3>
-                <Chip
-                    classNames={{
-                        base: "border-2 border-slate/30",
-                        content: "text-slate/90 text-small font-semibold",
-                    }}
-                    variant="bordered"
-                    >
+                <Badge variant="outline">
                     Used {used}{units ? units : ""} of {limit}{units ? units : ""}
-                </Chip>
+                </Badge>
             </div>
         </div>
       </CardFooter>
