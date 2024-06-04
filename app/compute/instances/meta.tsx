@@ -24,22 +24,6 @@ export const searchOptions: SearchOptions = {
   "changes-since": 'Changes Since'
 }
 
-export const columns: {name: string, uid: string, sortable?: boolean}[] = [
-  {name: "ID", uid: "id"},
-  {name: "Instance Name", uid: "display_name", sortable: true},
-  {name: "Image Name", uid: "image_name"},
-  {name: "IP Address", uid: "ip_address"},
-  {name: "Flavor", uid: "flavor"},
-  {name: "Key Pair", uid: "key_pair"},
-  {name: "Status", uid: "status"},
-  {name: "Alert", uid: "alert"},
-  {name: "Availability Zone", uid: "availability_zone"},
-  {name: "Task", uid: "task"},
-  {name: "Power State", uid: "power_state"},
-  {name: "Age", uid: "created_at", sortable: true},
-  {name: "Actions", uid: "actions"},
-];
-
 export const statuses: {[index: string]: string} = {
   'ACTIVE': 'Active',
   'BUILD': 'Build',
