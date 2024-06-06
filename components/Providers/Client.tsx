@@ -1,9 +1,5 @@
 'use client'
 
-import { NextUIProvider } from '@nextui-org/react'
-
 export function Client({children}: { children: React.ReactNode }) {
-    return <NextUIProvider>
-        {children}
-    </NextUIProvider>
+    return <>{children}</>
 }

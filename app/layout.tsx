@@ -1,11 +1,15 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter as FontSans } from "next/font/google";
+import { cn } from "@/lib/utils"
 import { session } from "@/lib/session"
 import { Providers } from "./providers";
 import { Sidebar } from "@/components/sidebar";
 
-const inter = Inter({ subsets: ["latin"] });
+const fontSans = FontSans({
+  subsets: ["latin"],
+  variable: "--font-sans"
+});
 
 export const metadata: Metadata = {
   title: {
@@ -26,7 +30,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className="h-full light">
-      <body className={inter.className + " h-full"}>
+      <body className={cn("min-h-screen bg-background font-sans antialiased h-full", fontSans.variable)}>
         <Providers>
           <Sidebar selectedProject={selectedProject} projects={projects} />
           <div className="lg:pl-72">
