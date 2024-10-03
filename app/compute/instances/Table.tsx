@@ -116,6 +116,11 @@ export default function TableComponent<Server>({
     refreshPage()
   }
 
+  const handleViewInstance = (serverId: string) => {  
+      console.log('Viewing instance', serverId)  
+      router.push('/compute/instance/' + serverId)
+  }
+
   const columns: ColumnDef<Server>[] = [
     {
       accessorKey: "id",
@@ -256,7 +261,7 @@ export default function TableComponent<Server>({
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>View</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleViewInstance(row.getValue('id'))}>View</DropdownMenuItem>
                 <DropdownMenuItem>Edit</DropdownMenuItem>
                 <DropdownMenuItem>Delete</DropdownMenuItem>
               </DropdownMenuContent>

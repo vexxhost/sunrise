@@ -1,4 +1,19 @@
 import { getProjectToken, getServiceEndpoint } from "@/lib/session";
+import { log } from "console";
+import { SecurityGroup } from "./network";
+
+export interface Link {
+  href: string,
+  rel: string
+}
+
+
+export interface AddressItem {
+  version: number,
+  addr: string,
+  'OS-EXT-IPS:type': string,
+  'OS-EXT-IPS-MAC:mac_addr': string,
+}
 
 export interface Server {
   id: number,
@@ -12,10 +27,10 @@ export interface Server {
   flavor: {id: string, links: []},
   created: string,
   updated: string,
-  addresses: {},
+  addresses: { [key: string]: AddressItem[] },
   accessIPv4: string,
   accessIPv6: string,
-  links: {}[],
+  links: Link[],
   'OS-DCF:diskConfig': string,
   progress: number,
   'OS-EXT-AZ:availability_zone': string,
@@ -27,7 +42,8 @@ export interface Server {
   'OS-EXT-STS:vm_state'?: string,
   'OS-EXT-STS:power_state': number,
   'os-extended-volumes:volumes_attached': {id: string}[],
-  security_groups: {}[],
+  security_groups: SecurityGroup[],
+  locked: boolean,
 }
 
 export interface Flavor {
@@ -101,17 +117,37 @@ export async function listServers(options?:ListServersOptions) {
 
   const params = new URLSearchParams(options as {})
 
-  const computeResponse = await fetch(`${endpoint.url}/servers/detail?${params}`, {
+  const computeRequest = {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Token": token
+    } as HeadersInit,
+  }
+  
+  const computeUrl = `${endpoint.url}/servers/detail?${params}`
+  const computeResponse = await fetch(computeUrl, computeRequest)
+  const computeData = await computeResponse.json()
+  
+  return computeData
+}
+export async function getInstance(id: string): Promise<Server> {
+  const token = await getProjectToken()
+  const endpoint = await getServiceEndpoint('nova', 'public')
+
+  const computeResponse = await fetch(`${endpoint.url}/servers/${id}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
       "X-Auth-Token": token
     } as HeadersInit,
   })
-
   const computeData = await computeResponse.json()
 
-  return computeData
+  let _server:Server = computeData["server"]
+
+  return _server
+
 }
 
 export async function listFlavors(options?:ListFlavorsOptions) {
@@ -129,4 +165,22 @@ export async function listFlavors(options?:ListFlavorsOptions) {
   const computeData = await computeResponse.json()
 
   return computeData
+}
+
+export async function getFlavor(id: string) {
+  const token = await getProjectToken()
+  const endpoint = await getServiceEndpoint('nova', 'public')
+
+  const computeResponse = await fetch(`${endpoint.url}/flavors/${id}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Token": token
+    } as HeadersInit,
+  })
+
+  const computeData = await computeResponse.json()
+  let _flavor:Flavor = computeData["flavor"]
+
+  return _flavor
 }
