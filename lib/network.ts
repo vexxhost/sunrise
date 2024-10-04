@@ -34,13 +34,9 @@ export interface SecurityGroup {
     tags: []
 }
 
-
-
-
 export async function listSecurityGroups() {
     const token = await getProjectToken()
     const endpoint = await getServiceEndpoint('neutron', 'public')
-
     const securityGroupsResponse = await fetch(`${endpoint.url}/v2.0/security-groups`, {
         method: "GET",
         headers: {
@@ -51,27 +47,12 @@ export async function listSecurityGroups() {
 
     const securityGroupsData = await securityGroupsResponse.json()
     const securityGroups: SecurityGroup[] = securityGroupsData["security_groups"]
-
-
-
   return securityGroups
 }
-
-
-export async function listSecurityGroupsAddRuleNames() {
-   const securityGroups = await listSecurityGroups()
-   const securityGroupsWithRuleNames = securityGroups.map((securityGroup) => {
-          
-
-    })
-
-    return securityGroupsWithRuleNames
-}
-
+// retrieve a security group by its id
 export async function getSecurityGroup(id: string) {
     const token = await getProjectToken()
     const endpoint = await getServiceEndpoint('network', 'public')
-
     const securityGroupResponse = await fetch(`${endpoint.url}/v2.0/security-groups/${id}`, {
         method: "GET",
         headers: {
@@ -85,7 +66,7 @@ export async function getSecurityGroup(id: string) {
 
     return securityGroupData
 }
-
+// retrieve a list of security group rules
 export async function listSecurityGroupRules() {
     const token = await getProjectToken()
     const endpoint = await getServiceEndpoint('network', 'public')
@@ -102,7 +83,7 @@ export async function listSecurityGroupRules() {
 
     return securityGroupRulesData
 }
-
+// retrieve a security group rule by id
 export async function getSecurityGroupRule(id: string) {
     const token = await getProjectToken()
     const endpoint = await getServiceEndpoint('network', 'public')
@@ -116,7 +97,6 @@ export async function getSecurityGroupRule(id: string) {
     })
 
     const securityGroupRuleData = await securityGroupRuleResponse.json()
-
     const securityGroupRule: SecurityGroupRule = securityGroupRuleData["security_group_rule"]
 
     return securityGroupRule

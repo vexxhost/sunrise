@@ -4,7 +4,7 @@ export interface Image {
     id: string,
     name: string
 }
-
+// retrieve a list of images
 export async function listImages() {
   const token = await getProjectToken()
   const endpoint = await getServiceEndpoint('glance', 'public')
@@ -22,7 +22,7 @@ export async function listImages() {
 
   return imageData
 }
-
+//retrieve an image by its id
 export async function getImage(id: string) {
   const token = await getProjectToken()
   const endpoint = await getServiceEndpoint('glance', 'public')
@@ -38,12 +38,11 @@ export async function getImage(id: string) {
 
   const imageData = await imageResponse.json()
 
-
   return imageData
 }
 
-//Get a list of images by their ids
-export async function getImages(imageIDs: string[]) {
+//retrieve a list of images by their ids
+export async function getsImageByIds(imageIDs: string[]) {
   const imageList = []
   for (const imageID of imageIDs) {
     const image = await getImage(imageID)

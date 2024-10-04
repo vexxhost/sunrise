@@ -110,31 +110,26 @@ export interface ListFlavorsOptions {
     minRam?: number,
     is_public?: string
 }
-
+// retrieve a list of servers using the nova api with optional query parameters
 export async function listServers(options?:ListServersOptions) {
   const token = await getProjectToken()
   const endpoint = await getServiceEndpoint('nova', 'public')
-
   const params = new URLSearchParams(options as {})
-
-  const computeRequest = {
+  const computeResponse = await fetch(`${endpoint.url}/servers/detail?${params}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
       "X-Auth-Token": token
     } as HeadersInit,
-  }
-  
-  const computeUrl = `${endpoint.url}/servers/detail?${params}`
-  const computeResponse = await fetch(computeUrl, computeRequest)
+  })
   const computeData = await computeResponse.json()
   
   return computeData
 }
+// retrieve a server by its id
 export async function getInstance(id: string): Promise<Server> {
   const token = await getProjectToken()
   const endpoint = await getServiceEndpoint('nova', 'public')
-
   const computeResponse = await fetch(`${endpoint.url}/servers/${id}`, {
     method: "GET",
     headers: {
@@ -143,17 +138,15 @@ export async function getInstance(id: string): Promise<Server> {
     } as HeadersInit,
   })
   const computeData = await computeResponse.json()
+  const server:Server = computeData["server"]
 
-  let _server:Server = computeData["server"]
-
-  return _server
+  return server
 
 }
-
+// retrieve a list of flavors
 export async function listFlavors(options?:ListFlavorsOptions) {
   const token = await getProjectToken()
   const endpoint = await getServiceEndpoint('nova', 'public')
-
   const computeResponse = await fetch(`${endpoint.url}/flavors/detail`, {
     method: "GET",
     headers: {
@@ -162,15 +155,14 @@ export async function listFlavors(options?:ListFlavorsOptions) {
     } as HeadersInit,
   })
 
-  const computeData = await computeResponse.json()
+  const flavorData = await computeResponse.json()
 
-  return computeData
+  return flavorData
 }
-
+// retrieve a flavor by its id
 export async function getFlavor(id: string) {
   const token = await getProjectToken()
   const endpoint = await getServiceEndpoint('nova', 'public')
-
   const computeResponse = await fetch(`${endpoint.url}/flavors/${id}`, {
     method: "GET",
     headers: {
@@ -179,8 +171,8 @@ export async function getFlavor(id: string) {
     } as HeadersInit,
   })
 
-  const computeData = await computeResponse.json()
-  let _flavor:Flavor = computeData["flavor"]
+  const flavorData = await computeResponse.json()
+  let flavor:Flavor = flavorData["flavor"]
 
-  return _flavor
+  return flavor
 }

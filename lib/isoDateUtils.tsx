@@ -1,4 +1,4 @@
-
+// convert an ISO 8601 date string to a local date string
 export function isoToLocalDateTime(isoDateString: string): string {
     // Create a Date object from the ISO 8601 date string
     const dateObj = new Date(isoDateString);
@@ -15,17 +15,14 @@ export function isoToLocalDateTime(isoDateString: string): string {
     // Format the local date time string as desired
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${timeZoneAbbr}`;
     }
-
+// calculate the time since a given date using the isoDatetime
   export function isoTimeSinceDate(isoDateString: string): { years: number; months: number; weeks: number; days: number; hours: number; minutes: number } {
         // Create a Date object from the ISO 8601 date string
         const startDate = new Date(isoDateString);
-    
         // Get the current date and time
         const endDate = new Date();
-    
         // Calculate the difference in milliseconds between the two dates
         const diffMs = Math.abs(endDate.getTime() - startDate.getTime());
-    
         // Convert the difference to years, months, weeks, days, hours, and minutes
         const msPerMinute = 1000 * 60;
         const msPerHour = msPerMinute * 60;
@@ -33,7 +30,6 @@ export function isoToLocalDateTime(isoDateString: string): string {
         const msPerWeek = msPerDay * 7;
         const msPerMonth = msPerDay * 30.44; // Average number of days in a month
         const msPerYear = msPerDay * 365.25; // Average number of days in a year (accounting for leap years)
-    
         const years = Math.floor(diffMs / msPerYear);
         const months = Math.floor((diffMs % msPerYear) / msPerMonth);
         const weeks = Math.floor((diffMs % msPerMonth) / msPerWeek);
@@ -44,7 +40,7 @@ export function isoToLocalDateTime(isoDateString: string): string {
         return { years, months, weeks, days, hours, minutes };
 
     }
-
+// retroactively calculate the time since a given date using the isoDatetime
     export function formattedTimeSinceDate(isoDateString: string): string {
 
       const { years, months, weeks, days, hours, minutes } =  isoTimeSinceDate(isoDateString);
