@@ -1,5 +1,5 @@
+import React from "react";
 import ProjectStats from "@/components/ProjectStats";
-
 
 export default function Page() {
   return (

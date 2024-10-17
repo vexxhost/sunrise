@@ -1,73 +1,73 @@
 export interface SearchOptions {
-  uuid: string,
-  name: string,
-  image: string,
-  ip: string,
-  ip6: string,
-  flavor: string,
-  key_name: string,
-  status: string,
-  availability_zone: string,
-  "changes-since": string
+  uuid: string;
+  name: string;
+  image: string;
+  ip: string;
+  ip6: string;
+  flavor: string;
+  key_name: string;
+  status: string;
+  availability_zone: string;
+  "changes-since": string;
 }
 
 export const searchOptions: SearchOptions = {
-  uuid: 'Instance ID',
-  name: 'Instance Name',
-  image: 'Image ID',
-  ip: 'IPv4 Address',
-  ip6: 'IPv6 Address',
-  flavor: 'Flavor ID',
-  key_name: 'Key Pair Name',
-  status: 'Status',
-  availability_zone: 'Availability Zone',
-  "changes-since": 'Changes Since'
-}
+  uuid: "Instance ID",
+  name: "Instance Name",
+  image: "Image ID",
+  ip: "IPv4 Address",
+  ip6: "IPv6 Address",
+  flavor: "Flavor ID",
+  key_name: "Key Pair Name",
+  status: "Status",
+  availability_zone: "Availability Zone",
+  "changes-since": "Changes Since",
+};
 
-export const statuses: {[index: string]: string} = {
-  'ACTIVE': 'Active',
-  'BUILD': 'Build',
-  'DELETED': 'Deleted',
-  'ERROR': 'Error',
-  'HARD_REBOOT': 'Hard Reboot',
-  'MIGRATING': 'Migrating',
-  'PASSWORD': 'Password',
-  'PAUSED': 'Paused',
-  'REBOOT': 'Reboot',
-  'REBUILD': 'Rebuild',
-  'RESCUE': 'Rescue',
-  'RESIZE': 'Resize',
-  'REVERT_RESIZE': 'Revert Resize',
-  'SHELVED': 'Shelved',
-  'SHELVED_OFFLOADED': 'Shelved Offloaded',
-  'SHUTOFF': 'Shutoff',
-  'SOFT_DELETED': 'Soft Deleted',
-  'SUSPENDED': 'Suspended',
-  'UNKNOWN': 'Unknown',
-  'VERIFY_RESIZE': 'Verify Resize',
-}
+export const statuses: { [index: string]: string } = {
+  ACTIVE: "Active",
+  BUILD: "Build",
+  DELETED: "Deleted",
+  ERROR: "Error",
+  HARD_REBOOT: "Hard Reboot",
+  MIGRATING: "Migrating",
+  PASSWORD: "Password",
+  PAUSED: "Paused",
+  REBOOT: "Reboot",
+  REBUILD: "Rebuild",
+  RESCUE: "Rescue",
+  RESIZE: "Resize",
+  REVERT_RESIZE: "Revert Resize",
+  SHELVED: "Shelved",
+  SHELVED_OFFLOADED: "Shelved Offloaded",
+  SHUTOFF: "Shutoff",
+  SOFT_DELETED: "Soft Deleted",
+  SUSPENDED: "Suspended",
+  UNKNOWN: "Unknown",
+  VERIFY_RESIZE: "Verify Resize",
+};
 
-export const statusColorMap: {[index: string]: string} = {
+export const statusColorMap: { [index: string]: string } = {
   ACTIVE: "success",
   ERROR: "danger",
   BUILD: "warning",
-  DELETED: 'default',
-  HARD_REBOOT: 'default',
-  MIGRATING: 'default',
-  PASSWORD: 'default',
-  PAUSED: 'default',
-  REBOOT: 'default',
-  REBUILD: 'default',
-  RESCUE: 'default',
-  RESIZE: 'default',
-  REVERT_RESIZE: 'default',
-  SHELVED: 'default',
-  SHELVED_OFFLOADED: 'default',
-  SHUTOFF: 'default',
-  SOFT_DELETED: 'default',
-  SUSPENDED: 'default',
-  UNKNOWN: 'default',
-  VERIFY_RESIZE: 'default',
+  DELETED: "default",
+  HARD_REBOOT: "default",
+  MIGRATING: "default",
+  PASSWORD: "default",
+  PAUSED: "default",
+  REBOOT: "default",
+  REBUILD: "default",
+  RESCUE: "default",
+  RESIZE: "default",
+  REVERT_RESIZE: "default",
+  SHELVED: "default",
+  SHELVED_OFFLOADED: "default",
+  SHUTOFF: "default",
+  SOFT_DELETED: "default",
+  SUSPENDED: "default",
+  UNKNOWN: "default",
+  VERIFY_RESIZE: "default",
 };
 
 export const sortKeys = [
@@ -101,4 +101,4 @@ export const sortKeys = [
   "user_id",
   "uuid",
   "vm_state",
-]
+];

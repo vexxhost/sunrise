@@ -14,6 +14,6 @@
    npm run dev -- -p 9990
    ```
 
-4. Navigate to the following URL.  You will be redirected to login with Keycloak:
+4. Navigate to the following URL. You will be redirected to login with Keycloak:
 
    [http://localhost:9990](http://localhost:9990)

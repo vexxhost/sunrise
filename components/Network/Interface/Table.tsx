@@ -6,7 +6,6 @@ import {
   VisibilityState,
   flexRender,
   getCoreRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table'
@@ -27,7 +26,6 @@ import {
 } from "@/components/ui/table"
 
 import { ArrowUp, ArrowDown, MoreHorizontal } from "lucide-react"
-
 import { type Key, useCallback, useMemo, useState } from 'react';
 import { Badge } from "@/components/ui/badge"
 import { Button } from '@/components/ui/button'
@@ -43,19 +41,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { 
-  type SearchOptions, 
-  searchOptions,
-  statusColorMap,
-} from './meta'
-import { Flavor, type ListServersOptions, type Server } from '@/lib/nova'
-import { Image } from '@/lib/glance'
-import { SearchIcon } from "@/components/SearchIcon";
+
+
 import { ChevronDownIcon } from "@/components/ChevronDownIcon";
 import { useRouter, usePathname } from "next/navigation";
 import { getRelativeTimeString } from '@/lib/date';
+import { Port } from '@/lib/network'
 
-interface DataTableProps<Server> {
+interface DataTableProps<Port> {
   servers: Server[]
   images: {[key: string]: string},
   flavors: {[key: string]: string},
@@ -72,13 +65,9 @@ const IpAddress = ({ addresses }: {addresses: {[key: string]: {version: string, 
   })
 }
 
-export default function TableComponent<Server>({
-  servers,
-  images,
-  flavors,
-  volumeImageIds,
-  options
-}: DataTableProps<Server>) {
+export default function TableComponent<Port>({
+  
+}: DataTableProps<Port>) {
 
   const router = useRouter();
   const pathname = usePathname();
@@ -122,7 +111,7 @@ export default function TableComponent<Server>({
       router.push('/compute/instance/' + serverId)
   }
 
-  const columns: ColumnDef<Server>[] = [
+  const columns: ColumnDef<Port>[] = [
     {
       accessorKey: "id",
       header: "ID",
@@ -286,14 +275,12 @@ export default function TableComponent<Server>({
     getCoreRowModel: getCoreRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     state: {
       columnVisibility
     }
   })
 
   return (<>
-
     <div className="flex items-center w-full">
       <div className="flex flex-1 py-4">
         <DropdownMenu>
@@ -348,7 +335,7 @@ export default function TableComponent<Server>({
         </DropdownMenu>
       </div>
     </div>
-    <div><div className="rounded-md border">
+    <div>
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -392,27 +379,5 @@ export default function TableComponent<Server>({
         </TableBody>
       </Table>
     </div>
-    <div className="flex items-center justify-end space-x-2 py-4">
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => table.previousPage()}
-      disabled={!table.getCanPreviousPage()}
-    >
-      Previous
-    </Button>
-    <span>
-      Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-    </span>
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => table.nextPage()}
-      disabled={!table.getCanNextPage()}
-    >
-      Next
-    </Button>
-  </div>
-</div>
   </>)
 }
