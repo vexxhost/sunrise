@@ -1,5 +1,6 @@
 'use client';
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuSeparator,DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuItem  } from "@/components/ui/dropdown-menu";
 import { Volume } from "@/lib/cinder";
@@ -36,23 +37,23 @@ export const columns: ColumnDef<Volume>[] = [
           // Determine the button style and label based on the status value
           switch (status) {
             case "In Use":
-              buttonStyle = "w-32 bg-green-500 hover:bg-green-600 cursor-not-allowed opacity-75";
+              buttonStyle = "w-22 bg-green-500 hover:bg-green-600 cursor-not-allowed opacity-75";
               break;
             case "Deleting":
-              buttonStyle = "w-32 bg-red-500 hover:bg-red-600 cursor-not-allowed opacity-75";
+              buttonStyle = "w-22 bg-red-500 hover:bg-red-600 cursor-not-allowed opacity-75";
               break;
             case "Available":
-              buttonStyle = "w-32 bg-blue-500 hover:bg-blue-600 cursor";
+              buttonStyle = "w-22 bg-blue-500 hover:bg-blue-600 cursor";
               break;
             default: // Default case to handle any other possible values for the status property
-              buttonStyle = "w-32 bg-gray-500 hover:bg-gray-600 cursor-not-allowed opacity-75";
+              buttonStyle = "w-22 bg-gray-500 hover:bg-gray-600 cursor-not-allowed opacity-75";
               break;  
           }
       
           return (
-            <Button className= {buttonStyle} disabled={status === "Deleting"}>
+            <Badge className= {buttonStyle} >
               {status}
-            </Button>
+            </Badge>
           );
         },
       },
