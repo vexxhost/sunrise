@@ -1,5 +1,5 @@
 export interface SearchOptions {
-  uuid: string;
+  id: string;
   name: string;
   image: string;
   ip: string;
@@ -12,7 +12,7 @@ export interface SearchOptions {
 }
 
 export const searchOptions: SearchOptions = {
-  uuid: "Instance ID",
+  id: "Instance ID",
   name: "Instance Name",
   image: "Image ID",
   ip: "IPv4 Address",

@@ -32,7 +32,7 @@ import { type Key, useCallback, useMemo, useState } from 'react';
 import { Badge } from "@/components/ui/badge"
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -43,8 +43,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-import { 
-  type SearchOptions, 
+import {
+  type SearchOptions,
   searchOptions,
   statusColorMap,
 } from './meta'
@@ -57,13 +57,13 @@ import { getRelativeTimeString } from '@/lib/date';
 
 interface DataTableProps<Server> {
   servers: Server[]
-  images: {[key: string]: string},
-  flavors: {[key: string]: string},
-  volumeImageIds: {[key: string]: string},
+  images: { [key: string]: string },
+  flavors: { [key: string]: string },
+  volumeImageIds: { [key: string]: string },
   options: ListServersOptions
 }
- 
-const IpAddress = ({ addresses }: {addresses: {[key: string]: {version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string}[]}}) => {
+
+const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string }[] } }) => {
   return Object.keys(addresses).map((key: string) => {
     return <table key={key}><tbody><tr className="pb-2">
       <td className="align-top pr-2"><small><strong>{key}</strong></small></td>
@@ -88,7 +88,7 @@ export default function TableComponent<Server>({
   const sortKey = options['sort_key']
   const sortDir = options['sort_dir']
 
-  const refreshPage = (_options?: {sort_key: string, sort_dir: string}) => {
+  const refreshPage = (_options?: { sort_key: string, sort_dir: string }) => {
     const urlSearchParams = new URLSearchParams()
     if (searchOption && filterValue != '') {
       urlSearchParams.append(searchOption, filterValue)
@@ -102,24 +102,24 @@ export default function TableComponent<Server>({
     router.replace(url);
   }
 
-  const handleSortChange = useCallback((value: {column: string, direction: string}) => {
+  const handleSortChange = useCallback((value: { column: string, direction: string }) => {
     refreshPage({
       sort_key: value.column,
       sort_dir: value.direction
     })
   }, [])
 
-  const onClear = useCallback(()=>{
+  const onClear = useCallback(() => {
     setFilterValue('')
-  },[])
+  }, [])
 
   const handleFilterClick = () => {
     refreshPage()
   }
 
-  const handleViewInstance = (serverId: string) => {  
-      console.log('Viewing instance', serverId)  
-      router.push('/compute/instance/' + serverId)
+  const handleViewInstance = (serverId: string) => {
+    console.log('Viewing instance', serverId)
+    router.push('/compute/instance/' + serverId)
   }
 
   const columns: ColumnDef<Server>[] = [
@@ -145,8 +145,8 @@ export default function TableComponent<Server>({
       },
       cell: ({ row }) => {
         const image: Image = row.getValue('image')
-        const attachedVolumes = row.original['os-extended-volumes:volumes_attached' as keyof Server]
-        return image && (typeof image == 'object') ? images[image.id] : images[volumeImageIds[attachedVolumes[0]['id']]]
+        const attachedVolumes = row.original['os-extended-volumes:volumes_attached' as keyof Server] as { id: string }[]
+        return image && (typeof image == 'object') ? images[image.id] : images[volumeImageIds[attachedVolumes[0].id]]
       }
     },
     {
@@ -316,7 +316,7 @@ export default function TableComponent<Server>({
         </DropdownMenu>
         <Input
           className="rounded-none w-full sm:max-w-[44%] ring-1 ring-gray-100 ring-inset focus-visible:ring-1 focus-visible:border-none focus-visible:outline-none focus:border-none border-none focus:outline-none outline-none"
-          placeholder={`Search by ${searchOptions[searchOption as  keyof SearchOptions]}...`}
+          placeholder={`Search by ${searchOptions[searchOption as keyof SearchOptions]}...`}
           value={filterValue}
           onChange={(e) => setFilterValue(e.currentTarget.value)}
         />
@@ -359,9 +359,9 @@ export default function TableComponent<Server>({
                     {header.isPlaceholder
                       ? null
                       : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
+                        header.column.columnDef.header,
+                        header.getContext()
+                      )}
                   </TableHead>
                 )
               })}
@@ -392,27 +392,27 @@ export default function TableComponent<Server>({
         </TableBody>
       </Table>
     </div>
-    <div className="flex items-center justify-end space-x-2 py-4">
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => table.previousPage()}
-      disabled={!table.getCanPreviousPage()}
-    >
-      Previous
-    </Button>
-    <span>
-      Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
-    </span>
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() => table.nextPage()}
-      disabled={!table.getCanNextPage()}
-    >
-      Next
-    </Button>
-  </div>
-</div>
+      <div className="flex items-center justify-end space-x-2 py-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
+        >
+          Previous
+        </Button>
+        <span>
+          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
   </>)
 }
