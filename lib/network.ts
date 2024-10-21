@@ -88,9 +88,7 @@ export interface Network {
   availability_zones: string[];
   ipv4_address_scope: null | string;
   ipv6_address_scope: null | string;
-  router: {
-    external: boolean;
-  };
+  "router:external": boolean; 
   description: string;
   dns_domain: string;
   port_security_enabled: boolean;

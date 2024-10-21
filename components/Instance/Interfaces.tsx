@@ -68,7 +68,12 @@ export const columns: ColumnDef<Port>[] = [
       }
 
 ]
-
+  // Setup search options for volumes to be sent to the table components filter selection
+  export const searchoptions : DynamicInterface = {
+    name: "Name",
+    status: "Status",
+    network_name: "Network",
+    };  
 
 export function Interfaces( {networkPorts}: {networkPorts :Port[]} ) {
 
@@ -80,7 +85,7 @@ const table = useReactTable<Port>({
 return (
   <>
     <div>
-       <DataTable columns={columns} data={networkPorts} />
+       <DataTable columns={columns} data={networkPorts} searchOptions={searchoptions}/>
     </div>
     </>
 

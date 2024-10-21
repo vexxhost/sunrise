@@ -65,27 +65,27 @@ export const columns: ColumnDef<Volume>[] = [
       },
         cell: ({ row }: { row: { original: Volume } }) => {
           const status = capitalizeFirstLetters(row.original.status);
-          let buttonStyle;
+          let badgeStyle;
           let label;
       
           // Determine the button style and label based on the status value
           switch (status) {
             case "In Use":
-              buttonStyle = "w-22 bg-green-500 hover:bg-green-600 cursor-not-allowed opacity-75";
+              badgeStyle = "w-22 bg-green-500 hover:bg-green-600 cursor-not-allowed opacity-75";
               break;
             case "Deleting":
-              buttonStyle = "w-22 bg-red-500 hover:bg-red-600 cursor-not-allowed opacity-75";
+              badgeStyle = "w-22 bg-red-500 hover:bg-red-600 cursor-not-allowed opacity-75";
               break;
             case "Available":
-              buttonStyle = "w-22 bg-blue-500 hover:bg-blue-600 cursor";
+              badgeStyle = "w-22 bg-blue-500 hover:bg-blue-600 cursor";
               break;
             default: // Default case to handle any other possible values for the status property
-              buttonStyle = "w-22 bg-gray-500 hover:bg-gray-600 cursor-not-allowed opacity-75";
-              break;  
+            badgeStyle = "w-22 bg-gray-500 hover:bg-gray-600 cursor-not-allowed opacity-75";
+              break;
           }
       
           return (
-            <Badge className= {buttonStyle} >
+            <Badge className= {badgeStyle} >
               {status}
             </Badge>
           );
