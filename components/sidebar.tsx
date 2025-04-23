@@ -14,39 +14,42 @@ import { navigation } from "@/lib/navigation";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import SearchBar from "@/components/MainWrapper/SearchBar";
 import Profile from "@/components/MainWrapper/Profile";
-import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { Project } from '@/lib/keystone'
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Project } from "@/lib/keystone";
 
 function classNames(...classes: any) {
   return classes.filter(Boolean).join(" ");
 }
 
-export const Sidebar = ({ selectedProject, projects }: {
-  selectedProject: Project,
-  projects: Project[]
+export const Sidebar = ({
+  selectedProject,
+  projects,
+}: {
+  selectedProject: Project;
+  projects: Project[];
 }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams()
+  const searchParams = useSearchParams();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   //const [selectedProject, setSelectedProject] = useState(projects[0]);
   const setSelectedProject = async (selectedProject: Project) => {
     // post project change
     const data = {
-      projectId: selectedProject.id
-    }
-    const response = await fetch('/auth/change-project', {
+      projectId: selectedProject.id,
+    };
+    const response = await fetch("/auth/change-project", {
       headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        Accept: "application/json",
+        "Content-Type": "application/json",
       },
-      method: 'POST',
-      body: JSON.stringify(data)
-    })
-    const url = `${pathname}?${searchParams}`
-    window.location.reload()
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    const url = `${pathname}?${searchParams}`;
+    window.location.reload();
     //router.replace(url)
-  }
+  };
 
   return (
     <>
@@ -125,7 +128,9 @@ export const Sidebar = ({ selectedProject, projects }: {
                           <div className="relative">
                             <Listbox.Button className="relative w-full cursor-default rounded-md bg-gray-900 py-1.5 pl-3 pr-10 text-left text-white shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-gray sm:text-sm sm:leading-6">
                               <span className="block truncate">
-                                {selectedProject ? selectedProject.name : "No project selected"}
+                                {selectedProject
+                                  ? selectedProject.name
+                                  : "No project selected"}
                               </span>
                               <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                                 <ChevronUpDownIcon
@@ -151,7 +156,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                         active
                                           ? "bg-gray-900 text-white"
                                           : "text-gray-900",
-                                        "relative cursor-default select-none py-2 pl-3 pr-9"
+                                        "relative cursor-default select-none py-2 pl-3 pr-9",
                                       )
                                     }
                                     value={project}
@@ -163,7 +168,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                             selected
                                               ? "font-semibold"
                                               : "font-normal",
-                                            "block truncate"
+                                            "block truncate",
                                           )}
                                         >
                                           {project.name}
@@ -175,7 +180,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                               active
                                                 ? "text-white bg-gray-900"
                                                 : "text-gray-900",
-                                              "absolute inset-y-0 right-0 flex items-center pr-4"
+                                              "absolute inset-y-0 right-0 flex items-center pr-4",
                                             )}
                                           >
                                             <CheckIcon
@@ -207,7 +212,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                   item.current
                                     ? "bg-gray-100 text-gray-900"
                                     : "text-gray-400 hover:text-gray-900 hover:bg-gray-100",
-                                  "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold"
+                                  "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
                                 )}
                               >
                                 <item.icon
@@ -263,7 +268,9 @@ export const Sidebar = ({ selectedProject, projects }: {
                   <div className="relative">
                     <Listbox.Button className="relative w-full cursor-default rounded-md bg-dark-gray py-1.5 pl-3 pr-10 text-left text-white shadow-sm ring-1 ring-inset ring-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-900 sm:text-sm sm:leading-6">
                       <span className="block truncate">
-                        {selectedProject ? selectedProject.name : "No project selected"}
+                        {selectedProject
+                          ? selectedProject.name
+                          : "No project selected"}
                       </span>
                       <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
                         <ChevronUpDownIcon
@@ -289,7 +296,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                 active
                                   ? "bg-gray-900 text-white"
                                   : "text-gray-900",
-                                "relative cursor-default select-none py-2 pl-3 pr-9"
+                                "relative cursor-default select-none py-2 pl-3 pr-9",
                               )
                             }
                             value={project}
@@ -299,7 +306,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                 <span
                                   className={classNames(
                                     selected ? "font-semibold" : "font-normal",
-                                    "block truncate"
+                                    "block truncate",
                                   )}
                                 >
                                   {project.name}
@@ -309,7 +316,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                   <span
                                     className={classNames(
                                       active ? "text-white" : "text-gray-900",
-                                      "absolute inset-y-0 right-0 flex items-center pr-4"
+                                      "absolute inset-y-0 right-0 flex items-center pr-4",
                                     )}
                                   >
                                     <CheckIcon
@@ -342,7 +349,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                             item.current
                               ? "bg-gray-100 text-gray-900"
                               : "text-gray-400 hover:text-gray-900 hover:bg-gray-100",
-                            "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold"
+                            "group flex gap-x-3 rounded-md p-2 text-sm leading-6 font-semibold",
                           )}
                         >
                           <item.icon
@@ -360,7 +367,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                   item.current
                                     ? "bg-gray-50"
                                     : "hover:bg-gray-100 hover:text-gray-900",
-                                  "flex items-center w-full text-left rounded-md p-2 gap-x-3 text-sm leading-6 font-semibold text-gray-400"
+                                  "flex items-center w-full text-left rounded-md p-2 gap-x-3 text-sm leading-6 font-semibold text-gray-400",
                                 )}
                               >
                                 <item.icon
@@ -373,7 +380,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                     open
                                       ? "rotate-90 text-gray-500"
                                       : "text-gray-400",
-                                    "ml-auto h-5 w-5 shrink-0"
+                                    "ml-auto h-5 w-5 shrink-0",
                                   )}
                                   aria-hidden="true"
                                 />
@@ -389,7 +396,7 @@ export const Sidebar = ({ selectedProject, projects }: {
                                         subItem.current
                                           ? "bg-gray-50"
                                           : "hover:bg-gray-100 hover:text-gray-900",
-                                        "block rounded-md py-2 pr-2 pl-9 text-sm leading-6 text-gray-400"
+                                        "block rounded-md py-2 pr-2 pl-9 text-sm leading-6 text-gray-400",
                                       )}
                                     >
                                       {subItem.name}

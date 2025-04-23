@@ -1,14 +1,14 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { Inter as FontSans } from "next/font/google";
-import { cn } from "@/lib/utils"
-import { session } from "@/lib/session"
+import { cn } from "@/lib/utils";
+import { session } from "@/lib/session";
 import { Providers } from "./providers";
 import { Sidebar } from "@/components/sidebar";
 
 const fontSans = FontSans({
   subsets: ["latin"],
-  variable: "--font-sans"
+  variable: "--font-sans",
 });
 
 export const metadata: Metadata = {
@@ -24,13 +24,17 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-
-  const projects = await session().get('projects')
-  const selectedProject = await session().get('selectedProject')
+  const projects = await session().get("projects");
+  const selectedProject = await session().get("selectedProject");
 
   return (
     <html lang="en" className="h-full light">
-      <body className={cn("min-h-screen bg-background font-sans antialiased h-full", fontSans.variable)}>
+      <body
+        className={cn(
+          "min-h-screen bg-background font-sans antialiased h-full",
+          fontSans.variable,
+        )}
+      >
         <Providers>
           <Sidebar selectedProject={selectedProject} projects={projects} />
           <div className="lg:pl-72">

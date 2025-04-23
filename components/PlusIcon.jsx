@@ -1,6 +1,6 @@
 import React from "react";
 
-export const PlusIcon = ({size = 24, ...props}) => (
+export const PlusIcon = ({ size = 24, ...props }) => (
   <svg
     aria-hidden="true"
     fill="none"
