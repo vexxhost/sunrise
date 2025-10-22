@@ -1,4 +1,4 @@
-import { session } from "@/lib/session";
+import { session, TokenData } from "@/lib/session";
 
 export type Project = {
   id: string;
@@ -43,7 +43,7 @@ export async function fetchProjectScopedToken(
   token: string,
   projects: { id: string }[],
   selectedProject: Project,
-): Promise<{ token: string; data: {} }> {
+): Promise<{ token: string; data: TokenData }> {
   const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
     method: "POST",
     headers: {
