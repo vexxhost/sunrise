@@ -26,6 +26,7 @@ export default async function RootLayout({
 }) {
   const projects = await session().get("projects");
   const selectedProject = await session().get("selectedProject");
+  const userName = await session().get("userName");
 
   return (
     <html lang="en" className="h-full light">
@@ -36,7 +37,7 @@ export default async function RootLayout({
         )}
       >
         <Providers>
-          <Sidebar selectedProject={selectedProject} projects={projects} />
+          <Sidebar selectedProject={selectedProject} projects={projects} userName={userName} />
           <div className="lg:pl-72">
             <main className="py-10">
               <div className="px-4 sm:px-6 lg:px-8">{children}</div>
