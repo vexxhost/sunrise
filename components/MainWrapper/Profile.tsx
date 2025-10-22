@@ -4,6 +4,7 @@ import { Menu, Transition } from "@headlessui/react";
 import { BellIcon } from "@heroicons/react/24/outline";
 import { ChevronDownIcon } from "@heroicons/react/20/solid";
 
+
 const userNavigation = [
   { name: "Your profile", href: "#" },
   { name: "Sign out", href: "#" },
@@ -13,7 +14,7 @@ function classNames(...classes: any) {
   return classes.filter(Boolean).join(" ");
 }
 
-export default function Profile() {
+export default function Profile({ userName }: { userName?: string }) {
   return (
     <div className="flex items-center gap-x-4 lg:gap-x-6">
       <button
@@ -46,7 +47,7 @@ export default function Profile() {
               className="ml-4 text-sm font-semibold leading-6 text-gray-900"
               aria-hidden="true"
             >
-              Tom Cook
+              {userName || "User"}
             </span>
             <ChevronDownIcon
               className="ml-2 h-5 w-5 text-gray-400"
