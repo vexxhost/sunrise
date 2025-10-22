@@ -24,9 +24,11 @@ function classNames(...classes: any) {
 export const Sidebar = ({
   selectedProject,
   projects,
+  userName,
 }: {
   selectedProject: Project;
   projects: Project[];
+  userName?: string;
 }) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -448,7 +450,7 @@ export const Sidebar = ({
 
           <div className="flex flex-1 gap-x-4 self-stretch lg:gap-x-6">
             <SearchBar />
-            <Profile />
+            <Profile userName={userName} />
           </div>
         </div>
       </div>
