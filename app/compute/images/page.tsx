@@ -2,33 +2,40 @@
 
 import { useEffect, useState } from "react";
 import { Image } from "@/lib/glance";
+import AddImageModal from "@/components/AddImageModal";
 
 export default function ImagesPage() {
   const [images, setImages] = useState<Image[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  const fetchImages = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch("/api/images");
+      if (!response.ok) {
+        throw new Error(`Failed to fetch images: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setImages(data);
+    } catch (err) {
+      console.error("Failed to fetch images:", err);
+      setError("Failed to load images");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImageAdded = () => {
+    // Refresh the images list
+    fetchImages();
+  };
 
   useEffect(() => {
-    const fetchImages = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch("/api/images");
-        if (!response.ok) {
-          throw new Error(`Failed to fetch images: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        setImages(data);
-      } catch (err) {
-        console.error("Failed to fetch images:", err);
-        setError("Failed to load images");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchImages();
   }, []);
 
@@ -68,6 +75,7 @@ export default function ImagesPage() {
         <div className="sm:flex-none">
           <button
             type="button"
+            onClick={() => setIsAddModalOpen(true)}
             className="block rounded-md bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
           >
             Add Image
@@ -150,6 +158,12 @@ export default function ImagesPage() {
           <p className="text-gray-500">No images found</p>
         </div>
       )}
+
+      <AddImageModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onImageAdded={handleImageAdded}
+      />
     </div>
   );
 }

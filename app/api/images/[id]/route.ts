@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { session } from "@/lib/session";
-import { getImage, updateImage, deleteImage } from "@/lib/glance";
+import { getImage, updateImage, deleteImage, uploadImageData } from "@/lib/glance";
 
 interface RouteParams {
   params: {
@@ -54,5 +54,22 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     console.error("Error deleting image:", error);
     return NextResponse.json({ error: "Failed to delete image" }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest, { params }: RouteParams) {
+  try {
+    // Check if user is authenticated
+    const projectToken = await session().get("projectToken");
+    if (!projectToken) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const imageData = await request.blob();
+    await uploadImageData(params.id, imageData);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error uploading image data:", error);
+    return NextResponse.json({ error: "Failed to upload image data" }, { status: 500 });
   }
 }
