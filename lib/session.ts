@@ -48,27 +48,45 @@ export async function getProjectToken(): Promise<string> {
 
 export async function getServiceEndpoint(
   service: string,
-  serviceInterface: string,
-): Promise<Endpoint> {
+  serviceInterface: string = "public",
+): Promise<Endpoint | null> {
   const projectData = await session().get("projectData");
-  const catalog = projectData.catalog;
-  //console.log("getServiceEndpoint: " + catalog);
-  const endpoints = catalog.find(
-    (item: { name: string }) => item.name == service,
-  );
-  const endpoint = endpoints.endpoints.find(
-    (endpoint: { interface: string }) => endpoint.interface == serviceInterface,
+
+  if (!projectData || !projectData.catalog) {
+    console.log("No project data or catalog found");
+    return null;
+  }
+
+  console.log("Looking for service:", service, "in catalog");
+  console.log("Available services:", projectData.catalog.map((s: any) => ({ type: s.type, name: s.name })));
+
+  const serviceEntry = projectData.catalog.find(
+    (item: { type: string }) => item.type === service,
   );
 
-  return endpoint;
+  if (!serviceEntry) {
+    console.log("Service not found in catalog:", service);
+    return null;
+  }
+
+  const endpoint = serviceEntry.endpoints.find(
+    (endpoint: { interface: string }) => endpoint.interface === serviceInterface,
+  );
+
+  console.log("Found endpoint for", service, ":", endpoint);
+  return endpoint || null;
 }
 
-export async function getServiceEndpoints(services: string[], serviceInterface: string): Promise<Endpoint[]> {
+export async function getServiceEndpoints(services: string[], serviceInterface: string = "public"): Promise<Endpoint[]> {
   const projectData = await session().get("projectData");
-  const catalog = projectData.catalog;
-  //console.log("getServiceEndpoints: " + catalog);  
-  const endpoints = catalog
-    .filter((item: { name: string }) => services.includes(item.name))
+
+  if (!projectData || !projectData.catalog) {
+    console.log("No project data or catalog found");
+    return [];
+  }
+
+  const endpoints = projectData.catalog
+    .filter((item: { type: string }) => services.includes(item.type))
     .map((item: { endpoints: Endpoint[] }) => item.endpoints)
     .flat() // Flatten the array of arrays into a single array
     .filter((endpoint: { interface: string }) => endpoint.interface === serviceInterface);
