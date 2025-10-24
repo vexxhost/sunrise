@@ -1,13 +1,35 @@
 import nextAppSession, { MemoryStore } from "next-app-session";
 import { Endpoint, Project } from "@/lib/keystone";
 
+export type User = {
+  id: string;
+  name: string;
+  domain: {
+    id: string;
+    name: string;
+  };
+};
+
+export type TokenData = {
+  user: User;
+  catalog: any[];
+  expires_at: string;
+  issued_at: string;
+  methods: string[];
+  project: Project;
+  roles: any[];
+  is_domain: boolean;
+  [key: string]: any;
+};
+
 export type SunriseSession = {
   keystone_unscoped_token?: string;
   keystone_token?: string;
   projects?: Project[];
   selectedProject?: Project;
   projectToken?: string;
-  projectData?: {};
+  projectData?: TokenData;
+  userName?: string;
   redirect_to?: string;
 };
 

@@ -22,6 +22,7 @@ export async function POST(request: Request) {
       selectedProject: selectedProject,
       projectToken: projectToken,
       projectData: projectData,
+      userName: projectData.user.name,
     });
   } else {
     await session().setAll({
