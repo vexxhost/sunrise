@@ -4,7 +4,8 @@ import { Inter as FontSans } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { getSession } from "@/lib/session";
 import { Providers } from "./providers";
-import { Sidebar } from "@/components/sidebar";
+import { NavigationMenu } from "@/components/NavigationMenu";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -27,21 +28,32 @@ export default async function RootLayout({
   const session = await getSession();
 
   return (
-    <html lang="en" className="h-full light">
+    <html lang="en" className="h-full light" suppressHydrationWarning>
+
       <body
         className={cn(
           "min-h-screen bg-background font-sans antialiased h-full",
           fontSans.variable,
         )}
       >
-        <Providers>
-          <Sidebar selectedProject={session.selectedProject!} projects={session.projects!} userName={session.userName!} />
-          <div className="lg:pl-72">
-            <main className="py-10">
-              <div className="px-4 sm:px-6 lg:px-8">{children}</div>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <Providers>
+            <NavigationMenu
+              projects={session.projects}
+              selectedProject={session.selectedProject}
+              currentRegion={session.selectedRegion}
+              userName={session.userName}
+            />
+            <main>
+              {children}
             </main>
-          </div>
-        </Providers>
+          </Providers>
+        </ThemeProvider>
       </body>
     </html>
   );

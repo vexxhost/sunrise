@@ -1,5 +1,5 @@
 
-  
+
   export const statuses: { [index: string]: string } = {
     ACTIVE: "In Use",
     BUILD: "Available",
@@ -22,7 +22,7 @@
     UNKNOWN: "Unknown",
     VERIFY_RESIZE: "Verify Resize",
   };
-  
+
   export const statusColorMap: { [index: string]: string } = {
     ACTIVE: "success",
     ERROR: "danger",
@@ -45,7 +45,7 @@
     UNKNOWN: "default",
     VERIFY_RESIZE: "default",
   };
-  
+
   export const sortKeys = [
    "name",
     "availability_zone",
@@ -57,7 +57,7 @@
     "encrypted",
     "description",
   ];
-  
+
   // Setup search options for volumes to be sent to the table components filter selection
 export const searchoptions : DynamicInterface = {
     id: "Volume ID",
@@ -67,4 +67,4 @@ export const searchoptions : DynamicInterface = {
     description: "Description",
     bootable: "Bootable",
     size: "Size",
-  };  
+  };

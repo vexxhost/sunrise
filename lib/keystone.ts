@@ -23,6 +23,15 @@ export type Endpoint = {
   region: string;
 };
 
+export type Region = {
+  id: string;
+  description?: string;
+  parent_region_id?: string;
+  links: {
+    self: string;
+  };
+};
+
 export async function listUserProjects(token?: string): Promise<Project[]> {
   if (!token) {
     const session = await getSession();
@@ -71,4 +80,22 @@ export async function fetchProjectScopedToken(
   const data = await response.json();
 
   return { token: scopedToken as string, data: data.token };
+}
+
+export async function listRegions(token?: string): Promise<Region[]> {
+  if (!token) {
+    const session = await getSession();
+    token = session.projectToken || session.keystone_unscoped_token!;
+  }
+
+  const response = await fetch(`${process.env.KEYSTONE_API}/v3/regions`, {
+    headers: {
+      "X-Auth-Token": token,
+    } as HeadersInit,
+  });
+
+  const json = await response.json();
+  json.regions.sort((a: Region, b: Region) => { return a.id.localeCompare(b.id); });
+
+  return json.regions;
 }

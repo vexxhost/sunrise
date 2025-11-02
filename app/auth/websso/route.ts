@@ -1,5 +1,6 @@
 import { listUserProjects, fetchProjectScopedToken } from "@/lib/keystone";
 import { getSession } from "@/lib/session";
+import { cookies } from "next/headers";
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -24,6 +25,25 @@ export async function POST(request: Request) {
     session.selectedProject = selectedProject;
     session.projectToken = projectToken;
     session.userName = projectData.user.name;
+
+    // Set default region if catalog has regions
+    if (projectData.catalog && projectData.catalog.length > 0) {
+      const firstServiceWithEndpoints = projectData.catalog.find((service: any) => service.endpoints?.length > 0);
+      if (firstServiceWithEndpoints) {
+        const firstEndpoint = firstServiceWithEndpoints.endpoints[0];
+        if (firstEndpoint.region) {
+          session.selectedRegion = firstEndpoint.region;
+        }
+      }
+    }
+
+    // Set client-accessible cookie for direct API calls
+    (await cookies()).set('sunrise_token', projectToken, {
+      path: '/',
+      sameSite: 'lax',
+      maxAge: 86400, // 24 hours
+      secure: process.env.NODE_ENV === 'production',
+    });
   }
 
   await session.save();

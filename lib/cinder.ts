@@ -151,3 +151,74 @@ export async function getVolumes(volumeIDs: string[]): Promise<Volume[]> {
 
   return volumeList;
 }
+
+export interface ListSnapshotsOptions {
+  project_id?: string;
+  sort?: string;
+  sort_key?: string;
+  sort_dir?: string;
+  limit?: number;
+  offset?: number;
+  marker?: string;
+  with_count?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type Snapshot = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  name: string;
+  description: string;
+  volume_id: string;
+  status: string;
+  size: number;
+  metadata: object;
+  user_id: string;
+  "os-extended-snapshot-attributes:project_id"?: string;
+  "os-extended-snapshot-attributes:progress"?: string;
+  count?: number;
+};
+
+// retrieve a list of snapshots
+export async function listSnapshots(
+  options?: ListSnapshotsOptions,
+): Promise<Snapshot[]> {
+  const session = await getSession();
+  const endpoint = await getServiceEndpoint("cinder", "public");
+  const params = new URLSearchParams(options as {});
+
+  const snapshotsResponse = await fetch(
+    `${endpoint.url}/snapshots/detail?${params}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Auth-Token": session.projectToken,
+      } as HeadersInit,
+    },
+  );
+
+  const snapshotsData = await snapshotsResponse.json();
+
+  return snapshotsData.snapshots;
+}
+
+// retrieve a snapshot by its id
+export async function getSnapshot(id: string): Promise<Snapshot> {
+  const session = await getSession();
+  const endpoint = await getServiceEndpoint("cinder", "public");
+  const snapshotsResponse = await fetch(`${endpoint.url}/snapshots/${id}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Auth-Token": session.projectToken,
+    } as HeadersInit,
+  });
+
+  const snapshotsData = await snapshotsResponse.json();
+  const snapshot: Snapshot = snapshotsData["snapshot"];
+
+  return snapshot;
+}

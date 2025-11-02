@@ -17,7 +17,7 @@ export const columns: ColumnDef<Volume>[] = [
             return (
               <Button
                 variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}  
+                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                 className="flex items-center"
               >
                 Name
@@ -25,8 +25,8 @@ export const columns: ColumnDef<Volume>[] = [
               </Button>
             )
       },
-      cell: ({ row }: { row: { original: Volume } }) => 
-        { 
+      cell: ({ row }: { row: { original: Volume } }) =>
+        {
           return (
                 <div className="flex items-center gap-2 text-xs" >
                    {row.original.name ? row.original.name : row.original.id}
@@ -67,7 +67,7 @@ export const columns: ColumnDef<Volume>[] = [
           const status = capitalizeFirstLetters(row.original.status);
           let badgeStyle;
           let label;
-      
+
           // Determine the button style and label based on the status value
           switch (status) {
             case "In Use":
@@ -83,7 +83,7 @@ export const columns: ColumnDef<Volume>[] = [
             badgeStyle = "w-22 bg-gray-500 hover:bg-gray-600 cursor-not-allowed opacity-75";
               break;
           }
-      
+
           return (
             <Badge className= {badgeStyle} >
               {status}
@@ -116,7 +116,7 @@ export const columns: ColumnDef<Volume>[] = [
             )
       },
         cell: ({ row }: { row: { original: Volume } }) => row.original.volume_type
-        },  
+        },
         {
             accessorKey: "availability_zone",
             header: ({ column }) => {
@@ -130,7 +130,7 @@ export const columns: ColumnDef<Volume>[] = [
           },
             cell: ({ row }: { row: { original: Volume } }) => row.original.availability_zone
         },
-        { 
+        {
             accessorKey: "bootable",
             header: ({ column }) => {
                 return (
@@ -168,7 +168,7 @@ export const columns: ColumnDef<Volume>[] = [
                 )
           },            cell: ({ row }: { row: { original: Volume } }) => row.original.multiattach ? "Yes" : "No"
           },
-         
+
         {
           accessorKey: "actions",
           header: "Actions",
@@ -197,5 +197,5 @@ export const columns: ColumnDef<Volume>[] = [
             );
           }
         }
-  
+
   ]
