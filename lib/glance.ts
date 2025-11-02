@@ -1,4 +1,4 @@
-import { getProjectToken, getServiceEndpoint } from "@/lib/session";
+import { getServiceEndpoint, getSession } from "@/lib/session";
 
 export interface Image {
   id: string;
@@ -6,7 +6,7 @@ export interface Image {
 }
 // retrieve a list of images
 export async function listImages() {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getServiceEndpoint("glance", "public");
 
   // @TODO query params for ids
@@ -14,7 +14,7 @@ export async function listImages() {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 
@@ -24,7 +24,7 @@ export async function listImages() {
 }
 //retrieve an image by its id
 export async function getImage(id: string) {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getServiceEndpoint("glance", "public");
 
   // @TODO query params for ids
@@ -32,7 +32,7 @@ export async function getImage(id: string) {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 

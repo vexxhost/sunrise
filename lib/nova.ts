@@ -1,5 +1,4 @@
-import { getProjectToken, getServiceEndpoint } from "@/lib/session";
-import { log } from "console";
+import { getServiceEndpoint, getSession } from "@/lib/session";
 import { SecurityGroup } from "./network";
 
 export interface InterfaceAttachment {
@@ -126,7 +125,7 @@ export interface ListFlavorsOptions {
 }
 // retrieve a list of servers using the nova api with optional query parameters
 export async function listServers(options?: ListServersOptions) {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getServiceEndpoint("nova", "public");
   const params = new URLSearchParams(options as {});
   const computeResponse = await fetch(
@@ -135,7 +134,7 @@ export async function listServers(options?: ListServersOptions) {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "X-Auth-Token": token,
+        "X-Auth-Token": session.projectToken,
       } as HeadersInit,
     },
   );
@@ -145,13 +144,13 @@ export async function listServers(options?: ListServersOptions) {
 }
 // retrieve a server by its id
 export async function getInstance(id: string): Promise<Server> {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getServiceEndpoint("nova", "public");
   const computeResponse = await fetch(`${endpoint.url}/servers/${id}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
   const computeData = await computeResponse.json();
@@ -161,13 +160,13 @@ export async function getInstance(id: string): Promise<Server> {
 }
 // retrieve a list of flavors
 export async function listFlavors(options?: ListFlavorsOptions) {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getServiceEndpoint("nova", "public");
   const computeResponse = await fetch(`${endpoint.url}/flavors/detail`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 
@@ -177,13 +176,13 @@ export async function listFlavors(options?: ListFlavorsOptions) {
 }
 // retrieve a flavor by its id
 export async function getFlavor(id: string) {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getServiceEndpoint("nova", "public");
   const computeResponse = await fetch(`${endpoint.url}/flavors/${id}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 
@@ -194,13 +193,13 @@ export async function getFlavor(id: string) {
 }
 
 export async function getPortInterfaces(id: string){
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getServiceEndpoint("nova", "public");
   const computeResponse = await fetch(`${endpoint.url}/servers/${id}/os-interface`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
   const computeData = await computeResponse.json();

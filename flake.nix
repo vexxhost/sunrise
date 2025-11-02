@@ -49,6 +49,7 @@
               with pkgs;
               [
                 nodejs
+                pnpm
               ]
               ++ (builtins.attrValues config.treefmt.build.programs);
           };

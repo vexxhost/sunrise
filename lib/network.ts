@@ -1,7 +1,4 @@
-import { getProjectToken, getServiceEndpoint, getServiceEndpoints } from "@/lib/session";
-import { log } from "console";
-import exp from "constants";
-import { get } from "http";
+import { getServiceEndpoints, getSession } from "@/lib/session";
 import { Endpoint } from "./keystone";
 
 export interface SecurityGroupRule {
@@ -108,7 +105,7 @@ export async function getNetworkEndpoint() : Promise<Endpoint> {
 }
 
 export async function listSecurityGroups() {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getNetworkEndpoint();
 
   const securityGroupsResponse = await fetch(
@@ -117,7 +114,7 @@ export async function listSecurityGroups() {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "X-Auth-Token": token,
+        "X-Auth-Token": session.projectToken,
       } as HeadersInit,
     },
   );
@@ -128,7 +125,7 @@ export async function listSecurityGroups() {
 }
 // retrieve a security group by its id
 export async function getSecurityGroup(id: string) {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getNetworkEndpoint();
   
   const securityGroupResponse = await fetch(
@@ -137,7 +134,7 @@ export async function getSecurityGroup(id: string) {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "X-Auth-Token": token,
+        "X-Auth-Token": session.projectToken,
       } as HeadersInit,
     },
   );
@@ -149,7 +146,7 @@ export async function getSecurityGroup(id: string) {
 }
 // retrieve a list of security group rules
 export async function listSecurityGroupRules() {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getNetworkEndpoint();
 
   const securityGroupRules = await fetch(
@@ -158,7 +155,7 @@ export async function listSecurityGroupRules() {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "X-Auth-Token": token,
+        "X-Auth-Token": session.projectToken,
       } as HeadersInit,
     },
   );
@@ -169,7 +166,7 @@ export async function listSecurityGroupRules() {
 }
 // retrieve a security group rule by id
 export async function getSecurityGroupRule(id: string) {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getNetworkEndpoint();
 
   const securityGroupRuleResponse = await fetch(
@@ -178,7 +175,7 @@ export async function getSecurityGroupRule(id: string) {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "X-Auth-Token": token,
+        "X-Auth-Token": session.projectToken,
       } as HeadersInit,
     },
   );
@@ -191,14 +188,14 @@ export async function getSecurityGroupRule(id: string) {
 }
 
 export async function listPorts() {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getNetworkEndpoint();
 
   const portsResponse = await fetch(`${endpoint.url}/v2.0/ports`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 
@@ -209,14 +206,14 @@ export async function listPorts() {
 }
 
 export async function getPortById(id: string) {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getNetworkEndpoint();
 
   const portResponse = await fetch(`${endpoint.url}/v2.0/ports/${id}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 
@@ -237,14 +234,14 @@ export async function getPortsByIDs(portIDs: string[]) {
 }
 
 export async function listNetworks() {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getNetworkEndpoint();
 
   const networksResponse = await fetch(`${endpoint.url}/v2.0/networks`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 
@@ -255,14 +252,14 @@ export async function listNetworks() {
 }
 
 export async function getNetwork(id: string) {
-  const token = await getProjectToken();
+  const session = await getSession();
   const endpoint = await getNetworkEndpoint();
 
   const networkResponse = await fetch(`${endpoint.url}/v2.0/networks/${id}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 

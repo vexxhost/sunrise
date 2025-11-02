@@ -1,4 +1,3 @@
-import { session } from "@/lib/session";
 import {
   type ListServersOptions,
   Flavor,
@@ -11,18 +10,14 @@ import { Suspense } from "react";
 import { Loader } from "@/components/Loader";
 import Table from "./Table";
 
-export const revalidate = 10;
-
 export default async function Page({
   searchParams,
 }: {
-  searchParams?: {
+  searchParams?: Promise<{
     sort_dir?: string;
     sort_key?: string;
-  };
+  }>;
 }) {
-  const project = await session().get("selectedProject");
-
   // @bug? the only working searchOption for nova api is name at the moment
   // @todo add support for image_name and flavor_name to SearchOptions
 
@@ -32,7 +27,8 @@ export default async function Page({
   };
 
   // @todo filter searchParams against searchOptions + sort_key, sort_dir
-  const serverOptions = Object.assign(defaultServerOptions, searchParams);
+  const params = await searchParams;
+  const serverOptions = Object.assign(defaultServerOptions, params);
 
   return (
     <div>

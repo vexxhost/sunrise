@@ -1,4 +1,4 @@
-import { getProjectToken, getServiceEndpoint } from "@/lib/session";
+import { getSession, getServiceEndpoint } from "@/lib/session";
 
 const statuses: { [key: string]: string } = {
   creating: "The volume is being created.",
@@ -105,8 +105,8 @@ export type Volume = {
 export async function listVolumes(
   options?: ListVolumesOptions,
 ): Promise<Volume[]> {
-  const token = await getProjectToken();
-  const endpoint = await getServiceEndpoint("cinderv3", "public");
+  const session = await getSession();
+  const endpoint = await getServiceEndpoint("cinder", "public");
   const params = new URLSearchParams(options as {});
 
   const volumesResponse = await fetch(
@@ -115,7 +115,7 @@ export async function listVolumes(
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "X-Auth-Token": token,
+        "X-Auth-Token": session.projectToken,
       } as HeadersInit,
     },
   );
@@ -126,13 +126,13 @@ export async function listVolumes(
 }
 //retrieve a volume by its id
 export async function getVolume(id: string): Promise<Volume> {
-  const token = await getProjectToken();
-  const endpoint = await getServiceEndpoint("cinderv3", "public");
+  const session = await getSession();
+  const endpoint = await getServiceEndpoint("cinder", "public");
   const volumesResponse = await fetch(`${endpoint.url}/volumes/${id}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      "X-Auth-Token": token,
+      "X-Auth-Token": session.projectToken,
     } as HeadersInit,
   });
 

@@ -1,26 +1,17 @@
 import { listVolumes } from "@/lib/cinder";
-import { listImages } from "@/lib/glance";
-import React from "react";
-// import { DataTable } from "./table";
-import { session } from "@/lib/session";
 import { columns } from "./columns";
 import { DataTable } from "@/components/datatable";
 import { searchoptions } from "./meta";
 
-
-export const revalidate = 10;
-
 export default async function Page({
   searchParams,
 }: {
-  searchParams?: {
+  searchParams?: Promise<{
     sort_dir?: string;
     sort_key?: string;
-  };
+  }>;
 }) {
   const volumes = await listVolumes();
-  const images = await listImages();
-  const project = await session().get("selectedProject");
 
   // @bug? the only working searchOption for nova api is name at the moment
   // @todo add support for image_name and flavor_name to SearchOptions

@@ -2,7 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Inter as FontSans } from "next/font/google";
 import { cn } from "@/lib/utils";
-import { session } from "@/lib/session";
+import { getSession } from "@/lib/session";
 import { Providers } from "./providers";
 import { Sidebar } from "@/components/sidebar";
 
@@ -24,9 +24,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const projects = await session().get("projects");
-  const selectedProject = await session().get("selectedProject");
-  const userName = await session().get("userName");
+  const session = await getSession();
 
   return (
     <html lang="en" className="h-full light">
@@ -37,7 +35,7 @@ export default async function RootLayout({
         )}
       >
         <Providers>
-          <Sidebar selectedProject={selectedProject} projects={projects} userName={userName} />
+          <Sidebar selectedProject={session.selectedProject!} projects={session.projects!} userName={session.userName!} />
           <div className="lg:pl-72">
             <main className="py-10">
               <div className="px-4 sm:px-6 lg:px-8">{children}</div>

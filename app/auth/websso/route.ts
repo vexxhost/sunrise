@@ -1,7 +1,9 @@
-import { session } from "@/lib/session";
 import { listUserProjects, fetchProjectScopedToken } from "@/lib/keystone";
+import { getSession } from "@/lib/session";
 
 export async function POST(request: Request) {
+  const session = await getSession();
+
   const formData = await request.formData();
   const token = formData.get("token");
 
@@ -11,26 +13,21 @@ export async function POST(request: Request) {
   // Set selected project to the first project available
   const selectedProject = projects.length > 0 ? projects[0] : null;
 
+  session.keystone_unscoped_token = token as string;
+  session.projects = projects;
+
   if (selectedProject !== null) {
     // Get project scoped token for selected project
-    const { token: projectToken, data: projectData } =
-      await fetchProjectScopedToken(token as string, projects, selectedProject);
+    const { token: projectToken, data: projectData } = await fetchProjectScopedToken(token as string, selectedProject);
 
-    await session().setAll({
-      keystone_unscoped_token: token as string,
-      projects: projects,
-      selectedProject: selectedProject,
-      projectToken: projectToken,
-      projectData: projectData,
-      userName: projectData.user.name,
-    });
-  } else {
-    await session().setAll({
-      keystone_unscoped_token: token as string,
-      projects: projects,
-    });
+    session.projects = projects;
+    session.selectedProject = selectedProject;
+    session.projectToken = projectToken;
+    session.userName = projectData.user.name;
   }
 
-  const redirectTo = (await session().get("redirect_to")) || "/";
+  await session.save();
+
+  const redirectTo = session.redirect_to || "/";
   return Response.redirect(process.env.DASHBOARD_URL + redirectTo, 303);
 }

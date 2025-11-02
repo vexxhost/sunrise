@@ -1,10 +1,9 @@
-import React from "react";
-import { session } from "@/lib/session";
 import Login from "@/components/Auth/Login";
+import { getSession } from "@/lib/session";
 
 export default async function Provider({ children }: any) {
-  const unscopedToken = await session().get("keystone_unscoped_token");
-  if (!unscopedToken) {
+  const session = await getSession();
+  if (!session.keystone_unscoped_token) {
     return <Login />;
   }
 

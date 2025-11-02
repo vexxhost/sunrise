@@ -1,4 +1,4 @@
-import { session, TokenData } from "@/lib/session";
+import { getSession, TokenData } from "@/lib/session";
 
 export type Project = {
   id: string;
@@ -25,8 +25,10 @@ export type Endpoint = {
 
 export async function listUserProjects(token?: string): Promise<Project[]> {
   if (!token) {
-    const token = await session().get("token");
+    const session = await getSession();
+    token = session.keystone_unscoped_token!;
   }
+
   const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/projects`, {
     headers: {
       "X-Auth-Token": token,
@@ -41,7 +43,6 @@ export async function listUserProjects(token?: string): Promise<Project[]> {
 
 export async function fetchProjectScopedToken(
   token: string,
-  projects: { id: string }[],
   selectedProject: Project,
 ): Promise<{ token: string; data: TokenData }> {
   const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
