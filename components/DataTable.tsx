@@ -78,10 +78,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
 import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu"
-import { ChevronDownIcon } from "@/components/ChevronDownIcon"
 import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
-import { Settings, RefreshCw } from "lucide-react"
+import { Settings, RefreshCw, ChevronDown } from "lucide-react"
 import pluralize from "pluralize"
 import {
   Dialog,
@@ -274,7 +273,7 @@ export function DataTable<TData, TValue>({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button className="rounded-r-none" variant="secondary" disabled>
-                  {searchOptions[Object.keys(searchOptions)[0] as keyof BaseSearchOptions] || 'Search'} <ChevronDownIcon className="ml-2" />
+                  {searchOptions[Object.keys(searchOptions)[0] as keyof BaseSearchOptions] || 'Search'} <ChevronDown className="ml-2" />
                 </Button>
               </DropdownMenuTrigger>
             </DropdownMenu>
@@ -409,7 +408,7 @@ export function DataTable<TData, TValue>({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button className="rounded-r-none" variant="secondary">
-                {searchOptions[searchOption as keyof BaseSearchOptions]} <ChevronDownIcon className="ml-2" />
+                {searchOptions[searchOption as keyof BaseSearchOptions]} <ChevronDown className="ml-2" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent aria-label="Search Filter">

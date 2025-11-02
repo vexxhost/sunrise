@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
 import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu"
-import { ChevronDownIcon } from "@/components/ChevronDownIcon"
+import { ChevronDown } from "lucide-react"
 import { TableLoadingRows } from "./TableLoading"
 
 interface DataTableWrapperProps<TData, TValue> {
@@ -73,7 +73,7 @@ function DataTableBody<TData, TValue>({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button className="rounded-r-none" variant="secondary">
-              {searchOptions[searchOption as keyof BaseSearchOptions]} <ChevronDownIcon className="ml-2" />
+              {searchOptions[searchOption as keyof BaseSearchOptions]} <ChevronDown className="ml-2" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent aria-label="Search Filter">
@@ -196,7 +196,7 @@ export function DataTableWrapper<TData, TValue>({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button className="rounded-r-none" variant="secondary" disabled>
-                  {searchOptions['name' as keyof BaseSearchOptions] || 'Search'} <ChevronDownIcon className="ml-2" />
+                  {searchOptions['name' as keyof BaseSearchOptions] || 'Search'} <ChevronDown className="ml-2" />
                 </Button>
               </DropdownMenuTrigger>
             </DropdownMenu>
