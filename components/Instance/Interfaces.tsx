@@ -3,7 +3,7 @@ import { getPortById,getPortsByIDs, getPortsByIdsWithNetworkName, Port } from "@
 import { getPortInterfaces,InterfaceAttachment, InterfaceAttachmentsResponse, Server } from "@/lib/nova"
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Network } from "lucide-react";
 import { Button } from "../ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useState } from "react";
@@ -85,7 +85,7 @@ const table = useReactTable<Port>({
 return (
   <>
     <div>
-       <DataTable columns={columns} data={networkPorts} searchOptions={searchoptions}/>
+       <DataTable columns={columns} data={networkPorts} searchOptions={searchoptions} emptyIcon={Network} resourceName="interface"/>
     </div>
     </>
 

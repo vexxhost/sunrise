@@ -1,17 +1,27 @@
+'use client';
+
+import { useCallback } from "react";
 import { columns } from "./columns";
-import { DataTableAsync } from "@/components/DataTable";
+import { DataTable } from "@/components/DataTable";
 import { searchoptions } from "./meta";
-import { listNetworks } from "@/lib/network";
+import { network } from "@/lib/client";
+import { Network } from "lucide-react";
+import { useRegion } from "@/contexts/RegionContext";
 
 export default function Page() {
-  const networksPromise = listNetworks();
+  const { region } = useRegion();
+
+  const fetchNetworks = useCallback(async () => {
+    return await network.listNetworks();
+  }, [region]);
 
   return (
-    <DataTableAsync
-      dataPromise={networksPromise}
+    <DataTable
+      fetchData={fetchNetworks}
       columns={columns}
       searchOptions={searchoptions}
-      resourceName="networks"
+      resourceName="network"
+      emptyIcon={Network}
     />
-  )
+  );
 }

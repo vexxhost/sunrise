@@ -32,8 +32,29 @@ function getColumnLabel<TData, TValue>(column: any): string {
     return column.columnDef.header;
   }
 
-  // Otherwise fall back to column id
-  return column.id;
+  // Try to extract text from header function by rendering it
+  // This works for simple button headers with text content
+  if (typeof column.columnDef.header === 'function') {
+    try {
+      // Try to render the header and extract text
+      const headerElement = column.columnDef.header({ column: column });
+      if (headerElement?.props?.children) {
+        // Extract text from children (handles Button components with text)
+        const children = headerElement.props.children;
+        if (Array.isArray(children)) {
+          const textChild = children.find((child: any) => typeof child === 'string');
+          if (textChild) return textChild;
+        } else if (typeof children === 'string') {
+          return children;
+        }
+      }
+    } catch (e) {
+      // If extraction fails, fall through to column id
+    }
+  }
+
+  // Otherwise fall back to column id (formatted)
+  return column.id.replace(/[_-]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
 }
 
 // Helper function to capitalize resource name
@@ -52,14 +73,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import React, { useState, Suspense } from "react"
+import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
 import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu"
 import { ChevronDownIcon } from "@/components/ChevronDownIcon"
 import { TableLoadingRows } from "./TableLoading"
-import { Settings } from "lucide-react"
+import { TableEmpty } from "./TableEmpty"
+import { Settings, RefreshCw } from "lucide-react"
+import pluralize from "pluralize"
 import {
   Dialog,
   DialogContent,
@@ -122,25 +145,35 @@ function generatePaginationItems(currentPage: number, totalPages: number) {
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
-  data: TData[]
+  fetchData?: () => Promise<TData[]>
+  data?: TData[]
   searchOptions: BaseSearchOptions
   defaultColumnVisibility?: VisibilityState
   onRowClick?: (row: TData) => void
   emptyMessage?: string
   pageSize?: number
   resourceName?: string
+  emptyIcon: React.ComponentType<{ className?: string }>
+  onRefresh?: () => void
 }
 
 export function DataTable<TData, TValue>({
   columns,
-  data,
+  fetchData,
+  data: initialData,
   searchOptions,
   defaultColumnVisibility = {},
   onRowClick,
-  emptyMessage = "No results.",
+  emptyMessage,
   pageSize = 10,
   resourceName,
+  emptyIcon,
+  onRefresh,
 }: DataTableProps<TData, TValue>) {
+  const [data, setData] = React.useState<TData[]>(initialData || []);
+  const [isLoading, setIsLoading] = React.useState(!!fetchData);
+  const [error, setError] = React.useState<Error | null>(null);
+
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [searchOption, setSearchOption] = useState(Object.keys(searchOptions)[0] || 'name')
@@ -151,6 +184,38 @@ export function DataTable<TData, TValue>({
   const [tempPageSize, setTempPageSize] = React.useState(pageSize.toString())
   const [tempColumnVisibility, setTempColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
   const [columnSearch, setColumnSearch] = React.useState("")
+
+  // Fetch data if fetchData is provided
+  const loadData = React.useCallback(async () => {
+    if (!fetchData) {
+      if (initialData) {
+        setData(initialData);
+      }
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      const result = await fetchData();
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Failed to fetch data'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchData, initialData]);
+
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRefresh = async () => {
+    if (onRefresh) {
+      onRefresh();
+    }
+    await loadData();
+  };
 
   const table = useReactTable({
     data,
@@ -174,14 +239,172 @@ export function DataTable<TData, TValue>({
     },
   })
 
+  // Create a minimal table just to render headers for loading/error states
+  const headerTable = useReactTable({
+    data: [] as TData[],
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  // Show loading skeleton whenever loading (initial load or refresh)
+  if (isLoading) {
+    return (
+      <>
+        {resourceName && (
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-2xl font-semibold">
+              {formatResourceName(pluralize(resourceName))}
+            </h1>
+            {fetchData && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+                className={`gap-2 transition-opacity duration-300 ${isLoading ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            )}
+          </div>
+        )}
+        <div className="flex items-center justify-between pb-4">
+          <div className="flex items-center flex-1 gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="rounded-r-none" variant="secondary" disabled>
+                  {searchOptions[Object.keys(searchOptions)[0] as keyof BaseSearchOptions] || 'Search'} <ChevronDownIcon className="ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+            </DropdownMenu>
+            <Input
+              placeholder={resourceName ? `Loading ${formatResourceName(pluralize(resourceName))}...` : "Loading..."}
+              disabled
+              className="rounded m-1 p-1 max-w-xs"
+            />
+            <Button variant="secondary" disabled className="rounded-l-none m-1 p-1">
+              Reset Filter
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious className="pointer-events-none opacity-50" />
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationLink className="pointer-events-none">1</PaginationLink>
+                </PaginationItem>
+                <PaginationItem>
+                  <PaginationNext className="pointer-events-none opacity-50" />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+
+            <Button variant="outline" size="icon" disabled>
+              <Settings className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              {headerTable.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id} className="text-xs font-bold">
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id} className="text-xs font-bold">
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              <TableLoadingRows
+                columns={columns.length}
+                message={resourceName ? `Loading ${formatResourceName(pluralize(resourceName))}...` : "Loading data..."}
+              />
+            </TableBody>
+          </Table>
+        </div>
+      </>
+    );
+  }
+
+  if (error) {
+    return (
+      <>
+        {resourceName && (
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-2xl font-semibold">
+              {formatResourceName(pluralize(resourceName))}
+            </h1>
+            {fetchData && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+                className={`gap-2 transition-opacity duration-300 ${isLoading ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            )}
+          </div>
+        )}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              {headerTable.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id} className="text-xs font-bold">
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id} className="text-xs font-bold">
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              <TableEmpty
+                columns={columns.length}
+                message="Error loading data"
+                description={error.message}
+                icon={emptyIcon}
+              />
+            </TableBody>
+          </Table>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       {resourceName && (
-        <h1 className="text-4xl font-semibold mb-6 pb-2 border-b-2">
-          {formatResourceName(resourceName)}
-        </h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-semibold">
+            {formatResourceName(pluralize(resourceName))}
+          </h1>
+          {fetchData && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              className={`gap-2 transition-opacity duration-300 ${isLoading ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          )}
+        </div>
       )}
-      <div className="flex items-center justify-between py-4">
+      <div className="flex items-center justify-between pb-4">
         <div className="flex items-center flex-1 gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -407,11 +630,11 @@ export function DataTable<TData, TValue>({
                 </TableRow>
               ))
             ) : (
-              <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
-                  {emptyMessage}
-                </TableCell>
-              </TableRow>
+              <TableEmpty
+                columns={columns.length}
+                message={emptyMessage || (resourceName ? `No ${pluralize(resourceName)} found.` : "No results.")}
+                icon={emptyIcon}
+              />
             )}
           </TableBody>
         </Table>
@@ -420,140 +643,3 @@ export function DataTable<TData, TValue>({
   )
 }
 
-interface DataTableAsyncProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
-  dataPromise: Promise<TData[]>
-  searchOptions: BaseSearchOptions
-  defaultColumnVisibility?: VisibilityState
-  onRowClick?: (row: TData) => void
-  emptyMessage?: string
-  pageSize?: number
-  resourceName?: string
-}
-
-function DataTableBody<TData, TValue>({
-  dataPromise,
-  columns,
-  searchOptions,
-  defaultColumnVisibility,
-  onRowClick,
-  emptyMessage,
-  pageSize,
-  resourceName,
-}: DataTableAsyncProps<TData, TValue>) {
-  const data = React.use(dataPromise);
-
-  return (
-    <DataTable
-      data={data}
-      columns={columns}
-      searchOptions={searchOptions}
-      defaultColumnVisibility={defaultColumnVisibility}
-      onRowClick={onRowClick}
-      emptyMessage={emptyMessage}
-      pageSize={pageSize}
-      resourceName={resourceName}
-    />
-  )
-}
-
-export function DataTableAsync<TData, TValue>({
-  columns,
-  dataPromise,
-  searchOptions,
-  defaultColumnVisibility,
-  onRowClick,
-  emptyMessage,
-  pageSize,
-  resourceName,
-}: DataTableAsyncProps<TData, TValue>) {
-  // Create a minimal table just to render headers
-  const headerTable = useReactTable({
-    data: [] as TData[],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  })
-
-  return (
-    <Suspense
-      fallback={
-        <>
-          {resourceName && (
-            <h1 className="text-4xl font-semibold mb-6 pb-2 border-b-2">
-              {formatResourceName(resourceName)}
-            </h1>
-          )}
-          <div className="flex items-center justify-between py-4">
-            <div className="flex items-center flex-1 gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button className="rounded-r-none" variant="secondary" disabled>
-                    {searchOptions[Object.keys(searchOptions)[0] as keyof BaseSearchOptions] || 'Search'} <ChevronDownIcon className="ml-2" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </DropdownMenu>
-              <Input
-                placeholder="Loading..."
-                disabled
-                className="rounded m-1 p-1 max-w-xs"
-              />
-              <Button variant="secondary" disabled className="rounded-l-none m-1 p-1">
-                Reset Filter
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Pagination>
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious className="pointer-events-none opacity-50" />
-                  </PaginationItem>
-                  <PaginationItem>
-                    <PaginationLink className="pointer-events-none">1</PaginationLink>
-                  </PaginationItem>
-                  <PaginationItem>
-                    <PaginationNext className="pointer-events-none opacity-50" />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-
-              <Button variant="outline" size="icon" disabled>
-                <Settings className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                {headerTable.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id} className="text-xs font-bold">
-                    {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id} className="text-xs font-bold">
-                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                <TableLoadingRows columns={columns.length} />
-              </TableBody>
-            </Table>
-          </div>
-        </>
-      }
-    >
-      <DataTableBody
-        dataPromise={dataPromise}
-        columns={columns}
-        searchOptions={searchOptions}
-        defaultColumnVisibility={defaultColumnVisibility}
-        onRowClick={onRowClick}
-        emptyMessage={emptyMessage}
-        pageSize={pageSize}
-        resourceName={resourceName}
-      />
-    </Suspense>
-  )
-}

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Layers, FolderKanban, User, LogOut } from "lucide-react"
 import { listRegionsClient, type Region as KeystoneRegion } from "@/lib/keystone-client"
 import type { Project } from "@/lib/keystone"
+import { useRegion } from "@/contexts/RegionContext"
 
 // import { useIsMobile } from "@/hooks/use-mobile"
 import {
@@ -71,28 +72,21 @@ export function NavigationMenu({
 }) {
   const router = useRouter()
   const isMobile = false //useIsMobile()
+  const { region: contextRegion, setRegion } = useRegion()
   const [regions, setRegions] = React.useState<KeystoneRegion[]>([])
-  const [selectedRegion, setSelectedRegion] = React.useState<KeystoneRegion>({ id: 'Loading...', links: { self: '' } })
   const [isLoading, setIsLoading] = React.useState(true)
+
+  // Display region from context or current region from props
+  const displayRegion = contextRegion || currentRegion || 'Loading...'
 
   React.useEffect(() => {
     const fetchRegions = async () => {
       try {
         const data = await listRegionsClient()
         setRegions(data)
-        if (data.length > 0) {
-          // Use the region from session if available, otherwise use first region
-          const regionToSelect = currentRegion
-            ? data.find(r => r.id === currentRegion) || data[0]
-            : data[0];
-          setSelectedRegion(regionToSelect)
-        } else {
-          setSelectedRegion({ id: 'No regions', links: { self: '' } })
-        }
         setIsLoading(false)
       } catch (error) {
         console.error('Failed to fetch regions:', error)
-        setSelectedRegion({ id: 'Error loading', links: { self: '' } })
         setIsLoading(false)
       }
     }
@@ -103,7 +97,7 @@ export function NavigationMenu({
   const handleRegionChange = async (region: KeystoneRegion) => {
     try {
       // Optimistically update UI immediately
-      setSelectedRegion(region);
+      setRegion(region.id);
 
       // Save to session
       await fetch('/api/change-region', {
@@ -119,10 +113,7 @@ export function NavigationMenu({
       console.error('Failed to change region:', error);
       // Revert on error
       if (currentRegion) {
-        const previousRegion = regions.find(r => r.id === currentRegion);
-        if (previousRegion) {
-          setSelectedRegion(previousRegion);
-        }
+        setRegion(currentRegion);
       }
     }
   }
@@ -193,7 +184,7 @@ export function NavigationMenu({
             <NavigationMenuItem>
               <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
                 <MapPin className="h-3.5 w-3.5 shrink-0" />
-                <span className="font-mono leading-none">{selectedRegion.id}</span>
+                <span className="font-mono leading-none">{displayRegion}</span>
               </NavigationMenuTrigger>
               {!isLoading && regions.length > 0 && (
                 <NavigationMenuContent>
@@ -203,7 +194,7 @@ export function NavigationMenu({
                         <button
                           onClick={() => handleRegionChange(region)}
                           className={`w-full text-left px-3 py-2 text-xs font-mono rounded-md hover:bg-accent transition-colors whitespace-nowrap ${
-                            selectedRegion.id === region.id ? 'bg-accent font-semibold' : ''
+                            displayRegion === region.id ? 'bg-accent font-semibold' : ''
                           }`}
                         >
                           {region.id}

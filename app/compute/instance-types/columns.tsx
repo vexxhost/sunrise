@@ -48,7 +48,9 @@ export const columns: ColumnDef<Flavor>[] = [
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            > VCPUs <ArrowUpDown className="ml-2 h-4 w-4" />
+            >
+              VCPUs
+              <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
           )
       },
@@ -61,7 +63,9 @@ export const columns: ColumnDef<Flavor>[] = [
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            > RAM <ArrowUpDown className="ml-2 h-4 w-4" />
+            >
+              RAM
+              <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
           )
       },
@@ -77,7 +81,9 @@ export const columns: ColumnDef<Flavor>[] = [
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            > Root Disk <ArrowUpDown className="ml-2 h-4 w-4" />
+            >
+              Root Disk
+              <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
           )
       },
@@ -92,7 +98,9 @@ export const columns: ColumnDef<Flavor>[] = [
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            > Ephemeral Disk <ArrowUpDown className="ml-2 h-4 w-4" />
+            >
+              Ephemeral Disk
+              <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
           )
       },
@@ -116,7 +124,9 @@ export const columns: ColumnDef<Flavor>[] = [
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            > Public <ArrowUpDown className="ml-2 h-4 w-4" />
+            >
+              Public
+              <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
           )
       },
@@ -136,7 +146,9 @@ export const columns: ColumnDef<Flavor>[] = [
             <Button
               variant="ghost"
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            > Disabled <ArrowUpDown className="ml-2 h-4 w-4" />
+            >
+              Disabled
+              <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
           )
       },

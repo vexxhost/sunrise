@@ -1,24 +1,27 @@
-import { listVolumes } from "@/lib/cinder";
-import { columns } from "./columns";
-import { DataTableAsync } from "@/components/DataTable";
-import { searchoptions } from "./meta";
+'use client';
 
-export default function Page({
-  searchParams,
-}: {
-  searchParams?: Promise<{
-    sort_dir?: string;
-    sort_key?: string;
-  }>;
-}) {
-  const volumesPromise = listVolumes();
+import { useCallback } from "react";
+import { columns } from "./columns";
+import { DataTable } from "@/components/DataTable";
+import { searchoptions } from "./meta";
+import { cinder } from "@/lib/client";
+import { HardDrive } from "lucide-react";
+import { useRegion } from "@/contexts/RegionContext";
+
+export default function Page() {
+  const { region } = useRegion();
+
+  const fetchVolumes = useCallback(async () => {
+    return await cinder.listVolumes();
+  }, [region]);
 
   return (
-    <DataTableAsync
-      dataPromise={volumesPromise}
+    <DataTable
+      fetchData={fetchVolumes}
       columns={columns}
       searchOptions={searchoptions}
-      resourceName="volumes"
+      resourceName="volume"
+      emptyIcon={HardDrive}
     />
-  )
+  );
 }

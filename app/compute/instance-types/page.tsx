@@ -1,25 +1,28 @@
-import { listFlavors } from "@/lib/nova";
-import { columns } from "./columns";
-import { DataTableAsync } from "@/components/DataTable";
-import { searchoptions } from "./meta";
+'use client';
 
-export default async function Page({
-  searchParams,
-}: {
-  searchParams?: Promise<{
-    sort_dir?: string;
-    sort_key?: string;
-  }>;
-}) {
-  const flavorsData = await listFlavors();
-  const flavorsPromise = Promise.resolve(flavorsData.flavors);
+import { useCallback } from "react";
+import { columns } from "./columns";
+import { DataTable } from "@/components/DataTable";
+import { searchoptions } from "./meta";
+import { nova } from "@/lib/client";
+import { Cpu } from "lucide-react";
+import { useRegion } from "@/contexts/RegionContext";
+
+export default function Page() {
+  const { region } = useRegion();
+
+  const fetchFlavors = useCallback(async () => {
+    const flavorsData = await nova.listFlavors();
+    return flavorsData.flavors;
+  }, [region]);
 
   return (
-    <DataTableAsync
-      dataPromise={flavorsPromise}
+    <DataTable
+      fetchData={fetchFlavors}
       columns={columns}
       searchOptions={searchoptions}
-      resourceName="instance types"
+      resourceName="instance type"
+      emptyIcon={Cpu}
     />
-  )
+  );
 }

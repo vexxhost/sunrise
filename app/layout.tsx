@@ -6,6 +6,7 @@ import { getSession } from "@/lib/session";
 import { Providers } from "./providers";
 import { NavigationMenu } from "@/components/NavigationMenu";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { RegionProvider } from "@/contexts/RegionContext";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -42,17 +43,19 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Providers>
-            <NavigationMenu
-              projects={session.projects}
-              selectedProject={session.selectedProject}
-              currentRegion={session.selectedRegion}
-              userName={session.userName}
-            />
-            <main>
-              {children}
-            </main>
-          </Providers>
+          <RegionProvider initialRegion={session.selectedRegion}>
+            <Providers>
+              <NavigationMenu
+                projects={session.projects}
+                selectedProject={session.selectedProject}
+                currentRegion={session.selectedRegion}
+                userName={session.userName}
+              />
+              <main>
+                {children}
+              </main>
+            </Providers>
+          </RegionProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -47,9 +47,6 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
           </Button>
         )
       },
-      meta: {
-        label: "Instance Name"
-      },
     },
     {
       accessorKey: "image",
@@ -89,9 +86,6 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         )
-      },
-      meta: {
-        label: "Status"
       },
       cell: ({ row }) => {
         const status = row.getValue('status')
@@ -134,9 +128,6 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         )
-      },
-      meta: {
-        label: "Age"
       },
       cell: ({ row }) => getRelativeTimeString(Date.parse(row.getValue('OS-SRV-USG:launched_at')), 'en-US')
     },
