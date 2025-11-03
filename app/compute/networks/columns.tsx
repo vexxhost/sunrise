@@ -2,13 +2,10 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuSeparator,DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuItem  } from "@/components/ui/dropdown-menu";
 import { Network } from "@/lib/network";
-import { capitalize, capitalizeFirstLetters } from "@/lib/utils";
-import { } from "@radix-ui/react-dropdown-menu";
 import { ColumnDef } from "@tanstack/react-table";
-import { stat } from "fs";
-import { ArrowUpDown, MoreHorizontal } from "lucide-react";
+import { ArrowUpDown } from "lucide-react";
+import { titleCase } from "title-case";
 
 export const columns: ColumnDef<Network>[] = [
     {
@@ -91,7 +88,7 @@ export const columns: ColumnDef<Network>[] = [
       cell: ({ row }: { row: { original: Network } }) => {
         return (
           <Badge variant={row.original.status === "ACTIVE" ? "success" : "error"}>
-            {capitalize(row.original.status)}
+            {titleCase(row.original.status)}
           </Badge>
         );
       }
@@ -108,7 +105,7 @@ export const columns: ColumnDef<Network>[] = [
       }
     },
     {
-      accessorKey: "availability_zones",  
+      accessorKey: "availability_zones",
       header: "Availability Zones",
       cell: ({ row }: { row: { original: Network } }) => {
         return (
@@ -122,34 +119,5 @@ export const columns: ColumnDef<Network>[] = [
         );
       }
     }
-    ,
-        {
-          accessorKey: "actions",
-          header: "Actions",
-          meta: {
-            label: "Actions"
-          },
-          enableHiding: false,
-          cell: ({ row }) => {
-            return (
-              <div className="relative flex justify-center items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-8 w-8 p-0">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>View</DropdownMenuItem>
-                    <DropdownMenuItem>Edit</DropdownMenuItem>
-                    <DropdownMenuItem>Delete</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            );
-          }
-        }
-  
+
   ]

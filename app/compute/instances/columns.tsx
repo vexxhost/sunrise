@@ -2,13 +2,11 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuSeparator, DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Server, Flavor } from "@/lib/nova";
 import { Image } from "@/lib/glance";
 import { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, ArrowUpDown } from "lucide-react";
+import { ArrowUpDown } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
-import { useRouter } from "next/navigation";
 
 const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string }[] } }) => {
   return Object.keys(addresses).map((key: string) => {
@@ -130,34 +128,6 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
         )
       },
       cell: ({ row }) => formatDistanceToNow(Date.parse(row.getValue('OS-SRV-USG:launched_at')), { addSuffix: true })
-    },
-    {
-      accessorKey: "actions",
-      header: "Actions",
-      enableHiding: false,
-      cell: ({ row }) => {
-        // eslint-disable-next-line react-hooks/rules-of-hooks
-        const router = useRouter();
-
-        return (
-          <div className="relative flex justify-center items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push('/compute/instance/' + row.getValue('id'))}>View</DropdownMenuItem>
-                <DropdownMenuItem>Edit</DropdownMenuItem>
-                <DropdownMenuItem>Delete</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        );
-      }
     }
   ];
 }

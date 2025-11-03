@@ -2,10 +2,9 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuSeparator, DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Flavor } from "@/lib/nova";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal } from "lucide-react";
+import { ArrowUpDown } from "lucide-react";
 
 export const columns: ColumnDef<Flavor>[] = [
     {
@@ -158,33 +157,6 @@ export const columns: ColumnDef<Flavor>[] = [
           <Badge className={isDisabled ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"}>
             {isDisabled ? "Yes" : "No"}
           </Badge>
-        );
-      }
-    },
-    {
-      accessorKey: "actions",
-      header: "Actions",
-      meta: {
-        label: "Actions"
-      },
-      enableHiding: false,
-      cell: ({ row }) => {
-        return (
-          <div className="relative flex justify-center items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="h-8 w-8 p-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>View Details</DropdownMenuItem>
-                <DropdownMenuItem>Update Metadata</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         );
       }
     }

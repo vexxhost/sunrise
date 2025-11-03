@@ -2,13 +2,10 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuSeparator,DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuItem  } from "@/components/ui/dropdown-menu";
 import { Volume } from "@/lib/cinder";
-import { capitalize, capitalizeFirstLetters } from "@/lib/utils";
-import { } from "@radix-ui/react-dropdown-menu";
 import { ColumnDef } from "@tanstack/react-table";
-import { stat } from "fs";
-import { ArrowUpDown, MoreHorizontal } from "lucide-react";
+import { ArrowUpDown } from "lucide-react";
+import { titleCase } from "title-case";
 
 export const columns: ColumnDef<Volume>[] = [
     {
@@ -64,7 +61,7 @@ export const columns: ColumnDef<Volume>[] = [
             )
       },
         cell: ({ row }: { row: { original: Volume } }) => {
-          const status = capitalizeFirstLetters(row.original.status);
+          const status = titleCase(row.original.status);
           let badgeStyle;
           let label;
 
@@ -167,35 +164,6 @@ export const columns: ColumnDef<Volume>[] = [
                   </Button>
                 )
           },            cell: ({ row }: { row: { original: Volume } }) => row.original.multiattach ? "Yes" : "No"
-          },
-
-        {
-          accessorKey: "actions",
-          header: "Actions",
-          meta: {
-            label: "Actions"
-          },
-          enableHiding: false,
-          cell: ({ row }) => {
-            return (
-              <div className="relative flex justify-center items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-8 w-8 p-0">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>View</DropdownMenuItem>
-                    <DropdownMenuItem>Edit</DropdownMenuItem>
-                    <DropdownMenuItem>Delete</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            );
           }
-        }
 
   ]

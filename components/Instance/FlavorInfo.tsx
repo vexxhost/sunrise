@@ -1,5 +1,5 @@
 import { Flavor, getFlavor, Server } from "@/lib/nova";
-import { formatMBtoGB } from "@/lib/utils";
+import bytes from "bytes";
 
 export async function FlavorInfo({ server }: { server: Server }) {
     const flavor: Flavor = await getFlavor(server.flavor.id);
@@ -17,7 +17,7 @@ export async function FlavorInfo({ server }: { server: Server }) {
         </div>
         <div className="flex flex-row  ml-2 pl-2 text-xs">
           <div className="basis-1/4 font-bold text-m">RAM:</div>
-          <div className="basis-3/4">{formatMBtoGB(flavor.ram)}</div>
+          <div className="basis-3/4">{bytes(flavor.ram * 1024 * 1024, { unitSeparator: ' ' })}</div>
         </div>
         <div className="flex flex-row  ml-2 pl-2 text-xs">
           <div className="basis-1/4 font-bold text-m">VCPU:</div>

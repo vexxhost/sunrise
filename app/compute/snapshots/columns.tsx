@@ -2,11 +2,10 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DropdownMenuSeparator,DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuItem  } from "@/components/ui/dropdown-menu";
 import { Snapshot } from "@/lib/cinder";
-import { capitalizeFirstLetters } from "@/lib/utils";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal } from "lucide-react";
+import { ArrowUpDown } from "lucide-react";
+import { titleCase } from "title-case";
 
 export const columns: ColumnDef<Snapshot>[] = [
     {
@@ -74,7 +73,7 @@ export const columns: ColumnDef<Snapshot>[] = [
             )
       },
         cell: ({ row }: { row: { original: Snapshot } }) => {
-          const status = capitalizeFirstLetters(row.original.status);
+          const status = titleCase(row.original.status);
           let badgeStyle;
 
           // Determine the badge style based on the status value
@@ -118,34 +117,6 @@ export const columns: ColumnDef<Snapshot>[] = [
         const date = new Date(row.original.created_at);
         return date.toLocaleString();
       }
-    },
-    {
-          accessorKey: "actions",
-          header: "Actions",
-          meta: {
-            label: "Actions"
-          },
-          enableHiding: false,
-          cell: ({ row }) => {
-            return (
-              <div className="relative flex justify-center items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-8 w-8 p-0">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>View</DropdownMenuItem>
-                    <DropdownMenuItem>Create Volume</DropdownMenuItem>
-                    <DropdownMenuItem>Delete</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            );
-          }
-        }
+    }
 
   ]

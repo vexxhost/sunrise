@@ -1,7 +1,6 @@
 import { getVolumes, Volume } from "@/lib/cinder";
 import { getImage } from "@/lib/glance";
 import { Server } from "@/lib/nova";
-import { formatMBtoGB } from "@/lib/utils";
 
 export default async function VolumeInfo({ server }: { server: Server }){
     const serverVolumeKeys = server["os-extended-volumes:volumes_attached"].map(

@@ -12,6 +12,7 @@ import {
   getFilteredRowModel,
   useReactTable,
   RowData,
+  RowSelectionState,
 } from "@tanstack/react-table"
 
 declare module '@tanstack/react-table' {
@@ -82,6 +83,7 @@ import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
 import { Settings, RefreshCw, ChevronDown } from "lucide-react"
 import pluralize from "pluralize"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -92,7 +94,6 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Pagination,
   PaginationContent,
@@ -176,6 +177,7 @@ export function DataTable<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [searchOption, setSearchOption] = useState(Object.keys(searchOptions)[0] || 'name')
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
+  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
 
   // Dialog state management
   const [dialogOpen, setDialogOpen] = React.useState(false)
@@ -183,9 +185,36 @@ export function DataTable<TData, TValue>({
   const [tempColumnVisibility, setTempColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
   const [columnSearch, setColumnSearch] = React.useState("")
 
+  // Add checkbox column
+  const columnsWithCheckbox = React.useMemo<ColumnDef<TData, TValue>[]>(() => [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Select row"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    } as ColumnDef<TData, TValue>,
+    ...columns,
+  ], [columns])
+
   const table = useReactTable({
     data,
-    columns,
+    columns: columnsWithCheckbox,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
@@ -193,10 +222,12 @@ export function DataTable<TData, TValue>({
     onColumnFiltersChange: setColumnFilters,
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
+    onRowSelectionChange: setRowSelection,
     state: {
       sorting,
       columnFilters,
       columnVisibility,
+      rowSelection,
     },
     initialState: {
       pagination: {
@@ -208,7 +239,7 @@ export function DataTable<TData, TValue>({
   // Create a minimal table just to render headers for loading/error states
   const headerTable = useReactTable({
     data: [] as TData[],
-    columns,
+    columns: columnsWithCheckbox,
     getCoreRowModel: getCoreRowModel(),
   });
 
@@ -255,20 +286,6 @@ export function DataTable<TData, TValue>({
           </div>
 
           <div className="flex items-center gap-2">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious className="pointer-events-none opacity-50" />
-                </PaginationItem>
-                <PaginationItem>
-                  <PaginationLink className="pointer-events-none">1</PaginationLink>
-                </PaginationItem>
-                <PaginationItem>
-                  <PaginationNext className="pointer-events-none opacity-50" />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-
             <Button variant="outline" size="icon" disabled>
               <Settings className="h-4 w-4" />
             </Button>
@@ -353,44 +370,46 @@ export function DataTable<TData, TValue>({
         </div>
 
         <div className="flex items-center gap-2">
-          <Pagination>
-            <PaginationContent>
-              <PaginationItem>
-                <PaginationPrevious
-                  onClick={() => table.previousPage()}
-                  aria-disabled={!table.getCanPreviousPage()}
-                  className={!table.getCanPreviousPage() ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-
-              {generatePaginationItems(
-                table.getState().pagination.pageIndex + 1,
-                table.getPageCount()
-              ).map((item, index) => (
-                <PaginationItem key={index}>
-                  {item === 'ellipsis' ? (
-                    <PaginationEllipsis />
-                  ) : (
-                    <PaginationLink
-                      onClick={() => table.setPageIndex(item - 1)}
-                      isActive={table.getState().pagination.pageIndex + 1 === item}
-                      className="cursor-pointer"
-                    >
-                      {item}
-                    </PaginationLink>
-                  )}
+          {data.length > 0 && (
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => table.previousPage()}
+                    aria-disabled={!table.getCanPreviousPage()}
+                    className={!table.getCanPreviousPage() ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
                 </PaginationItem>
-              ))}
 
-              <PaginationItem>
-                <PaginationNext
-                  onClick={() => table.nextPage()}
-                  aria-disabled={!table.getCanNextPage()}
-                  className={!table.getCanNextPage() ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                />
-              </PaginationItem>
-            </PaginationContent>
-          </Pagination>
+                {generatePaginationItems(
+                  table.getState().pagination.pageIndex + 1,
+                  table.getPageCount()
+                ).map((item, index) => (
+                  <PaginationItem key={index}>
+                    {item === 'ellipsis' ? (
+                      <PaginationEllipsis />
+                    ) : (
+                      <PaginationLink
+                        onClick={() => table.setPageIndex(item - 1)}
+                        isActive={table.getState().pagination.pageIndex + 1 === item}
+                        className="cursor-pointer"
+                      >
+                        {item}
+                      </PaginationLink>
+                    )}
+                  </PaginationItem>
+                ))}
+
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => table.nextPage()}
+                    aria-disabled={!table.getCanNextPage()}
+                    className={!table.getCanNextPage() ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+          )}
 
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
