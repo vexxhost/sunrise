@@ -26,14 +26,18 @@ export function useApiClient(service: string) {
   const { region } = useKeystone();
   const { data: tokenData } = useProjectToken();
 
+  // Extract primitive values to ensure stable dependencies
+  const regionId = region?.id;
+  const token = tokenData?.token;
+
   return useMemo(() => {
-    if (!region?.id || !tokenData?.token) return null;
+    if (!regionId || !token) return null;
 
     return ky.create({
-      prefixUrl: `/api/proxy/${region.id}/${service}`,
+      prefixUrl: `/api/proxy/${regionId}/${service}`,
       headers: {
-        'X-Auth-Token': tokenData.token,
+        'X-Auth-Token': token,
       },
     });
-  }, [region?.id, service, tokenData?.token]);
+  }, [regionId, service, token]);
 }
