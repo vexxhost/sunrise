@@ -1,19 +1,22 @@
 'use client';
 
 import React, { createContext, useContext, useState } from 'react';
+import type { Project } from '@/types/openstack';
 
 interface KeystoneContextType {
   region: string | null;
   setRegion: (region: string) => void;
-  projectId: string | null;
-  setProjectId: (projectId: string) => void;
+  project: Project | null;
+  setProject: (project: Project) => void;
+  projectId: string | null; // Derived from project.id for convenience
 }
 
 const KeystoneContext = createContext<KeystoneContextType>({
   region: null,
   setRegion: () => {},
+  project: null,
+  setProject: () => {},
   projectId: null,
-  setProjectId: () => {},
 });
 
 export function KeystoneProvider({
@@ -22,10 +25,13 @@ export function KeystoneProvider({
   children: React.ReactNode;
 }) {
   const [region, setRegion] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
+
+  // Derive projectId from project for convenience in query keys
+  const projectId = project?.id ?? null;
 
   return (
-    <KeystoneContext.Provider value={{ region, setRegion, projectId, setProjectId }}>
+    <KeystoneContext.Provider value={{ region, setRegion, project, setProject, projectId }}>
       {children}
     </KeystoneContext.Provider>
   );
