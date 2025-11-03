@@ -397,48 +397,9 @@ export function DataTable<TData, TValue>({
   });
 
   // Show loading skeleton whenever loading (initial load or refresh)
-  if (isLoading) {
-    return (
-      <>
-        {resourceName && (
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-2xl font-semibold">
-              {formatResourceName(pluralize(resourceName))}
-            </h1>
-            {refetch && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refetch}
-                disabled={isLoading || isRefetching}
-                className={`gap-2 transition-opacity duration-300 ${isLoading || isRefetching ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
-              >
-                <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            )}
-          </div>
-        )}
-        <div className="flex items-center justify-between pb-4">
-          <div className="w-full max-w-md">
-            <InputGroup>
-              <InputGroupAddon>
-                <Search className="h-4 w-4" />
-              </InputGroupAddon>
-              <InputGroupInput
-                placeholder={resourceName ? `Loading ${pluralize(resourceName)}...` : "Loading..."}
-                disabled
-              />
-            </InputGroup>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="icon" disabled>
-              <Settings className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
+  const renderTableContent = () => {
+    if (isLoading) {
+      return (
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -465,9 +426,95 @@ export function DataTable<TData, TValue>({
             </TableBody>
           </Table>
         </div>
-      </>
+      );
+    }
+
+    return (
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
+                {headerGroup.headers.map((header) => {
+                  const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
+                  const canSort = header.column.getCanSort();
+                  const isSorted = header.column.getIsSorted();
+
+                  return (
+                    <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""}`}>
+                      {header.isPlaceholder ? null : (
+                        canSort ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => header.column.toggleSorting(isSorted === "asc")}
+                            className="h-full w-full px-2 py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
+                          >
+                            <span>
+                              {typeof header.column.columnDef.header === 'string'
+                                ? header.column.columnDef.header
+                                : flexRender(header.column.columnDef.header, header.getContext())}
+                            </span>
+                            {isSorted === "asc" ? (
+                              <ArrowUp className="h-3 w-3 shrink-0" />
+                            ) : isSorted === "desc" ? (
+                              <ArrowDown className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-50 shrink-0" />
+                            )}
+                          </Button>
+                        ) : (
+                          <div className="px-2 py-2">
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </div>
+                        )
+                      )}
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && "selected"}
+                  onClick={() => onRowClick?.(row.original)}
+                  className={`group/row ${onRowClick ? "cursor-pointer" : ""}`}
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    const isIDColumn = typeof cell.column.columnDef.header === 'string' && cell.column.columnDef.header === 'ID';
+                    const isMonospace = cell.column.columnDef.meta?.monospace || isIDColumn;
+                    const cellValue = cell.getValue();
+
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""}`}
+                      >
+                        {isIDColumn && typeof cellValue === 'string' ? (
+                          <IDCell value={cellValue} isSelected={row.getIsSelected()} linkPath={pathname} />
+                        ) : (
+                          flexRender(cell.column.columnDef.cell, cell.getContext())
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))
+            ) : (
+              <TableEmpty
+                columns={columnsWithCheckbox.length}
+                message={emptyMessage || (resourceName ? `No ${pluralize(resourceName)} found.` : "No results.")}
+                icon={emptyIcon}
+              />
+            )}
+          </TableBody>
+        </Table>
+      </div>
     );
-  }
+  };
 
   return (
     <>
@@ -662,89 +709,7 @@ export function DataTable<TData, TValue>({
         </div>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
-                {headerGroup.headers.map((header) => {
-                  const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
-                  const canSort = header.column.getCanSort();
-                  const isSorted = header.column.getIsSorted();
-
-                  return (
-                    <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""}`}>
-                      {header.isPlaceholder ? null : (
-                        canSort ? (
-                          <Button
-                            variant="ghost"
-                            onClick={() => header.column.toggleSorting(isSorted === "asc")}
-                            className="h-full w-full px-2 py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
-                          >
-                            <span>
-                              {typeof header.column.columnDef.header === 'string'
-                                ? header.column.columnDef.header
-                                : flexRender(header.column.columnDef.header, header.getContext())}
-                            </span>
-                            {isSorted === "asc" ? (
-                              <ArrowUp className="h-3 w-3 shrink-0" />
-                            ) : isSorted === "desc" ? (
-                              <ArrowDown className="h-3 w-3 shrink-0" />
-                            ) : (
-                              <ArrowUpDown className="h-3 w-3 opacity-50 shrink-0" />
-                            )}
-                          </Button>
-                        ) : (
-                          <div className="px-2 py-2">
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                          </div>
-                        )
-                      )}
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  onClick={() => onRowClick?.(row.original)}
-                  className={`group/row ${onRowClick ? "cursor-pointer" : ""}`}
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const isIDColumn = typeof cell.column.columnDef.header === 'string' && cell.column.columnDef.header === 'ID';
-                    const isMonospace = cell.column.columnDef.meta?.monospace || isIDColumn;
-                    const cellValue = cell.getValue();
-
-                    return (
-                      <TableCell
-                        key={cell.id}
-                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""}`}
-                      >
-                        {isIDColumn && typeof cellValue === 'string' ? (
-                          <IDCell value={cellValue} isSelected={row.getIsSelected()} linkPath={pathname} />
-                        ) : (
-                          flexRender(cell.column.columnDef.cell, cell.getContext())
-                        )}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))
-            ) : (
-              <TableEmpty
-                columns={columnsWithCheckbox.length}
-                message={emptyMessage || (resourceName ? `No ${pluralize(resourceName)} found.` : "No results.")}
-                icon={emptyIcon}
-              />
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {renderTableContent()}
     </>
   )
 }
