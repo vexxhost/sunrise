@@ -14,12 +14,3 @@ export const statusColorMap: { [index: string]: string } = {
   ERROR: "danger",
   ERROR_DELETING: "danger",
 };
-
-export const sortKeys = [
-  "name",
-  "status",
-  "size",
-  "created_at",
-  "volume_id",
-  "description",
-];
