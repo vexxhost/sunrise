@@ -18,6 +18,7 @@ import {
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
+    monospace?: boolean
   }
 }
 
@@ -559,7 +560,10 @@ export function DataTable<TData, TValue>({
                   className={onRowClick ? "cursor-pointer" : ""}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      className={cell.column.columnDef.meta?.monospace ? "font-mono" : ""}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}

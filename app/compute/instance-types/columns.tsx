@@ -21,24 +21,15 @@ export const columns: ColumnDef<Flavor>[] = [
               </Button>
             )
       },
-      cell: ({ row }: { row: { original: Flavor } }) => {
-        return (
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            {row.original.name}
-          </div>
-        );
-      }
+      cell: ({ row }: { row: { original: Flavor } }) => row.original.name
     },
     {
       accessorKey: "id",
       header: "ID",
-      cell: ({ row }: { row: { original: Flavor } }) => {
-        return (
-          <div className="font-mono text-xs">
-            {row.original.id}
-          </div>
-        );
-      }
+      meta: {
+        monospace: true
+      },
+      cell: ({ row }: { row: { original: Flavor } }) => row.original.id
     },
     {
       accessorKey: "vcpus",

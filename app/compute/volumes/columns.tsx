@@ -22,14 +22,15 @@ export const columns: ColumnDef<Volume>[] = [
               </Button>
             )
       },
-      cell: ({ row }: { row: { original: Volume } }) =>
-        {
-          return (
-                <div className="flex items-center gap-2 text-xs" >
-                   {row.original.name ? row.original.name : row.original.id}
-                   </div>
-                );
-        }
+      cell: ({ row }: { row: { original: Volume } }) => row.original.name
+    },
+    {
+      accessorKey: "id",
+      header: "ID",
+      meta: {
+        monospace: true
+      },
+      cell: ({ row }: { row: { original: Volume } }) => row.original.id
     },
     {
       accessorKey: "description",

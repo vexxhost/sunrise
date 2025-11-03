@@ -28,10 +28,6 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
 
   return [
     {
-      accessorKey: "id",
-      header: "ID",
-    },
-    {
       accessorKey: "name",
       header: ({ column }) => {
         return (
@@ -40,11 +36,19 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
             className="flex items-center"
           >
-            Instance Name
+            Name
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         )
       },
+    },
+    {
+      accessorKey: "id",
+      header: "ID",
+      meta: {
+        monospace: true
+      },
+      cell: ({ row }) => row.getValue('id')
     },
     {
       accessorKey: "image",

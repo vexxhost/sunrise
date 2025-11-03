@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Snapshot } from "@/lib/cinder";
+import { Network } from "@/lib/network";
 import { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpDown } from "lucide-react";
 import { titleCase } from "title-case";
@@ -22,14 +23,15 @@ export const columns: ColumnDef<Snapshot>[] = [
               </Button>
             )
       },
-      cell: ({ row }: { row: { original: Snapshot } }) =>
-        {
-          return (
-                <div className="flex items-center gap-2 text-xs" >
-                   {row.original.name ? row.original.name : row.original.id}
-                   </div>
-                );
-        }
+      cell: ({ row }: { row: { original: Snapshot } }) => row.original.name
+    },
+    {
+      accessorKey: "id",
+      header: "ID",
+      meta: {
+        monospace: true
+      },
+      cell: ({ row }: { row: { original: Snapshot } }) => row.original.id
     },
     {
       accessorKey: "description",
@@ -39,14 +41,10 @@ export const columns: ColumnDef<Snapshot>[] = [
     {
       accessorKey: "volume_id",
       header: "Volume",
-      cell: ({ row }: { row: { original: Snapshot } }) => {
-        const volumeId = row.original.volume_id;
-        return (
-          <div className="font-mono text-xs">
-            {volumeId}
-          </div>
-        );
-      }
+      meta: {
+        monospace: true
+      },
+      cell: ({ row }: { row: { original: Snapshot } }) => row.original.volume_id
     },
     {
          accessorKey: "size",

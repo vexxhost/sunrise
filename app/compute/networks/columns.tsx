@@ -14,7 +14,7 @@ export const columns: ColumnDef<Network>[] = [
             return (
               <Button
                 variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}  
+                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
                 className="flex items-center"
               >
                 Name
@@ -22,14 +22,15 @@ export const columns: ColumnDef<Network>[] = [
               </Button>
             )
       },
-      cell: ({ row }: { row: { original: Network } }) => 
-        { 
-          return (
-                <div className="flex items-center gap-2 text-xs" >
-                   {row.original.name ? row.original.name : row.original.id}
-                   </div>
-                );
-        }
+      cell: ({ row }: { row: { original: Network } }) => row.original.name
+    },
+    {
+      accessorKey: "id",
+      header: "ID",
+      meta: {
+        monospace: true
+      },
+      cell: ({ row }: { row: { original: Network } }) => row.original.id
     },
     {
       accessorKey: "description",
