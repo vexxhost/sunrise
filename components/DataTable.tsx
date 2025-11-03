@@ -234,6 +234,8 @@ export function DataTable<TData, TValue>({
 
   const dataRef = React.useRef(data);
   const columnsRef = React.useRef(columns);
+  const renderCount = React.useRef(0);
+  renderCount.current++;
 
   if (dataRef.current !== data) {
     console.log('[DataTable] DATA CHANGED', { resourceName, dataLength: data.length });
@@ -245,7 +247,7 @@ export function DataTable<TData, TValue>({
     columnsRef.current = columns;
   }
 
-  console.log('[DataTable] render', { resourceName, dataLength: data.length, columnsLength: columns.length });
+  console.log('[DataTable] render #' + renderCount.current, { resourceName });
 
   const pathname = usePathname()
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -299,6 +301,7 @@ export function DataTable<TData, TValue>({
 
   // Apply custom filters
   const filteredData = React.useMemo(() => {
+    console.log('[DataTable] filteredData useMemo running', { filtersLength: filters.length, dataLength: data.length });
     if (filters.length === 0) return data
 
     return data.filter((row: any) => {
@@ -387,6 +390,26 @@ export function DataTable<TData, TValue>({
   const sortedRowModel = React.useMemo(() => getSortedRowModel(), []);
   const filteredRowModel = React.useMemo(() => getFilteredRowModel(), []);
 
+  // Memoize state objects to prevent new references on every render
+  const tableState = React.useMemo(
+    () => ({
+      sorting,
+      columnFilters,
+      columnVisibility,
+      rowSelection,
+    }),
+    [sorting, columnFilters, columnVisibility, rowSelection]
+  );
+
+  const tableInitialState = React.useMemo(
+    () => ({
+      pagination: {
+        pageSize,
+      },
+    }),
+    [pageSize]
+  );
+
   const table = useReactTable({
     data: filteredData,
     columns: columnsWithCheckbox,
@@ -398,18 +421,11 @@ export function DataTable<TData, TValue>({
     getFilteredRowModel: filteredRowModel,
     onColumnVisibilityChange: setColumnVisibilityMemo,
     onRowSelectionChange: setRowSelectionMemo,
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    },
-    initialState: {
-      pagination: {
-        pageSize,
-      },
-    },
+    state: tableState,
+    initialState: tableInitialState,
   })
+
+  console.log('[DataTable] table created, row count:', table.getRowModel().rows.length);
 
   // Create a minimal table just to render headers for loading/error states
   const headerTable = useReactTable({
@@ -431,7 +447,7 @@ export function DataTable<TData, TValue>({
                     const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
                     const isSelectColumn = header.column.id === 'select';
                     return (
-                      <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-12 p-0" : ""}`}>
+                      <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-10 min-w-10 p-0" : ""}`}>
                         {isSelectColumn ? (
                           flexRender(header.column.columnDef.header, header.getContext())
                         ) : (
@@ -469,7 +485,7 @@ export function DataTable<TData, TValue>({
                   const isSorted = header.column.getIsSorted();
 
                   return (
-                    <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-12 p-0" : ""}`}>
+                    <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-10 min-w-10 p-0" : ""}`}>
                       {header.isPlaceholder ? null : (
                         isSelectColumn ? (
                           flexRender(header.column.columnDef.header, header.getContext())
@@ -538,7 +554,7 @@ export function DataTable<TData, TValue>({
                     return (
                       <TableCell
                         key={cell.id}
-                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-12 p-0" : ""}`}
+                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-10 min-w-10 p-0" : ""}`}
                       >
                         {renderedCell}
                       </TableCell>
