@@ -66,18 +66,6 @@ export function NavigationMenu() {
   const { data: projects = [] } = useProjects()
   const { data: tokenData } = useProjectToken()
 
-  React.useEffect(() => {
-    if (!region && regions.length > 0) {
-      setRegion(regions[0])
-    }
-  }, [region, regions])
-
-  React.useEffect(() => {
-    if (!project && projects.length > 0) {
-      setProject(projects[0])
-    }
-  }, [project, projects])
-
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
       <div className="flex items-center justify-between w-full px-6 h-14">
