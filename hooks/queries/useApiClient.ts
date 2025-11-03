@@ -27,13 +27,13 @@ export function useApiClient(service: string) {
   const { data: tokenData } = useProjectToken();
 
   return useMemo(() => {
-    if (!region || !tokenData?.token) return null;
+    if (!region?.id || !tokenData?.token) return null;
 
     return ky.create({
-      prefixUrl: `/api/proxy/${region}/${service}`,
+      prefixUrl: `/api/proxy/${region.id}/${service}`,
       headers: {
         'X-Auth-Token': tokenData.token,
       },
     });
-  }, [region, service, tokenData?.token]);
+  }, [region?.id, service, tokenData?.token]);
 }

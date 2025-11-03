@@ -1,11 +1,11 @@
 'use client';
 
 import React, { createContext, useContext, useState } from 'react';
-import type { Project } from '@/types/openstack';
+import type { Project, Region } from '@/types/openstack';
 
 interface KeystoneContextType {
-  region: string | null;
-  setRegion: (region: string) => void;
+  region: Region | null;
+  setRegion: (region: Region) => void;
   project: Project | null;
   setProject: (project: Project) => void;
 }
@@ -22,7 +22,7 @@ export function KeystoneProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [region, setRegion] = useState<string | null>(null);
+  const [region, setRegion] = useState<Region | null>(null);
   const [project, setProject] = useState<Project | null>(null);
 
   return (

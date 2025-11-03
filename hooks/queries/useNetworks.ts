@@ -15,7 +15,7 @@ export function useNetworks() {
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, project?.id, 'networks'],
+    queryKey: [region?.id, project?.id, 'networks'],
     queryFn: async () => {
       const data = await client!.get('v2.0/networks').json<{ networks: Network[] }>();
       return data.networks;
@@ -32,7 +32,7 @@ export function useNetwork(id: string, options?: Omit<UseQueryOptions<Network>, 
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, project?.id, 'network', id],
+    queryKey: [region?.id, project?.id, 'network', id],
     queryFn: async () => {
       const data = await client!.get(`v2.0/networks/${id}`).json<{ network: Network }>();
       return data.network;
@@ -50,7 +50,7 @@ export function usePorts() {
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, project?.id, 'ports'],
+    queryKey: [region?.id, project?.id, 'ports'],
     queryFn: async () => {
       const data = await client!.get('v2.0/ports').json<{ ports: Port[] }>();
       return data.ports;
@@ -67,7 +67,7 @@ export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'query
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, project?.id, 'port', id],
+    queryKey: [region?.id, project?.id, 'port', id],
     queryFn: async () => {
       const data = await client!.get(`v2.0/ports/${id}`).json<{ port: Port }>();
       return data.port;
@@ -85,7 +85,7 @@ export function useSecurityGroups() {
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, project?.id, 'security-groups'],
+    queryKey: [region?.id, project?.id, 'security-groups'],
     queryFn: async () => {
       const data = await client!.get('v2.0/security-groups').json<{ security_groups: SecurityGroup[] }>();
       return data.security_groups;
@@ -102,7 +102,7 @@ export function useSecurityGroup(id: string, options?: Omit<UseQueryOptions<Secu
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, project?.id, 'security-group', id],
+    queryKey: [region?.id, project?.id, 'security-group', id],
     queryFn: async () => {
       const data = await client!.get(`v2.0/security-groups/${id}`).json<{ security_group: SecurityGroup }>();
       return data.security_group;

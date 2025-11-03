@@ -15,7 +15,7 @@ export function useVolumes() {
   const client = useApiClient('cinder');
 
   return useQuery({
-    queryKey: [region, project?.id, 'volumes'],
+    queryKey: [region?.id, project?.id, 'volumes'],
     queryFn: async () => {
       const data = await client!.get('volumes/detail').json<{ volumes: Volume[] }>();
       return data.volumes;
@@ -32,7 +32,7 @@ export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'q
   const client = useApiClient('cinder');
 
   return useQuery({
-    queryKey: [region, project?.id, 'volume', id],
+    queryKey: [region?.id, project?.id, 'volume', id],
     queryFn: async () => {
       const data = await client!.get(`volumes/${id}`).json<{ volume: Volume }>();
       return data.volume;
@@ -50,7 +50,7 @@ export function useSnapshots() {
   const client = useApiClient('cinder');
 
   return useQuery({
-    queryKey: [region, project?.id, 'snapshots'],
+    queryKey: [region?.id, project?.id, 'snapshots'],
     queryFn: async () => {
       const data = await client!.get('snapshots/detail').json<{ snapshots: Snapshot[] }>();
       return data.snapshots;
@@ -67,7 +67,7 @@ export function useSnapshot(id: string, options?: Omit<UseQueryOptions<Snapshot>
   const client = useApiClient('cinder');
 
   return useQuery({
-    queryKey: [region, project?.id, 'snapshot', id],
+    queryKey: [region?.id, project?.id, 'snapshot', id],
     queryFn: async () => {
       const data = await client!.get(`snapshots/${id}`).json<{ snapshot: Snapshot }>();
       return data.snapshot;

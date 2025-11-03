@@ -15,7 +15,7 @@ export function useServers() {
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, project?.id, 'servers'],
+    queryKey: [region?.id, project?.id, 'servers'],
     queryFn: async () => {
       const data = await client!.get('servers/detail').json<{ servers: Server[] }>();
       return data.servers;
@@ -32,7 +32,7 @@ export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'q
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, project?.id, 'server', id],
+    queryKey: [region?.id, project?.id, 'server', id],
     queryFn: async () => {
       const data = await client!.get(`servers/${id}`).json<{ server: Server }>();
       return data.server;
@@ -50,7 +50,7 @@ export function useFlavors() {
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, project?.id, 'flavors'],
+    queryKey: [region?.id, project?.id, 'flavors'],
     queryFn: async () => {
       const data = await client!.get('flavors/detail').json<{ flavors: Flavor[] }>();
       return data.flavors;
@@ -67,7 +67,7 @@ export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'q
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, project?.id, 'flavor', id],
+    queryKey: [region?.id, project?.id, 'flavor', id],
     queryFn: async () => {
       const data = await client!.get(`flavors/${id}`).json<{ flavor: Flavor }>();
       return data.flavor;
@@ -85,7 +85,7 @@ export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOpt
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, project?.id, 'server-interfaces', serverId],
+    queryKey: [region?.id, project?.id, 'server-interfaces', serverId],
     queryFn: async () => {
       const data = await client!.get(`servers/${serverId}/os-interface`).json<{ interfaceAttachments: InterfaceAttachment[] }>();
       return data.interfaceAttachments;

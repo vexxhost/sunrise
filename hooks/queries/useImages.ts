@@ -15,7 +15,7 @@ export function useImages() {
   const client = useApiClient('glance');
 
   return useQuery({
-    queryKey: [region, project?.id, 'images'],
+    queryKey: [region?.id, project?.id, 'images'],
     queryFn: async () => {
       const data = await client!.get('v2/images').json<{ images: Image[] }>();
       return data.images;
@@ -32,7 +32,7 @@ export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'que
   const client = useApiClient('glance');
 
   return useQuery({
-    queryKey: [region, project?.id, 'image', id],
+    queryKey: [region?.id, project?.id, 'image', id],
     queryFn: async () => {
       return client!.get(`v2/images/${id}`).json<Image>();
     },

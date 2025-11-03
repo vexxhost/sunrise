@@ -7,7 +7,7 @@ import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Lay
 import type { Project } from "@/types/openstack"
 import { useKeystone } from "@/contexts/KeystoneContext"
 import { useMediaQuery } from "usehooks-ts"
-import { useRegions, useProjects, useProjectToken, type Region as KeystoneRegion } from "@/hooks/queries"
+import { useRegions, useProjects, useProjectToken } from "@/hooks/queries"
 
 import {
   NavigationMenu as _NavigationMenu,
@@ -60,36 +60,23 @@ const services: { title: string; href: string; description: string; icon: React.
 
 export function NavigationMenu() {
   const isMobile = useMediaQuery("(max-width: 767px)")
-  const { region, setRegion, projectId, setProjectId } = useKeystone()
+  const { region, setRegion, project, setProject } = useKeystone()
 
-  // Fetch regions and projects using TanStack Query
   const { data: regions = [] } = useRegions()
-  const { data: projects = [], isLoading: isLoadingProjects } = useProjects()
+  const { data: projects = [] } = useProjects()
+  const { data: tokenData } = useProjectToken()
 
-  // Auto-select first region if none selected and regions are loaded
   React.useEffect(() => {
     if (!region && regions.length > 0) {
-      setRegion(regions[0].id)
+      setRegion(regions[0])
     }
   }, [region, regions, setRegion])
 
-  // Auto-select first project if none selected and projects are loaded
   React.useEffect(() => {
-    if (!projectId && projects.length > 0) {
-      setProjectId(projects[0].id)
+    if (!project && projects.length > 0) {
+      setProject(projects[0])
     }
-  }, [projectId, projects, setProjectId])
-
-  // Fetch project token - this automatically updates when projectId changes
-  const { data: tokenData } = useProjectToken()
-
-  // Get userName from token data
-  const userName = tokenData?.data?.user?.name
-
-  // Derive selected project from projects list
-  const selectedProject = React.useMemo(() => {
-    return projects.find(p => p.id === projectId)
-  }, [projects, projectId])
+  }, [project, projects, setProject])
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -146,17 +133,16 @@ export function NavigationMenu() {
               <NavigationMenuItem>
                 <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
                   <MapPin className="h-3.5 w-3.5 shrink-0" />
-                  <span className="font-mono leading-none">{region}</span>
+                  <span className="font-mono leading-none">{region.id}</span>
                 </NavigationMenuTrigger>
                 <NavigationMenuContent>
                   <ul className="p-1 min-w-[120px]">
                     {regions.map((r) => (
                       <li key={r.id}>
                         <button
-                          onClick={() => setRegion(r.id)}
-                          className={`w-full text-left px-3 py-2 text-xs font-mono rounded-md hover:bg-accent transition-colors whitespace-nowrap ${
-                            region === r.id ? 'bg-accent font-semibold' : ''
-                          }`}
+                          onClick={() => setRegion(r)}
+                          className={`w-full text-left px-3 py-2 text-xs font-mono rounded-md hover:bg-accent transition-colors whitespace-nowrap ${region.id === r.id ? 'bg-accent font-semibold' : ''
+                            }`}
                         >
                           {r.id}
                         </button>
@@ -167,7 +153,7 @@ export function NavigationMenu() {
               </NavigationMenuItem>
             )}
 
-            {selectedProject && projects.length > 0 && (
+            {project && projects.length > 0 && (
               <>
                 <NavigationMenuItem className="list-none">
                   <div className="h-6 w-px bg-border" />
@@ -176,19 +162,18 @@ export function NavigationMenu() {
                 <NavigationMenuItem>
                   <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
                     <FolderKanban className="h-3.5 w-3.5 shrink-0" />
-                    <span className="leading-none">{selectedProject.name}</span>
+                    <span className="leading-none">{project.name}</span>
                   </NavigationMenuTrigger>
                   <NavigationMenuContent>
                     <ul className="p-1 min-w-[200px] max-h-[400px] overflow-y-auto">
-                      {projects.map((project) => (
-                        <li key={project.id}>
+                      {projects.map((p) => (
+                        <li key={p.id}>
                           <button
-                            onClick={() => setProjectId(project.id)}
-                            className={`w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors whitespace-nowrap ${
-                              selectedProject.id === project.id ? 'bg-accent font-semibold' : ''
-                            }`}
+                            onClick={() => setProject(p)}
+                            className={`w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors whitespace-nowrap ${project.id === p.id ? 'bg-accent font-semibold' : ''
+                              }`}
                           >
-                            {project.name}
+                            {p.name}
                           </button>
                         </li>
                       ))}

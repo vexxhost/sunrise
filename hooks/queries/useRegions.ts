@@ -5,15 +5,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiUrl } from '@/lib/api';
 import ky from 'ky';
-
-export type Region = {
-  id: string;
-  description?: string;
-  parent_region_id?: string;
-  links: {
-    self: string;
-  };
-};
+import type { Region } from '@/types/openstack';
 
 /**
  * Hook to fetch list of regions
