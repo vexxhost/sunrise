@@ -2,7 +2,6 @@ import "./globals.css";
 import type { Metadata } from "next";
 import { Inter as FontSans } from "next/font/google";
 import { cn } from "@/lib/utils";
-import { getSession } from "@/lib/session";
 import { Providers } from "./providers";
 import { NavigationMenu } from "@/components/NavigationMenu";
 import { ThemeProvider } from "@/components/ThemeProvider";
