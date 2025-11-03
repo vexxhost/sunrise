@@ -8,7 +8,6 @@ interface KeystoneContextType {
   setRegion: (region: string) => void;
   project: Project | null;
   setProject: (project: Project) => void;
-  projectId: string | null; // Derived from project.id for convenience
 }
 
 const KeystoneContext = createContext<KeystoneContextType>({
@@ -16,7 +15,6 @@ const KeystoneContext = createContext<KeystoneContextType>({
   setRegion: () => {},
   project: null,
   setProject: () => {},
-  projectId: null,
 });
 
 export function KeystoneProvider({
@@ -27,11 +25,8 @@ export function KeystoneProvider({
   const [region, setRegion] = useState<string | null>(null);
   const [project, setProject] = useState<Project | null>(null);
 
-  // Derive projectId from project for convenience in query keys
-  const projectId = project?.id ?? null;
-
   return (
-    <KeystoneContext.Provider value={{ region, setRegion, project, setProject, projectId }}>
+    <KeystoneContext.Provider value={{ region, setRegion, project, setProject }}>
       {children}
     </KeystoneContext.Provider>
   );

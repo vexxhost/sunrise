@@ -60,7 +60,7 @@ const services: { title: string; href: string; description: string; icon: React.
 
 export function NavigationMenu() {
   const isMobile = useMediaQuery("(max-width: 767px)")
-  const { region, setRegion, project, setProject } = useKeystone()
+  const { region, setRegion, projectId, setProjectId } = useKeystone()
 
   // Fetch regions and projects using TanStack Query
   const { data: regions = [] } = useRegions()
@@ -75,16 +75,21 @@ export function NavigationMenu() {
 
   // Auto-select first project if none selected and projects are loaded
   React.useEffect(() => {
-    if (!project && projects.length > 0) {
-      setProject(projects[0])
+    if (!projectId && projects.length > 0) {
+      setProjectId(projects[0].id)
     }
-  }, [project, projects, setProject])
+  }, [projectId, projects, setProjectId])
 
-  // Fetch project token - this automatically updates when project changes
+  // Fetch project token - this automatically updates when projectId changes
   const { data: tokenData } = useProjectToken()
 
   // Get userName from token data
   const userName = tokenData?.data?.user?.name
+
+  // Derive selected project from projects list
+  const selectedProject = React.useMemo(() => {
+    return projects.find(p => p.id === projectId)
+  }, [projects, projectId])
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -162,7 +167,7 @@ export function NavigationMenu() {
               </NavigationMenuItem>
             )}
 
-            {project && projects.length > 0 && (
+            {selectedProject && projects.length > 0 && (
               <>
                 <NavigationMenuItem className="list-none">
                   <div className="h-6 w-px bg-border" />
@@ -171,19 +176,19 @@ export function NavigationMenu() {
                 <NavigationMenuItem>
                   <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
                     <FolderKanban className="h-3.5 w-3.5 shrink-0" />
-                    <span className="leading-none">{project.name}</span>
+                    <span className="leading-none">{selectedProject.name}</span>
                   </NavigationMenuTrigger>
                   <NavigationMenuContent>
                     <ul className="p-1 min-w-[200px] max-h-[400px] overflow-y-auto">
-                      {projects.map((p) => (
-                        <li key={p.id}>
+                      {projects.map((project) => (
+                        <li key={project.id}>
                           <button
-                            onClick={() => setProject(p)}
+                            onClick={() => setProjectId(project.id)}
                             className={`w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors whitespace-nowrap ${
-                              project.id === p.id ? 'bg-accent font-semibold' : ''
+                              selectedProject.id === project.id ? 'bg-accent font-semibold' : ''
                             }`}
                           >
-                            {p.name}
+                            {project.name}
                           </button>
                         </li>
                       ))}
@@ -193,7 +198,7 @@ export function NavigationMenu() {
               </>
             )}
 
-            {userName && (
+            {tokenData?.data?.user?.name && (
               <>
                 <NavigationMenuItem className="list-none">
                   <div className="h-6 w-px bg-border" />
@@ -202,7 +207,7 @@ export function NavigationMenu() {
                 <NavigationMenuItem>
                   <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
                     <User className="h-3.5 w-3.5 shrink-0" />
-                    <span className="leading-none max-w-[100px] truncate">{userName}</span>
+                    <span className="leading-none max-w-[100px] truncate">{tokenData?.data?.user?.name}</span>
                   </NavigationMenuTrigger>
                   <NavigationMenuContent className="right-0 left-auto">
                     <ul className="p-1 min-w-[140px]">

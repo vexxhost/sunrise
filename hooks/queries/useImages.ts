@@ -11,11 +11,11 @@ import { useApiClient } from './useApiClient';
  * Hook to fetch list of images
  */
 export function useImages() {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('glance');
 
   return useQuery({
-    queryKey: [region, projectId, 'images'],
+    queryKey: [region, project?.id, 'images'],
     queryFn: async () => {
       const data = await client!.get('v2/images').json<{ images: Image[] }>();
       return data.images;
@@ -28,11 +28,11 @@ export function useImages() {
  * Hook to fetch a single image by ID
  */
 export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('glance');
 
   return useQuery({
-    queryKey: [region, projectId, 'image', id],
+    queryKey: [region, project?.id, 'image', id],
     queryFn: async () => {
       return client!.get(`v2/images/${id}`).json<Image>();
     },

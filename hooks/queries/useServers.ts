@@ -11,11 +11,11 @@ import { useApiClient } from './useApiClient';
  * Hook to fetch list of servers
  */
 export function useServers() {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, projectId, 'servers'],
+    queryKey: [region, project?.id, 'servers'],
     queryFn: async () => {
       const data = await client!.get('servers/detail').json<{ servers: Server[] }>();
       return data.servers;
@@ -28,11 +28,11 @@ export function useServers() {
  * Hook to fetch a single server by ID
  */
 export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, projectId, 'server', id],
+    queryKey: [region, project?.id, 'server', id],
     queryFn: async () => {
       const data = await client!.get(`servers/${id}`).json<{ server: Server }>();
       return data.server;
@@ -46,11 +46,11 @@ export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'q
  * Hook to fetch list of flavors
  */
 export function useFlavors() {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, projectId, 'flavors'],
+    queryKey: [region, project?.id, 'flavors'],
     queryFn: async () => {
       const data = await client!.get('flavors/detail').json<{ flavors: Flavor[] }>();
       return data.flavors;
@@ -63,11 +63,11 @@ export function useFlavors() {
  * Hook to fetch a single flavor by ID
  */
 export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, projectId, 'flavor', id],
+    queryKey: [region, project?.id, 'flavor', id],
     queryFn: async () => {
       const data = await client!.get(`flavors/${id}`).json<{ flavor: Flavor }>();
       return data.flavor;
@@ -81,11 +81,11 @@ export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'q
  * Hook to fetch server interface attachments
  */
 export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOptions<InterfaceAttachment[]>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('nova');
 
   return useQuery({
-    queryKey: [region, projectId, 'server-interfaces', serverId],
+    queryKey: [region, project?.id, 'server-interfaces', serverId],
     queryFn: async () => {
       const data = await client!.get(`servers/${serverId}/os-interface`).json<{ interfaceAttachments: InterfaceAttachment[] }>();
       return data.interfaceAttachments;

@@ -11,11 +11,11 @@ import { useApiClient } from './useApiClient';
  * Hook to fetch list of networks
  */
 export function useNetworks() {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, projectId, 'networks'],
+    queryKey: [region, project?.id, 'networks'],
     queryFn: async () => {
       const data = await client!.get('v2.0/networks').json<{ networks: Network[] }>();
       return data.networks;
@@ -28,11 +28,11 @@ export function useNetworks() {
  * Hook to fetch a single network by ID
  */
 export function useNetwork(id: string, options?: Omit<UseQueryOptions<Network>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, projectId, 'network', id],
+    queryKey: [region, project?.id, 'network', id],
     queryFn: async () => {
       const data = await client!.get(`v2.0/networks/${id}`).json<{ network: Network }>();
       return data.network;
@@ -46,11 +46,11 @@ export function useNetwork(id: string, options?: Omit<UseQueryOptions<Network>, 
  * Hook to fetch list of ports
  */
 export function usePorts() {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, projectId, 'ports'],
+    queryKey: [region, project?.id, 'ports'],
     queryFn: async () => {
       const data = await client!.get('v2.0/ports').json<{ ports: Port[] }>();
       return data.ports;
@@ -63,11 +63,11 @@ export function usePorts() {
  * Hook to fetch a single port by ID
  */
 export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, projectId, 'port', id],
+    queryKey: [region, project?.id, 'port', id],
     queryFn: async () => {
       const data = await client!.get(`v2.0/ports/${id}`).json<{ port: Port }>();
       return data.port;
@@ -81,11 +81,11 @@ export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'query
  * Hook to fetch list of security groups
  */
 export function useSecurityGroups() {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, projectId, 'security-groups'],
+    queryKey: [region, project?.id, 'security-groups'],
     queryFn: async () => {
       const data = await client!.get('v2.0/security-groups').json<{ security_groups: SecurityGroup[] }>();
       return data.security_groups;
@@ -98,11 +98,11 @@ export function useSecurityGroups() {
  * Hook to fetch a single security group by ID
  */
 export function useSecurityGroup(id: string, options?: Omit<UseQueryOptions<SecurityGroup>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('neutron');
 
   return useQuery({
-    queryKey: [region, projectId, 'security-group', id],
+    queryKey: [region, project?.id, 'security-group', id],
     queryFn: async () => {
       const data = await client!.get(`v2.0/security-groups/${id}`).json<{ security_group: SecurityGroup }>();
       return data.security_group;

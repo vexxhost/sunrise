@@ -11,11 +11,11 @@ import { useApiClient } from './useApiClient';
  * Hook to fetch list of volumes
  */
 export function useVolumes() {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('cinder');
 
   return useQuery({
-    queryKey: [region, projectId, 'volumes'],
+    queryKey: [region, project?.id, 'volumes'],
     queryFn: async () => {
       const data = await client!.get('volumes/detail').json<{ volumes: Volume[] }>();
       return data.volumes;
@@ -28,11 +28,11 @@ export function useVolumes() {
  * Hook to fetch a single volume by ID
  */
 export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('cinder');
 
   return useQuery({
-    queryKey: [region, projectId, 'volume', id],
+    queryKey: [region, project?.id, 'volume', id],
     queryFn: async () => {
       const data = await client!.get(`volumes/${id}`).json<{ volume: Volume }>();
       return data.volume;
@@ -46,11 +46,11 @@ export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'q
  * Hook to fetch list of snapshots
  */
 export function useSnapshots() {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('cinder');
 
   return useQuery({
-    queryKey: [region, projectId, 'snapshots'],
+    queryKey: [region, project?.id, 'snapshots'],
     queryFn: async () => {
       const data = await client!.get('snapshots/detail').json<{ snapshots: Snapshot[] }>();
       return data.snapshots;
@@ -63,11 +63,11 @@ export function useSnapshots() {
  * Hook to fetch a single snapshot by ID
  */
 export function useSnapshot(id: string, options?: Omit<UseQueryOptions<Snapshot>, 'queryKey' | 'queryFn'>) {
-  const { region, projectId } = useKeystone();
+  const { region, project } = useKeystone();
   const client = useApiClient('cinder');
 
   return useQuery({
-    queryKey: [region, projectId, 'snapshot', id],
+    queryKey: [region, project?.id, 'snapshot', id],
     queryFn: async () => {
       const data = await client!.get(`snapshots/${id}`).json<{ snapshot: Snapshot }>();
       return data.snapshot;
