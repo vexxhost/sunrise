@@ -70,13 +70,13 @@ export function NavigationMenu() {
     if (!region && regions.length > 0) {
       setRegion(regions[0])
     }
-  }, [region, regions, setRegion])
+  }, [region, regions])
 
   React.useEffect(() => {
     if (!project && projects.length > 0) {
       setProject(projects[0])
     }
-  }, [project, projects, setProject])
+  }, [project, projects])
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
