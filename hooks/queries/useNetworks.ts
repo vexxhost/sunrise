@@ -4,6 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
+import { apiUrl } from '@/lib/api';
 import ky from 'ky';
 import type { Network, Port, SecurityGroup } from '@/lib/network';
 
@@ -16,7 +17,7 @@ export function useNetworks() {
   return useQuery({
     queryKey: [region, 'networks'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/neutron/v2.0/networks').json<{ networks: Network[] }>();
+      const data = await ky.get(apiUrl(region, 'neutron', 'v2.0/networks')).json<{ networks: Network[] }>();
       return data.networks;
     },
   });
@@ -31,7 +32,7 @@ export function useNetwork(id: string, options?: Omit<UseQueryOptions<Network>, 
   return useQuery({
     queryKey: [region, 'network', id],
     queryFn: async () => {
-      const data = await ky.get(`/api/proxy/neutron/v2.0/networks/${id}`).json<{ network: Network }>();
+      const data = await ky.get(apiUrl(region, 'neutron', `v2.0/networks/${id}`)).json<{ network: Network }>();
       return data.network;
     },
     enabled: !!id,
@@ -48,7 +49,7 @@ export function usePorts() {
   return useQuery({
     queryKey: [region, 'ports'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/neutron/v2.0/ports').json<{ ports: Port[] }>();
+      const data = await ky.get(apiUrl(region, 'neutron', 'v2.0/ports')).json<{ ports: Port[] }>();
       return data.ports;
     },
   });
@@ -63,7 +64,7 @@ export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'query
   return useQuery({
     queryKey: [region, 'port', id],
     queryFn: async () => {
-      const data = await ky.get(`/api/proxy/neutron/v2.0/ports/${id}`).json<{ port: Port }>();
+      const data = await ky.get(apiUrl(region, 'neutron', `v2.0/ports/${id}`)).json<{ port: Port }>();
       return data.port;
     },
     enabled: !!id,
@@ -80,7 +81,7 @@ export function useSecurityGroups() {
   return useQuery({
     queryKey: [region, 'security-groups'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/neutron/v2.0/security-groups').json<{ security_groups: SecurityGroup[] }>();
+      const data = await ky.get(apiUrl(region, 'neutron', 'v2.0/security-groups')).json<{ security_groups: SecurityGroup[] }>();
       return data.security_groups;
     },
   });
@@ -95,7 +96,7 @@ export function useSecurityGroup(id: string, options?: Omit<UseQueryOptions<Secu
   return useQuery({
     queryKey: [region, 'security-group', id],
     queryFn: async () => {
-      const data = await ky.get(`/api/proxy/neutron/v2.0/security-groups/${id}`).json<{ security_group: SecurityGroup }>();
+      const data = await ky.get(apiUrl(region, 'neutron', `v2.0/security-groups/${id}`)).json<{ security_group: SecurityGroup }>();
       return data.security_group;
     },
     enabled: !!id,

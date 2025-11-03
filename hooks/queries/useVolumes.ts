@@ -4,6 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
+import { apiUrl } from '@/lib/api';
 import ky from 'ky';
 import type { Volume, Snapshot } from '@/lib/cinder';
 
@@ -16,9 +17,11 @@ export function useVolumes() {
   return useQuery({
     queryKey: [region, 'volumes'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/cinder/volumes/detail').json<{ volumes: Volume[] }>();
+      if (!region) throw new Error('Region not set');
+      const data = await ky.get(apiUrl(region, 'cinder', 'volumes/detail')).json<{ volumes: Volume[] }>();
       return data.volumes;
     },
+    enabled: !!region,
   });
 }
 
@@ -31,10 +34,11 @@ export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'q
   return useQuery({
     queryKey: [region, 'volume', id],
     queryFn: async () => {
-      const data = await ky.get(`/api/proxy/cinder/volumes/${id}`).json<{ volume: Volume }>();
+      if (!region) throw new Error('Region not set');
+      const data = await ky.get(apiUrl(region, 'cinder', `volumes/${id}`)).json<{ volume: Volume }>();
       return data.volume;
     },
-    enabled: !!id,
+    enabled: !!id && !!region,
     ...options,
   });
 }

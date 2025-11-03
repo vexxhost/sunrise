@@ -4,6 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
+import { apiUrl } from '@/lib/api';
 import ky from 'ky';
 import type { Server, Flavor, InterfaceAttachment } from '@/lib/nova';
 
@@ -16,9 +17,11 @@ export function useServers() {
   return useQuery({
     queryKey: [region, 'servers'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/nova/servers/detail').json<{ servers: Server[] }>();
+      if (!region) throw new Error('Region not set');
+      const data = await ky.get(apiUrl(region, 'nova', 'servers/detail')).json<{ servers: Server[] }>();
       return data.servers;
     },
+    enabled: !!region,
   });
 }
 
@@ -31,10 +34,11 @@ export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'q
   return useQuery({
     queryKey: [region, 'server', id],
     queryFn: async () => {
-      const data = await ky.get(`/api/proxy/nova/servers/${id}`).json<{ server: Server }>();
+      if (!region) throw new Error('Region not set');
+      const data = await ky.get(apiUrl(region, 'nova', `servers/${id}`)).json<{ server: Server }>();
       return data.server;
     },
-    enabled: !!id,
+    enabled: !!id && !!region,
     ...options,
   });
 }
@@ -48,9 +52,11 @@ export function useFlavors() {
   return useQuery({
     queryKey: [region, 'flavors'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/nova/flavors/detail').json<{ flavors: Flavor[] }>();
+      if (!region) throw new Error('Region not set');
+      const data = await ky.get(apiUrl(region, 'nova', 'flavors/detail')).json<{ flavors: Flavor[] }>();
       return data.flavors;
     },
+    enabled: !!region,
   });
 }
 
@@ -63,10 +69,11 @@ export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'q
   return useQuery({
     queryKey: [region, 'flavor', id],
     queryFn: async () => {
-      const data = await ky.get(`/api/proxy/nova/flavors/${id}`).json<{ flavor: Flavor }>();
+      if (!region) throw new Error('Region not set');
+      const data = await ky.get(apiUrl(region, 'nova', `flavors/${id}`)).json<{ flavor: Flavor }>();
       return data.flavor;
     },
-    enabled: !!id,
+    enabled: !!id && !!region,
     ...options,
   });
 }
@@ -80,10 +87,11 @@ export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOpt
   return useQuery({
     queryKey: [region, 'server-interfaces', serverId],
     queryFn: async () => {
-      const data = await ky.get(`/api/proxy/nova/servers/${serverId}/os-interface`).json<{ interfaceAttachments: InterfaceAttachment[] }>();
+      if (!region) throw new Error('Region not set');
+      const data = await ky.get(apiUrl(region, 'nova', `servers/${serverId}/os-interface`)).json<{ interfaceAttachments: InterfaceAttachment[] }>();
       return data.interfaceAttachments;
     },
-    enabled: !!serverId,
+    enabled: !!serverId && !!region,
     ...options,
   });
 }

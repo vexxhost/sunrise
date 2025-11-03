@@ -4,6 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
+import { apiUrl } from '@/lib/api';
 import ky from 'ky';
 import type { Image } from '@/lib/glance';
 
@@ -16,7 +17,7 @@ export function useImages() {
   return useQuery({
     queryKey: [region, 'images'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/glance/v2/images').json<{ images: Image[] }>();
+      const data = await ky.get(apiUrl(region, 'glance', 'v2/images')).json<{ images: Image[] }>();
       return data.images;
     },
   });
@@ -30,7 +31,7 @@ export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'que
 
   return useQuery({
     queryKey: [region, 'image', id],
-    queryFn: () => ky.get(`/api/proxy/glance/v2/images/${id}`).json<Image>(),
+    queryFn: () => ky.get(apiUrl(region, 'glance', `v2/images/${id}`)).json<Image>(),
     enabled: !!id,
     ...options,
   });

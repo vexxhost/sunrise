@@ -5,11 +5,13 @@ import { NextRequest } from "next/server";
  * Generic OpenStack API proxy
  * Handles CORS, authentication, and region-aware routing for client-side requests
  *
- * Usage: /api/proxy/keystone/v3/regions
- *        /api/proxy/nova/v2.1/servers
+ * Usage: /api/proxy/<region>/<service>/<path>
+ *        /api/proxy/us-east-1/nova/servers/detail
+ *        /api/proxy/us-east-1/cinder/volumes
+ *        /api/proxy/global/keystone/v3/regions
  *
- * Automatically routes requests to the correct regional endpoint based on
- * the user's selected region stored in their session.
+ * The region is extracted from the URL and used to find the correct endpoint.
+ * Use 'global' as the region for keystone (identity) service.
  */
 export async function GET(
   request: NextRequest,
@@ -62,8 +64,15 @@ async function handleRequest(
       );
     }
 
-    // First path segment is the service (keystone, nova, neutron, etc.)
-    const [service, ...apiPath] = path;
+    // Path format: [region, service, ...apiPath]
+    const [region, service, ...apiPath] = path;
+
+    if (!region || !service) {
+      return Response.json(
+        { error: 'Invalid path format. Expected: /api/proxy/<region>/<service>/<path>' },
+        { status: 400 }
+      );
+    }
 
     // Map service names to their OpenStack service types
     const serviceTypeMap: Record<string, string> = {
@@ -81,9 +90,9 @@ async function handleRequest(
 
     const serviceType = serviceTypeMap[service];
 
-    // For keystone, always use the environment variable (not region-specific)
+    // For keystone (global services), always use the environment variable
     let baseUrl: string;
-    if (service === 'keystone') {
+    if (service === 'keystone' || region === 'global') {
       baseUrl = process.env.KEYSTONE_API!;
     } else {
       if (!serviceType) {
@@ -110,7 +119,6 @@ async function handleRequest(
 
       const catalogData = await response.json();
       const catalog = catalogData.catalog;
-      const selectedRegion = session.selectedRegion;
 
       // Find the service in the catalog
       const serviceEntry = catalog.find(
@@ -124,16 +132,14 @@ async function handleRequest(
         );
       }
 
-      // Find the endpoint for the selected region (or any region if none selected)
-      const endpoint = selectedRegion
-        ? serviceEntry.endpoints.find(
-            (ep: any) => ep.interface === 'public' && ep.region === selectedRegion
-          )
-        : serviceEntry.endpoints.find((ep: any) => ep.interface === 'public');
+      // Find the endpoint for the specified region
+      const endpoint = serviceEntry.endpoints.find(
+        (ep: any) => ep.interface === 'public' && ep.region === region
+      );
 
       if (!endpoint) {
         return Response.json(
-          { error: `No public endpoint found for service '${service}' in region '${selectedRegion}'` },
+          { error: `No public endpoint found for service '${service}' in region '${region}'` },
           { status: 404 }
         );
       }

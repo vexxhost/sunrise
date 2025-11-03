@@ -3,6 +3,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
+import { apiUrl } from '@/lib/api';
 import ky from 'ky';
 
 export type Region = {
@@ -16,13 +17,13 @@ export type Region = {
 
 /**
  * Hook to fetch list of regions
- * Note: Regions are global and not region-specific, so no region in query key
+ * Note: Regions are global and not region-specific, so we use 'global' as the region
  */
 export function useRegions() {
   return useQuery({
     queryKey: ['regions'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/keystone/v3/regions').json<{ regions: Region[] }>();
+      const data = await ky.get(apiUrl('global', 'keystone', 'v3/regions')).json<{ regions: Region[] }>();
       // Sort regions alphabetically by ID
       const sortedRegions = data.regions.sort((a, b) => a.id.localeCompare(b.id));
       return sortedRegions;
