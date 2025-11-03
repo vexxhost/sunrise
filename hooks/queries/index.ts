@@ -9,3 +9,4 @@ export * from './useServers';
 export * from './useVolumes';
 export * from './useNetworks';
 export * from './useImages';
+export * from './useRegions';

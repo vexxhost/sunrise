@@ -5,11 +5,10 @@ import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Layers, FolderKanban, User, LogOut } from "lucide-react"
-import { listRegionsClient, type Region as KeystoneRegion } from "@/lib/keystone-client"
 import type { Project } from "@/lib/keystone"
 import { useRegion } from "@/contexts/RegionContext"
-import { useQuery } from "@tanstack/react-query"
 import { useMediaQuery } from "usehooks-ts"
+import { useRegions, type Region as KeystoneRegion } from "@/hooks/queries"
 
 import {
   NavigationMenu as _NavigationMenu,
@@ -79,10 +78,7 @@ export function NavigationMenu({
   const displayRegion = contextRegion || currentRegion || 'Loading...'
 
   // Fetch regions using TanStack Query
-  const { data: regions = [], isLoading } = useQuery({
-    queryKey: ['regions'],
-    queryFn: listRegionsClient,
-  })
+  const { data: regions = [], isLoading } = useRegions()
 
   const handleRegionChange = async (region: KeystoneRegion) => {
     try {
