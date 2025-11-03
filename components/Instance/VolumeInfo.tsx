@@ -2,7 +2,7 @@
 
 import { Volume } from "@/lib/cinder";
 import { Server } from "@/lib/nova";
-import { useVolumesByIds, useImage } from "@/hooks/queries";
+import { useVolume, useImage } from "@/hooks/queries";
 import { useMemo } from "react";
 
 export default function VolumeInfo({ server }: { server: Server }) {
@@ -10,7 +10,13 @@ export default function VolumeInfo({ server }: { server: Server }) {
         (volume: { id: string }) => volume.id,
     );
 
-    const { data: volumes } = useVolumesByIds(serverVolumeKeys);
+    // Call useVolume for each volume ID - TanStack Query handles parallel requests and caching
+    const volumeQueries = serverVolumeKeys.map(id => useVolume(id));
+
+    // Combine all volume data
+    const volumes = useMemo(() => {
+        return volumeQueries.map(query => query.data).filter(Boolean) as Volume[];
+    }, [volumeQueries.map(q => q.data).join()]);
 
     // Determine image ID - either from server or from boot volume
     const imageId = useMemo(() => {

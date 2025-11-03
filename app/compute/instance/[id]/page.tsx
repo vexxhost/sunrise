@@ -8,8 +8,7 @@ import { FlavorInfo } from "@/components/Instance/FlavorInfo";
 import { InstanceInfo } from "@/components/Instance/InstanceInfo";
 import { Interfaces } from "@/components/Instance/Interfaces";
 import { Loader } from "@/components/Loader";
-import { useServer, useServerInterfaces } from "@/hooks/queries";
-import { usePortsWithNetworkNames } from "@/hooks/queries";
+import { useServer, useServerInterfaces, usePort, useNetwork } from "@/hooks/queries";
 import { useMemo } from "react";
 
 interface Params {
@@ -24,7 +23,41 @@ export default function Instance({ params }: { params: Params }) {
     return interfaceAttachments?.map(attachment => attachment.port_id) || [];
   }, [interfaceAttachments]);
 
-  const { data: networkPorts, isLoading: isLoadingPorts } = usePortsWithNetworkNames(portIds);
+  // Call usePort for each port ID
+  const portQueries = portIds.map(id => usePort(id));
+
+  // Get ports data
+  const ports = useMemo(() => {
+    return portQueries.map(query => query.data).filter(Boolean);
+  }, [portQueries.map(q => q.data).join()]);
+
+  // Call useNetwork for each unique network ID
+  const networkIds = useMemo(() => {
+    return [...new Set(ports.map(port => port?.network_id).filter(Boolean))];
+  }, [ports]);
+
+  const networkQueries = networkIds.map(id => useNetwork(id!));
+
+  // Enrich ports with network names
+  const networkPorts = useMemo(() => {
+    const networksMap = new Map();
+    networkQueries.forEach(query => {
+      if (query.data) {
+        networksMap.set(query.data.id, query.data);
+      }
+    });
+
+    return ports.map(port => {
+      if (!port) return port;
+      const network = networksMap.get(port.network_id);
+      return {
+        ...port,
+        network_name: network?.name
+      };
+    });
+  }, [ports, networkQueries.map(q => q.data).join()]);
+
+  const isLoadingPorts = portQueries.some(q => q.isLoading) || networkQueries.some(q => q.isLoading);
 
   const isLoading = isLoadingServer || isLoadingInterfaces || isLoadingPorts;
 

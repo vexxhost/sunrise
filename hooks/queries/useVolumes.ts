@@ -71,23 +71,3 @@ export function useSnapshot(id: string, options?: Omit<UseQueryOptions<Snapshot>
   });
 }
 
-/**
- * Hook to fetch multiple volumes by IDs
- */
-export function useVolumesByIds(volumeIds: string[]) {
-  const { region } = useRegion();
-
-  return useQuery({
-    queryKey: [region, 'volumes-by-ids', volumeIds],
-    queryFn: async () => {
-      const volumes = await Promise.all(
-        volumeIds.map(async (id) => {
-          const data = await ky.get(`/api/proxy/cinder/volumes/${id}`).json<{ volume: Volume }>();
-          return data.volume;
-        })
-      );
-      return volumes;
-    },
-    enabled: volumeIds.length > 0,
-  });
-}

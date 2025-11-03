@@ -72,32 +72,6 @@ export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'query
 }
 
 /**
- * Hook to fetch multiple ports by IDs with network names enriched
- */
-export function usePortsWithNetworkNames(portIds: string[]) {
-  const { region } = useRegion();
-
-  return useQuery({
-    queryKey: [region, 'ports-with-network-names', portIds],
-    queryFn: async () => {
-      const portList = [];
-      for (const portId of portIds) {
-        const portData = await ky.get(`/api/proxy/neutron/v2.0/ports/${portId}`).json<{ port: Port }>();
-        const port = portData.port;
-
-        const networkData = await ky.get(`/api/proxy/neutron/v2.0/networks/${port.network_id}`).json<{ network: Network }>();
-        const network = networkData.network;
-
-        port.network_name = network.name;
-        portList.push(port);
-      }
-      return portList;
-    },
-    enabled: portIds.length > 0,
-  });
-}
-
-/**
  * Hook to fetch list of security groups
  */
 export function useSecurityGroups() {
