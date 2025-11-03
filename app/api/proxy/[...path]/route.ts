@@ -1,4 +1,4 @@
-import { getSession, getCatalog } from "@/lib/session";
+import { getSession } from "@/lib/session";
 import { NextRequest } from "next/server";
 
 /**
@@ -94,7 +94,22 @@ async function handleRequest(
       }
 
       // Get the service catalog to find the correct endpoint
-      const catalog = await getCatalog(session.projectToken);
+      const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/catalog`, {
+        headers: {
+          "X-Auth-Token": session.projectToken,
+        } as HeadersInit,
+        next: { revalidate: 300 }, // Cache for 5 minutes
+      });
+
+      if (!response.ok) {
+        return Response.json(
+          { error: `Failed to fetch catalog: ${response.statusText}` },
+          { status: response.status }
+        );
+      }
+
+      const catalogData = await response.json();
+      const catalog = catalogData.catalog;
       const selectedRegion = session.selectedRegion;
 
       // Find the service in the catalog
