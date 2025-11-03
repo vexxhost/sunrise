@@ -12,10 +12,10 @@ import type { Image } from '@/lib/glance';
  * Hook to fetch list of images
  */
 export function useImages() {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'images'],
+    queryKey: [region, projectId, 'images'],
     queryFn: async () => {
       const data = await ky.get(apiUrl(region, 'glance', 'v2/images')).json<{ images: Image[] }>();
       return data.images;
@@ -27,10 +27,10 @@ export function useImages() {
  * Hook to fetch a single image by ID
  */
 export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'queryKey' | 'queryFn'>) {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'image', id],
+    queryKey: [region, projectId, 'image', id],
     queryFn: () => ky.get(apiUrl(region, 'glance', `v2/images/${id}`)).json<Image>(),
     enabled: !!id,
     ...options,

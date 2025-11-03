@@ -12,16 +12,16 @@ import type { Server, Flavor, InterfaceAttachment } from '@/lib/nova';
  * Hook to fetch list of servers
  */
 export function useServers() {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'servers'],
+    queryKey: [region, projectId, 'servers'],
     queryFn: async () => {
       if (!region) throw new Error('Region not set');
       const data = await ky.get(apiUrl(region, 'nova', 'servers/detail')).json<{ servers: Server[] }>();
       return data.servers;
     },
-    enabled: !!region,
+    enabled: !!region && !!projectId,
   });
 }
 
@@ -29,16 +29,16 @@ export function useServers() {
  * Hook to fetch a single server by ID
  */
 export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'queryKey' | 'queryFn'>) {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'server', id],
+    queryKey: [region, projectId, 'server', id],
     queryFn: async () => {
       if (!region) throw new Error('Region not set');
       const data = await ky.get(apiUrl(region, 'nova', `servers/${id}`)).json<{ server: Server }>();
       return data.server;
     },
-    enabled: !!id && !!region,
+    enabled: !!id && !!region && !!projectId,
     ...options,
   });
 }
@@ -47,16 +47,16 @@ export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'q
  * Hook to fetch list of flavors
  */
 export function useFlavors() {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'flavors'],
+    queryKey: [region, projectId, 'flavors'],
     queryFn: async () => {
       if (!region) throw new Error('Region not set');
       const data = await ky.get(apiUrl(region, 'nova', 'flavors/detail')).json<{ flavors: Flavor[] }>();
       return data.flavors;
     },
-    enabled: !!region,
+    enabled: !!region && !!projectId,
   });
 }
 
@@ -64,16 +64,16 @@ export function useFlavors() {
  * Hook to fetch a single flavor by ID
  */
 export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'queryKey' | 'queryFn'>) {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'flavor', id],
+    queryKey: [region, projectId, 'flavor', id],
     queryFn: async () => {
       if (!region) throw new Error('Region not set');
       const data = await ky.get(apiUrl(region, 'nova', `flavors/${id}`)).json<{ flavor: Flavor }>();
       return data.flavor;
     },
-    enabled: !!id && !!region,
+    enabled: !!id && !!region && !!projectId,
     ...options,
   });
 }
@@ -82,16 +82,16 @@ export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'q
  * Hook to fetch server interface attachments
  */
 export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOptions<InterfaceAttachment[]>, 'queryKey' | 'queryFn'>) {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'server-interfaces', serverId],
+    queryKey: [region, projectId, 'server-interfaces', serverId],
     queryFn: async () => {
       if (!region) throw new Error('Region not set');
       const data = await ky.get(apiUrl(region, 'nova', `servers/${serverId}/os-interface`)).json<{ interfaceAttachments: InterfaceAttachment[] }>();
       return data.interfaceAttachments;
     },
-    enabled: !!serverId && !!region,
+    enabled: !!serverId && !!region && !!projectId,
     ...options,
   });
 }

@@ -12,16 +12,16 @@ import type { Volume, Snapshot } from '@/lib/cinder';
  * Hook to fetch list of volumes
  */
 export function useVolumes() {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'volumes'],
+    queryKey: [region, projectId, 'volumes'],
     queryFn: async () => {
       if (!region) throw new Error('Region not set');
       const data = await ky.get(apiUrl(region, 'cinder', 'volumes/detail')).json<{ volumes: Volume[] }>();
       return data.volumes;
     },
-    enabled: !!region,
+    enabled: !!region && !!projectId,
   });
 }
 
@@ -29,16 +29,16 @@ export function useVolumes() {
  * Hook to fetch a single volume by ID
  */
 export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'queryKey' | 'queryFn'>) {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'volume', id],
+    queryKey: [region, projectId, 'volume', id],
     queryFn: async () => {
       if (!region) throw new Error('Region not set');
       const data = await ky.get(apiUrl(region, 'cinder', `volumes/${id}`)).json<{ volume: Volume }>();
       return data.volume;
     },
-    enabled: !!id && !!region,
+    enabled: !!id && !!region && !!projectId,
     ...options,
   });
 }
@@ -47,10 +47,10 @@ export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'q
  * Hook to fetch list of snapshots
  */
 export function useSnapshots() {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'snapshots'],
+    queryKey: [region, projectId, 'snapshots'],
     queryFn: async () => {
       const data = await ky.get('/api/proxy/cinder/snapshots/detail').json<{ snapshots: Snapshot[] }>();
       return data.snapshots;
@@ -62,10 +62,10 @@ export function useSnapshots() {
  * Hook to fetch a single snapshot by ID
  */
 export function useSnapshot(id: string, options?: Omit<UseQueryOptions<Snapshot>, 'queryKey' | 'queryFn'>) {
-  const { region } = useKeystone();
+  const { region, projectId } = useKeystone();
 
   return useQuery({
-    queryKey: [region, 'snapshot', id],
+    queryKey: [region, projectId, 'snapshot', id],
     queryFn: async () => {
       const data = await ky.get(`/api/proxy/cinder/snapshots/${id}`).json<{ snapshot: Snapshot }>();
       return data.snapshot;
