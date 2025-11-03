@@ -9,16 +9,25 @@ export const columns: ColumnDef<Network>[] = [
     {
       accessorKey: "name",
       header: "Name",
-      cell: ({ row }: { row: { original: Network } }) => row.original.name
+      cell: ({ row }: { row: { original: Network } }) => row.original.name,
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "id",
       header: "ID",
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "description",
       header: "Description",
-      cell: ({ row }: { row: { original: Network } }) => row.original.description
+      cell: ({ row }: { row: { original: Network } }) => row.original.description,
+      meta: {
+        fieldType: "string"
+      }
     },
     {
          accessorKey: "subnets",
@@ -34,6 +43,9 @@ export const columns: ColumnDef<Network>[] = [
               </>
             );
          },
+         meta: {
+           fieldType: "string"
+         }
 
     },
     {
@@ -45,6 +57,9 @@ export const columns: ColumnDef<Network>[] = [
             {row.original.shared ? "Yes" : "No"}
           </Badge>
         );
+      },
+      meta: {
+        fieldType: "boolean"
       }
 
     },{
@@ -55,6 +70,9 @@ export const columns: ColumnDef<Network>[] = [
           <Badge variant={row.original["router:external"] ? "secondary" : "destructive"}>
           {row.original["router:external"] ? "Yes" : "No"}
         </Badge>        );
+      },
+      meta: {
+        fieldType: "boolean"
       }
 
     },
@@ -67,6 +85,9 @@ export const columns: ColumnDef<Network>[] = [
             {titleCase(row.original.status)}
           </Badge>
         );
+      },
+      meta: {
+        fieldType: "string"
       }
     },
     {
@@ -78,6 +99,9 @@ export const columns: ColumnDef<Network>[] = [
             {row.original.admin_state_up ? "Up" : "Down"}
           </Badge>
         );
+      },
+      meta: {
+        fieldType: "boolean"
       }
     },
     {
@@ -93,6 +117,9 @@ export const columns: ColumnDef<Network>[] = [
             ))}
           </>
         );
+      },
+      meta: {
+        fieldType: "string"
       }
     }
 

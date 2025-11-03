@@ -8,16 +8,25 @@ export const columns: ColumnDef<Flavor>[] = [
     {
       accessorKey: "name",
       header: "Name",
-      cell: ({ row }: { row: { original: Flavor } }) => row.original.name
+      cell: ({ row }: { row: { original: Flavor } }) => row.original.name,
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "id",
       header: "ID",
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "vcpus",
       header: "vCPUs",
-      cell: ({ row }: { row: { original: Flavor } }) => row.original.vcpus
+      cell: ({ row }: { row: { original: Flavor } }) => row.original.vcpus,
+      meta: {
+        fieldType: "number"
+      }
     },
     {
       accessorKey: "ram",
@@ -25,6 +34,9 @@ export const columns: ColumnDef<Flavor>[] = [
       cell: ({ row }: { row: { original: Flavor } }) => {
         const ramGB = (row.original.ram / 1024).toFixed(2);
         return `${ramGB} GB`;
+      },
+      meta: {
+        fieldType: "number"
       }
     },
     {
@@ -32,6 +44,9 @@ export const columns: ColumnDef<Flavor>[] = [
       header: "Root Disk",
       cell: ({ row }: { row: { original: Flavor } }) => {
         return row.original.disk > 0 ? `${row.original.disk} GB` : "-";
+      },
+      meta: {
+        fieldType: "number"
       }
     },
     {
@@ -40,6 +55,9 @@ export const columns: ColumnDef<Flavor>[] = [
       cell: ({ row }: { row: { original: Flavor } }) => {
         const ephemeral = row.original["OS-FLV-EXT-DATA:ephemeral"];
         return ephemeral > 0 ? `${ephemeral} GB` : "-";
+      },
+      meta: {
+        fieldType: "number"
       }
     },
     {
@@ -48,6 +66,9 @@ export const columns: ColumnDef<Flavor>[] = [
       cell: ({ row }: { row: { original: Flavor } }) => {
         const swap = row.original.swap;
         return swap && swap !== "" ? `${swap} MB` : "-";
+      },
+      meta: {
+        fieldType: "string"
       }
     },
     {
@@ -60,6 +81,9 @@ export const columns: ColumnDef<Flavor>[] = [
             {isPublic ? "Yes" : "No"}
           </Badge>
         );
+      },
+      meta: {
+        fieldType: "boolean"
       }
     },
     {
@@ -72,6 +96,9 @@ export const columns: ColumnDef<Flavor>[] = [
             {isDisabled ? "Yes" : "No"}
           </Badge>
         );
+      },
+      meta: {
+        fieldType: "boolean"
       }
     }
   ]

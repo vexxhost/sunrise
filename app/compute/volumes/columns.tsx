@@ -9,21 +9,33 @@ export const columns: ColumnDef<Volume>[] = [
     {
       accessorKey: "name",
       header: "Name",
-      cell: ({ row }: { row: { original: Volume } }) => row.original.name
+      cell: ({ row }: { row: { original: Volume } }) => row.original.name,
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "id",
       header: "ID",
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "description",
       header: "Description",
-      cell: ({ row }: { row: { original: Volume } }) => row.original.description
+      cell: ({ row }: { row: { original: Volume } }) => row.original.description,
+      meta: {
+        fieldType: "string"
+      }
     },
     {
          accessorKey: "size",
          header: "Size",
-         cell: ({ row }: { row: { original: Volume } }) => row.original.size + " GB"
+         cell: ({ row }: { row: { original: Volume } }) => row.original.size + " GB",
+         meta: {
+           fieldType: "number"
+         }
     },
     {
         accessorKey: "status",
@@ -54,36 +66,57 @@ export const columns: ColumnDef<Volume>[] = [
             </Badge>
           );
         },
+        meta: {
+          fieldType: "string"
+        }
       },
   {
     accessorKey: "group",
     header: "Group",
-    cell: ({ row }: { row: { original: Volume } }) => row.original.group_id ? row.original.group_id : "-"
+    cell: ({ row }: { row: { original: Volume } }) => row.original.group_id ? row.original.group_id : "-",
+    meta: {
+      fieldType: "string"
+    }
   },
     {
         accessorKey: "type",
         header: "Type",
-        cell: ({ row }: { row: { original: Volume } }) => row.original.volume_type
+        cell: ({ row }: { row: { original: Volume } }) => row.original.volume_type,
+        meta: {
+          fieldType: "string"
+        }
         },
         {
             accessorKey: "availability_zone",
             header: "Availability Zone",
-            cell: ({ row }: { row: { original: Volume } }) => row.original.availability_zone
+            cell: ({ row }: { row: { original: Volume } }) => row.original.availability_zone,
+            meta: {
+              fieldType: "string"
+            }
         },
         {
             accessorKey: "bootable",
             header: "Bootable",
-            cell: ({ row }: { row: { original: Volume } }) => row.original.bootable ? "Yes" : "No"
+            cell: ({ row }: { row: { original: Volume } }) => row.original.bootable ? "Yes" : "No",
+            meta: {
+              fieldType: "boolean"
+            }
           },
           {
             accessorKey: "encrypted",
             header: "Encrypted",
-            cell: ({ row }: { row: { original: Volume } }) => row.original.encrypted ? "Yes" : "No"
+            cell: ({ row }: { row: { original: Volume } }) => row.original.encrypted ? "Yes" : "No",
+            meta: {
+              fieldType: "boolean"
+            }
           },
           {
             accessorKey: "multiattach",
             header: "Multi-Attached",
-            cell: ({ row }: { row: { original: Volume } }) => row.original.multiattach ? "Yes" : "No"
+            cell: ({ row }: { row: { original: Volume } }) => row.original.multiattach ? "Yes" : "No",
+            meta: {
+              fieldType: "boolean"
+            }
           }
 
   ]

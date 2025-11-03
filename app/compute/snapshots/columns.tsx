@@ -9,29 +9,42 @@ export const columns: ColumnDef<Snapshot>[] = [
     {
       accessorKey: "name",
       header: "Name",
-      cell: ({ row }: { row: { original: Snapshot } }) => row.original.name
+      cell: ({ row }: { row: { original: Snapshot } }) => row.original.name,
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "id",
       header: "ID",
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "description",
       header: "Description",
-      cell: ({ row }: { row: { original: Snapshot } }) => row.original.description || "-"
+      cell: ({ row }: { row: { original: Snapshot } }) => row.original.description || "-",
+      meta: {
+        fieldType: "string"
+      }
     },
     {
       accessorKey: "volume_id",
       header: "Volume",
       meta: {
-        monospace: true
+        monospace: true,
+        fieldType: "string"
       },
       cell: ({ row }: { row: { original: Snapshot } }) => row.original.volume_id
     },
     {
          accessorKey: "size",
          header: "Size",
-         cell: ({ row }: { row: { original: Snapshot } }) => row.original.size + " GB"
+         cell: ({ row }: { row: { original: Snapshot } }) => row.original.size + " GB",
+         meta: {
+           fieldType: "number"
+         }
     },
     {
         accessorKey: "status",
@@ -63,6 +76,9 @@ export const columns: ColumnDef<Snapshot>[] = [
             </Badge>
           );
         },
+        meta: {
+          fieldType: "string"
+        }
       },
     {
       accessorKey: "created_at",
@@ -70,6 +86,9 @@ export const columns: ColumnDef<Snapshot>[] = [
       cell: ({ row }: { row: { original: Snapshot } }) => {
         const date = new Date(row.original.created_at);
         return date.toLocaleString();
+      },
+      meta: {
+        fieldType: "date"
       }
     }
 

@@ -16,11 +16,13 @@ import {
 } from "@tanstack/react-table"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { FilterBuilder, Filter, FilterOperator } from "@/components/FilterBuilder"
 
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
     monospace?: boolean
+    fieldType: 'string' | 'number' | 'boolean' | 'date'
   }
 }
 
@@ -141,7 +143,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu"
 import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
-import { Settings, RefreshCw, ChevronDown, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Settings, RefreshCw, ChevronDown, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, Search } from "lucide-react"
 import pluralize from "pluralize"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -166,6 +168,11 @@ import {
 import {
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group"
 
 // Helper function to generate page numbers with ellipsis
 function generatePaginationItems(currentPage: number, totalPages: number) {
@@ -236,6 +243,7 @@ export function DataTable<TData, TValue>({
   const pathname = usePathname()
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
+  const [filters, setFilters] = React.useState<Filter[]>([])
   const [searchOption, setSearchOption] = useState(Object.keys(searchOptions)[0] || 'name')
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
@@ -273,8 +281,92 @@ export function DataTable<TData, TValue>({
     ...columns,
   ], [columns])
 
+  // Apply custom filters
+  const filteredData = React.useMemo(() => {
+    if (filters.length === 0) return data
+
+    return data.filter((row: any) => {
+      return filters.every((filter) => {
+        const rawValue = row[filter.columnId]
+
+        // Get the column to check its field type
+        const column = columnsWithCheckbox.find(col => {
+          if ('accessorKey' in col) {
+            return col.accessorKey === filter.columnId
+          }
+          return col.id === filter.columnId
+        })
+        const fieldType = column?.meta?.fieldType
+
+        // Handle different field types
+        if (fieldType === 'number') {
+          const cellValue = Number(rawValue)
+          const filterValue = Number(filter.value)
+
+          if (isNaN(cellValue) || isNaN(filterValue)) return false
+
+          switch (filter.operator) {
+            case "equals":
+              return cellValue === filterValue
+            case "notEquals":
+              return cellValue !== filterValue
+            case "greaterThan":
+              return cellValue > filterValue
+            case "lessThan":
+              return cellValue < filterValue
+            case "greaterThanOrEqual":
+              return cellValue >= filterValue
+            case "lessThanOrEqual":
+              return cellValue <= filterValue
+            default:
+              return true
+          }
+        } else if (fieldType === 'boolean') {
+          const cellValue = Boolean(rawValue)
+          // Map "Yes"/"No" to boolean
+          const filterValue = filter.value.toLowerCase() === 'yes'
+
+          return filter.operator === "equals" ? cellValue === filterValue : cellValue !== filterValue
+        } else if (fieldType === 'date') {
+          const cellDate = new Date(rawValue)
+          const filterDate = new Date(filter.value)
+
+          if (isNaN(cellDate.getTime()) || isNaN(filterDate.getTime())) return false
+
+          switch (filter.operator) {
+            case "equals":
+              return cellDate.toDateString() === filterDate.toDateString()
+            case "before":
+              return cellDate < filterDate
+            case "after":
+              return cellDate > filterDate
+            default:
+              return true
+          }
+        } else {
+          // String type (default)
+          const cellValue = String(rawValue || "").toLowerCase()
+          const filterValue = filter.value.toLowerCase()
+
+          switch (filter.operator) {
+            case "equals":
+              return cellValue === filterValue
+            case "notEquals":
+              return cellValue !== filterValue
+            case "contains":
+              return cellValue.includes(filterValue)
+            case "notContains":
+              return !cellValue.includes(filterValue)
+            default:
+              return true
+          }
+        }
+      })
+    })
+  }, [data, filters, columnsWithCheckbox])
+
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns: columnsWithCheckbox,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -328,22 +420,16 @@ export function DataTable<TData, TValue>({
           </div>
         )}
         <div className="flex items-center justify-between pb-4">
-          <div className="flex items-center flex-1 gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="rounded-r-none" variant="secondary" disabled>
-                  {searchOptions[Object.keys(searchOptions)[0] as keyof BaseSearchOptions] || 'Search'} <ChevronDown className="ml-2" />
-                </Button>
-              </DropdownMenuTrigger>
-            </DropdownMenu>
-            <Input
-              placeholder={resourceName ? `Loading ${pluralize(resourceName)}...` : "Loading..."}
-              disabled
-              className="rounded m-1 p-1 max-w-xs"
-            />
-            <Button variant="secondary" disabled className="rounded-l-none m-1 p-1">
-              Reset Filter
-            </Button>
+          <div className="w-full max-w-md">
+            <InputGroup>
+              <InputGroupAddon>
+                <Search className="h-4 w-4" />
+              </InputGroupAddon>
+              <InputGroupInput
+                placeholder={resourceName ? `Loading ${pluralize(resourceName)}...` : "Loading..."}
+                disabled
+              />
+            </InputGroup>
           </div>
 
           <div className="flex items-center gap-2">
@@ -386,7 +472,7 @@ export function DataTable<TData, TValue>({
   return (
     <>
       {resourceName && (
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-semibold">
             {formatResourceName(pluralize(resourceName))}
           </h1>
@@ -404,36 +490,12 @@ export function DataTable<TData, TValue>({
           )}
         </div>
       )}
-      <div className="flex items-center justify-between pb-4">
-        <div className="flex items-center flex-1 gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="rounded-r-none" variant="secondary">
-                {searchOptions[searchOption as keyof BaseSearchOptions]} <ChevronDown className="ml-2" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent aria-label="Search Filter">
-              <DropdownMenuRadioGroup value={searchOption} onValueChange={setSearchOption}>
-                {Object.keys(searchOptions).map(key => (
-                  <DropdownMenuRadioItem key={key} value={key} className="capitalize">
-                    {searchOptions[key as keyof typeof searchOptions]}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Input
-            placeholder={`Filter by ${searchOption}`}
-            value={(table.getColumn(searchOption)?.getFilterValue() as string) ?? ""}
-            onChange={(event) =>
-              table.getColumn(searchOption)?.setFilterValue(event.target.value)
-            }
-            className="rounded m-1 p-1 max-w-xs"
-          />
-          <Button variant="secondary" onClick={() => table.resetColumnFilters()} className="rounded-l-none m-1 p-1">
-            Reset Filter
-          </Button>
-        </div>
+      <div className="flex items-center justify-between pb-2">
+        <FilterBuilder
+          columns={table.getAllColumns()}
+          onFiltersChange={setFilters}
+          data={data}
+        />
 
         <div className="flex items-center gap-2">
           {data.length > 0 && (
