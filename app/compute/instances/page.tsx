@@ -10,6 +10,8 @@ import { Server as ServerIcon } from "lucide-react";
 import { useServers, useFlavors, useVolumes, useImages } from "@/hooks/queries";
 
 export default function Page() {
+  console.log('[InstancesPage] render');
+
   // Fetch servers
   const { data: serversData, isLoading: isLoadingServers, isRefetching: isRefetchingServers, refetch: refetchServers } = useServers();
 

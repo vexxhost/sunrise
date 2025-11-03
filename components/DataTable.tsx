@@ -232,12 +232,33 @@ export function DataTable<TData, TValue>({
   emptyIcon,
 }: DataTableProps<TData, TValue>) {
 
+  const dataRef = React.useRef(data);
+  const columnsRef = React.useRef(columns);
+
+  if (dataRef.current !== data) {
+    console.log('[DataTable] DATA CHANGED', { resourceName, dataLength: data.length });
+    dataRef.current = data;
+  }
+
+  if (columnsRef.current !== columns) {
+    console.log('[DataTable] COLUMNS CHANGED', { resourceName, columnsLength: columns.length });
+    columnsRef.current = columns;
+  }
+
+  console.log('[DataTable] render', { resourceName, dataLength: data.length, columnsLength: columns.length });
+
   const pathname = usePathname()
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [filters, setFilters] = React.useState<Filter[]>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
+
+  // Memoize state setters to prevent useReactTable from seeing new function references
+  const setSortingMemo = React.useCallback(setSorting, []);
+  const setColumnFiltersMemo = React.useCallback(setColumnFilters, []);
+  const setColumnVisibilityMemo = React.useCallback(setColumnVisibility, []);
+  const setRowSelectionMemo = React.useCallback(setRowSelection, []);
 
   // Dialog state management
   const [dialogOpen, setDialogOpen] = React.useState(false)
@@ -272,9 +293,6 @@ export function DataTable<TData, TValue>({
       ),
       enableSorting: false,
       enableHiding: false,
-      size: 40,
-      minSize: 40,
-      maxSize: 40,
     } as ColumnDef<TData, TValue>,
     ...columns,
   ], [columns])
@@ -374,12 +392,12 @@ export function DataTable<TData, TValue>({
     columns: columnsWithCheckbox,
     getCoreRowModel: coreRowModel,
     getPaginationRowModel: paginationRowModel,
-    onSortingChange: setSorting,
+    onSortingChange: setSortingMemo,
     getSortedRowModel: sortedRowModel,
-    onColumnFiltersChange: setColumnFilters,
+    onColumnFiltersChange: setColumnFiltersMemo,
     getFilteredRowModel: filteredRowModel,
-    onColumnVisibilityChange: setColumnVisibility,
-    onRowSelectionChange: setRowSelection,
+    onColumnVisibilityChange: setColumnVisibilityMemo,
+    onRowSelectionChange: setRowSelectionMemo,
     state: {
       sorting,
       columnFilters,
@@ -413,10 +431,14 @@ export function DataTable<TData, TValue>({
                     const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
                     const isSelectColumn = header.column.id === 'select';
                     return (
-                      <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px]" : ""}`}>
-                        <div className="px-2 py-2">
-                          {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                        </div>
+                      <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-12 p-0" : ""}`}>
+                        {isSelectColumn ? (
+                          flexRender(header.column.columnDef.header, header.getContext())
+                        ) : (
+                          <div className="py-2">
+                            {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                          </div>
+                        )}
                       </TableHead>
                     );
                   })}
@@ -447,13 +469,15 @@ export function DataTable<TData, TValue>({
                   const isSorted = header.column.getIsSorted();
 
                   return (
-                    <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px]" : ""}`}>
+                    <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-12 p-0" : ""}`}>
                       {header.isPlaceholder ? null : (
-                        canSort ? (
+                        isSelectColumn ? (
+                          flexRender(header.column.columnDef.header, header.getContext())
+                        ) : canSort ? (
                           <Button
                             variant="ghost"
                             onClick={() => header.column.toggleSorting(isSorted === "asc")}
-                            className="h-full w-full px-2 py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
+                            className="h-full w-full py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
                           >
                             <span>
                               {typeof header.column.columnDef.header === 'string'
@@ -469,7 +493,7 @@ export function DataTable<TData, TValue>({
                             )}
                           </Button>
                         ) : (
-                          <div className="px-2 py-2">
+                          <div className="py-2">
                             {flexRender(header.column.columnDef.header, header.getContext())}
                           </div>
                         )
@@ -514,7 +538,7 @@ export function DataTable<TData, TValue>({
                     return (
                       <TableCell
                         key={cell.id}
-                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px]" : ""}`}
+                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-12 p-0" : ""}`}
                       >
                         {renderedCell}
                       </TableCell>
