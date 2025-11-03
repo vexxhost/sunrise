@@ -56,7 +56,10 @@ export default function Page() {
     return flavorsMap;
   }, [flavorsData]);
 
-  const columns = createInstanceColumns({ images, flavors, volumeImageIds });
+  const columns = useMemo(
+    () => createInstanceColumns({ images, flavors, volumeImageIds }),
+    [images, flavors, volumeImageIds]
+  );
 
   return (
     <DataTable
