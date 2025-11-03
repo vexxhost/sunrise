@@ -16,6 +16,7 @@ import {
 } from "@tanstack/react-table"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { titleCase } from "title-case"
 import { FilterBuilder, Filter, FilterOperator } from "@/components/FilterBuilder"
 
 declare module '@tanstack/react-table' {
@@ -60,15 +61,7 @@ function getColumnLabel<TData, TValue>(column: any): string {
   }
 
   // Otherwise fall back to column id (formatted)
-  return column.id.replace(/[_-]/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
-}
-
-// Helper function to capitalize resource name
-function formatResourceName(name: string): string {
-  return name
-    .split(/[\s-_]+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
+  return titleCase(column.id.replace(/[_-]/g, ' '));
 }
 
 // ID Cell Component with copy functionality and hover expand
@@ -521,7 +514,7 @@ export function DataTable<TData, TValue>({
       {resourceName && (
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-semibold">
-            {formatResourceName(pluralize(resourceName))}
+            {titleCase(pluralize(resourceName))}
           </h1>
           {refetch && (
             <Button
