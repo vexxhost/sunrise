@@ -4,24 +4,23 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import { apiUrl } from '@/lib/api';
-import ky from 'ky';
 import type { Volume, Snapshot } from '@/lib/cinder';
+import { useApiClient } from './useApiClient';
 
 /**
  * Hook to fetch list of volumes
  */
 export function useVolumes() {
   const { region, projectId } = useKeystone();
+  const client = useApiClient('cinder');
 
   return useQuery({
     queryKey: [region, projectId, 'volumes'],
     queryFn: async () => {
-      if (!region) throw new Error('Region not set');
-      const data = await ky.get(apiUrl(region, 'cinder', 'volumes/detail')).json<{ volumes: Volume[] }>();
+      const data = await client!.get('volumes/detail').json<{ volumes: Volume[] }>();
       return data.volumes;
     },
-    enabled: !!region && !!projectId,
+    enabled: !!client,
   });
 }
 
@@ -30,15 +29,15 @@ export function useVolumes() {
  */
 export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'queryKey' | 'queryFn'>) {
   const { region, projectId } = useKeystone();
+  const client = useApiClient('cinder');
 
   return useQuery({
     queryKey: [region, projectId, 'volume', id],
     queryFn: async () => {
-      if (!region) throw new Error('Region not set');
-      const data = await ky.get(apiUrl(region, 'cinder', `volumes/${id}`)).json<{ volume: Volume }>();
+      const data = await client!.get(`volumes/${id}`).json<{ volume: Volume }>();
       return data.volume;
     },
-    enabled: !!id && !!region && !!projectId,
+    enabled: !!id && !!client,
     ...options,
   });
 }
@@ -48,13 +47,15 @@ export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'q
  */
 export function useSnapshots() {
   const { region, projectId } = useKeystone();
+  const client = useApiClient('cinder');
 
   return useQuery({
     queryKey: [region, projectId, 'snapshots'],
     queryFn: async () => {
-      const data = await ky.get('/api/proxy/cinder/snapshots/detail').json<{ snapshots: Snapshot[] }>();
+      const data = await client!.get('snapshots/detail').json<{ snapshots: Snapshot[] }>();
       return data.snapshots;
     },
+    enabled: !!client,
   });
 }
 
@@ -63,14 +64,15 @@ export function useSnapshots() {
  */
 export function useSnapshot(id: string, options?: Omit<UseQueryOptions<Snapshot>, 'queryKey' | 'queryFn'>) {
   const { region, projectId } = useKeystone();
+  const client = useApiClient('cinder');
 
   return useQuery({
     queryKey: [region, projectId, 'snapshot', id],
     queryFn: async () => {
-      const data = await ky.get(`/api/proxy/cinder/snapshots/${id}`).json<{ snapshot: Snapshot }>();
+      const data = await client!.get(`snapshots/${id}`).json<{ snapshot: Snapshot }>();
       return data.snapshot;
     },
-    enabled: !!id,
+    enabled: !!id && !!client,
     ...options,
   });
 }

@@ -4,22 +4,23 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import { apiUrl } from '@/lib/api';
-import ky from 'ky';
 import type { Image } from '@/lib/glance';
+import { useApiClient } from './useApiClient';
 
 /**
  * Hook to fetch list of images
  */
 export function useImages() {
   const { region, projectId } = useKeystone();
+  const client = useApiClient('glance');
 
   return useQuery({
     queryKey: [region, projectId, 'images'],
     queryFn: async () => {
-      const data = await ky.get(apiUrl(region, 'glance', 'v2/images')).json<{ images: Image[] }>();
+      const data = await client!.get('v2/images').json<{ images: Image[] }>();
       return data.images;
     },
+    enabled: !!client,
   });
 }
 
@@ -28,11 +29,14 @@ export function useImages() {
  */
 export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'queryKey' | 'queryFn'>) {
   const { region, projectId } = useKeystone();
+  const client = useApiClient('glance');
 
   return useQuery({
     queryKey: [region, projectId, 'image', id],
-    queryFn: () => ky.get(apiUrl(region, 'glance', `v2/images/${id}`)).json<Image>(),
-    enabled: !!id,
+    queryFn: async () => {
+      return client!.get(`v2/images/${id}`).json<Image>();
+    },
+    enabled: !!id && !!client,
     ...options,
   });
 }
