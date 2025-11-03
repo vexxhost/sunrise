@@ -63,7 +63,7 @@ export function NavigationMenu() {
   const { region, setRegion, projectId, setProjectId } = useKeystone()
 
   // Fetch regions and projects using TanStack Query
-  const { data: regions = [], isLoading: isLoadingRegions } = useRegions()
+  const { data: regions = [] } = useRegions()
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects()
 
   // Auto-select first region if none selected and regions are loaded
@@ -90,9 +90,6 @@ export function NavigationMenu() {
   const selectedProject = React.useMemo(() => {
     return projects.find(p => p.id === projectId)
   }, [projects, projectId])
-
-  // Display region from context
-  const displayRegion = region || 'Loading...'
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -145,30 +142,30 @@ export function NavigationMenu() {
 
         <_NavigationMenu viewport={isMobile}>
           <NavigationMenuList className="flex items-center gap-2">
-            <NavigationMenuItem>
-              <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
-                <span className="font-mono leading-none">{displayRegion}</span>
-              </NavigationMenuTrigger>
-              {!isLoadingRegions && regions.length > 0 && (
+            {region && regions.length > 0 && (
+              <NavigationMenuItem>
+                <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  <span className="font-mono leading-none">{region}</span>
+                </NavigationMenuTrigger>
                 <NavigationMenuContent>
                   <ul className="p-1 min-w-[120px]">
-                    {regions.map((region) => (
-                      <li key={region.id}>
+                    {regions.map((r) => (
+                      <li key={r.id}>
                         <button
-                          onClick={() => setRegion(region.id)}
+                          onClick={() => setRegion(r.id)}
                           className={`w-full text-left px-3 py-2 text-xs font-mono rounded-md hover:bg-accent transition-colors whitespace-nowrap ${
-                            displayRegion === region.id ? 'bg-accent font-semibold' : ''
+                            region === r.id ? 'bg-accent font-semibold' : ''
                           }`}
                         >
-                          {region.id}
+                          {r.id}
                         </button>
                       </li>
                     ))}
                   </ul>
                 </NavigationMenuContent>
-              )}
-            </NavigationMenuItem>
+              </NavigationMenuItem>
+            )}
 
             {selectedProject && projects.length > 0 && (
               <>
