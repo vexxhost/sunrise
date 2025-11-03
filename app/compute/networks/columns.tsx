@@ -41,7 +41,7 @@ export const columns: ColumnDef<Network>[] = [
       header: "Shared",
       cell: ({ row }: { row: { original: Network } }) => {
         return (
-          <Badge variant={row.original.shared ? "success" : "error"}>
+          <Badge variant={row.original.shared ? "secondary" : "destructive"}>
             {row.original.shared ? "Yes" : "No"}
           </Badge>
         );
@@ -52,7 +52,7 @@ export const columns: ColumnDef<Network>[] = [
       header: "external",
       cell: ({ row }: { row: { original: Network } }) => {
         return (
-          <Badge variant={row.original["router:external"] ? "success" : "error"}>
+          <Badge variant={row.original["router:external"] ? "secondary" : "destructive"}>
           {row.original["router:external"] ? "Yes" : "No"}
         </Badge>        );
       }
@@ -63,7 +63,7 @@ export const columns: ColumnDef<Network>[] = [
       header: "Status",
       cell: ({ row }: { row: { original: Network } }) => {
         return (
-          <Badge variant={row.original.status === "ACTIVE" ? "success" : "error"}>
+          <Badge variant={row.original.status === "ACTIVE" ? "secondary" : "destructive"}>
             {titleCase(row.original.status)}
           </Badge>
         );
@@ -74,7 +74,7 @@ export const columns: ColumnDef<Network>[] = [
       header: "Admin State",
       cell: ({ row }: { row: { original: Network } }) => {
         return (
-          <Badge variant={row.original.admin_state_up ? "success" : "error"}>
+          <Badge variant={row.original.admin_state_up ? "secondary" : "destructive"}>
             {row.original.admin_state_up ? "Up" : "Down"}
           </Badge>
         );

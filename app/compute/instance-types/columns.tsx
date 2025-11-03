@@ -16,7 +16,7 @@ export const columns: ColumnDef<Flavor>[] = [
     },
     {
       accessorKey: "vcpus",
-      header: "VCPUs",
+      header: "vCPUs",
       cell: ({ row }: { row: { original: Flavor } }) => row.original.vcpus
     },
     {
@@ -56,7 +56,7 @@ export const columns: ColumnDef<Flavor>[] = [
       cell: ({ row }: { row: { original: Flavor } }) => {
         const isPublic = row.original["os-flavor-access:is_public"];
         return (
-          <Badge className={isPublic ? "bg-green-500 hover:bg-green-600" : "bg-gray-500 hover:bg-gray-600"}>
+          <Badge variant={isPublic ? "secondary" : "outline"}>
             {isPublic ? "Yes" : "No"}
           </Badge>
         );
@@ -68,7 +68,7 @@ export const columns: ColumnDef<Flavor>[] = [
       cell: ({ row }: { row: { original: Flavor } }) => {
         const isDisabled = row.original["OS-FLV-DISABLED:disabled"];
         return (
-          <Badge className={isDisabled ? "bg-red-500 hover:bg-red-600" : "bg-green-500 hover:bg-green-600"}>
+          <Badge variant={isDisabled ? "destructive" : "secondary"}>
             {isDisabled ? "Yes" : "No"}
           </Badge>
         );

@@ -38,29 +38,27 @@ export const columns: ColumnDef<Snapshot>[] = [
         header: "Status",
         cell: ({ row }: { row: { original: Snapshot } }) => {
           const status = titleCase(row.original.status);
-          let badgeStyle;
+          let variant: "default" | "secondary" | "destructive" | "outline";
 
-          // Determine the badge style based on the status value
+          // Determine the badge variant based on the status value
           switch (status) {
             case "Available":
-              badgeStyle = "w-22 bg-green-500 hover:bg-green-600 cursor-not-allowed opacity-75";
+              variant = "secondary";
               break;
             case "Creating":
-              badgeStyle = "w-22 bg-blue-500 hover:bg-blue-600 cursor-not-allowed opacity-75";
+              variant = "default";
               break;
             case "Deleting":
-              badgeStyle = "w-22 bg-red-500 hover:bg-red-600 cursor-not-allowed opacity-75";
-              break;
             case "Error":
-              badgeStyle = "w-22 bg-red-700 hover:bg-red-800 cursor-not-allowed opacity-75";
+              variant = "destructive";
               break;
             default:
-              badgeStyle = "w-22 bg-gray-500 hover:bg-gray-600 cursor-not-allowed opacity-75";
+              variant = "outline";
               break;
           }
 
           return (
-            <Badge className= {badgeStyle} >
+            <Badge variant={variant}>
               {status}
             </Badge>
           );

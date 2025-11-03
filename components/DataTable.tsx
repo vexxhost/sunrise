@@ -507,8 +507,8 @@ export function DataTable<TData, TValue>({
                 }}
               >
                 <div className="flex gap-8 py-6">
-                  <div className="space-y-4 flex-shrink-0 w-48">
-                    <Label className="text-base font-semibold">Page size</Label>
+                  <div className="flex-shrink-0 w-48">
+                    <Label className="text-base font-semibold block mb-4">Page size</Label>
                     <RadioGroup
                       value={tempPageSize}
                       onValueChange={setTempPageSize}
@@ -516,34 +516,32 @@ export function DataTable<TData, TValue>({
                     >
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="10" id="r1" />
-                        <Label htmlFor="r1" className="font-normal cursor-pointer">10</Label>
+                        <Label htmlFor="r1" className="font-normal cursor-pointer">
+                          {resourceName ? `10 ${pluralize(resourceName)}` : '10'}
+                        </Label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="20" id="r2" />
-                        <Label htmlFor="r2" className="font-normal cursor-pointer">20</Label>
+                        <RadioGroupItem value="25" id="r2" />
+                        <Label htmlFor="r2" className="font-normal cursor-pointer">
+                          {resourceName ? `25 ${pluralize(resourceName)}` : '25'}
+                        </Label>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="30" id="r3" />
-                        <Label htmlFor="r3" className="font-normal cursor-pointer">30</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="50" id="r4" />
-                        <Label htmlFor="r4" className="font-normal cursor-pointer">50</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="100" id="r5" />
-                        <Label htmlFor="r5" className="font-normal cursor-pointer">100</Label>
+                        <RadioGroupItem value="50" id="r3" />
+                        <Label htmlFor="r3" className="font-normal cursor-pointer">
+                          {resourceName ? `50 ${pluralize(resourceName)}` : '50'}
+                        </Label>
                       </div>
                     </RadioGroup>
                   </div>
 
-                  <div className="space-y-4 flex-1 min-w-0">
-                    <Label className="text-base font-semibold">Visible columns</Label>
+                  <div className="flex-1 min-w-0">
+                    <Label className="text-base font-semibold block mb-4">Visible columns</Label>
                     <Input
                       placeholder="Search columns..."
                       value={columnSearch}
                       onChange={(e) => setColumnSearch(e.target.value)}
-                      className="mb-3"
+                      className="mb-3 h-8 text-sm"
                     />
                     <div className="flex flex-col gap-y-3 max-h-[300px] overflow-y-auto pr-2">
                       {table.getAllColumns()

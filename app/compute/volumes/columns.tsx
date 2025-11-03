@@ -30,27 +30,26 @@ export const columns: ColumnDef<Volume>[] = [
         header: "Status",
         cell: ({ row }: { row: { original: Volume } }) => {
           const status = titleCase(row.original.status);
-          let badgeStyle;
-          let label;
+          let variant: "default" | "secondary" | "destructive" | "outline";
 
-          // Determine the button style and label based on the status value
+          // Determine the badge variant based on the status value
           switch (status) {
             case "In Use":
-              badgeStyle = "w-22 bg-green-500 hover:bg-green-600 cursor-not-allowed opacity-75";
+              variant = "secondary";
               break;
             case "Deleting":
-              badgeStyle = "w-22 bg-red-500 hover:bg-red-600 cursor-not-allowed opacity-75";
+              variant = "destructive";
               break;
             case "Available":
-              badgeStyle = "w-22 bg-blue-500 hover:bg-blue-600 cursor";
+              variant = "default";
               break;
-            default: // Default case to handle any other possible values for the status property
-            badgeStyle = "w-22 bg-gray-500 hover:bg-gray-600 cursor-not-allowed opacity-75";
+            default:
+              variant = "outline";
               break;
           }
 
           return (
-            <Badge className= {badgeStyle} >
+            <Badge variant={variant}>
               {status}
             </Badge>
           );
