@@ -17,6 +17,7 @@ import {
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { titleCase } from "title-case"
+import { formatDistanceToNow } from 'date-fns'
 import { FilterBuilder, Filter, FilterOperator } from "@/components/FilterBuilder"
 
 declare module '@tanstack/react-table' {
@@ -249,24 +250,31 @@ export function DataTable<TData, TValue>({
     {
       id: "select",
       header: ({ table }) => (
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="Select all"
-        />
+        <div className="flex items-center justify-center">
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && "indeterminate")
+            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Select all"
+          />
+        </div>
       ),
       cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="Select row"
-        />
+        <div className="flex items-center justify-center">
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+          />
+        </div>
       ),
       enableSorting: false,
       enableHiding: false,
+      size: 40,
+      minSize: 40,
+      maxSize: 40,
     } as ColumnDef<TData, TValue>,
     ...columns,
   ], [columns])
@@ -355,15 +363,21 @@ export function DataTable<TData, TValue>({
     })
   }, [data, filters, columnsWithCheckbox])
 
+  // Memoize table model functions to prevent recreating on every render
+  const coreRowModel = React.useMemo(() => getCoreRowModel(), []);
+  const paginationRowModel = React.useMemo(() => getPaginationRowModel(), []);
+  const sortedRowModel = React.useMemo(() => getSortedRowModel(), []);
+  const filteredRowModel = React.useMemo(() => getFilteredRowModel(), []);
+
   const table = useReactTable({
     data: filteredData,
     columns: columnsWithCheckbox,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    getCoreRowModel: coreRowModel,
+    getPaginationRowModel: paginationRowModel,
     onSortingChange: setSorting,
-    getSortedRowModel: getSortedRowModel(),
+    getSortedRowModel: sortedRowModel,
     onColumnFiltersChange: setColumnFilters,
-    getFilteredRowModel: getFilteredRowModel(),
+    getFilteredRowModel: filteredRowModel,
     onColumnVisibilityChange: setColumnVisibility,
     onRowSelectionChange: setRowSelection,
     state: {
@@ -397,8 +411,9 @@ export function DataTable<TData, TValue>({
                 <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
                   {headerGroup.headers.map((header) => {
                     const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
+                    const isSelectColumn = header.column.id === 'select';
                     return (
-                      <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""}`}>
+                      <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px]" : ""}`}>
                         <div className="px-2 py-2">
                           {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                         </div>
@@ -427,11 +442,12 @@ export function DataTable<TData, TValue>({
               <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
                   const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
+                  const isSelectColumn = header.column.id === 'select';
                   const canSort = header.column.getCanSort();
                   const isSorted = header.column.getIsSorted();
 
                   return (
-                    <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""}`}>
+                    <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px]" : ""}`}>
                       {header.isPlaceholder ? null : (
                         canSort ? (
                           <Button
@@ -475,19 +491,32 @@ export function DataTable<TData, TValue>({
                 >
                   {row.getVisibleCells().map((cell) => {
                     const isIDColumn = typeof cell.column.columnDef.header === 'string' && cell.column.columnDef.header === 'ID';
+                    const isSelectColumn = cell.column.id === 'select';
                     const isMonospace = cell.column.columnDef.meta?.monospace || isIDColumn;
                     const cellValue = cell.getValue();
+                    const fieldType = cell.column.columnDef.meta?.fieldType;
+
+                    // Auto-format date fields if it's a date type and has a plain string value
+                    let renderedCell;
+                    if (isIDColumn && typeof cellValue === 'string') {
+                      renderedCell = <IDCell value={cellValue} isSelected={row.getIsSelected()} linkPath={pathname} />;
+                    } else if (fieldType === 'date' && typeof cellValue === 'string') {
+                      // Automatically format date fields using date-fns
+                      try {
+                        renderedCell = formatDistanceToNow(new Date(cellValue), { addSuffix: true });
+                      } catch {
+                        renderedCell = cellValue;
+                      }
+                    } else {
+                      renderedCell = flexRender(cell.column.columnDef.cell, cell.getContext());
+                    }
 
                     return (
                       <TableCell
                         key={cell.id}
-                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""}`}
+                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px]" : ""}`}
                       >
-                        {isIDColumn && typeof cellValue === 'string' ? (
-                          <IDCell value={cellValue} isSelected={row.getIsSelected()} linkPath={pathname} />
-                        ) : (
-                          flexRender(cell.column.columnDef.cell, cell.getContext())
-                        )}
+                        {renderedCell}
                       </TableCell>
                     );
                   })}
