@@ -25,8 +25,14 @@ export function KeystoneProvider({
   const [region, setRegion] = useState<Region | null>(null);
   const [project, setProject] = useState<Project | null>(null);
 
+  // Memoize context value to prevent unnecessary re-renders
+  const value = React.useMemo(
+    () => ({ region, setRegion, project, setProject }),
+    [region, project]
+  );
+
   return (
-    <KeystoneContext.Provider value={{ region, setRegion, project, setProject }}>
+    <KeystoneContext.Provider value={value}>
       {children}
     </KeystoneContext.Provider>
   );
