@@ -134,7 +134,18 @@ export function FilterBuilder<TData>({
         values.add(String(value))
       }
     })
-    return Array.from(values).sort()
+
+    const valuesArray = Array.from(values)
+
+    // Sort based on field type
+    if (fieldType === 'number') {
+      return valuesArray.sort((a, b) => Number(a) - Number(b))
+    } else if (fieldType === 'date') {
+      return valuesArray.sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+    } else {
+      // String sorting (case-insensitive)
+      return valuesArray.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    }
   }, [selectedColumn, data])
 
   const addFilter = () => {
@@ -212,6 +223,20 @@ export function FilterBuilder<TData>({
   React.useEffect(() => {
     setHighlightedIndex(-1)
   }, [builderStep])
+
+  // Refocus the input when step changes
+  React.useEffect(() => {
+    if (open) {
+      // Wait for the Command component to remount, then focus the input
+      const timer = setTimeout(() => {
+        const input = document.querySelector('[cmdk-input]') as HTMLInputElement
+        if (input) {
+          input.focus()
+        }
+      }, 0)
+      return () => clearTimeout(timer)
+    }
+  }, [builderStep, open])
 
   // Clamp highlighted index when list changes
   React.useEffect(() => {
@@ -334,7 +359,7 @@ export function FilterBuilder<TData>({
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[400px] p-0" align="start">
-            <Command>
+            <Command key={builderStep} shouldFilter={false}>
               {builderStep === "field" && (
                 <>
                   <CommandInput placeholder="Search fields..." />
@@ -381,25 +406,56 @@ export function FilterBuilder<TData>({
                   />
                   <CommandList>
                     <CommandGroup heading={`${getColumnLabel(selectedColumn)} ${getOperatorLabel(selectedOperator)}`}>
-                      {columnValues.length > 0 ? (
-                        columnValues
-                          .filter((val) =>
-                            val.toLowerCase().includes(valueInput.toLowerCase())
-                          )
-                          .slice(0, 10)
-                          .map((value) => (
-                            <CommandItem
-                              key={value}
-                              onSelect={() => {
-                                setValueInput(value)
-                                setTimeout(() => addFilter(), 100)
-                              }}
-                            >
-                              {value}
-                            </CommandItem>
-                          ))
-                      ) : (
-                        <CommandEmpty>Type to add "{valueInput}"</CommandEmpty>
+                      {valueInput.trim() && (() => {
+                        const filteredValues = columnValues.filter((val) =>
+                          val.toLowerCase().includes(valueInput.toLowerCase())
+                        )
+                        const hasExactMatch = filteredValues.some(
+                          (val) => val.toLowerCase() === valueInput.toLowerCase()
+                        )
+
+                        return (
+                          <>
+                            {!hasExactMatch && (
+                              <CommandItem
+                                key="__custom__"
+                                onSelect={() => {
+                                  setTimeout(() => addFilter(), 100)
+                                }}
+                                className="text-primary"
+                              >
+                                Use "{valueInput}"
+                              </CommandItem>
+                            )}
+                            {filteredValues.slice(0, 10).map((value) => (
+                              <CommandItem
+                                key={value}
+                                onSelect={() => {
+                                  setValueInput(value)
+                                  setTimeout(() => addFilter(), 100)
+                                }}
+                              >
+                                {value}
+                              </CommandItem>
+                            ))}
+                          </>
+                        )
+                      })()}
+                      {!valueInput.trim() && columnValues.length > 0 && (
+                        columnValues.slice(0, 10).map((value) => (
+                          <CommandItem
+                            key={value}
+                            onSelect={() => {
+                              setValueInput(value)
+                              setTimeout(() => addFilter(), 100)
+                            }}
+                          >
+                            {value}
+                          </CommandItem>
+                        ))
+                      )}
+                      {!valueInput.trim() && columnValues.length === 0 && (
+                        <CommandEmpty>Start typing to add a value</CommandEmpty>
                       )}
                     </CommandGroup>
                   </CommandList>
