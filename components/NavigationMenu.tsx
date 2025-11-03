@@ -9,8 +9,8 @@ import { listRegionsClient, type Region as KeystoneRegion } from "@/lib/keystone
 import type { Project } from "@/lib/keystone"
 import { useRegion } from "@/contexts/RegionContext"
 import { useQuery } from "@tanstack/react-query"
+import { useMediaQuery } from "usehooks-ts"
 
-// import { useIsMobile } from "@/hooks/use-mobile"
 import {
   NavigationMenu as _NavigationMenu,
   NavigationMenuContent,
@@ -72,7 +72,7 @@ export function NavigationMenu({
   userName?: string
 }) {
   const router = useRouter()
-  const isMobile = false //useIsMobile()
+  const isMobile = useMediaQuery("(max-width: 767px)")
   const { region: contextRegion, setRegion } = useRegion()
 
   // Display region from context or current region from props
