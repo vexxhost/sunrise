@@ -7,7 +7,7 @@ import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Lay
 import type { Project } from "@/lib/keystone"
 import { useKeystone } from "@/contexts/KeystoneContext"
 import { useMediaQuery } from "usehooks-ts"
-import { useRegions, useProjects, type Region as KeystoneRegion } from "@/hooks/queries"
+import { useRegions, useProjects, useProjectToken, type Region as KeystoneRegion } from "@/hooks/queries"
 
 import {
   NavigationMenu as _NavigationMenu,
@@ -73,6 +73,9 @@ export function NavigationMenu({
   const { data: regions = [], isLoading: isLoadingRegions } = useRegions()
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects()
 
+  // Fetch project token - this automatically updates when projectId changes
+  useProjectToken()
+
   // Derive selected project from projects list
   const selectedProject = React.useMemo(() => {
     return projects.find(p => p.id === projectId)
@@ -83,22 +86,10 @@ export function NavigationMenu({
     setRegion(region.id);
   }
 
-  const handleProjectChange = async (project: Project) => {
-    // Optimistically update UI immediately
+  const handleProjectChange = (project: Project) => {
+    // Update projectId in context - useProjectToken will automatically fetch new token
+    // and TanStack Query will refetch all project-scoped queries
     setProjectId(project.id);
-
-    // Update server-side session and get new project-scoped token
-    await fetch("/auth/change-project", {
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      body: JSON.stringify({ projectId: project.id }),
-    });
-
-    // Reload to refresh with new token
-    window.location.reload();
   }
 
   return (
