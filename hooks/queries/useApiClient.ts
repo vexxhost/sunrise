@@ -3,8 +3,8 @@
  */
 
 import { useMemo } from 'react';
+import ky from 'ky';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import { apiClient } from '@/lib/api';
 import { useProjectToken } from './useProjectToken';
 
 /**
@@ -28,6 +28,12 @@ export function useApiClient(service: string) {
 
   return useMemo(() => {
     if (!region || !tokenData?.token) return null;
-    return apiClient(region, service, tokenData.token);
+
+    return ky.create({
+      prefixUrl: `/api/proxy/${region}/${service}`,
+      headers: {
+        'X-Auth-Token': tokenData.token,
+      },
+    });
   }, [region, service, tokenData?.token]);
 }
