@@ -1,4 +1,4 @@
-import { formattedTimeSinceDate } from "@/lib/isoDateUtils";
+import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Server } from "@/lib/nova";
 import { getSession } from "@/lib/session";
 
@@ -44,7 +44,7 @@ export async function InstanceInfo({ server }: { server: Server }) {
       <div className="flex flex-row  ml-2 pl-2 text-xs">
         <div className="basis-1/4 font-bold text-m">Age:</div>
         <div className="basis-3/4">
-          {formattedTimeSinceDate(server.created)}
+          {formatDistanceToNow(parseISO(server.created))}
         </div>
       </div>
     </>

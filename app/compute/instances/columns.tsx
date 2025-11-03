@@ -7,7 +7,7 @@ import { Server, Flavor } from "@/lib/nova";
 import { Image } from "@/lib/glance";
 import { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal, ArrowUpDown } from "lucide-react";
-import { getRelativeTimeString } from '@/lib/date';
+import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from "next/navigation";
 
 const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string }[] } }) => {
@@ -129,7 +129,7 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
           </Button>
         )
       },
-      cell: ({ row }) => getRelativeTimeString(Date.parse(row.getValue('OS-SRV-USG:launched_at')), 'en-US')
+      cell: ({ row }) => formatDistanceToNow(Date.parse(row.getValue('OS-SRV-USG:launched_at')), { addSuffix: true })
     },
     {
       accessorKey: "actions",
