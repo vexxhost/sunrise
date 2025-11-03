@@ -359,7 +359,7 @@ export function FilterBuilder<TData>({
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[400px] p-0" align="start">
-            <Command key={builderStep} shouldFilter={false}>
+            <Command key={builderStep}>
               {builderStep === "field" && (
                 <>
                   <CommandInput placeholder="Search fields..." />
@@ -419,6 +419,7 @@ export function FilterBuilder<TData>({
                             {!hasExactMatch && (
                               <CommandItem
                                 key="__custom__"
+                                value={valueInput}
                                 onSelect={() => {
                                   setTimeout(() => addFilter(), 100)
                                 }}
