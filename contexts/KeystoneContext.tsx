@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useMemo } from 'react';
 import type { Project, Region } from '@/types/openstack';
 import { useRegions } from '@/hooks/queries/useRegions';
 import { useProjects } from '@/hooks/queries/useProjects';
@@ -37,17 +37,20 @@ export function KeystoneProvider({
   const currentRegion = region ?? regions[0] ?? null;
   const currentProject = project ?? projects[0] ?? null;
 
+  const value = useMemo(
+    () => ({
+      region: currentRegion,
+      setRegion,
+      project: currentProject,
+      setProject,
+      regions,
+      projects,
+    }),
+    [currentRegion, currentProject, regions, projects]
+  );
+
   return (
-    <KeystoneContext.Provider
-      value={{
-        region: currentRegion,
-        setRegion,
-        project: currentProject,
-        setProject,
-        regions,
-        projects,
-      }}
-    >
+    <KeystoneContext.Provider value={value}>
       {children}
     </KeystoneContext.Provider>
   );
