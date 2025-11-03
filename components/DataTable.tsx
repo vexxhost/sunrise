@@ -14,6 +14,8 @@ import {
   RowData,
   RowSelectionState,
 } from "@tanstack/react-table"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
@@ -67,49 +69,51 @@ function formatResourceName(name: string): string {
     .join(' ');
 }
 
-// ID Cell Component with copy functionality and tooltip
-function IDCell({ value, isSelected }: { value: string; isSelected: boolean }) {
+// ID Cell Component with copy functionality and hover expand
+function IDCell({ value, isSelected, linkPath }: { value: string; isSelected: boolean; linkPath?: string }) {
   const [copied, setCopied] = React.useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     await navigator.clipboard.writeText(value);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const content = (
+    <div className="relative w-[100px] flex-shrink-0 group/id">
+      <div className="absolute left-0 top-0 w-full overflow-hidden group-hover/id:left-[-9px] group-hover/id:top-[-5px] group-hover/id:z-50 group-hover/id:w-auto group-hover/id:px-2 group-hover/id:py-1 group-hover/id:bg-black group-hover/id:text-white group-hover/id:border group-hover/id:border-border group-hover/id:rounded-md group-hover/id:overflow-visible group-hover/id:underline">
+        <span className="font-mono text-sm tracking-tighter block whitespace-nowrap relative z-10">
+          {value}
+        </span>
+      </div>
+      {/* Gradient fade - visible when not hovering */}
+      <div className={`absolute inset-y-0 right-0 w-12 pointer-events-none opacity-100 group-hover/id:opacity-0 z-20 ${
+        isSelected
+          ? 'bg-gradient-to-l from-muted to-transparent'
+          : 'bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50'
+      }`} />
+      {/* Invisible spacer to maintain height */}
+      <span className="font-mono text-sm tracking-tighter block whitespace-nowrap invisible">
+        {value.substring(0, 10)}
+      </span>
+    </div>
+  );
+
   return (
     <div className="flex items-center gap-1 group">
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="relative w-[100px] overflow-hidden">
-              <span className="font-mono text-sm tracking-tighter">
-                {value}
-              </span>
-              {/* Gradient fade that adapts to background - selected state uses from-muted, hover uses from-muted/50, normal uses from-background */}
-              <div className={`absolute inset-y-0 right-0 w-12 pointer-events-none ${
-                isSelected
-                  ? 'bg-gradient-to-l from-muted to-transparent'
-                  : 'bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50'
-              }`} />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent
-            side="top"
-            align="start"
-            className="font-mono text-sm px-2 py-1 max-w-none rounded-md bg-black text-white border border-border tracking-tighter -ml-[10px]"
-            sideOffset={-24}
-            hideArrow
-          >
-            {value}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      {linkPath ? (
+        <Link href={`${linkPath}/${value}`} onClick={(e) => e.stopPropagation()}>
+          {content}
+        </Link>
+      ) : (
+        content
+      )}
       <Button
         variant="ghost"
         size="icon"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity duration-200 shrink-0 cursor-pointer"
+        className="h-6 w-6 opacity-0 group-hover:opacity-100 group-hover/id:opacity-0 transition-opacity duration-200 shrink-0 cursor-pointer"
         onClick={handleCopy}
       >
         {copied ? (
@@ -140,12 +144,6 @@ import { TableEmpty } from "./TableEmpty"
 import { Settings, RefreshCw, ChevronDown, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import pluralize from "pluralize"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 import {
   Dialog,
   DialogContent,
@@ -235,6 +233,7 @@ export function DataTable<TData, TValue>({
   emptyIcon,
 }: DataTableProps<TData, TValue>) {
 
+  const pathname = usePathname()
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [searchOption, setSearchOption] = useState(Object.keys(searchOptions)[0] || 'name')
@@ -665,7 +664,7 @@ export function DataTable<TData, TValue>({
                         className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""}`}
                       >
                         {isIDColumn && typeof cellValue === 'string' ? (
-                          <IDCell value={cellValue} isSelected={row.getIsSelected()} />
+                          <IDCell value={cellValue} isSelected={row.getIsSelected()} linkPath={pathname} />
                         ) : (
                           flexRender(cell.column.columnDef.cell, cell.getContext())
                         )}
