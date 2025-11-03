@@ -3,7 +3,7 @@
  */
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useRegion } from '@/contexts/RegionContext';
+import { useKeystone } from '@/contexts/KeystoneContext';
 import ky from 'ky';
 import type { Server, Flavor, InterfaceAttachment } from '@/lib/nova';
 
@@ -11,7 +11,7 @@ import type { Server, Flavor, InterfaceAttachment } from '@/lib/nova';
  * Hook to fetch list of servers
  */
 export function useServers() {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'servers'],
@@ -26,7 +26,7 @@ export function useServers() {
  * Hook to fetch a single server by ID
  */
 export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'server', id],
@@ -43,7 +43,7 @@ export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'q
  * Hook to fetch list of flavors
  */
 export function useFlavors() {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'flavors'],
@@ -58,7 +58,7 @@ export function useFlavors() {
  * Hook to fetch a single flavor by ID
  */
 export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'flavor', id],
@@ -75,7 +75,7 @@ export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'q
  * Hook to fetch server interface attachments
  */
 export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOptions<InterfaceAttachment[]>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'server-interfaces', serverId],

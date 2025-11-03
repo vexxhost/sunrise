@@ -3,7 +3,7 @@
  */
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useRegion } from '@/contexts/RegionContext';
+import { useKeystone } from '@/contexts/KeystoneContext';
 import ky from 'ky';
 import type { Volume, Snapshot } from '@/lib/cinder';
 
@@ -11,7 +11,7 @@ import type { Volume, Snapshot } from '@/lib/cinder';
  * Hook to fetch list of volumes
  */
 export function useVolumes() {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'volumes'],
@@ -26,7 +26,7 @@ export function useVolumes() {
  * Hook to fetch a single volume by ID
  */
 export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'volume', id],
@@ -43,7 +43,7 @@ export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'q
  * Hook to fetch list of snapshots
  */
 export function useSnapshots() {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'snapshots'],
@@ -58,7 +58,7 @@ export function useSnapshots() {
  * Hook to fetch a single snapshot by ID
  */
 export function useSnapshot(id: string, options?: Omit<UseQueryOptions<Snapshot>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'snapshot', id],

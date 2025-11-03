@@ -3,7 +3,7 @@
  */
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useRegion } from '@/contexts/RegionContext';
+import { useKeystone } from '@/contexts/KeystoneContext';
 import ky from 'ky';
 import type { Network, Port, SecurityGroup } from '@/lib/network';
 
@@ -11,7 +11,7 @@ import type { Network, Port, SecurityGroup } from '@/lib/network';
  * Hook to fetch list of networks
  */
 export function useNetworks() {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'networks'],
@@ -26,7 +26,7 @@ export function useNetworks() {
  * Hook to fetch a single network by ID
  */
 export function useNetwork(id: string, options?: Omit<UseQueryOptions<Network>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'network', id],
@@ -43,7 +43,7 @@ export function useNetwork(id: string, options?: Omit<UseQueryOptions<Network>, 
  * Hook to fetch list of ports
  */
 export function usePorts() {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'ports'],
@@ -58,7 +58,7 @@ export function usePorts() {
  * Hook to fetch a single port by ID
  */
 export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'port', id],
@@ -75,7 +75,7 @@ export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'query
  * Hook to fetch list of security groups
  */
 export function useSecurityGroups() {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'security-groups'],
@@ -90,7 +90,7 @@ export function useSecurityGroups() {
  * Hook to fetch a single security group by ID
  */
 export function useSecurityGroup(id: string, options?: Omit<UseQueryOptions<SecurityGroup>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'security-group', id],

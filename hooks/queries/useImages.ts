@@ -3,7 +3,7 @@
  */
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useRegion } from '@/contexts/RegionContext';
+import { useKeystone } from '@/contexts/KeystoneContext';
 import ky from 'ky';
 import type { Image } from '@/lib/glance';
 
@@ -11,7 +11,7 @@ import type { Image } from '@/lib/glance';
  * Hook to fetch list of images
  */
 export function useImages() {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'images'],
@@ -26,7 +26,7 @@ export function useImages() {
  * Hook to fetch a single image by ID
  */
 export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'queryKey' | 'queryFn'>) {
-  const { region } = useRegion();
+  const { region } = useKeystone();
 
   return useQuery({
     queryKey: [region, 'image', id],

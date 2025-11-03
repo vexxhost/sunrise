@@ -6,7 +6,7 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Layers, FolderKanban, User, LogOut } from "lucide-react"
 import type { Project } from "@/lib/keystone"
-import { useRegion } from "@/contexts/RegionContext"
+import { useKeystone } from "@/contexts/KeystoneContext"
 import { useMediaQuery } from "usehooks-ts"
 import { useRegions, useProjects, type Region as KeystoneRegion } from "@/hooks/queries"
 
@@ -60,21 +60,16 @@ const services: { title: string; href: string; description: string; icon: React.
 ]
 
 export function NavigationMenu({
-  initialProjectId,
-  currentRegion,
   userName
 }: {
-  initialProjectId?: string,
-  currentRegion?: string,
   userName?: string
 }) {
   const router = useRouter()
   const isMobile = useMediaQuery("(max-width: 767px)")
-  const { region: contextRegion, setRegion } = useRegion()
-  const [selectedProjectId, setSelectedProjectId] = React.useState<string | undefined>(initialProjectId)
+  const { region, setRegion, projectId, setProjectId } = useKeystone()
 
-  // Display region from context or current region from props
-  const displayRegion = contextRegion || currentRegion || 'Loading...'
+  // Display region from context
+  const displayRegion = region || 'Loading...'
 
   // Fetch regions and projects using TanStack Query
   const { data: regions = [], isLoading: isLoadingRegions } = useRegions()
@@ -82,8 +77,8 @@ export function NavigationMenu({
 
   // Derive selected project from projects list
   const selectedProject = React.useMemo(() => {
-    return projects.find(p => p.id === selectedProjectId)
-  }, [projects, selectedProjectId])
+    return projects.find(p => p.id === projectId)
+  }, [projects, projectId])
 
   const handleRegionChange = async (region: KeystoneRegion) => {
     try {
@@ -111,7 +106,7 @@ export function NavigationMenu({
 
   const handleProjectChange = async (project: Project) => {
     // Optimistically update UI immediately
-    setSelectedProjectId(project.id);
+    setProjectId(project.id);
 
     // Update server-side session and token
     await fetch("/auth/change-project", {
