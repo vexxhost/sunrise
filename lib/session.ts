@@ -26,7 +26,6 @@ export type TokenData = {
 export type SunriseSession = {
   keystone_unscoped_token?: string;
   keystone_token?: string;
-  projects?: Project[];
   selectedProject?: Project;
   projectToken?: string;
   userName?: string;

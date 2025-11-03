@@ -8,7 +8,7 @@ import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Lay
 import type { Project } from "@/lib/keystone"
 import { useRegion } from "@/contexts/RegionContext"
 import { useMediaQuery } from "usehooks-ts"
-import { useRegions, type Region as KeystoneRegion } from "@/hooks/queries"
+import { useRegions, useProjects, type Region as KeystoneRegion } from "@/hooks/queries"
 
 import {
   NavigationMenu as _NavigationMenu,
@@ -60,12 +60,10 @@ const services: { title: string; href: string; description: string; icon: React.
 ]
 
 export function NavigationMenu({
-  projects = [],
   selectedProject,
   currentRegion,
   userName
 }: {
-  projects?: Project[],
   selectedProject?: Project,
   currentRegion?: string,
   userName?: string
@@ -77,8 +75,9 @@ export function NavigationMenu({
   // Display region from context or current region from props
   const displayRegion = contextRegion || currentRegion || 'Loading...'
 
-  // Fetch regions using TanStack Query
-  const { data: regions = [], isLoading } = useRegions()
+  // Fetch regions and projects using TanStack Query
+  const { data: regions = [], isLoading: isLoadingRegions } = useRegions()
+  const { data: projects = [], isLoading: isLoadingProjects } = useProjects()
 
   const handleRegionChange = async (region: KeystoneRegion) => {
     try {
@@ -172,7 +171,7 @@ export function NavigationMenu({
                 <MapPin className="h-3.5 w-3.5 shrink-0" />
                 <span className="font-mono leading-none">{displayRegion}</span>
               </NavigationMenuTrigger>
-              {!isLoading && regions.length > 0 && (
+              {!isLoadingRegions && regions.length > 0 && (
                 <NavigationMenuContent>
                   <ul className="p-1 min-w-[120px]">
                     {regions.map((region) => (

@@ -1,4 +1,4 @@
-import { getSession, TokenData } from "@/lib/session";
+import { TokenData } from "@/lib/session";
 
 export type Project = {
   id: string;
@@ -31,24 +31,6 @@ export type Region = {
     self: string;
   };
 };
-
-export async function listUserProjects(token?: string): Promise<Project[]> {
-  if (!token) {
-    const session = await getSession();
-    token = session.keystone_unscoped_token!;
-  }
-
-  const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/projects`, {
-    headers: {
-      "X-Auth-Token": token,
-    } as HeadersInit,
-  });
-
-  const json = await response.json();
-  json.projects.sort((a: Project, b: Project) => { return a.name.localeCompare(b.name); });
-
-  return json.projects;
-}
 
 export async function fetchProjectScopedToken(
   token: string,

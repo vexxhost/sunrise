@@ -10,3 +10,4 @@ export * from './useVolumes';
 export * from './useNetworks';
 export * from './useImages';
 export * from './useRegions';
+export * from './useProjects';
