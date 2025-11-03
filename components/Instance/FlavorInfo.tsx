@@ -1,8 +1,15 @@
-import { Flavor, getFlavor, Server } from "@/lib/nova";
+'use client';
+
+import { Server } from "@/lib/nova";
+import { useFlavor } from "@/hooks/queries";
 import bytes from "bytes";
 
-export async function FlavorInfo({ server }: { server: Server }) {
-    const flavor: Flavor = await getFlavor(server.flavor.id);
+export function FlavorInfo({ server }: { server: Server }) {
+    const { data: flavor } = useFlavor(server.flavor.id);
+
+    if (!flavor) {
+        return <div>Loading flavor...</div>;
+    }
 
     return (
         <>

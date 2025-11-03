@@ -1,6 +1,5 @@
 'use client';
-import { getPortById,getPortsByIDs, getPortsByIdsWithNetworkName, Port } from "@/lib/network";
-import { getPortInterfaces,InterfaceAttachment, InterfaceAttachmentsResponse, Server } from "@/lib/nova"
+import { Port } from "@/lib/network";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { MoreHorizontal, Network } from "lucide-react";
