@@ -40,14 +40,14 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <KeystoneProvider>
-            <Providers>
+          <Providers>
+            <KeystoneProvider>
               <NavigationMenu />
               <main>
                 {children}
               </main>
-            </Providers>
-          </KeystoneProvider>
+            </KeystoneProvider>
+          </Providers>
         </ThemeProvider>
       </body>
     </html>
