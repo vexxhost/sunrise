@@ -1,10 +1,5 @@
+'use client';
 
-import {
-  InterfaceAttachment,
-  type Server,
-  getInstance,
-  getPortInterfaces
-} from "@/lib/nova";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VolumeInfo from "@/components/Instance/VolumeInfo";
 import SecurityGroupListByNames from "@/components/Instance/GroupList";
@@ -12,45 +7,60 @@ import { ServerIPAddresses } from "@/components/Instance/IpAddressList";
 import { FlavorInfo } from "@/components/Instance/FlavorInfo";
 import { InstanceInfo } from "@/components/Instance/InstanceInfo";
 import { Interfaces } from "@/components/Instance/Interfaces";
-import { Suspense } from "react";
 import { Loader } from "@/components/Loader";
-import { getPortsByIdsWithNetworkName } from "@/lib/network";
+import { useServer, useServerInterfaces } from "@/hooks/queries";
+import { usePortsWithNetworkNames } from "@/hooks/queries";
+import { useMemo } from "react";
 
 interface Params {
   id: string;
 }
 
-export default async function Instance({ params }: { params: Params }) {
-  const server: Server = await getInstance(params.id);
-  const interfaceAttachments  = await getPortInterfaces(server.id.toString());
-  const ports = interfaceAttachments.map((interfaceAttachment : InterfaceAttachment) => interfaceAttachment.port_id);
-  const networkPorts = await getPortsByIdsWithNetworkName(ports);
+export default function Instance({ params }: { params: Params }) {
+  const { data: server, isLoading: isLoadingServer } = useServer(params.id);
+  const { data: interfaceAttachments, isLoading: isLoadingInterfaces } = useServerInterfaces(params.id);
+
+  const portIds = useMemo(() => {
+    return interfaceAttachments?.map(attachment => attachment.port_id) || [];
+  }, [interfaceAttachments]);
+
+  const { data: networkPorts, isLoading: isLoadingPorts } = usePortsWithNetworkNames(portIds);
+
+  const isLoading = isLoadingServer || isLoadingInterfaces || isLoadingPorts;
+
+  if (isLoading) {
+    return (
+      <div className="p-20 flex justify-center items-center">
+        <Loader />
+      </div>
+    );
+  }
+
+  if (!server) {
+    return <div>Server not found</div>;
+  }
 
   return (
-    <><div key={server.id} className="font-bold text-l mt-4  pb-6"> {server.name} </div>
+    <>
+      <div key={server.id} className="font-bold text-l mt-4 pb-6"> {server.name} </div>
       <Tabs defaultValue="overview" className="max-w-screen-xl">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="interfaces">Interfaces</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="max-w-screen-l">
-
           <div className="max-w-screen-xl mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-xl">
-            <Suspense
-              fallback={ <div className="p-20 flex justify-center items-center">
-                            <Loader />
-                          </div>} >
-              <InstanceInfo server={server} />
-              <FlavorInfo server={server} />
-              <ServerIPAddresses server={server} />
-              <SecurityGroupListByNames server={server} />
-              <VolumeInfo server={server} />
-            </Suspense>
+            <InstanceInfo server={server} />
+            <FlavorInfo server={server} />
+            <ServerIPAddresses server={server} />
+            <SecurityGroupListByNames server={server} />
+            <VolumeInfo server={server} />
           </div>
         </TabsContent>
         <TabsContent value="interfaces">
-          <Interfaces networkPorts={networkPorts} />
+          <Interfaces networkPorts={networkPorts || []} />
         </TabsContent>
-      </Tabs></>
+      </Tabs>
+    </>
   );
 }

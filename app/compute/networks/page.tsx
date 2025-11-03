@@ -1,22 +1,13 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
 import { columns } from "./columns";
 import { DataTable } from "@/components/DataTable";
 import { searchoptions } from "./meta";
-import { network } from "@/lib/client";
 import { Network } from "lucide-react";
-import { useRegion } from "@/contexts/RegionContext";
+import { useNetworks } from "@/hooks/queries";
 
 export default function Page() {
-  const { region } = useRegion();
-
-  const { data, isLoading, isRefetching, refetch } = useQuery({
-    queryKey: ['networks', region],
-    queryFn: async () => {
-      return await network.listNetworks();
-    },
-  });
+  const { data, isLoading, isRefetching, refetch } = useNetworks();
 
   return (
     <DataTable
