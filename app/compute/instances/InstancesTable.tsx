@@ -1,52 +1,27 @@
 'use client';
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { createInstanceColumns } from "./columns";
 import { DataTable } from "@/components/DataTable";
 import { searchOptions } from "./meta";
 import { Volume } from "@/lib/cinder";
 import { Image } from "@/lib/glance";
 import { Flavor } from "@/lib/nova";
-import { nova, cinder, glance } from "@/lib/client";
 import { Server as ServerIcon } from "lucide-react";
-import { useRegion } from "@/contexts/RegionContext";
+import { useServers, useFlavors, useVolumes, useImages } from "@/hooks/queries";
 
 export function InstancesTable() {
-  const { region } = useRegion();
-
   // Fetch servers
-  const { data: serversData, isLoading: isLoadingServers, isRefetching: isRefetchingServers, refetch: refetchServers } = useQuery({
-    queryKey: ['servers', region],
-    queryFn: async () => {
-      const data = await nova.listServers();
-      return data.servers;
-    },
-  });
+  const { data: serversData, isLoading: isLoadingServers, isRefetching: isRefetchingServers, refetch: refetchServers } = useServers();
 
   // Fetch volumes
-  const { data: volumesData } = useQuery({
-    queryKey: ['volumes', region],
-    queryFn: () => cinder.listVolumes(),
-  });
+  const { data: volumesData } = useVolumes();
 
   // Fetch images
-  const { data: imagesData } = useQuery({
-    queryKey: ['images', region],
-    queryFn: async () => {
-      const data = await glance.listImages();
-      return data.images;
-    },
-  });
+  const { data: imagesData } = useImages();
 
   // Fetch flavors
-  const { data: flavorsData } = useQuery({
-    queryKey: ['flavors', region],
-    queryFn: async () => {
-      const data = await nova.listFlavors();
-      return data.flavors;
-    },
-  });
+  const { data: flavorsData } = useFlavors();
 
   // Process volume image IDs
   const volumeImageIds = useMemo(() => {
