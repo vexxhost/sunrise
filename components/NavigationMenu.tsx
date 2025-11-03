@@ -3,7 +3,6 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
 import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Layers, FolderKanban, User, LogOut } from "lucide-react"
 import type { Project } from "@/lib/keystone"
 import { useKeystone } from "@/contexts/KeystoneContext"
@@ -64,7 +63,6 @@ export function NavigationMenu({
 }: {
   userName?: string
 }) {
-  const router = useRouter()
   const isMobile = useMediaQuery("(max-width: 767px)")
   const { region, setRegion, projectId, setProjectId } = useKeystone()
 
@@ -80,35 +78,16 @@ export function NavigationMenu({
     return projects.find(p => p.id === projectId)
   }, [projects, projectId])
 
-  const handleRegionChange = async (region: KeystoneRegion) => {
-    try {
-      // Optimistically update UI immediately
-      setRegion(region.id);
-
-      // Save to session
-      await fetch('/api/change-region', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ regionId: region.id }),
-      });
-
-      // Refresh server-side data for the current page
-      // This revalidates Server Components and fetches new region-specific data
-      router.refresh();
-    } catch (error) {
-      console.error('Failed to change region:', error);
-      // Revert on error
-      if (currentRegion) {
-        setRegion(currentRegion);
-      }
-    }
+  const handleRegionChange = (region: KeystoneRegion) => {
+    // Update region in context - TanStack Query will automatically refetch all queries
+    setRegion(region.id);
   }
 
   const handleProjectChange = async (project: Project) => {
     // Optimistically update UI immediately
     setProjectId(project.id);
 
-    // Update server-side session and token
+    // Update server-side session and get new project-scoped token
     await fetch("/auth/change-project", {
       headers: {
         Accept: "application/json",
