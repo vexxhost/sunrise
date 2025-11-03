@@ -1,10 +1,7 @@
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Server } from "@/lib/nova";
-import { getSession } from "@/lib/session";
 
 export async function InstanceInfo({ server }: { server: Server }) {
-  const session = await getSession();
-
   return (
     <>
       <div className="flex flex-row  ml-2 pl-2 text-xs">
@@ -21,7 +18,7 @@ export async function InstanceInfo({ server }: { server: Server }) {
       </div>
       <div className="flex flex-row  ml-2 pl-2 text-xs">
         <div className="basis-1/4 font-bold text-m">Project ID:</div>
-        <div className="basis-3/4">{session.selectedProject?.id}</div>
+        <div className="basis-3/4">{server.tenant_id}</div>
       </div>
       <div className="flex flex-row  ml-2 pl-2 text-xs">
         <div className="basis-1/4 font-bold text-m">Status:</div>

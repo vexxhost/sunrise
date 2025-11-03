@@ -21,7 +21,6 @@ export async function POST(request: Request) {
   if (selectedProject) {
     const { token: projectToken, data: projectData } = await fetchProjectScopedToken(session.keystone_unscoped_token!, selectedProject);
 
-    session.selectedProject = selectedProject;
     session.projectToken = projectToken;
     session.userName = projectData.user.name;
     await session.save();

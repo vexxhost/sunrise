@@ -46,7 +46,7 @@ export default async function RootLayout({
           <RegionProvider initialRegion={session.selectedRegion}>
             <Providers>
               <NavigationMenu
-                selectedProject={session.selectedProject}
+                initialProjectId={session.selectedProject?.id}
                 currentRegion={session.selectedRegion}
                 userName={session.userName}
               />

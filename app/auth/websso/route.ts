@@ -26,7 +26,6 @@ export async function POST(request: Request) {
     // Get project scoped token for selected project
     const { token: projectToken, data: projectData } = await fetchProjectScopedToken(token as string, selectedProject);
 
-    session.selectedProject = selectedProject;
     session.projectToken = projectToken;
     session.userName = projectData.user.name;
 

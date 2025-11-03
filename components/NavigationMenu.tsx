@@ -60,17 +60,18 @@ const services: { title: string; href: string; description: string; icon: React.
 ]
 
 export function NavigationMenu({
-  selectedProject,
+  initialProjectId,
   currentRegion,
   userName
 }: {
-  selectedProject?: Project,
+  initialProjectId?: string,
   currentRegion?: string,
   userName?: string
 }) {
   const router = useRouter()
   const isMobile = useMediaQuery("(max-width: 767px)")
   const { region: contextRegion, setRegion } = useRegion()
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string | undefined>(initialProjectId)
 
   // Display region from context or current region from props
   const displayRegion = contextRegion || currentRegion || 'Loading...'
@@ -78,6 +79,11 @@ export function NavigationMenu({
   // Fetch regions and projects using TanStack Query
   const { data: regions = [], isLoading: isLoadingRegions } = useRegions()
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects()
+
+  // Derive selected project from projects list
+  const selectedProject = React.useMemo(() => {
+    return projects.find(p => p.id === selectedProjectId)
+  }, [projects, selectedProjectId])
 
   const handleRegionChange = async (region: KeystoneRegion) => {
     try {
@@ -104,7 +110,11 @@ export function NavigationMenu({
   }
 
   const handleProjectChange = async (project: Project) => {
-    const response = await fetch("/auth/change-project", {
+    // Optimistically update UI immediately
+    setSelectedProjectId(project.id);
+
+    // Update server-side session and token
+    await fetch("/auth/change-project", {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
@@ -112,6 +122,8 @@ export function NavigationMenu({
       method: "POST",
       body: JSON.stringify({ projectId: project.id }),
     });
+
+    // Reload to refresh with new token
     window.location.reload();
   }
 
