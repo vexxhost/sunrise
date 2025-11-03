@@ -1,4 +1,8 @@
-import { getServiceEndpoint, getSession } from "@/lib/session";
+/**
+ * Type definitions for Nova (Compute) API
+ * All server-side functions have been moved to hooks/queries/useServers.ts
+ */
+
 import { SecurityGroup } from "./network";
 
 export interface InterfaceAttachment {
@@ -122,87 +126,4 @@ export interface ListFlavorsOptions {
   minDisk?: number;
   minRam?: number;
   is_public?: string;
-}
-// retrieve a list of servers using the nova api with optional query parameters
-export async function listServers(options?: ListServersOptions) {
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("nova", "public");
-  const params = new URLSearchParams(options as {});
-  const computeResponse = await fetch(
-    `${endpoint.url}/servers/detail?${params}`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Auth-Token": session.projectToken,
-      } as HeadersInit,
-    },
-  );
-  const computeData = await computeResponse.json();
-
-  return computeData;
-}
-// retrieve a server by its id
-export async function getInstance(id: string): Promise<Server> {
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("nova", "public");
-  const computeResponse = await fetch(`${endpoint.url}/servers/${id}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Auth-Token": session.projectToken,
-    } as HeadersInit,
-  });
-  const computeData = await computeResponse.json();
-  const server: Server = computeData["server"];
-
-  return server;
-}
-// retrieve a list of flavors
-export async function listFlavors(options?: ListFlavorsOptions) {
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("nova", "public");
-  const computeResponse = await fetch(`${endpoint.url}/flavors/detail`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Auth-Token": session.projectToken,
-    } as HeadersInit,
-  });
-
-  const flavorData = await computeResponse.json();
-
-  return flavorData;
-}
-// retrieve a flavor by its id
-export async function getFlavor(id: string) {
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("nova", "public");
-  const computeResponse = await fetch(`${endpoint.url}/flavors/${id}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Auth-Token": session.projectToken,
-    } as HeadersInit,
-  });
-
-  const flavorData = await computeResponse.json();
-  let flavor: Flavor = flavorData["flavor"];
-
-  return flavor;
-}
-
-export async function getPortInterfaces(id: string){
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("nova", "public");
-  const computeResponse = await fetch(`${endpoint.url}/servers/${id}/os-interface`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Auth-Token": session.projectToken,
-    } as HeadersInit,
-  });
-  const computeData = await computeResponse.json();
-  const interfaceAttachments : InterfaceAttachment[] = computeData["interfaceAttachments"];
-  return interfaceAttachments;
 }

@@ -1,6 +1,9 @@
-import { getSession, getServiceEndpoint } from "@/lib/session";
+/**
+ * Type definitions for Cinder (Block Storage) API
+ * All server-side functions have been moved to hooks/queries/useVolumes.ts
+ */
 
-const statuses: { [key: string]: string } = {
+export const statuses: { [key: string]: string } = {
   creating: "The volume is being created.",
   available: "The volume is ready to attach to an instance.",
   reserved: "The volume is reserved for attaching or shelved.",
@@ -101,56 +104,6 @@ export type Volume = {
   consumes_quota?: boolean;
   count?: number;
 };
-// retrieve a list of volumes
-export async function listVolumes(
-  options?: ListVolumesOptions,
-): Promise<Volume[]> {
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("cinder", "public");
-  const params = new URLSearchParams(options as {});
-
-  const volumesResponse = await fetch(
-    `${endpoint.url}/volumes/detail?${params}`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Auth-Token": session.projectToken,
-      } as HeadersInit,
-    },
-  );
-
-  const volumesData = await volumesResponse.json();
-
-  return volumesData.volumes;
-}
-//retrieve a volume by its id
-export async function getVolume(id: string): Promise<Volume> {
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("cinder", "public");
-  const volumesResponse = await fetch(`${endpoint.url}/volumes/${id}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Auth-Token": session.projectToken,
-    } as HeadersInit,
-  });
-
-  const volumesData = await volumesResponse.json();
-  const volume: Volume = volumesData["volume"];
-
-  return volume;
-}
-//retrieve a list of volumes by their ids
-export async function getVolumes(volumeIDs: string[]): Promise<Volume[]> {
-  const volumeList = [];
-  for (const volumeID of volumeIDs) {
-    const volume = await getVolume(volumeID);
-    volumeList.push(volume);
-  }
-
-  return volumeList;
-}
 
 export interface ListSnapshotsOptions {
   project_id?: string;
@@ -180,45 +133,3 @@ export type Snapshot = {
   "os-extended-snapshot-attributes:progress"?: string;
   count?: number;
 };
-
-// retrieve a list of snapshots
-export async function listSnapshots(
-  options?: ListSnapshotsOptions,
-): Promise<Snapshot[]> {
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("cinder", "public");
-  const params = new URLSearchParams(options as {});
-
-  const snapshotsResponse = await fetch(
-    `${endpoint.url}/snapshots/detail?${params}`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Auth-Token": session.projectToken,
-      } as HeadersInit,
-    },
-  );
-
-  const snapshotsData = await snapshotsResponse.json();
-
-  return snapshotsData.snapshots;
-}
-
-// retrieve a snapshot by its id
-export async function getSnapshot(id: string): Promise<Snapshot> {
-  const session = await getSession();
-  const endpoint = await getServiceEndpoint("cinder", "public");
-  const snapshotsResponse = await fetch(`${endpoint.url}/snapshots/${id}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Auth-Token": session.projectToken,
-    } as HeadersInit,
-  });
-
-  const snapshotsData = await snapshotsResponse.json();
-  const snapshot: Snapshot = snapshotsData["snapshot"];
-
-  return snapshot;
-}
