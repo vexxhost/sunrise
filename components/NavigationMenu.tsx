@@ -7,7 +7,7 @@ import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Lay
 import type { Project } from "@/types/openstack"
 import { useKeystone } from "@/contexts/KeystoneContext"
 import { useMediaQuery } from "usehooks-ts"
-import { useRegions, useProjects, useProjectToken } from "@/hooks/queries"
+import { useProjectToken } from "@/hooks/queries"
 
 import {
   NavigationMenu as _NavigationMenu,
@@ -60,10 +60,7 @@ const services: { title: string; href: string; description: string; icon: React.
 
 export function NavigationMenu() {
   const isMobile = useMediaQuery("(max-width: 767px)")
-  const { region, setRegion, project, setProject } = useKeystone()
-
-  const { data: regions = [] } = useRegions()
-  const { data: projects = [] } = useProjects()
+  const { region, setRegion, project, setProject, regions, projects } = useKeystone()
   const { data: tokenData } = useProjectToken()
 
   return (
