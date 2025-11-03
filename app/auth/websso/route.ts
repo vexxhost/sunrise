@@ -1,6 +1,5 @@
 import { fetchProjectScopedToken } from "@/lib/keystone";
 import { getSession } from "@/lib/session";
-import { cookies } from "next/headers";
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -41,14 +40,6 @@ export async function POST(request: Request) {
         }
       }
     }
-
-    // Set client-accessible cookie for direct API calls
-    (await cookies()).set('sunrise_token', projectToken, {
-      path: '/',
-      sameSite: 'lax',
-      maxAge: 86400, // 24 hours
-      secure: process.env.NODE_ENV === 'production',
-    });
   }
 
   await session.save();
