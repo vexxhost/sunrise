@@ -8,6 +8,7 @@ import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Lay
 import { listRegionsClient, type Region as KeystoneRegion } from "@/lib/keystone-client"
 import type { Project } from "@/lib/keystone"
 import { useRegion } from "@/contexts/RegionContext"
+import { useQuery } from "@tanstack/react-query"
 
 // import { useIsMobile } from "@/hooks/use-mobile"
 import {
@@ -73,26 +74,15 @@ export function NavigationMenu({
   const router = useRouter()
   const isMobile = false //useIsMobile()
   const { region: contextRegion, setRegion } = useRegion()
-  const [regions, setRegions] = React.useState<KeystoneRegion[]>([])
-  const [isLoading, setIsLoading] = React.useState(true)
 
   // Display region from context or current region from props
   const displayRegion = contextRegion || currentRegion || 'Loading...'
 
-  React.useEffect(() => {
-    const fetchRegions = async () => {
-      try {
-        const data = await listRegionsClient()
-        setRegions(data)
-        setIsLoading(false)
-      } catch (error) {
-        console.error('Failed to fetch regions:', error)
-        setIsLoading(false)
-      }
-    }
-
-    fetchRegions()
-  }, [currentRegion])
+  // Fetch regions using TanStack Query
+  const { data: regions = [], isLoading } = useQuery({
+    queryKey: ['regions'],
+    queryFn: listRegionsClient,
+  })
 
   const handleRegionChange = async (region: KeystoneRegion) => {
     try {

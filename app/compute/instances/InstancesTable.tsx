@@ -1,84 +1,95 @@
 'use client';
 
-import { useState, useCallback, useRef } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { createInstanceColumns } from "./columns";
 import { DataTable } from "@/components/DataTable";
 import { searchOptions } from "./meta";
-import { Server, Flavor } from "@/lib/nova";
 import { Volume } from "@/lib/cinder";
 import { Image } from "@/lib/glance";
+import { Flavor } from "@/lib/nova";
 import { nova, cinder, glance } from "@/lib/client";
 import { Server as ServerIcon } from "lucide-react";
 import { useRegion } from "@/contexts/RegionContext";
 
 export function InstancesTable() {
   const { region } = useRegion();
-  const [images, setImages] = useState<{ [key: string]: string }>({});
-  const [flavors, setFlavors] = useState<{ [key: string]: string }>({});
-  const [volumeImageIds, setVolumeImageIds] = useState<{ [key: string]: string }>({});
-  const contextFetched = useRef(false);
-  const previousRegion = useRef(region);
 
-  // Reset context when region changes
-  if (previousRegion.current !== region) {
-    contextFetched.current = false;
-    previousRegion.current = region;
-  }
+  // Fetch servers
+  const { data: serversData, isLoading: isLoadingServers, isRefetching: isRefetchingServers, refetch: refetchServers } = useQuery({
+    queryKey: ['servers', region],
+    queryFn: async () => {
+      const data = await nova.listServers();
+      return data.servers;
+    },
+  });
 
-  // Fetch servers and context data together
-  const fetchServers = useCallback(async () => {
-    // Fetch servers immediately
-    const serversPromise = nova.listServers();
+  // Fetch volumes
+  const { data: volumesData } = useQuery({
+    queryKey: ['volumes', region],
+    queryFn: () => cinder.listVolumes(),
+  });
 
-    // Fetch context data in parallel (but only once per region)
-    if (!contextFetched.current) {
-      contextFetched.current = true;
+  // Fetch images
+  const { data: imagesData } = useQuery({
+    queryKey: ['images', region],
+    queryFn: async () => {
+      const data = await glance.listImages();
+      return data.images;
+    },
+  });
 
-      Promise.all([
-        cinder.listVolumes(),
-        glance.listImages(),
-        nova.listFlavors(),
-      ]).then(([volumesData, imagesData, flavorsData]) => {
-        // Extract volume image IDs
-        const volImageIds = volumesData.reduce(
-          (acc: { [key: string]: string }, volume: Volume) => {
-            if (volume.volume_image_metadata) {
-              acc[volume.id] = volume.volume_image_metadata.image_id;
-            }
-            return acc;
-          },
-          {}
-        );
-        setVolumeImageIds(volImageIds);
+  // Fetch flavors
+  const { data: flavorsData } = useQuery({
+    queryKey: ['flavors', region],
+    queryFn: async () => {
+      const data = await nova.listFlavors();
+      return data.flavors;
+    },
+  });
 
-        // Map images
-        const imagesMap: { [key: string]: string } = {};
-        imagesData.images?.forEach((image: Image) => {
-          imagesMap[image.id] = image.name;
-        });
-        setImages(imagesMap);
+  // Process volume image IDs
+  const volumeImageIds = useMemo(() => {
+    if (!volumesData) return {};
+    return volumesData.reduce(
+      (acc: { [key: string]: string }, volume: Volume) => {
+        if (volume.volume_image_metadata) {
+          acc[volume.id] = volume.volume_image_metadata.image_id;
+        }
+        return acc;
+      },
+      {}
+    );
+  }, [volumesData]);
 
-        // Map flavors
-        const flavorsMap: { [key: string]: string } = {};
-        flavorsData.flavors?.forEach((flavor: Flavor) => {
-          flavorsMap[flavor.id] = flavor.name;
-        });
-        setFlavors(flavorsMap);
-      }).catch((error) => {
-        console.error("Failed to load context data:", error);
-      });
-    }
+  // Process images map
+  const images = useMemo(() => {
+    if (!imagesData) return {};
+    const imagesMap: { [key: string]: string } = {};
+    imagesData.forEach((image: Image) => {
+      imagesMap[image.id] = image.name;
+    });
+    return imagesMap;
+  }, [imagesData]);
 
-    // Return servers data
-    const data = await serversPromise;
-    return data.servers;
-  }, [region]);
+  // Process flavors map
+  const flavors = useMemo(() => {
+    if (!flavorsData) return {};
+    const flavorsMap: { [key: string]: string } = {};
+    flavorsData.forEach((flavor: Flavor) => {
+      flavorsMap[flavor.id] = flavor.name;
+    });
+    return flavorsMap;
+  }, [flavorsData]);
 
   const columns = createInstanceColumns({ images, flavors, volumeImageIds });
 
   return (
     <DataTable
-      fetchData={fetchServers}
+      data={serversData || []}
+      isLoading={isLoadingServers}
+      isRefetching={isRefetchingServers}
+      refetch={refetchServers}
       columns={columns}
       searchOptions={searchOptions}
       defaultColumnVisibility={{

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { columns } from "./columns";
 import { DataTable } from "@/components/DataTable";
 import { searchoptions } from "./meta";
@@ -11,14 +11,20 @@ import { useRegion } from "@/contexts/RegionContext";
 export default function Page() {
   const { region } = useRegion();
 
-  const fetchFlavors = useCallback(async () => {
-    const flavorsData = await nova.listFlavors();
-    return flavorsData.flavors;
-  }, [region]);
+  const { data, isLoading, isRefetching, refetch } = useQuery({
+    queryKey: ['flavors', region],
+    queryFn: async () => {
+      const flavorsData = await nova.listFlavors();
+      return flavorsData.flavors;
+    },
+  });
 
   return (
     <DataTable
-      fetchData={fetchFlavors}
+      data={data || []}
+      isLoading={isLoading}
+      isRefetching={isRefetching}
+      refetch={refetch}
       columns={columns}
       searchOptions={searchoptions}
       resourceName="instance type"

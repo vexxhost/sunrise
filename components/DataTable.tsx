@@ -144,8 +144,10 @@ function generatePaginationItems(currentPage: number, totalPages: number) {
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
-  fetchData?: () => Promise<TData[]>
-  data?: TData[]
+  data: TData[]
+  isLoading?: boolean
+  isRefetching?: boolean
+  refetch?: () => void
   searchOptions: BaseSearchOptions
   defaultColumnVisibility?: VisibilityState
   onRowClick?: (row: TData) => void
@@ -153,13 +155,14 @@ interface DataTableProps<TData, TValue> {
   pageSize?: number
   resourceName?: string
   emptyIcon: React.ComponentType<{ className?: string }>
-  onRefresh?: () => void
 }
 
 export function DataTable<TData, TValue>({
   columns,
-  fetchData,
-  data: initialData,
+  data,
+  isLoading = false,
+  isRefetching = false,
+  refetch,
   searchOptions,
   defaultColumnVisibility = {},
   onRowClick,
@@ -167,11 +170,7 @@ export function DataTable<TData, TValue>({
   pageSize = 10,
   resourceName,
   emptyIcon,
-  onRefresh,
 }: DataTableProps<TData, TValue>) {
-  const [data, setData] = React.useState<TData[]>(initialData || []);
-  const [isLoading, setIsLoading] = React.useState(!!fetchData);
-  const [error, setError] = React.useState<Error | null>(null);
 
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -183,38 +182,6 @@ export function DataTable<TData, TValue>({
   const [tempPageSize, setTempPageSize] = React.useState(pageSize.toString())
   const [tempColumnVisibility, setTempColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
   const [columnSearch, setColumnSearch] = React.useState("")
-
-  // Fetch data if fetchData is provided
-  const loadData = React.useCallback(async () => {
-    if (!fetchData) {
-      if (initialData) {
-        setData(initialData);
-      }
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-      const result = await fetchData();
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to fetch data'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchData, initialData]);
-
-  React.useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleRefresh = async () => {
-    if (onRefresh) {
-      onRefresh();
-    }
-    await loadData();
-  };
 
   const table = useReactTable({
     data,
@@ -254,15 +221,15 @@ export function DataTable<TData, TValue>({
             <h1 className="text-2xl font-semibold">
               {formatResourceName(pluralize(resourceName))}
             </h1>
-            {fetchData && (
+            {refetch && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleRefresh}
-                disabled={isLoading}
-                className={`gap-2 transition-opacity duration-300 ${isLoading ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
+                onClick={refetch}
+                disabled={isLoading || isRefetching}
+                className={`gap-2 transition-opacity duration-300 ${isLoading || isRefetching ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
               >
-                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
             )}
@@ -333,55 +300,6 @@ export function DataTable<TData, TValue>({
     );
   }
 
-  if (error) {
-    return (
-      <>
-        {resourceName && (
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-2xl font-semibold">
-              {formatResourceName(pluralize(resourceName))}
-            </h1>
-            {fetchData && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={isLoading}
-                className={`gap-2 transition-opacity duration-300 ${isLoading ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
-              >
-                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            )}
-          </div>
-        )}
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              {headerTable.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id} className="text-xs font-bold">
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} className="text-xs font-bold">
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              <TableEmpty
-                columns={columns.length}
-                message="Error loading data"
-                description={error.message}
-                icon={emptyIcon}
-              />
-            </TableBody>
-          </Table>
-        </div>
-      </>
-    );
-  }
-
   return (
     <>
       {resourceName && (
@@ -389,15 +307,15 @@ export function DataTable<TData, TValue>({
           <h1 className="text-2xl font-semibold">
             {formatResourceName(pluralize(resourceName))}
           </h1>
-          {fetchData && (
+          {refetch && (
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className={`gap-2 transition-opacity duration-300 ${isLoading ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
+              onClick={refetch}
+              disabled={isLoading || isRefetching}
+              className={`gap-2 transition-opacity duration-300 ${isLoading || isRefetching ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
             >
-              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
           )}

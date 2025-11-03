@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { columns } from "./columns";
 import { DataTable } from "@/components/DataTable";
 import { searchoptions } from "./meta";
@@ -11,13 +11,19 @@ import { useRegion } from "@/contexts/RegionContext";
 export default function Page() {
   const { region } = useRegion();
 
-  const fetchNetworks = useCallback(async () => {
-    return await network.listNetworks();
-  }, [region]);
+  const { data, isLoading, isRefetching, refetch } = useQuery({
+    queryKey: ['networks', region],
+    queryFn: async () => {
+      return await network.listNetworks();
+    },
+  });
 
   return (
     <DataTable
-      fetchData={fetchNetworks}
+      data={data || []}
+      isLoading={isLoading}
+      isRefetching={isRefetching}
+      refetch={refetch}
       columns={columns}
       searchOptions={searchoptions}
       resourceName="network"
