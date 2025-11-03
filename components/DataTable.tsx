@@ -137,7 +137,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu"
 import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
-import { Settings, RefreshCw, ChevronDown, Copy, Check } from "lucide-react"
+import { Settings, RefreshCw, ChevronDown, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import pluralize from "pluralize"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -338,7 +338,7 @@ export function DataTable<TData, TValue>({
               </DropdownMenuTrigger>
             </DropdownMenu>
             <Input
-              placeholder={resourceName ? `Loading ${formatResourceName(pluralize(resourceName))}...` : "Loading..."}
+              placeholder={resourceName ? `Loading ${pluralize(resourceName)}...` : "Loading..."}
               disabled
               className="rounded m-1 p-1 max-w-xs"
             />
@@ -358,19 +358,24 @@ export function DataTable<TData, TValue>({
           <Table>
             <TableHeader>
               {headerTable.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id} className="text-xs font-bold">
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id} className="text-xs font-bold">
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
+                <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
+                  {headerGroup.headers.map((header) => {
+                    const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
+                    return (
+                      <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""}`}>
+                        <div className="px-2 py-2">
+                          {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                        </div>
+                      </TableHead>
+                    );
+                  })}
                 </TableRow>
               ))}
             </TableHeader>
             <TableBody>
               <TableLoadingRows
-                columns={columns.length}
-                message={resourceName ? `Loading ${formatResourceName(pluralize(resourceName))}...` : "Loading data..."}
+                columns={columnsWithCheckbox.length}
+                message={resourceName ? `Loading ${pluralize(resourceName)}...` : "Loading data..."}
               />
             </TableBody>
           </Table>
@@ -602,12 +607,40 @@ export function DataTable<TData, TValue>({
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="text-xs font-bold">
+              <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
                   const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
+                  const canSort = header.column.getCanSort();
+                  const isSorted = header.column.getIsSorted();
+
                   return (
-                    <TableHead key={header.id} className={`text-xs font-bold ${isIDColumn ? "w-[170px]" : ""}`}>
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    <TableHead key={header.id} className={`text-xs font-bold border-r p-0 ${isIDColumn ? "w-[170px]" : ""}`}>
+                      {header.isPlaceholder ? null : (
+                        canSort ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => header.column.toggleSorting(isSorted === "asc")}
+                            className="h-full w-full px-2 py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
+                          >
+                            <span>
+                              {typeof header.column.columnDef.header === 'string'
+                                ? header.column.columnDef.header
+                                : flexRender(header.column.columnDef.header, header.getContext())}
+                            </span>
+                            {isSorted === "asc" ? (
+                              <ArrowUp className="h-3 w-3 shrink-0" />
+                            ) : isSorted === "desc" ? (
+                              <ArrowDown className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-50 shrink-0" />
+                            )}
+                          </Button>
+                        ) : (
+                          <div className="px-2 py-2">
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </div>
+                        )
+                      )}
                     </TableHead>
                   );
                 })}
@@ -645,7 +678,7 @@ export function DataTable<TData, TValue>({
               ))
             ) : (
               <TableEmpty
-                columns={columns.length}
+                columns={columnsWithCheckbox.length}
                 message={emptyMessage || (resourceName ? `No ${pluralize(resourceName)} found.` : "No results.")}
                 icon={emptyIcon}
               />

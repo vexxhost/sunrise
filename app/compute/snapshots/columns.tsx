@@ -1,28 +1,14 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Snapshot } from "@/lib/cinder";
-import { Network } from "@/lib/network";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
 import { titleCase } from "title-case";
 
 export const columns: ColumnDef<Snapshot>[] = [
     {
       accessorKey: "name",
-      header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                className="flex items-center"
-              >
-                Name
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+      header: "Name",
       cell: ({ row }: { row: { original: Snapshot } }) => row.original.name
     },
     {
@@ -44,28 +30,12 @@ export const columns: ColumnDef<Snapshot>[] = [
     },
     {
          accessorKey: "size",
-         header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              > Size <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+         header: "Size",
          cell: ({ row }: { row: { original: Snapshot } }) => row.original.size + " GB"
     },
     {
         accessorKey: "status",
-        header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              > Status <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+        header: "Status",
         cell: ({ row }: { row: { original: Snapshot } }) => {
           const status = titleCase(row.original.status);
           let badgeStyle;
@@ -98,15 +68,7 @@ export const columns: ColumnDef<Snapshot>[] = [
       },
     {
       accessorKey: "created_at",
-      header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            > Created At <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          )
-    },
+      header: "Created At",
       cell: ({ row }: { row: { original: Snapshot } }) => {
         const date = new Date(row.original.created_at);
         return date.toLocaleString();

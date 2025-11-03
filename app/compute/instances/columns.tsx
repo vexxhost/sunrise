@@ -1,11 +1,9 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Server, Flavor } from "@/lib/nova";
 import { Image } from "@/lib/glance";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 
 const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string }[] } }) => {
@@ -29,18 +27,7 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
   return [
     {
       accessorKey: "name",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="flex items-center"
-          >
-            Name
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      header: "Instance Name",
     },
     {
       accessorKey: "id",
@@ -74,17 +61,7 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
     },
     {
       accessorKey: "status",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Status
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      header: "Status",
       cell: ({ row }) => {
         const status = row.getValue('status')
         const variant = status === 'ACTIVE' ? 'default' : 'secondary'
@@ -116,17 +93,7 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
     },
     {
       accessorKey: "OS-SRV-USG:launched_at",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          >
-            Age
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-      },
+      header: "Age",
       cell: ({ row }) => formatDistanceToNow(Date.parse(row.getValue('OS-SRV-USG:launched_at')), { addSuffix: true })
     }
   ];

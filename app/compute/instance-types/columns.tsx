@@ -1,26 +1,13 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Flavor } from "@/lib/nova";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
 
 export const columns: ColumnDef<Flavor>[] = [
     {
       accessorKey: "name",
-      header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                className="flex items-center"
-              >
-                Name
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+      header: "Name",
       cell: ({ row }: { row: { original: Flavor } }) => row.original.name
     },
     {
@@ -29,32 +16,12 @@ export const columns: ColumnDef<Flavor>[] = [
     },
     {
       accessorKey: "vcpus",
-      header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              VCPUs
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          )
-      },
+      header: "VCPUs",
       cell: ({ row }: { row: { original: Flavor } }) => row.original.vcpus
     },
     {
       accessorKey: "ram",
-      header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              RAM
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          )
-      },
+      header: "RAM",
       cell: ({ row }: { row: { original: Flavor } }) => {
         const ramGB = (row.original.ram / 1024).toFixed(2);
         return `${ramGB} GB`;
@@ -62,34 +29,14 @@ export const columns: ColumnDef<Flavor>[] = [
     },
     {
       accessorKey: "disk",
-      header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              Root Disk
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          )
-      },
+      header: "Root Disk",
       cell: ({ row }: { row: { original: Flavor } }) => {
         return row.original.disk > 0 ? `${row.original.disk} GB` : "-";
       }
     },
     {
       accessorKey: "OS-FLV-EXT-DATA:ephemeral",
-      header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              Ephemeral Disk
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          )
-      },
+      header: "Ephemeral Disk",
       cell: ({ row }: { row: { original: Flavor } }) => {
         const ephemeral = row.original["OS-FLV-EXT-DATA:ephemeral"];
         return ephemeral > 0 ? `${ephemeral} GB` : "-";
@@ -97,7 +44,7 @@ export const columns: ColumnDef<Flavor>[] = [
     },
     {
       accessorKey: "swap",
-      header: "Swap",
+      header: "Swap Disk",
       cell: ({ row }: { row: { original: Flavor } }) => {
         const swap = row.original.swap;
         return swap && swap !== "" ? `${swap} MB` : "-";
@@ -105,17 +52,7 @@ export const columns: ColumnDef<Flavor>[] = [
     },
     {
       accessorKey: "os-flavor-access:is_public",
-      header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              Public
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          )
-      },
+      header: "Public",
       cell: ({ row }: { row: { original: Flavor } }) => {
         const isPublic = row.original["os-flavor-access:is_public"];
         return (
@@ -127,17 +64,7 @@ export const columns: ColumnDef<Flavor>[] = [
     },
     {
       accessorKey: "OS-FLV-DISABLED:disabled",
-      header: ({ column }) => {
-          return (
-            <Button
-              variant="ghost"
-              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            >
-              Disabled
-              <ArrowUpDown className="ml-2 h-4 w-4" />
-            </Button>
-          )
-      },
+      header: "Disabled",
       cell: ({ row }: { row: { original: Flavor } }) => {
         const isDisabled = row.original["OS-FLV-DISABLED:disabled"];
         return (

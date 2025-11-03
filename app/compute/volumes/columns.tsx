@@ -1,27 +1,14 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Volume } from "@/lib/cinder";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
 import { titleCase } from "title-case";
 
 export const columns: ColumnDef<Volume>[] = [
     {
       accessorKey: "name",
-      header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                className="flex items-center"
-              >
-                Name
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+      header: "Name",
       cell: ({ row }: { row: { original: Volume } }) => row.original.name
     },
     {
@@ -35,28 +22,12 @@ export const columns: ColumnDef<Volume>[] = [
     },
     {
          accessorKey: "size",
-         header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              > Size <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+         header: "Size",
          cell: ({ row }: { row: { original: Volume } }) => row.original.size + " GB"
     },
     {
         accessorKey: "status",
-        header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              > Status <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+        header: "Status",
         cell: ({ row }: { row: { original: Volume } }) => {
           const status = titleCase(row.original.status);
           let badgeStyle;
@@ -87,80 +58,33 @@ export const columns: ColumnDef<Volume>[] = [
       },
   {
     accessorKey: "group",
-    header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          > Group <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        )
-  },
+    header: "Group",
     cell: ({ row }: { row: { original: Volume } }) => row.original.group_id ? row.original.group_id : "-"
   },
     {
         accessorKey: "type",
-        header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              > Type <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+        header: "Type",
         cell: ({ row }: { row: { original: Volume } }) => row.original.volume_type
         },
         {
             accessorKey: "availability_zone",
-            header: ({ column }) => {
-                return (
-                  <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                  > Availability Zone <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </Button>
-                )
-          },
+            header: "Availability Zone",
             cell: ({ row }: { row: { original: Volume } }) => row.original.availability_zone
         },
         {
             accessorKey: "bootable",
-            header: ({ column }) => {
-                return (
-                  <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                  > Bootable <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </Button>
-                )
-          },
+            header: "Bootable",
             cell: ({ row }: { row: { original: Volume } }) => row.original.bootable ? "Yes" : "No"
           },
           {
             accessorKey: "encrypted",
-            header: ({ column }) => {
-                return (
-                  <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                  > Encrypted <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </Button>
-                )
-          },
+            header: "Encrypted",
             cell: ({ row }: { row: { original: Volume } }) => row.original.encrypted ? "Yes" : "No"
           },
           {
             accessorKey: "multiattach",
-            header: ({ column }) => {
-                return (
-                  <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                  > Multi-Attached <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </Button>
-                )
-          },            cell: ({ row }: { row: { original: Volume } }) => row.original.multiattach ? "Yes" : "No"
+            header: "Multi-Attached",
+            cell: ({ row }: { row: { original: Volume } }) => row.original.multiattach ? "Yes" : "No"
           }
 
   ]

@@ -1,27 +1,14 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Network } from "@/lib/network";
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
 import { titleCase } from "title-case";
 
 export const columns: ColumnDef<Network>[] = [
     {
       accessorKey: "name",
-      header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                className="flex items-center"
-              >
-                Name
-                <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+      header: "Name",
       cell: ({ row }: { row: { original: Network } }) => row.original.name
     },
     {
@@ -35,15 +22,7 @@ export const columns: ColumnDef<Network>[] = [
     },
     {
          accessorKey: "subnets",
-         header: ({ column }) => {
-            return (
-              <Button
-                variant="ghost"
-                onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-              > Subnets Associated <ArrowUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            )
-      },
+         header: "Subnets Associated",
          cell: ({ row }: { row: { original: Network } }) => {
             return (
               <>
