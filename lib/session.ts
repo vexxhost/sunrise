@@ -1,6 +1,6 @@
 import { getIronSession, IronSession } from 'iron-session';
 import { cookies } from 'next/headers';
-import { Endpoint, Project } from "@/lib/keystone";
+import { Project } from "@/lib/keystone";
 
 export type User = {
   id: string;
@@ -56,50 +56,3 @@ export async function getCatalog(token: string): Promise<any[]> {
   return data.catalog;
 }
 
-export async function getServiceEndpoint(
-  service: string,
-  serviceInterface: string,
-): Promise<Endpoint> {
-  const session = await getSession();
-  const catalog = await getCatalog(session.projectToken!);
-
-  const serviceEntry = catalog.find(
-    (item: { name: string; type?: string }) => item.name === service || item.type === service,
-  );
-
-  if (!serviceEntry) {
-    throw new Error(`Service '${service}' not found in catalog. Available services: ${catalog.map((s: any) => s.name || s.type).join(', ')}`);
-  }
-
-  if (!serviceEntry.endpoints) {
-    throw new Error(`Service '${service}' has no endpoints`);
-  }
-
-  const endpoint = serviceEntry.endpoints.find(
-    (endpoint: { interface: string }) => endpoint.interface === serviceInterface,
-  );
-
-  if (!endpoint) {
-    throw new Error(`No ${serviceInterface} endpoint found for service '${service}'`);
-  }
-
-  return endpoint;
-}
-
-export async function getServiceEndpoints(services: string[], serviceInterface: string): Promise<Endpoint[]> {
-  const session = await getSession();
-  const catalog = await getCatalog(session.projectToken!);
-  const endpoints = catalog
-    .filter((item: { name: string; type?: string }) =>
-      services.includes(item.name) || services.includes(item.type || '')
-    )
-    .map((item: { endpoints: Endpoint[] }) => item.endpoints)
-    .flat() // Flatten the array of arrays into a single array
-    .filter((endpoint: { interface: string }) => endpoint.interface === serviceInterface);
-
-  if (endpoints.length === 0) {
-    throw new Error(`No ${serviceInterface} endpoints found for any of these services: ${services.join(', ')}`);
-  }
-
-  return endpoints;
-}
