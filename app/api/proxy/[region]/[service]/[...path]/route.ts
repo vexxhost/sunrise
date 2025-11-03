@@ -57,11 +57,54 @@ async function handleRequest(
     const session = await getSession();
     const { region, service, path: apiPath } = await params;
 
-    if (!session.projectToken) {
-      return Response.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+    // Check if client is requesting to use the unscoped token
+    let useUnscopedToken = false;
+    let requestBody: string | null = null;
+
+    // Check for __UNSCOPED__ marker in X-Auth-Token header (for GET/DELETE requests)
+    const clientAuthToken = request.headers.get('X-Auth-Token');
+    if (clientAuthToken === '__UNSCOPED__') {
+      useUnscopedToken = true;
+    }
+
+    // Read body once for POST/PUT/PATCH requests
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      requestBody = await request.text();
+
+      // Check for __UNSCOPED__ marker in POST body for token requests
+      if (service === 'keystone' && apiPath.join('/').includes('auth/tokens') && requestBody) {
+        try {
+          const body = JSON.parse(requestBody);
+          if (body?.auth?.identity?.token?.id === '__UNSCOPED__') {
+            useUnscopedToken = true;
+            // Replace the marker with the actual unscoped token
+            body.auth.identity.token.id = session.keystone_unscoped_token;
+            // Update the request body with the modified version
+            requestBody = JSON.stringify(body);
+          }
+        } catch (e) {
+          // If we can't parse the body, just continue normally
+        }
+      }
+    }
+
+    // Check authentication
+    if (useUnscopedToken) {
+      // Request is using __UNSCOPED__ marker - verify unscoped token exists in session
+      if (!session.keystone_unscoped_token) {
+        return Response.json(
+          { error: 'Not authenticated - no unscoped token in session' },
+          { status: 401 }
+        );
+      }
+    } else {
+      // Regular request - require X-Auth-Token header from client
+      if (!clientAuthToken) {
+        return Response.json(
+          { error: 'Not authenticated - missing X-Auth-Token header' },
+          { status: 401 }
+        );
+      }
     }
 
     // Map service names to their OpenStack service types
@@ -93,9 +136,11 @@ async function handleRequest(
       }
 
       // Get the service catalog to find the correct endpoint
+      // Use unscoped token if marker is present, otherwise use client's token
+      const catalogToken = useUnscopedToken ? session.keystone_unscoped_token! : clientAuthToken!;
       const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/catalog`, {
         headers: {
-          "X-Auth-Token": session.projectToken,
+          "X-Auth-Token": catalogToken,
         } as HeadersInit,
         next: { revalidate: 300 }, // Cache for 5 minutes
       });
@@ -140,9 +185,9 @@ async function handleRequest(
     // Construct the full URL
     const url = `${baseUrl}/${apiPath.join('/')}${request.nextUrl.search}`;
 
-    // Forward headers
+    // Forward headers - use unscoped token if marker present, otherwise use client's token
     const headers: HeadersInit = {
-      'X-Auth-Token': session.projectToken,
+      'X-Auth-Token': useUnscopedToken ? session.keystone_unscoped_token! : clientAuthToken!,
       'Content-Type': 'application/json',
     };
 
@@ -153,11 +198,8 @@ async function handleRequest(
     };
 
     // Add body for POST/PUT/PATCH requests
-    if (['POST', 'PUT', 'PATCH'].includes(method)) {
-      const body = await request.text();
-      if (body) {
-        options.body = body;
-      }
+    if (requestBody) {
+      options.body = requestBody;
     }
 
     // Make the request to OpenStack API
@@ -172,12 +214,23 @@ async function handleRequest(
       data = await response.text();
     }
 
+    // Prepare response headers
+    const responseHeaders: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    // For token requests, pass through the X-Subject-Token header
+    if (useUnscopedToken) {
+      const subjectToken = response.headers.get('X-Subject-Token');
+      if (subjectToken) {
+        responseHeaders['X-Subject-Token'] = subjectToken;
+      }
+    }
+
     // Return the response
     return Response.json(data, {
       status: response.status,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: responseHeaders,
     });
 
   } catch (error) {

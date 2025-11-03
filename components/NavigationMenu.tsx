@@ -58,39 +58,41 @@ const services: { title: string; href: string; description: string; icon: React.
   },
 ]
 
-export function NavigationMenu({
-  userName
-}: {
-  userName?: string
-}) {
+export function NavigationMenu() {
   const isMobile = useMediaQuery("(max-width: 767px)")
   const { region, setRegion, projectId, setProjectId } = useKeystone()
-
-  // Display region from context
-  const displayRegion = region || 'Loading...'
 
   // Fetch regions and projects using TanStack Query
   const { data: regions = [], isLoading: isLoadingRegions } = useRegions()
   const { data: projects = [], isLoading: isLoadingProjects } = useProjects()
 
+  // Auto-select first region if none selected and regions are loaded
+  React.useEffect(() => {
+    if (!region && regions.length > 0) {
+      setRegion(regions[0].id)
+    }
+  }, [region, regions, setRegion])
+
+  // Auto-select first project if none selected and projects are loaded
+  React.useEffect(() => {
+    if (!projectId && projects.length > 0) {
+      setProjectId(projects[0].id)
+    }
+  }, [projectId, projects, setProjectId])
+
   // Fetch project token - this automatically updates when projectId changes
-  useProjectToken()
+  const { data: tokenData } = useProjectToken()
+
+  // Get userName from token data
+  const userName = tokenData?.data?.user?.name
 
   // Derive selected project from projects list
   const selectedProject = React.useMemo(() => {
     return projects.find(p => p.id === projectId)
   }, [projects, projectId])
 
-  const handleRegionChange = (region: KeystoneRegion) => {
-    // Update region in context - TanStack Query will automatically refetch all queries
-    setRegion(region.id);
-  }
-
-  const handleProjectChange = (project: Project) => {
-    // Update projectId in context - useProjectToken will automatically fetch new token
-    // and TanStack Query will refetch all project-scoped queries
-    setProjectId(project.id);
-  }
+  // Display region from context
+  const displayRegion = region || 'Loading...'
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -154,7 +156,7 @@ export function NavigationMenu({
                     {regions.map((region) => (
                       <li key={region.id}>
                         <button
-                          onClick={() => handleRegionChange(region)}
+                          onClick={() => setRegion(region.id)}
                           className={`w-full text-left px-3 py-2 text-xs font-mono rounded-md hover:bg-accent transition-colors whitespace-nowrap ${
                             displayRegion === region.id ? 'bg-accent font-semibold' : ''
                           }`}
@@ -184,7 +186,7 @@ export function NavigationMenu({
                       {projects.map((project) => (
                         <li key={project.id}>
                           <button
-                            onClick={() => handleProjectChange(project)}
+                            onClick={() => setProjectId(project.id)}
                             className={`w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors whitespace-nowrap ${
                               selectedProject.id === project.id ? 'bg-accent font-semibold' : ''
                             }`}

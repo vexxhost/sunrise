@@ -1,34 +1,8 @@
 import { getIronSession, IronSession } from 'iron-session';
 import { cookies } from 'next/headers';
-import { Project } from "@/lib/keystone";
-
-export type User = {
-  id: string;
-  name: string;
-  domain: {
-    id: string;
-    name: string;
-  };
-};
-
-export type TokenData = {
-  user: User;
-  catalog: any[];
-  expires_at: string;
-  issued_at: string;
-  methods: string[];
-  project: Project;
-  roles: any[];
-  is_domain: boolean;
-  [key: string]: any;
-};
 
 export type SunriseSession = {
   keystone_unscoped_token?: string;
-  selectedProject?: Project;
-  projectToken?: string;
-  userName?: string;
-  redirect_to?: string;
 };
 
 // Setup the config for your session and cookie

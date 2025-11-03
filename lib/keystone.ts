@@ -1,5 +1,3 @@
-import { TokenData } from "@/lib/session";
-
 export type Project = {
   id: string;
   name: string;
@@ -31,36 +29,4 @@ export type Region = {
     self: string;
   };
 };
-
-export async function fetchProjectScopedToken(
-  token: string,
-  selectedProject: Project,
-): Promise<{ token: string; data: TokenData }> {
-  const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    } as HeadersInit,
-    body: JSON.stringify({
-      auth: {
-        identity: {
-          methods: ["token"],
-          token: {
-            id: token,
-          },
-        },
-        scope: {
-          project: {
-            id: selectedProject.id,
-          },
-        },
-      },
-    }),
-  });
-
-  const scopedToken = response.headers.get("X-Subject-Token");
-  const data = await response.json();
-
-  return { token: scopedToken as string, data: data.token };
-}
 

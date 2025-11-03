@@ -26,8 +26,6 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
-
   return (
     <html lang="en" className="h-full light" suppressHydrationWarning>
 
@@ -43,14 +41,9 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <KeystoneProvider
-            
-            initialProjectId={session.selectedProject?.id}
-          >
+          <KeystoneProvider>
             <Providers>
-              <NavigationMenu
-                userName={session.userName}
-              />
+              <NavigationMenu />
               <main>
                 {children}
               </main>
