@@ -18,14 +18,12 @@ const KeystoneContext = createContext<KeystoneContextType>({
 
 export function KeystoneProvider({
   children,
-  initialRegion,
   initialProjectId,
 }: {
   children: React.ReactNode;
-  initialRegion?: string;
   initialProjectId?: string;
 }) {
-  const [region, setRegion] = useState<string | null>(initialRegion || null);
+  const [region, setRegion] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(initialProjectId || null);
 
   return (

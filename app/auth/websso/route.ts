@@ -26,19 +26,9 @@ export async function POST(request: Request) {
     // Get project scoped token for selected project
     const { token: projectToken, data: projectData } = await fetchProjectScopedToken(token as string, selectedProject);
 
+    session.selectedProject = selectedProject;
     session.projectToken = projectToken;
     session.userName = projectData.user.name;
-
-    // Set default region if catalog has regions
-    if (projectData.catalog && projectData.catalog.length > 0) {
-      const firstServiceWithEndpoints = projectData.catalog.find((service: any) => service.endpoints?.length > 0);
-      if (firstServiceWithEndpoints) {
-        const firstEndpoint = firstServiceWithEndpoints.endpoints[0];
-        if (firstEndpoint.region) {
-          session.selectedRegion = firstEndpoint.region;
-        }
-      }
-    }
   }
 
   await session.save();

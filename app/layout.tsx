@@ -44,7 +44,7 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <KeystoneProvider
-            initialRegion={session.selectedRegion}
+            
             initialProjectId={session.selectedProject?.id}
           >
             <Providers>

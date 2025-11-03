@@ -15,62 +15,52 @@ import { NextRequest } from "next/server";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ region: string; service: string; path: string[] }> }
 ) {
   return handleRequest(request, params, 'GET');
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ region: string; service: string; path: string[] }> }
 ) {
   return handleRequest(request, params, 'POST');
 }
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ region: string; service: string; path: string[] }> }
 ) {
   return handleRequest(request, params, 'PUT');
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ region: string; service: string; path: string[] }> }
 ) {
   return handleRequest(request, params, 'DELETE');
 }
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  { params }: { params: Promise<{ region: string; service: string; path: string[] }> }
 ) {
   return handleRequest(request, params, 'PATCH');
 }
 
 async function handleRequest(
   request: NextRequest,
-  params: Promise<{ path: string[] }>,
+  params: Promise<{ region: string; service: string; path: string[] }>,
   method: string
 ) {
   try {
     const session = await getSession();
-    const { path } = await params;
+    const { region, service, path: apiPath } = await params;
 
     if (!session.projectToken) {
       return Response.json(
         { error: 'Not authenticated' },
         { status: 401 }
-      );
-    }
-
-    // Path format: [region, service, ...apiPath]
-    const [region, service, ...apiPath] = path;
-
-    if (!region || !service) {
-      return Response.json(
-        { error: 'Invalid path format. Expected: /api/proxy/<region>/<service>/<path>' },
-        { status: 400 }
       );
     }
 
