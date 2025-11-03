@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Network } from "@/lib/network";
+import { Network } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
 import { titleCase } from "title-case";
 

@@ -4,7 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import type { Server, Flavor, InterfaceAttachment } from '@/lib/nova';
+import type { Server, Flavor, InterfaceAttachment } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
 /**

@@ -1,7 +1,7 @@
 'use client';
 
-import { Volume } from "@/lib/cinder";
-import { Server } from "@/lib/nova";
+import { Volume } from "@/types/openstack";
+import { Server } from "@/types/openstack";
 import { useVolume, useImage } from "@/hooks/queries";
 import { useMemo } from "react";
 

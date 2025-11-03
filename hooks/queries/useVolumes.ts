@@ -4,7 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import type { Volume, Snapshot } from '@/lib/cinder';
+import type { Volume, Snapshot } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
 /**

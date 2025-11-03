@@ -209,7 +209,6 @@ interface DataTableProps<TData, TValue> {
   isLoading?: boolean
   isRefetching?: boolean
   refetch?: () => void
-  searchOptions: BaseSearchOptions
   defaultColumnVisibility?: VisibilityState
   onRowClick?: (row: TData) => void
   emptyMessage?: string
@@ -224,7 +223,6 @@ export function DataTable<TData, TValue>({
   isLoading = false,
   isRefetching = false,
   refetch,
-  searchOptions,
   defaultColumnVisibility = {},
   onRowClick,
   emptyMessage,
@@ -237,7 +235,6 @@ export function DataTable<TData, TValue>({
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [filters, setFilters] = React.useState<Filter[]>([])
-  const [searchOption, setSearchOption] = useState(Object.keys(searchOptions)[0] || 'name')
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
 

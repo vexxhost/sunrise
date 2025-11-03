@@ -57,14 +57,3 @@
     "encrypted",
     "description",
   ];
-
-  // Setup search options for volumes to be sent to the table components filter selection
-export const searchoptions : DynamicInterface = {
-    id: "Volume ID",
-    name: "Name",
-    status: "Status",
-    availability_zone: "Availability Zone",
-    description: "Description",
-    bootable: "Bootable",
-    size: "Size",
-  };

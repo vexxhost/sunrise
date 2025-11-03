@@ -1,29 +1,3 @@
-export interface SearchOptions {
-  id: string;
-  name: string;
-  image: string;
-  ip: string;
-  ip6: string;
-  flavor: string;
-  key_name: string;
-  status: string;
-  availability_zone: string;
-  "changes-since": string;
-}
-
-export const searchOptions: SearchOptions = {
-  id: "Instance ID",
-  name: "Instance Name",
-  image: "Image ID",
-  ip: "IPv4 Address",
-  ip6: "IPv6 Address",
-  flavor: "Flavor ID",
-  key_name: "Key Pair Name",
-  status: "Status",
-  availability_zone: "Availability Zone",
-  "changes-since": "Changes Since",
-};
-
 export const statuses: { [index: string]: string } = {
   ACTIVE: "Active",
   BUILD: "Build",

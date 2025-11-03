@@ -1,6 +1,5 @@
 /**
  * Type definitions for Neutron (Network) API
- * All server-side functions have been moved to hooks/queries/useNetworks.ts
  */
 
 export interface SecurityGroupRule {

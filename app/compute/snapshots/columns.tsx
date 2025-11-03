@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Snapshot } from "@/lib/cinder";
+import { Snapshot } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
 import { titleCase } from "title-case";
 

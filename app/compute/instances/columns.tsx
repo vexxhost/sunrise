@@ -1,8 +1,8 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Server, Flavor } from "@/lib/nova";
-import { Image } from "@/lib/glance";
+import { Server, Flavor } from "@/types/openstack";
+import { Image } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
 import { formatDistanceToNow } from 'date-fns';
 

@@ -1,6 +1,5 @@
 /**
  * Type definitions for Cinder (Block Storage) API
- * All server-side functions have been moved to hooks/queries/useVolumes.ts
  */
 
 export const statuses: { [key: string]: string } = {

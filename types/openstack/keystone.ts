@@ -1,3 +1,7 @@
+/**
+ * Type definitions for Keystone (Identity) API
+ */
+
 export type Project = {
   id: string;
   name: string;
@@ -29,4 +33,3 @@ export type Region = {
     self: string;
   };
 };
-

@@ -4,7 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import type { Network, Port, SecurityGroup } from '@/lib/network';
+import type { Network, Port, SecurityGroup } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
 /**

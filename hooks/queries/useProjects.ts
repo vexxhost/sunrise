@@ -5,7 +5,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiUrl } from '@/lib/api';
 import ky from 'ky';
-import type { Project } from '@/lib/keystone';
+import type { Project } from '@/types/openstack';
 
 /**
  * Hook to fetch list of user's projects

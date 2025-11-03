@@ -1,9 +1,8 @@
 /**
  * Type definitions for Nova (Compute) API
- * All server-side functions have been moved to hooks/queries/useServers.ts
  */
 
-import { SecurityGroup } from "./network";
+import { SecurityGroup } from "./neutron";
 
 export interface InterfaceAttachment {
   net_id: string;

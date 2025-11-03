@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge } from "@/components/ui/badge";
-import { Flavor } from "@/lib/nova";
+import { Flavor } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
 
 export const columns: ColumnDef<Flavor>[] = [

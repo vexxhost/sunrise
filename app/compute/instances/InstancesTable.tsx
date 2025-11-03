@@ -3,10 +3,9 @@
 import { useMemo } from "react";
 import { createInstanceColumns } from "./columns";
 import { DataTable } from "@/components/DataTable";
-import { searchOptions } from "./meta";
-import { Volume } from "@/lib/cinder";
-import { Image } from "@/lib/glance";
-import { Flavor } from "@/lib/nova";
+import { Volume } from "@/types/openstack";
+import { Image } from "@/types/openstack";
+import { Flavor } from "@/types/openstack";
 import { Server as ServerIcon } from "lucide-react";
 import { useServers, useFlavors, useVolumes, useImages } from "@/hooks/queries";
 
@@ -66,7 +65,6 @@ export function InstancesTable() {
       isRefetching={isRefetchingServers}
       refetch={refetchServers}
       columns={columns}
-      searchOptions={searchOptions}
       defaultColumnVisibility={{
         id: false,
         alert: false,

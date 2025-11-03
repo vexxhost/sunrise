@@ -4,7 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import type { Image } from '@/lib/glance';
+import type { Image } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
 /**

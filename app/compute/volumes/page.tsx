@@ -2,7 +2,6 @@
 
 import { columns } from "./columns";
 import { DataTable } from "@/components/DataTable";
-import { searchoptions } from "./meta";
 import { HardDrive } from "lucide-react";
 import { useVolumes } from "@/hooks/queries";
 
@@ -16,7 +15,6 @@ export default function Page() {
       isRefetching={isRefetching}
       refetch={refetch}
       columns={columns}
-      searchOptions={searchoptions}
       resourceName="volume"
       emptyIcon={HardDrive}
     />

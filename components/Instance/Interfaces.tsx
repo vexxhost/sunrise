@@ -1,5 +1,5 @@
 'use client';
-import { Port } from "@/lib/network";
+import { Port } from "@/types/openstack";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { MoreHorizontal, Network } from "lucide-react";
@@ -86,12 +86,6 @@ export const columns: ColumnDef<Port>[] = [
       }
 
 ]
-  // Setup search options for volumes to be sent to the table components filter selection
-  export const searchoptions : DynamicInterface = {
-    name: "Name",
-    status: "Status",
-    network_name: "Network",
-    };  
 
 export function Interfaces( {networkPorts}: {networkPorts :Port[]} ) {
 
@@ -103,7 +97,7 @@ const table = useReactTable<Port>({
 return (
   <>
     <div>
-       <DataTable columns={columns} data={networkPorts} searchOptions={searchoptions} emptyIcon={Network} resourceName="interface"/>
+       <DataTable columns={columns} data={networkPorts} emptyIcon={Network} resourceName="interface"/>
     </div>
     </>
 

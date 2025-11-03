@@ -1,5 +1,5 @@
 import { formatDistanceToNow, parseISO } from 'date-fns';
-import { Server } from "@/lib/nova";
+import { Server } from "@/types/openstack";
 
 export async function InstanceInfo({ server }: { server: Server }) {
   return (

@@ -2,8 +2,8 @@ import {
   SecurityGroup,
   SecurityGroupRule,
   listSecurityGroups,
-} from "@/lib/network";
-import { Server } from "@/lib/nova";
+} from "@/types/openstack";
+import { Server } from "@/types/openstack";
 
 
 export function getGroupNameFromId(

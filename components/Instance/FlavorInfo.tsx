@@ -1,6 +1,6 @@
 'use client';
 
-import { Server } from "@/lib/nova";
+import { Server } from "@/types/openstack";
 import { useFlavor } from "@/hooks/queries";
 import bytes from "bytes";
 
