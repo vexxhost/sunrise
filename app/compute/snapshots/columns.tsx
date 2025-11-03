@@ -28,10 +28,6 @@ export const columns: ColumnDef<Snapshot>[] = [
     {
       accessorKey: "id",
       header: "ID",
-      meta: {
-        monospace: true
-      },
-      cell: ({ row }: { row: { original: Snapshot } }) => row.original.id
     },
     {
       accessorKey: "description",

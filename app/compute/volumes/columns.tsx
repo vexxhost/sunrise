@@ -27,10 +27,6 @@ export const columns: ColumnDef<Volume>[] = [
     {
       accessorKey: "id",
       header: "ID",
-      meta: {
-        monospace: true
-      },
-      cell: ({ row }: { row: { original: Volume } }) => row.original.id
     },
     {
       accessorKey: "description",

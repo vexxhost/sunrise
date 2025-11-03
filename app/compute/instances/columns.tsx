@@ -45,10 +45,6 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
     {
       accessorKey: "id",
       header: "ID",
-      meta: {
-        monospace: true
-      },
-      cell: ({ row }) => row.getValue('id')
     },
     {
       accessorKey: "image",

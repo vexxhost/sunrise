@@ -27,10 +27,6 @@ export const columns: ColumnDef<Network>[] = [
     {
       accessorKey: "id",
       header: "ID",
-      meta: {
-        monospace: true
-      },
-      cell: ({ row }: { row: { original: Network } }) => row.original.id
     },
     {
       accessorKey: "description",

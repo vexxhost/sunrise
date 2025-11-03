@@ -26,10 +26,6 @@ export const columns: ColumnDef<Flavor>[] = [
     {
       accessorKey: "id",
       header: "ID",
-      meta: {
-        monospace: true
-      },
-      cell: ({ row }: { row: { original: Flavor } }) => row.original.id
     },
     {
       accessorKey: "vcpus",

@@ -67,6 +67,61 @@ function formatResourceName(name: string): string {
     .join(' ');
 }
 
+// ID Cell Component with copy functionality and tooltip
+function IDCell({ value, isSelected }: { value: string; isSelected: boolean }) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex items-center gap-1 group">
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="relative w-[100px] overflow-hidden">
+              <span className="font-mono text-sm tracking-tighter">
+                {value}
+              </span>
+              {/* Gradient fade that adapts to background - selected state uses from-muted, hover uses from-muted/50, normal uses from-background */}
+              <div className={`absolute inset-y-0 right-0 w-12 pointer-events-none ${
+                isSelected
+                  ? 'bg-gradient-to-l from-muted to-transparent'
+                  : 'bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50'
+              }`} />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent
+            side="top"
+            align="start"
+            className="font-mono text-sm px-2 py-1 max-w-none rounded-md bg-black text-white border border-border tracking-tighter -ml-[10px]"
+            sideOffset={-24}
+            hideArrow
+          >
+            {value}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity duration-200 shrink-0 cursor-pointer"
+        onClick={handleCopy}
+      >
+        {copied ? (
+          <Check className="h-3 w-3 text-green-500" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </Button>
+    </div>
+  );
+}
+
 import {
   Table,
   TableBody,
@@ -82,9 +137,15 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu"
 import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
-import { Settings, RefreshCw, ChevronDown } from "lucide-react"
+import { Settings, RefreshCw, ChevronDown, Copy, Check } from "lucide-react"
 import pluralize from "pluralize"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Dialog,
   DialogContent,
@@ -542,11 +603,14 @@ export function DataTable<TData, TValue>({
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id} className="text-xs font-bold">
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="text-xs font-bold">
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </TableHead>
-                ))}
+                {headerGroup.headers.map((header) => {
+                  const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
+                  return (
+                    <TableHead key={header.id} className={`text-xs font-bold ${isIDColumn ? "w-[170px]" : ""}`}>
+                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    </TableHead>
+                  );
+                })}
               </TableRow>
             ))}
           </TableHeader>
@@ -557,16 +621,26 @@ export function DataTable<TData, TValue>({
                   key={row.id}
                   data-state={row.getIsSelected() && "selected"}
                   onClick={() => onRowClick?.(row.original)}
-                  className={onRowClick ? "cursor-pointer" : ""}
+                  className={`group/row ${onRowClick ? "cursor-pointer" : ""}`}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cell.column.columnDef.meta?.monospace ? "font-mono" : ""}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const isIDColumn = typeof cell.column.columnDef.header === 'string' && cell.column.columnDef.header === 'ID';
+                    const isMonospace = cell.column.columnDef.meta?.monospace || isIDColumn;
+                    const cellValue = cell.getValue();
+
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""}`}
+                      >
+                        {isIDColumn && typeof cellValue === 'string' ? (
+                          <IDCell value={cellValue} isSelected={row.getIsSelected()} />
+                        ) : (
+                          flexRender(cell.column.columnDef.cell, cell.getContext())
+                        )}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               ))
             ) : (
