@@ -183,8 +183,7 @@ export function DataTable<TData, TValue>({
         cell: ({ row }) => (
           <Checkbox
             checked={row.getIsSelected()}
-            disabled={!row.getCanSelect()}
-            onCheckedChange={row.getToggleSelectedHandler()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
             aria-label="Select row"
           />
         ),
@@ -376,7 +375,7 @@ export function DataTable<TData, TValue>({
                   const isSorted = header.column.getIsSorted();
 
                   return (
-                    <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] px-3" : ""}`}>
+                    <TableHead key={header.id} className={`px-0 text-xs font-bold border-r ${isIDColumn ? "max-w-24" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] !px-3" : ""}`}>
                       {header.isPlaceholder ? null : (
                         isSelectColumn ? (
                           flexRender(header.column.columnDef.header, header.getContext())
@@ -449,7 +448,7 @@ export function DataTable<TData, TValue>({
                     return (
                       <TableCell
                         key={cell.id}
-                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] px-3" : ""}`}
+                        className={`px-3 ${isMonospace ? "font-mono" : ""} ${isIDColumn ? "max-w-24" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] px-3" : ""}`}
                       >
                         {renderedCell}
                       </TableCell>
