@@ -12,14 +12,6 @@ const computeSidebarSections = [
       { name: "Instances", href: "/compute/instances", icon: "Server" },
       { name: "Instance Types", href: "/compute/instance-types", icon: "Cpu" },
       { name: "Images", href: "/compute/images", icon: "Image" },
-      { name: "Key Pairs", href: "/compute/key-pairs", icon: "Key" },
-    ],
-  },
-  {
-    title: "Network",
-    items: [
-      { name: "Networks", href: "/compute/networks", icon: "Network" },
-      { name: "Security Groups", href: "/compute/security-groups", icon: "Shield" },
     ],
   },
   {
@@ -27,6 +19,14 @@ const computeSidebarSections = [
     items: [
       { name: "Volumes", href: "/compute/volumes", icon: "HardDrive" },
       { name: "Snapshots", href: "/compute/snapshots", icon: "Camera" },
+    ],
+  },
+  {
+    title: "Network & Security",
+    items: [
+      { name: "Networks", href: "/compute/networks", icon: "Network" },
+      { name: "Security Groups", href: "/compute/security-groups", icon: "Shield" },
+      { name: "Key Pairs", href: "/compute/key-pairs", icon: "Key" },
     ],
   },
 ];

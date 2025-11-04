@@ -4,7 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import type { Server, Flavor, ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, InterfaceAttachment } from '@/types/openstack';
+import type { Server, Flavor, ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, Keypair, KeypairListResponse, KeypairResponse, InterfaceAttachment } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
 /**
@@ -91,6 +91,42 @@ export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOpt
       return data.interfaceAttachments;
     },
     enabled: !!serverId && !!client,
+    ...options,
+  });
+}
+
+/**
+ * Hook to fetch list of keypairs
+ */
+export function useKeypairs() {
+  const { region, project } = useKeystone();
+  const client = useApiClient('nova');
+
+  return useQuery({
+    queryKey: [region?.id, project?.id, 'keypairs'],
+    queryFn: async () => {
+      const data = await client!.get('os-keypairs').json<KeypairListResponse>();
+      // Nova returns keypairs as an array of objects with "keypair" property
+      return data.keypairs.map(item => item.keypair);
+    },
+    enabled: !!client,
+  });
+}
+
+/**
+ * Hook to fetch a single keypair by name
+ */
+export function useKeypair(name: string, options?: Omit<UseQueryOptions<Keypair>, 'queryKey' | 'queryFn'>) {
+  const { region, project } = useKeystone();
+  const client = useApiClient('nova');
+
+  return useQuery({
+    queryKey: [region?.id, project?.id, 'keypair', name],
+    queryFn: async () => {
+      const data = await client!.get(`os-keypairs/${name}`).json<KeypairResponse>();
+      return data.keypair;
+    },
+    enabled: !!name && !!client,
     ...options,
   });
 }

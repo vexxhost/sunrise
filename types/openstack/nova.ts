@@ -219,3 +219,73 @@ export interface ListFlavorsOptions {
   minRam?: number; // Minimum RAM in MB
   is_public?: boolean | string; // Filter by public/private (true, false, or "none" for all)
 }
+
+// ============================================================================
+// Keypair Types
+// ============================================================================
+
+/**
+ * Keypair type values
+ */
+export type KeypairType = "ssh" | "x509";
+
+/**
+ * Complete Keypair resource representation
+ */
+export interface Keypair {
+  // Identifier fields
+  name: string; // Keypair name
+  user_id?: string; // Owner user ID (v2.10+, admin-accessible)
+
+  // Key data
+  public_key: string; // Public key material
+  private_key?: string; // Private key (only returned on creation, never on get/list)
+  fingerprint: string; // Key fingerprint hash
+
+  // Type information (v2.2+)
+  type: KeypairType; // SSH or X509
+
+  // Timestamps (internal, may be removed in future)
+  created_at?: string; // Creation timestamp
+  deleted?: boolean; // Soft delete flag (internal)
+  deleted_at?: string | null; // Deletion timestamp (internal)
+  updated_at?: string | null; // Last update timestamp (internal)
+
+  // Custom properties
+  [key: string]: unknown;
+}
+
+/**
+ * Request body for creating/importing a keypair
+ */
+export interface KeypairCreateRequest {
+  name: string; // Required
+  public_key: string; // Required (v2.92+)
+  type?: KeypairType; // Optional, defaults to "ssh"
+  user_id?: string; // Optional, admin only (v2.10+)
+}
+
+/**
+ * Single keypair response
+ * Nova API wraps single keypair in a "keypair" property
+ */
+export interface KeypairResponse {
+  keypair: Keypair;
+}
+
+/**
+ * List keypairs response
+ */
+export interface KeypairListResponse {
+  keypairs: Array<{ keypair: Keypair }>; // Each item is wrapped in "keypair" object
+  keypairs_links?: Link[]; // Pagination links (v2.35+)
+}
+
+/**
+ * Common query parameters for keypair listing
+ */
+export interface ListKeypairsOptions {
+  limit?: number; // Page size (v2.35+)
+  marker?: string; // Pagination marker (v2.35+)
+  user_id?: string; // Filter by user ID (admin only, v2.10+)
+}
