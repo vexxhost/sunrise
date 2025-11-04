@@ -18,16 +18,10 @@ export const columns: ColumnDef<Keypair>[] = [
   {
     accessorKey: "type",
     header: "Type",
-    cell: ({ row }: { row: { original: Keypair } }) => {
-      const type = row.original.type;
-      return (
-        <Badge variant="outline">
-          {type.toUpperCase()}
-        </Badge>
-      );
-    },
+    cell: ({ row }: { row: { original: Keypair } }) => row.original.type,
     meta: {
       fieldType: "string",
+      monospace: true,
       visible: true
     }
   },
@@ -46,12 +40,7 @@ export const columns: ColumnDef<Keypair>[] = [
     header: "Public Key",
     cell: ({ row }: { row: { original: Keypair } }) => {
       const key = row.original.public_key;
-      // Show first 50 characters with ellipsis
-      return (
-        <span className="font-mono text-xs" title={key}>
-          {key.length > 50 ? `${key.substring(0, 50)}...` : key}
-        </span>
-      );
+      return key.length > 50 ? `${key.substring(0, 50)}...` : key
     },
     meta: {
       fieldType: "string",
@@ -66,7 +55,7 @@ export const columns: ColumnDef<Keypair>[] = [
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: true
+      visible: false
     }
   },
   {
@@ -74,7 +63,7 @@ export const columns: ColumnDef<Keypair>[] = [
     header: "Created At",
     meta: {
       fieldType: "date",
-      visible: true
+      visible: false
     }
   }
 ];

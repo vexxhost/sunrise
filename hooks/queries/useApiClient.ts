@@ -29,11 +29,18 @@ export function useApiClient(service: string) {
   return useMemo(() => {
     if (!region?.id || !tokenData?.token) return null;
 
+    const headers: Record<string, string> = {
+      'X-Auth-Token': tokenData.token,
+    };
+
+    // Add OpenStack API version header for nova (compute) service
+    if (service === 'nova') {
+      headers['OpenStack-API-Version'] = 'compute 2.93';
+    }
+
     return ky.create({
       prefixUrl: `/api/proxy/${region.id}/${service}`,
-      headers: {
-        'X-Auth-Token': tokenData.token,
-      },
+      headers,
     });
   }, [region?.id, service, tokenData?.token]);
 }

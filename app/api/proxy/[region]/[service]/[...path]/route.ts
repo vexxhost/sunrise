@@ -191,6 +191,12 @@ async function handleRequest(
       'Content-Type': 'application/json',
     };
 
+    // Forward OpenStack-API-Version header if present
+    const apiVersion = request.headers.get('OpenStack-API-Version');
+    if (apiVersion) {
+      headers['OpenStack-API-Version'] = apiVersion;
+    }
+
     // Prepare request options
     const options: RequestInit = {
       method,
