@@ -2,11 +2,6 @@ import { ServiceLayout } from "@/components/ServiceLayout";
 
 const computeSidebarSections = [
   {
-    items: [
-      { name: "Overview", href: "/compute", icon: "Gauge" },
-    ],
-  },
-  {
     title: "Instances",
     items: [
       { name: "Instances", href: "/compute/instances", icon: "Server" },
