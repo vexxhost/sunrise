@@ -12,7 +12,8 @@ export const columns: ColumnDef<Image>[] = [
     header: "Name",
     cell: ({ row }: { row: { original: Image } }) => row.original.name || "-",
     meta: {
-      fieldType: "string"
+      fieldType: "string",
+      visible: true
     }
   },
   {
@@ -20,7 +21,8 @@ export const columns: ColumnDef<Image>[] = [
     header: "ID",
     meta: {
       fieldType: "string",
-      monospace: true
+      monospace: true,
+      visible: true
     }
   },
   {
@@ -61,7 +63,8 @@ export const columns: ColumnDef<Image>[] = [
       );
     },
     meta: {
-      fieldType: "string"
+      fieldType: "string",
+      visible: true
     }
   },
   {
@@ -96,7 +99,8 @@ export const columns: ColumnDef<Image>[] = [
       );
     },
     meta: {
-      fieldType: "string"
+      fieldType: "string",
+      visible: true
     }
   },
   {
@@ -109,7 +113,22 @@ export const columns: ColumnDef<Image>[] = [
       return bytes(row.original.size, { unitSeparator: ' ' });
     },
     meta: {
-      fieldType: "number"
+      fieldType: "number",
+      visible: true
+    }
+  },
+  {
+    accessorKey: "virtual_size",
+    header: "Virtual Size",
+    cell: ({ row }: { row: { original: Image } }) => {
+      if (row.original.virtual_size === null || row.original.virtual_size === undefined) {
+        return "-";
+      }
+      return bytes(row.original.virtual_size, { unitSeparator: ' ' });
+    },
+    meta: {
+      fieldType: "number",
+      visible: false
     }
   },
   {
@@ -118,7 +137,8 @@ export const columns: ColumnDef<Image>[] = [
     cell: ({ row }: { row: { original: Image } }) => row.original.disk_format || "-",
     meta: {
       fieldType: "string",
-      monospace: true
+      monospace: true,
+      visible: true
     }
   },
   {
@@ -127,7 +147,8 @@ export const columns: ColumnDef<Image>[] = [
     cell: ({ row }: { row: { original: Image } }) => row.original.container_format || "-",
     meta: {
       fieldType: "string",
-      monospace: true
+      monospace: true,
+      visible: false
     }
   },
   {
@@ -137,7 +158,8 @@ export const columns: ColumnDef<Image>[] = [
       return row.original.min_disk > 0 ? `${row.original.min_disk} GB` : "-";
     },
     meta: {
-      fieldType: "number"
+      fieldType: "number",
+      visible: false
     }
   },
   {
@@ -147,7 +169,38 @@ export const columns: ColumnDef<Image>[] = [
       return row.original.min_ram > 0 ? `${row.original.min_ram} MB` : "-";
     },
     meta: {
-      fieldType: "number"
+      fieldType: "number",
+      visible: false
+    }
+  },
+  {
+    accessorKey: "checksum",
+    header: "Checksum",
+    cell: ({ row }: { row: { original: Image } }) => row.original.checksum || "-",
+    meta: {
+      fieldType: "string",
+      monospace: true,
+      visible: false
+    }
+  },
+  {
+    accessorKey: "os_hash_algo",
+    header: "Hash Algorithm",
+    cell: ({ row }: { row: { original: Image } }) => row.original.os_hash_algo || "-",
+    meta: {
+      fieldType: "string",
+      monospace: true,
+      visible: false
+    }
+  },
+  {
+    accessorKey: "os_hash_value",
+    header: "Hash Value",
+    cell: ({ row }: { row: { original: Image } }) => row.original.os_hash_value || "-",
+    meta: {
+      fieldType: "string",
+      monospace: true,
+      visible: false
     }
   },
   {
@@ -155,7 +208,8 @@ export const columns: ColumnDef<Image>[] = [
     header: "Protected",
     cell: ({ row }: { row: { original: Image } }) => row.original.protected ? "Yes" : "No",
     meta: {
-      fieldType: "boolean"
+      fieldType: "boolean",
+      visible: false
     }
   },
   {
@@ -163,7 +217,8 @@ export const columns: ColumnDef<Image>[] = [
     header: "Hidden",
     cell: ({ row }: { row: { original: Image } }) => row.original.os_hidden ? "Yes" : "No",
     meta: {
-      fieldType: "boolean"
+      fieldType: "boolean",
+      visible: false
     }
   },
   {
@@ -172,21 +227,34 @@ export const columns: ColumnDef<Image>[] = [
     cell: ({ row }: { row: { original: Image } }) => row.original.owner || "-",
     meta: {
       fieldType: "string",
-      monospace: true
+      monospace: true,
+      visible: false
+    }
+  },
+  {
+    accessorKey: "direct_url",
+    header: "Direct URL",
+    cell: ({ row }: { row: { original: Image } }) => row.original.direct_url || "-",
+    meta: {
+      fieldType: "string",
+      monospace: true,
+      visible: false
     }
   },
   {
     accessorKey: "created_at",
     header: "Created At",
     meta: {
-      fieldType: "date"
+      fieldType: "date",
+      visible: true
     }
   },
   {
     accessorKey: "updated_at",
     header: "Updated At",
     meta: {
-      fieldType: "date"
+      fieldType: "date",
+      visible: false
     }
   },
   {
@@ -213,7 +281,8 @@ export const columns: ColumnDef<Image>[] = [
       );
     },
     meta: {
-      fieldType: "string"
+      fieldType: "string",
+      visible: false
     }
   }
 ];

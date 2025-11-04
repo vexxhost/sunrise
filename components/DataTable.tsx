@@ -2,7 +2,6 @@
 
 import {
   ColumnDef,
-  VisibilityState,
   flexRender,
   getCoreRowModel,
   getPaginationRowModel,
@@ -24,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import React from "react"
+import React, { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
@@ -46,6 +45,7 @@ declare module '@tanstack/react-table' {
     label?: string
     monospace?: boolean
     fieldType: 'string' | 'number' | 'boolean' | 'date'
+    visible: boolean
   }
 }
 
@@ -165,6 +165,20 @@ export function DataTable<TData, TValue>({
   const pathname = usePathname()
   const [filters, setFilters] = React.useState<Filter[]>([])
 
+  const initialColumnVisibility = useMemo(() => {
+    const visibility: Record<string, boolean> = {}
+
+    columns.forEach((column) => {
+      if ('accessorKey' in column && typeof column.accessorKey === 'string') {
+        visibility[column.accessorKey] = column.meta?.visible ?? true
+      } else if (column.id) {
+        visibility[column.id] = column.meta?.visible ?? true
+      }
+    })
+
+    return visibility
+  }, [columns])
+
   const table = useReactTable({
     data,
     columns: [
@@ -282,6 +296,7 @@ export function DataTable<TData, TValue>({
       pagination: {
         pageSize: 10,
       },
+      columnVisibility: initialColumnVisibility,
     },
     state: {
       globalFilter: filters,
@@ -375,7 +390,7 @@ export function DataTable<TData, TValue>({
                   const isSorted = header.column.getIsSorted();
 
                   return (
-                    <TableHead key={header.id} className={`px-0 text-xs font-bold border-r ${isIDColumn ? "max-w-24" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] !px-3" : ""}`}>
+                    <TableHead key={header.id} className={`px-0 text-xs font-bold border-r ${isIDColumn ? "max-w-32" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] !px-3" : ""}`}>
                       {header.isPlaceholder ? null : (
                         isSelectColumn ? (
                           flexRender(header.column.columnDef.header, header.getContext())
@@ -448,7 +463,7 @@ export function DataTable<TData, TValue>({
                     return (
                       <TableCell
                         key={cell.id}
-                        className={`px-3 ${isMonospace ? "font-mono" : ""} ${isIDColumn ? "max-w-24" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] px-3" : ""}`}
+                        className={`px-3 ${isMonospace ? "font-mono" : ""} ${isIDColumn ? "max-w-32" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] px-3" : ""}`}
                       >
                         {renderedCell}
                       </TableCell>

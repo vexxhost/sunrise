@@ -1,8 +1,97 @@
 /**
- * Type definitions for Nova (Compute) API
+ * Type definitions for OpenStack Nova (Compute Service) API
+ * Based on https://docs.openstack.org/api-ref/compute/
  */
 
 import { SecurityGroup } from "./neutron";
+import type { SortDirection } from "./index";
+
+// ============================================================================
+// Flavor Types
+// ============================================================================
+
+/**
+ * Link resource representation
+ */
+export interface Link {
+  href: string; // URL to the resource
+  rel: string; // Relationship type (e.g., "self", "bookmark")
+}
+
+/**
+ * Complete Flavor resource representation
+ */
+export interface Flavor {
+  // Identifier fields
+  id: string; // UUID or integer ID
+  name: string; // Flavor name
+  description?: string | null; // Flavor description (v2.55+)
+
+  // Compute resources
+  vcpus: number; // Number of virtual CPUs
+  ram: number; // Memory in MB
+  disk: number; // Root disk size in GB
+
+  // Optional disk resources
+  "OS-FLV-EXT-DATA:ephemeral": number; // Ephemeral disk size in GB
+  swap: number | string; // Swap space in MB (can be "" for 0)
+
+  // Network
+  rxtx_factor: number; // RX/TX factor for bandwidth (deprecated)
+
+  // Visibility and state
+  "os-flavor-access:is_public": boolean; // Whether flavor is public
+  "OS-FLV-DISABLED:disabled": boolean; // Whether flavor is disabled
+
+  // Links
+  links: Link[]; // Resource links
+
+  // Extra specifications (v2.61+)
+  extra_specs?: Record<string, string>; // Additional flavor metadata
+}
+
+/**
+ * Request body for creating a flavor
+ */
+export interface FlavorCreateRequest {
+  name: string; // Required
+  ram: number; // Required, in MB
+  vcpus: number; // Required
+  disk: number; // Required, in GB
+  id?: string; // Optional UUID or integer
+  description?: string; // Optional (v2.55+)
+  ephemeral?: number; // Optional, in GB, defaults to 0
+  swap?: number; // Optional, in MB, defaults to 0
+  rxtx_factor?: number; // Optional, defaults to 1.0
+  is_public?: boolean; // Optional, defaults to true
+}
+
+/**
+ * Request body for updating a flavor (v2.55+)
+ */
+export interface FlavorUpdateRequest {
+  description: string | null; // Update or clear description
+}
+
+/**
+ * Single flavor response
+ * Nova API wraps single flavor in a "flavor" property
+ */
+export interface FlavorResponse {
+  flavor: Flavor;
+}
+
+/**
+ * Paginated list response for flavors
+ */
+export interface FlavorListResponse {
+  flavors: Flavor[];
+  flavors_links?: Link[]; // Pagination links
+}
+
+// ============================================================================
+// Server Types
+// ============================================================================
 
 export interface InterfaceAttachment {
   net_id: string;
@@ -17,11 +106,6 @@ export interface InterfaceAttachment {
 
 export interface InterfaceAttachmentsResponse {
   interfaceAttachments: InterfaceAttachment[];
-}
-
-export interface Link {
-  href: string;
-  rel: string;
 }
 
 export interface AddressItem {
@@ -62,19 +146,25 @@ export interface Server {
   locked: boolean;
 }
 
-export interface Flavor {
-  id: string;
-  name: string;
-  ram: number;
-  disk: number;
-  swap: string;
-  "OS-FLV-EXT-DATA:ephemeral": number;
-  "OS-FLV-DISABLED:disabled": boolean;
-  vcpus: number;
-  "os-flavor-access:is_public": boolean;
-  rxtx_factor: number;
-  links: [];
+/**
+ * Single server response
+ * Nova API wraps single server in a "server" property
+ */
+export interface ServerResponse {
+  server: Server;
 }
+
+/**
+ * List servers response
+ */
+export interface ServerListResponse {
+  servers: Server[];
+  servers_links?: Link[]; // Pagination links
+}
+
+// ============================================================================
+// Query/Filter Types
+// ============================================================================
 
 export interface ListServersOptions {
   availability_zone?: string;
@@ -117,12 +207,15 @@ export interface ListServersOptions {
   locked?: boolean;
 }
 
+/**
+ * Common query parameters for flavor listing
+ */
 export interface ListFlavorsOptions {
-  sort_key?: string;
-  sort_dir?: string;
-  limit?: number;
-  marker?: string;
-  minDisk?: number;
-  minRam?: number;
-  is_public?: string;
+  sort_key?: string; // Sort key (e.g., "name", "created_at", "memory_mb")
+  sort_dir?: SortDirection; // Sort direction
+  limit?: number; // Page size
+  marker?: string; // Pagination marker (last flavor ID from previous page)
+  minDisk?: number; // Minimum disk in GB
+  minRam?: number; // Minimum RAM in MB
+  is_public?: boolean | string; // Filter by public/private (true, false, or "none" for all)
 }

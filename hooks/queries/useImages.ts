@@ -4,7 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import type { Image } from '@/types/openstack';
+import type { Image, ImageListResponse } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
 /**
@@ -17,7 +17,7 @@ export function useImages() {
   return useQuery({
     queryKey: [region?.id, project?.id, 'images'],
     queryFn: async () => {
-      const data = await client!.get('v2/images').json<{ images: Image[] }>();
+      const data = await client!.get('v2/images').json<ImageListResponse>();
       return data.images;
     },
     enabled: !!client,
@@ -34,6 +34,7 @@ export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'que
   return useQuery({
     queryKey: [region?.id, project?.id, 'image', id],
     queryFn: async () => {
+      // Glance API returns the image object directly (not wrapped)
       return client!.get(`v2/images/${id}`).json<Image>();
     },
     enabled: !!id && !!client,

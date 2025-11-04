@@ -10,14 +10,25 @@ export const columns: ColumnDef<Flavor>[] = [
       header: "Name",
       cell: ({ row }: { row: { original: Flavor } }) => row.original.name,
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
       accessorKey: "id",
       header: "ID",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
+      }
+    },
+    {
+      accessorKey: "description",
+      header: "Description",
+      cell: ({ row }: { row: { original: Flavor } }) => row.original.description || "-",
+      meta: {
+        fieldType: "string",
+        visible: false
       }
     },
     {
@@ -25,7 +36,8 @@ export const columns: ColumnDef<Flavor>[] = [
       header: "vCPUs",
       cell: ({ row }: { row: { original: Flavor } }) => row.original.vcpus,
       meta: {
-        fieldType: "number"
+        fieldType: "number",
+        visible: true
       }
     },
     {
@@ -36,7 +48,8 @@ export const columns: ColumnDef<Flavor>[] = [
         return `${ramGB} GB`;
       },
       meta: {
-        fieldType: "number"
+        fieldType: "number",
+        visible: true
       }
     },
     {
@@ -46,7 +59,8 @@ export const columns: ColumnDef<Flavor>[] = [
         return row.original.disk > 0 ? `${row.original.disk} GB` : "-";
       },
       meta: {
-        fieldType: "number"
+        fieldType: "number",
+        visible: true
       }
     },
     {
@@ -57,7 +71,8 @@ export const columns: ColumnDef<Flavor>[] = [
         return ephemeral > 0 ? `${ephemeral} GB` : "-";
       },
       meta: {
-        fieldType: "number"
+        fieldType: "number",
+        visible: true
       }
     },
     {
@@ -68,7 +83,17 @@ export const columns: ColumnDef<Flavor>[] = [
         return swap && swap !== "" ? `${swap} MB` : "-";
       },
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: false
+      }
+    },
+    {
+      accessorKey: "rxtx_factor",
+      header: "RX/TX Factor",
+      cell: ({ row }: { row: { original: Flavor } }) => row.original.rxtx_factor,
+      meta: {
+        fieldType: "number",
+        visible: false
       }
     },
     {
@@ -83,7 +108,8 @@ export const columns: ColumnDef<Flavor>[] = [
         );
       },
       meta: {
-        fieldType: "boolean"
+        fieldType: "boolean",
+        visible: true
       }
     },
     {
@@ -98,7 +124,38 @@ export const columns: ColumnDef<Flavor>[] = [
         );
       },
       meta: {
-        fieldType: "boolean"
+        fieldType: "boolean",
+        visible: false
+      }
+    },
+    {
+      accessorKey: "extra_specs",
+      header: "Extra Specs",
+      cell: ({ row }: { row: { original: Flavor } }) => {
+        const specs = row.original.extra_specs;
+        if (!specs || Object.keys(specs).length === 0) {
+          return "-";
+        }
+        const specCount = Object.keys(specs).length;
+        const firstThree = Object.entries(specs).slice(0, 3);
+        return (
+          <div className="flex flex-wrap gap-1">
+            {firstThree.map(([key, value]) => (
+              <Badge key={key} variant="outline" className="text-xs">
+                {key}: {value}
+              </Badge>
+            ))}
+            {specCount > 3 && (
+              <Badge variant="outline" className="text-xs">
+                +{specCount - 3}
+              </Badge>
+            )}
+          </div>
+        );
+      },
+      meta: {
+        fieldType: "string",
+        visible: false
       }
     }
   ]

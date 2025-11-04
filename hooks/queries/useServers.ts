@@ -4,7 +4,7 @@
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import { useKeystone } from '@/contexts/KeystoneContext';
-import type { Server, Flavor, InterfaceAttachment } from '@/types/openstack';
+import type { Server, Flavor, ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, InterfaceAttachment } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
 /**
@@ -17,7 +17,7 @@ export function useServers() {
   return useQuery({
     queryKey: [region?.id, project?.id, 'servers'],
     queryFn: async () => {
-      const data = await client!.get('servers/detail').json<{ servers: Server[] }>();
+      const data = await client!.get('servers/detail').json<ServerListResponse>();
       return data.servers;
     },
     enabled: !!client,
@@ -34,7 +34,7 @@ export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'q
   return useQuery({
     queryKey: [region?.id, project?.id, 'server', id],
     queryFn: async () => {
-      const data = await client!.get(`servers/${id}`).json<{ server: Server }>();
+      const data = await client!.get(`servers/${id}`).json<ServerResponse>();
       return data.server;
     },
     enabled: !!id && !!client,
@@ -52,7 +52,7 @@ export function useFlavors() {
   return useQuery({
     queryKey: [region?.id, project?.id, 'flavors'],
     queryFn: async () => {
-      const data = await client!.get('flavors/detail').json<{ flavors: Flavor[] }>();
+      const data = await client!.get('flavors/detail').json<FlavorListResponse>();
       return data.flavors;
     },
     enabled: !!client,
@@ -69,7 +69,7 @@ export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'q
   return useQuery({
     queryKey: [region?.id, project?.id, 'flavor', id],
     queryFn: async () => {
-      const data = await client!.get(`flavors/${id}`).json<{ flavor: Flavor }>();
+      const data = await client!.get(`flavors/${id}`).json<FlavorResponse>();
       return data.flavor;
     },
     enabled: !!id && !!client,

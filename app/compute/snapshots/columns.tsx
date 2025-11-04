@@ -11,14 +11,16 @@ export const columns: ColumnDef<Snapshot>[] = [
       header: "Name",
       cell: ({ row }: { row: { original: Snapshot } }) => row.original.name,
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
       accessorKey: "id",
       header: "ID",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -26,7 +28,8 @@ export const columns: ColumnDef<Snapshot>[] = [
       header: "Description",
       cell: ({ row }: { row: { original: Snapshot } }) => row.original.description || "-",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -34,7 +37,8 @@ export const columns: ColumnDef<Snapshot>[] = [
       header: "Volume",
       meta: {
         monospace: true,
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       },
       cell: ({ row }: { row: { original: Snapshot } }) => row.original.volume_id
     },
@@ -43,7 +47,8 @@ export const columns: ColumnDef<Snapshot>[] = [
          header: "Size",
          cell: ({ row }: { row: { original: Snapshot } }) => row.original.size + " GB",
          meta: {
-           fieldType: "number"
+           fieldType: "number",
+           visible: true
          }
     },
     {
@@ -77,7 +82,8 @@ export const columns: ColumnDef<Snapshot>[] = [
           );
         },
         meta: {
-          fieldType: "string"
+          fieldType: "string",
+          visible: true
         }
       },
     {
@@ -88,7 +94,8 @@ export const columns: ColumnDef<Snapshot>[] = [
         return date.toLocaleString();
       },
       meta: {
-        fieldType: "date"
+        fieldType: "date",
+        visible: true
       }
     }
 

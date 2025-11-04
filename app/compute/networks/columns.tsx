@@ -11,14 +11,16 @@ export const columns: ColumnDef<Network>[] = [
       header: "Name",
       cell: ({ row }: { row: { original: Network } }) => row.original.name,
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
       accessorKey: "id",
       header: "ID",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -26,7 +28,8 @@ export const columns: ColumnDef<Network>[] = [
       header: "Description",
       cell: ({ row }: { row: { original: Network } }) => row.original.description,
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -44,7 +47,8 @@ export const columns: ColumnDef<Network>[] = [
             );
          },
          meta: {
-           fieldType: "string"
+           fieldType: "string",
+           visible: true
          }
 
     },
@@ -59,7 +63,8 @@ export const columns: ColumnDef<Network>[] = [
         );
       },
       meta: {
-        fieldType: "boolean"
+        fieldType: "boolean",
+        visible: true
       }
 
     },{
@@ -72,7 +77,8 @@ export const columns: ColumnDef<Network>[] = [
         </Badge>        );
       },
       meta: {
-        fieldType: "boolean"
+        fieldType: "boolean",
+        visible: true
       }
 
     },
@@ -87,7 +93,8 @@ export const columns: ColumnDef<Network>[] = [
         );
       },
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -101,7 +108,8 @@ export const columns: ColumnDef<Network>[] = [
         );
       },
       meta: {
-        fieldType: "boolean"
+        fieldType: "boolean",
+        visible: true
       }
     },
     {
@@ -119,7 +127,8 @@ export const columns: ColumnDef<Network>[] = [
         );
       },
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     }
 

@@ -29,14 +29,16 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
       accessorKey: "name",
       header: "Instance Name",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
       accessorKey: "id",
       header: "ID",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -48,7 +50,8 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
         return image && (typeof image == 'object') ? images[image.id] : images[volumeImageIds[attachedVolumes[0]?.id]]
       },
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -56,7 +59,8 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
       header: "IP Address",
       cell: ({ row }) => <IpAddress addresses={row.getValue('addresses')} />,
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -67,14 +71,16 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
         return flavors[flavor.id]
       },
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
       accessorKey: "key_name",
       header: "Key Pair",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -90,7 +96,8 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
         )
       },
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -98,14 +105,16 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
       header: "Alert",
       cell: ({ row }) => "N/A",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
       accessorKey: "OS-EXT-AZ:availability_zone",
       header: "Availability Zone",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -113,7 +122,8 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
       header: "Task",
       cell: ({ row }) => "None",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -121,7 +131,8 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
       header: "Power State",
       cell: ({ row }) => row.getValue('OS-EXT-STS:power_state') == 1 ? "Running" : "Stopped",
       meta: {
-        fieldType: "number"
+        fieldType: "number",
+        visible: true
       }
     },
     {
@@ -129,7 +140,8 @@ export function createInstanceColumns(context: InstanceColumnsContext): ColumnDe
       header: "Age",
       cell: ({ row }) => formatDistanceToNow(Date.parse(row.getValue('OS-SRV-USG:launched_at')), { addSuffix: true }),
       meta: {
-        fieldType: "date"
+        fieldType: "date",
+        visible: true
       }
     }
   ];

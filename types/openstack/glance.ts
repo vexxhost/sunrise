@@ -3,6 +3,8 @@
  * Based on https://docs.openstack.org/api-ref/image/v2/
  */
 
+import type { SortDirection } from "./index";
+
 // ============================================================================
 // Image Types
 // ============================================================================
@@ -489,8 +491,15 @@ export interface TasksSchema extends Schema {
 }
 
 // ============================================================================
-// Collection/List Response Types
+// Response Types
 // ============================================================================
+
+/**
+ * Single image response
+ * Note: GET /v2/images/{image_id} returns the Image object directly,
+ * not wrapped in a response container
+ */
+export type ImageResponse = Image;
 
 /**
  * Paginated list response for images
@@ -557,11 +566,6 @@ export interface MetadefTagListResponse {
 // ============================================================================
 // Query/Filter Types
 // ============================================================================
-
-/**
- * Sort direction
- */
-export type SortDirection = "asc" | "desc";
 
 /**
  * Common query parameters for image listing

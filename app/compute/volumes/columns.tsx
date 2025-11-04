@@ -11,14 +11,16 @@ export const columns: ColumnDef<Volume>[] = [
       header: "Name",
       cell: ({ row }: { row: { original: Volume } }) => row.original.name,
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
       accessorKey: "id",
       header: "ID",
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -26,7 +28,8 @@ export const columns: ColumnDef<Volume>[] = [
       header: "Description",
       cell: ({ row }: { row: { original: Volume } }) => row.original.description,
       meta: {
-        fieldType: "string"
+        fieldType: "string",
+        visible: true
       }
     },
     {
@@ -34,7 +37,8 @@ export const columns: ColumnDef<Volume>[] = [
          header: "Size",
          cell: ({ row }: { row: { original: Volume } }) => row.original.size + " GB",
          meta: {
-           fieldType: "number"
+           fieldType: "number",
+           visible: true
          }
     },
     {
@@ -67,7 +71,8 @@ export const columns: ColumnDef<Volume>[] = [
           );
         },
         meta: {
-          fieldType: "string"
+          fieldType: "string",
+          visible: true
         }
       },
   {
@@ -75,7 +80,8 @@ export const columns: ColumnDef<Volume>[] = [
     header: "Group",
     cell: ({ row }: { row: { original: Volume } }) => row.original.group_id ? row.original.group_id : "-",
     meta: {
-      fieldType: "string"
+      fieldType: "string",
+      visible: true
     }
   },
     {
@@ -83,7 +89,8 @@ export const columns: ColumnDef<Volume>[] = [
         header: "Type",
         cell: ({ row }: { row: { original: Volume } }) => row.original.volume_type,
         meta: {
-          fieldType: "string"
+          fieldType: "string",
+          visible: true
         }
         },
         {
@@ -91,7 +98,8 @@ export const columns: ColumnDef<Volume>[] = [
             header: "Availability Zone",
             cell: ({ row }: { row: { original: Volume } }) => row.original.availability_zone,
             meta: {
-              fieldType: "string"
+              fieldType: "string",
+              visible: true
             }
         },
         {
@@ -99,7 +107,8 @@ export const columns: ColumnDef<Volume>[] = [
             header: "Bootable",
             cell: ({ row }: { row: { original: Volume } }) => row.original.bootable ? "Yes" : "No",
             meta: {
-              fieldType: "boolean"
+              fieldType: "boolean",
+              visible: true
             }
           },
           {
@@ -107,7 +116,8 @@ export const columns: ColumnDef<Volume>[] = [
             header: "Encrypted",
             cell: ({ row }: { row: { original: Volume } }) => row.original.encrypted ? "Yes" : "No",
             meta: {
-              fieldType: "boolean"
+              fieldType: "boolean",
+              visible: true
             }
           },
           {
@@ -115,7 +125,8 @@ export const columns: ColumnDef<Volume>[] = [
             header: "Multi-Attached",
             cell: ({ row }: { row: { original: Volume } }) => row.original.multiattach ? "Yes" : "No",
             meta: {
-              fieldType: "boolean"
+              fieldType: "boolean",
+              visible: true
             }
           }
 
