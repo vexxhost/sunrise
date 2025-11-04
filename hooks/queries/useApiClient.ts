@@ -35,7 +35,7 @@ export function useApiClient(service: string) {
 
     // Add OpenStack API version header for nova (compute) service
     if (service === 'nova') {
-      headers['OpenStack-API-Version'] = 'compute 2.93';
+      headers['OpenStack-API-Version'] = 'compute 2.79';
     }
 
     return ky.create({
