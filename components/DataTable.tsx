@@ -2,9 +2,7 @@
 
 import {
   ColumnDef,
-  SortingState,
   VisibilityState,
-  ColumnFiltersState,
   flexRender,
   getCoreRowModel,
   getPaginationRowModel,
@@ -12,57 +10,43 @@ import {
   getFilteredRowModel,
   useReactTable,
   RowData,
-  RowSelectionState,
 } from "@tanstack/react-table"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { titleCase } from "title-case"
 import { formatDistanceToNow } from 'date-fns'
-import { FilterBuilder, Filter, FilterOperator } from "@/components/FilterBuilder"
-
+import { FilterBuilder, Filter } from "@/components/FilterBuilder"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import React from "react"
+import { Button } from "@/components/ui/button"
+import { TableLoadingRows } from "./TableLoading"
+import { TableEmpty } from "./TableEmpty"
+import { RefreshCw, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import pluralize from "pluralize"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationPrevious,
+  PaginationNext,
+  PaginationLink,
+  PaginationEllipsis,
+} from "@/components/ui/pagination"
+import { DataTableDialog } from "@/components/DataTableDialog"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
     monospace?: boolean
     fieldType: 'string' | 'number' | 'boolean' | 'date'
   }
-}
-
-// Helper function to extract label from column definition
-function getColumnLabel<TData, TValue>(column: any): string {
-  // First check if meta.label exists
-  if (column.columnDef.meta?.label) {
-    return column.columnDef.meta.label;
-  }
-
-  // If header is a string, use that
-  if (typeof column.columnDef.header === 'string') {
-    return column.columnDef.header;
-  }
-
-  // Try to extract text from header function by rendering it
-  // This works for simple button headers with text content
-  if (typeof column.columnDef.header === 'function') {
-    try {
-      // Try to render the header and extract text
-      const headerElement = column.columnDef.header({ column: column });
-      if (headerElement?.props?.children) {
-        // Extract text from children (handles Button components with text)
-        const children = headerElement.props.children;
-        if (Array.isArray(children)) {
-          const textChild = children.find((child: any) => typeof child === 'string');
-          if (textChild) return textChild;
-        } else if (typeof children === 'string') {
-          return children;
-        }
-      }
-    } catch (e) {
-      // If extraction fails, fall through to column id
-    }
-  }
-
-  // Otherwise fall back to column id (formatted)
-  return titleCase(column.id.replace(/[_-]/g, ' '));
 }
 
 // ID Cell Component with copy functionality and hover expand
@@ -85,11 +69,10 @@ function IDCell({ value, isSelected, linkPath }: { value: string; isSelected: bo
         </span>
       </div>
       {/* Gradient fade - visible when not hovering */}
-      <div className={`absolute inset-y-0 right-0 w-12 pointer-events-none opacity-100 group-hover/id:opacity-0 z-20 ${
-        isSelected
-          ? 'bg-gradient-to-l from-muted to-transparent'
-          : 'bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50'
-      }`} />
+      <div className={`absolute inset-y-0 right-0 w-12 pointer-events-none opacity-100 group-hover/id:opacity-0 z-20 ${isSelected
+        ? 'bg-gradient-to-l from-muted to-transparent'
+        : 'bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50'
+        }`} />
       {/* Invisible spacer to maintain height */}
       <span className="font-mono text-sm tracking-tighter block whitespace-nowrap invisible">
         {value.substring(0, 10)}
@@ -122,51 +105,7 @@ function IDCell({ value, isSelected, linkPath }: { value: string; isSelected: bo
   );
 }
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import React, { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu"
-import { DropdownMenuTrigger } from "@radix-ui/react-dropdown-menu"
-import { TableLoadingRows } from "./TableLoading"
-import { TableEmpty } from "./TableEmpty"
-import { Settings, RefreshCw, ChevronDown, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, Search } from "lucide-react"
-import pluralize from "pluralize"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationPrevious,
-  PaginationNext,
-  PaginationLink,
-  PaginationEllipsis,
-} from "@/components/ui/pagination"
-import {
-  DialogFooter,
-} from "@/components/ui/dialog"
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group"
+
 
 // Helper function to generate page numbers with ellipsis
 function generatePaginationItems(currentPage: number, totalPages: number) {
@@ -210,10 +149,6 @@ interface DataTableProps<TData, TValue> {
   isLoading?: boolean
   isRefetching?: boolean
   refetch?: () => void
-  defaultColumnVisibility?: VisibilityState
-  onRowClick?: (row: TData) => void
-  emptyMessage?: string
-  pageSize?: number
   resourceName?: string
   emptyIcon: React.ComponentType<{ className?: string }>
 }
@@ -224,56 +159,18 @@ export function DataTable<TData, TValue>({
   isLoading = false,
   isRefetching = false,
   refetch,
-  defaultColumnVisibility = {},
-  onRowClick,
-  emptyMessage,
-  pageSize = 10,
   resourceName,
   emptyIcon,
 }: DataTableProps<TData, TValue>) {
-
-  const dataRef = React.useRef(data);
-  const columnsRef = React.useRef(columns);
-  const renderCount = React.useRef(0);
-  renderCount.current++;
-
-  if (dataRef.current !== data) {
-    console.log('[DataTable] DATA CHANGED', { resourceName, dataLength: data.length });
-    dataRef.current = data;
-  }
-
-  if (columnsRef.current !== columns) {
-    console.log('[DataTable] COLUMNS CHANGED', { resourceName, columnsLength: columns.length });
-    columnsRef.current = columns;
-  }
-
-  console.log('[DataTable] render #' + renderCount.current, { resourceName });
-
   const pathname = usePathname()
-  const [sorting, setSorting] = React.useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [filters, setFilters] = React.useState<Filter[]>([])
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
-  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
 
-  // Memoize state setters to prevent useReactTable from seeing new function references
-  const setSortingMemo = React.useCallback(setSorting, []);
-  const setColumnFiltersMemo = React.useCallback(setColumnFilters, []);
-  const setColumnVisibilityMemo = React.useCallback(setColumnVisibility, []);
-  const setRowSelectionMemo = React.useCallback(setRowSelection, []);
-
-  // Dialog state management
-  const [dialogOpen, setDialogOpen] = React.useState(false)
-  const [tempPageSize, setTempPageSize] = React.useState(pageSize.toString())
-  const [tempColumnVisibility, setTempColumnVisibility] = React.useState<VisibilityState>(defaultColumnVisibility)
-  const [columnSearch, setColumnSearch] = React.useState("")
-
-  // Add checkbox column
-  const columnsWithCheckbox = React.useMemo<ColumnDef<TData, TValue>[]>(() => [
-    {
-      id: "select",
-      header: ({ table }) => (
-        <div className="flex items-center justify-center">
+  const table = useReactTable({
+    data,
+    columns: [
+      {
+        id: "select",
+        header: ({ table }) => (
           <Checkbox
             checked={
               table.getIsAllPageRowsSelected() ||
@@ -282,34 +179,32 @@ export function DataTable<TData, TValue>({
             onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
             aria-label="Select all"
           />
-        </div>
-      ),
-      cell: ({ row }) => (
-        <div className="flex items-center justify-center">
+        ),
+        cell: ({ row }) => (
           <Checkbox
             checked={row.getIsSelected()}
-            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            disabled={!row.getCanSelect()}
+            onCheckedChange={row.getToggleSelectedHandler()}
             aria-label="Select row"
           />
-        </div>
-      ),
-      enableSorting: false,
-      enableHiding: false,
-    } as ColumnDef<TData, TValue>,
-    ...columns,
-  ], [columns])
+        ),
+        enableSorting: false,
+        enableHiding: false,
+      } as ColumnDef<TData, TValue>,
+      ...columns,
+    ],
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    globalFilterFn: (row, _columnId, filterValue: any) => {
+      const filters = filterValue as Filter[]
+      if (!filters || filters.length === 0) return true
 
-  // Apply custom filters
-  const filteredData = React.useMemo(() => {
-    console.log('[DataTable] filteredData useMemo running', { filtersLength: filters.length, dataLength: data.length });
-    if (filters.length === 0) return data
-
-    return data.filter((row: any) => {
       return filters.every((filter) => {
-        const rawValue = row[filter.columnId]
+        const rawValue = (row.original as any)[filter.columnId]
 
         // Get the column to check its field type
-        const column = columnsWithCheckbox.find(col => {
+        const column = columns.find(col => {
           if ('accessorKey' in col) {
             return col.accessorKey === filter.columnId
           }
@@ -381,199 +276,19 @@ export function DataTable<TData, TValue>({
           }
         }
       })
-    })
-  }, [data, filters, columnsWithCheckbox])
-
-  // Memoize table model functions to prevent recreating on every render
-  const coreRowModel = React.useMemo(() => getCoreRowModel(), []);
-  const paginationRowModel = React.useMemo(() => getPaginationRowModel(), []);
-  const sortedRowModel = React.useMemo(() => getSortedRowModel(), []);
-  const filteredRowModel = React.useMemo(() => getFilteredRowModel(), []);
-
-  // Memoize state objects to prevent new references on every render
-  const tableState = React.useMemo(
-    () => ({
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-    }),
-    [sorting, columnFilters, columnVisibility, rowSelection]
-  );
-
-  const tableInitialState = React.useMemo(
-    () => ({
+    },
+    getSortedRowModel: getSortedRowModel(),
+    onGlobalFilterChange: setFilters,
+    initialState: {
       pagination: {
-        pageSize,
+        pageSize: 10,
       },
-    }),
-    [pageSize]
-  );
-
-  const table = useReactTable({
-    data: filteredData,
-    columns: columnsWithCheckbox,
-    getCoreRowModel: coreRowModel,
-    getPaginationRowModel: paginationRowModel,
-    onSortingChange: setSortingMemo,
-    getSortedRowModel: sortedRowModel,
-    onColumnFiltersChange: setColumnFiltersMemo,
-    getFilteredRowModel: filteredRowModel,
-    onColumnVisibilityChange: setColumnVisibilityMemo,
-    onRowSelectionChange: setRowSelectionMemo,
-    state: tableState,
-    initialState: tableInitialState,
+    },
+    state: {
+      globalFilter: filters,
+    },
   })
 
-  console.log('[DataTable] table created, row count:', table.getRowModel().rows.length);
-
-  // Create a minimal table just to render headers for loading/error states
-  const headerTable = useReactTable({
-    data: [] as TData[],
-    columns: columnsWithCheckbox,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  // Show loading skeleton whenever loading (initial load or refresh)
-  const renderTableContent = () => {
-    if (isLoading) {
-      return (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              {headerTable.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
-                  {headerGroup.headers.map((header) => {
-                    const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
-                    const isSelectColumn = header.column.id === 'select';
-                    return (
-                      <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-10 min-w-10 p-0" : ""}`}>
-                        {isSelectColumn ? (
-                          flexRender(header.column.columnDef.header, header.getContext())
-                        ) : (
-                          <div className="py-2">
-                            {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                          </div>
-                        )}
-                      </TableHead>
-                    );
-                  })}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              <TableLoadingRows
-                columns={columnsWithCheckbox.length}
-                message={resourceName ? `Loading ${pluralize(resourceName)}...` : "Loading data..."}
-              />
-            </TableBody>
-          </Table>
-        </div>
-      );
-    }
-
-    return (
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
-                {headerGroup.headers.map((header) => {
-                  const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
-                  const isSelectColumn = header.column.id === 'select';
-                  const canSort = header.column.getCanSort();
-                  const isSorted = header.column.getIsSorted();
-
-                  return (
-                    <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-10 min-w-10 p-0" : ""}`}>
-                      {header.isPlaceholder ? null : (
-                        isSelectColumn ? (
-                          flexRender(header.column.columnDef.header, header.getContext())
-                        ) : canSort ? (
-                          <Button
-                            variant="ghost"
-                            onClick={() => header.column.toggleSorting(isSorted === "asc")}
-                            className="h-full w-full py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
-                          >
-                            <span>
-                              {typeof header.column.columnDef.header === 'string'
-                                ? header.column.columnDef.header
-                                : flexRender(header.column.columnDef.header, header.getContext())}
-                            </span>
-                            {isSorted === "asc" ? (
-                              <ArrowUp className="h-3 w-3 shrink-0" />
-                            ) : isSorted === "desc" ? (
-                              <ArrowDown className="h-3 w-3 shrink-0" />
-                            ) : (
-                              <ArrowUpDown className="h-3 w-3 opacity-50 shrink-0" />
-                            )}
-                          </Button>
-                        ) : (
-                          <div className="py-2">
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                          </div>
-                        )
-                      )}
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  onClick={() => onRowClick?.(row.original)}
-                  className={`group/row ${onRowClick ? "cursor-pointer" : ""}`}
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const isIDColumn = typeof cell.column.columnDef.header === 'string' && cell.column.columnDef.header === 'ID';
-                    const isSelectColumn = cell.column.id === 'select';
-                    const isMonospace = cell.column.columnDef.meta?.monospace || isIDColumn;
-                    const cellValue = cell.getValue();
-                    const fieldType = cell.column.columnDef.meta?.fieldType;
-
-                    // Auto-format date fields if it's a date type and has a plain string value
-                    let renderedCell;
-                    if (isIDColumn && typeof cellValue === 'string') {
-                      renderedCell = <IDCell value={cellValue} isSelected={row.getIsSelected()} linkPath={pathname} />;
-                    } else if (fieldType === 'date' && typeof cellValue === 'string') {
-                      // Automatically format date fields using date-fns
-                      try {
-                        renderedCell = formatDistanceToNow(new Date(cellValue), { addSuffix: true });
-                      } catch {
-                        renderedCell = cellValue;
-                      }
-                    } else {
-                      renderedCell = flexRender(cell.column.columnDef.cell, cell.getContext());
-                    }
-
-                    return (
-                      <TableCell
-                        key={cell.id}
-                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-10 min-w-10 p-0" : ""}`}
-                      >
-                        {renderedCell}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))
-            ) : (
-              <TableEmpty
-                columns={columnsWithCheckbox.length}
-                message={emptyMessage || (resourceName ? `No ${pluralize(resourceName)} found.` : "No results.")}
-                icon={emptyIcon}
-              />
-            )}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  };
 
   return (
     <>
@@ -645,130 +360,113 @@ export function DataTable<TData, TValue>({
             </Pagination>
           )}
 
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  setTempPageSize(table.getState().pagination.pageSize.toString())
-                  setTempColumnVisibility(table.getState().columnVisibility)
-                }}
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Table Settings</DialogTitle>
-                <DialogDescription>
-                  Customize your table view and preferences
-                </DialogDescription>
-              </DialogHeader>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  table.setPageSize(Number(tempPageSize))
-                  setColumnVisibility(tempColumnVisibility)
-                  setDialogOpen(false)
-                }}
-              >
-                <div className="flex gap-8 py-6">
-                  <div className="flex-shrink-0 w-48">
-                    <Label className="text-base font-semibold block mb-4">Page size</Label>
-                    <RadioGroup
-                      value={tempPageSize}
-                      onValueChange={setTempPageSize}
-                      className="gap-3"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="10" id="r1" />
-                        <Label htmlFor="r1" className="font-normal cursor-pointer">
-                          {resourceName ? `10 ${pluralize(resourceName)}` : '10'}
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="25" id="r2" />
-                        <Label htmlFor="r2" className="font-normal cursor-pointer">
-                          {resourceName ? `25 ${pluralize(resourceName)}` : '25'}
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="50" id="r3" />
-                        <Label htmlFor="r3" className="font-normal cursor-pointer">
-                          {resourceName ? `50 ${pluralize(resourceName)}` : '50'}
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <Label className="text-base font-semibold block mb-4">Visible columns</Label>
-                    <Input
-                      placeholder="Search columns..."
-                      value={columnSearch}
-                      onChange={(e) => setColumnSearch(e.target.value)}
-                      className="mb-3 h-8 text-sm"
-                    />
-                    <div className="flex flex-col gap-y-3 max-h-[300px] overflow-y-auto pr-2">
-                      {table.getAllColumns()
-                        .filter((column) => column.getCanHide())
-                        .filter((column) => {
-                          const label = getColumnLabel(column);
-                          return columnSearch === "" ||
-                            label.toLowerCase().includes(columnSearch.toLowerCase()) ||
-                            column.id.toLowerCase().includes(columnSearch.toLowerCase())
-                        })
-                        .map((column) => {
-                          const label = getColumnLabel(column);
-                          return (
-                            <div key={column.id} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`dialog-${column.id}`}
-                                checked={tempColumnVisibility[column.id] !== false}
-                                onCheckedChange={(checked) => {
-                                  setTempColumnVisibility({
-                                    ...tempColumnVisibility,
-                                    [column.id]: checked === true
-                                  })
-                                }}
-                              />
-                              <label
-                                htmlFor={`dialog-${column.id}`}
-                                className="text-sm font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                              >
-                                {label}
-                              </label>
-                            </div>
-                          );
-                        })
-                      }
-                    </div>
-                  </div>
-                </div>
-
-                <DialogFooter className="mt-6">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setTempPageSize(table.getState().pagination.pageSize.toString())
-                      setTempColumnVisibility(table.getState().columnVisibility)
-                      setColumnSearch("")
-                      setDialogOpen(false)
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit">Confirm</Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <DataTableDialog table={table} resourceName={resourceName} />
         </div>
       </div>
 
-      {renderTableContent()}
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
+                {headerGroup.headers.map((header) => {
+                  const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
+                  const isSelectColumn = header.column.id === 'select';
+                  const canSort = header.column.getCanSort();
+                  const isSorted = header.column.getIsSorted();
+
+                  return (
+                    <TableHead key={header.id} className={`text-xs font-bold border-r ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] px-3" : ""}`}>
+                      {header.isPlaceholder ? null : (
+                        isSelectColumn ? (
+                          flexRender(header.column.columnDef.header, header.getContext())
+                        ) : canSort ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() => header.column.toggleSorting(isSorted === "asc")}
+                            className="h-full w-full py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
+                          >
+                            <span>
+                              {typeof header.column.columnDef.header === 'string'
+                                ? header.column.columnDef.header
+                                : flexRender(header.column.columnDef.header, header.getContext())}
+                            </span>
+                            {isSorted === "asc" ? (
+                              <ArrowUp className="h-3 w-3 shrink-0" />
+                            ) : isSorted === "desc" ? (
+                              <ArrowDown className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-50 shrink-0" />
+                            )}
+                          </Button>
+                        ) : (
+                          <div className="py-2">
+                            {flexRender(header.column.columnDef.header, header.getContext())}
+                          </div>
+                        )
+                      )}
+                    </TableHead>
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableLoadingRows
+                columns={columns.length + 1}
+                message={resourceName ? `Loading ${pluralize(resourceName)}...` : "Loading data..."}
+              />
+            ) : table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && "selected"}
+                  className={`group/row`}
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    const isIDColumn = typeof cell.column.columnDef.header === 'string' && cell.column.columnDef.header === 'ID';
+                    const isSelectColumn = cell.column.id === 'select';
+                    const isMonospace = cell.column.columnDef.meta?.monospace || isIDColumn;
+                    const cellValue = cell.getValue();
+                    const fieldType = cell.column.columnDef.meta?.fieldType;
+
+                    // Auto-format date fields if it's a date type and has a plain string value
+                    let renderedCell;
+                    if (isIDColumn && typeof cellValue === 'string') {
+                      renderedCell = <IDCell value={cellValue} isSelected={row.getIsSelected()} linkPath={pathname} />;
+                    } else if (fieldType === 'date' && typeof cellValue === 'string') {
+                      // Automatically format date fields using date-fns
+                      try {
+                        renderedCell = formatDistanceToNow(new Date(cellValue), { addSuffix: true });
+                      } catch {
+                        renderedCell = cellValue;
+                      }
+                    } else {
+                      renderedCell = flexRender(cell.column.columnDef.cell, cell.getContext());
+                    }
+
+                    return (
+                      <TableCell
+                        key={cell.id}
+                        className={`${isMonospace ? "font-mono" : ""} ${isIDColumn ? "w-[170px]" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] px-3" : ""}`}
+                      >
+                        {renderedCell}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))
+            ) : (
+              <TableEmpty
+                columns={columns.length + 1}
+                message={resourceName ? `No ${pluralize(resourceName)} found.` : "No results."}
+                icon={emptyIcon}
+              />
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </>
   )
 }

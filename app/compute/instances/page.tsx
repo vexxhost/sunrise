@@ -70,12 +70,6 @@ export default function Page() {
       isRefetching={isRefetchingServers}
       refetch={refetchServers}
       columns={columns}
-      defaultColumnVisibility={{
-        id: false,
-        alert: false,
-        'OS-EXT-AZ:availability_zone': false,
-        task: false
-      }}
       resourceName="instance"
       emptyIcon={ServerIcon}
     />
