@@ -115,6 +115,24 @@ export function NavigationMenu() {
 
         <_NavigationMenu viewport={isMobile}>
           <NavigationMenuList className="flex items-center gap-2">
+            <NavigationMenuItem className="list-none">
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="gap-2 text-xs h-9 px-3 hover:bg-muted"
+              >
+                <a
+                  href="https://github.com/vexxhost/sunrise/issues/new"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Feedback
+                </a>
+              </Button>
+            </NavigationMenuItem>
+
             {region && regions.length > 0 && (
               <NavigationMenuItem>
                 <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
@@ -168,24 +186,6 @@ export function NavigationMenu() {
                 </NavigationMenuItem>
               </>
             )}
-
-            <NavigationMenuItem className="list-none">
-              <Button
-                variant="ghost"
-                size="sm"
-                asChild
-                className="gap-2 text-xs h-9 px-3 hover:bg-muted"
-              >
-                <a
-                  href="https://github.com/vexxhost/sunrise/issues/new"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Feedback
-                </a>
-              </Button>
-            </NavigationMenuItem>
 
             {tokenData?.data?.user?.name && (
               <>
