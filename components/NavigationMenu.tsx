@@ -3,11 +3,12 @@
 import * as React from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Layers, FolderKanban, User, LogOut } from "lucide-react"
+import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Layers, FolderKanban, User, LogOut, MessageSquare } from "lucide-react"
 import type { Project } from "@/types/openstack"
 import { useKeystone } from "@/contexts/KeystoneContext"
 import { useMediaQuery } from "usehooks-ts"
 import { useProjectToken } from "@/hooks/queries"
+import { Button } from "@/components/ui/button"
 
 import {
   NavigationMenu as _NavigationMenu,
@@ -167,6 +168,24 @@ export function NavigationMenu() {
                 </NavigationMenuItem>
               </>
             )}
+
+            <NavigationMenuItem className="list-none">
+              <Button
+                variant="ghost"
+                size="sm"
+                asChild
+                className="gap-2 text-xs h-9 px-3 hover:bg-muted"
+              >
+                <a
+                  href="https://github.com/vexxhost/sunrise/issues/new"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  Feedback
+                </a>
+              </Button>
+            </NavigationMenuItem>
 
             {tokenData?.data?.user?.name && (
               <>
