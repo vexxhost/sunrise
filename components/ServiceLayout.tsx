@@ -75,7 +75,7 @@ export function ServiceLayout({ children, sidebarSections }: ServiceLayoutProps)
             ))}
           </SidebarContent>
         </Sidebar>
-        <SidebarInset>
+        <SidebarInset className="min-w-0">
           <div className="p-6">{children}</div>
         </SidebarInset>
       </div>
