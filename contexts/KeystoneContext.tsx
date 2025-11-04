@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import type { Project, Region } from '@/types/openstack';
 import { useRegions } from '@/hooks/queries/useRegions';
 import { useProjects } from '@/hooks/queries/useProjects';

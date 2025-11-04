@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import React, { useMemo } from "react"
+import React, { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
@@ -40,6 +40,7 @@ import {
   PaginationEllipsis,
 } from "@/components/ui/pagination"
 import { DataTableDialog } from "@/components/DataTableDialog"
+import { useLocalStorage } from "usehooks-ts"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
@@ -51,7 +52,7 @@ declare module '@tanstack/react-table' {
 
 // ID Cell Component with copy functionality and hover expand
 function IDCell({ value, isSelected, linkPath }: { value: string; isSelected: boolean; linkPath?: string }) {
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -163,21 +164,24 @@ export function DataTable<TData, TValue>({
   emptyIcon,
 }: DataTableProps<TData, TValue>) {
   const pathname = usePathname()
-  const [filters, setFilters] = React.useState<Filter[]>([])
+  const [globalFilter, setGlobalFilter] = useState<Filter[]>([])
 
-  const initialColumnVisibility = useMemo(() => {
-    const visibility: Record<string, boolean> = {}
+  const [columnVisibility, setColumnVisibility] = useLocalStorage<Record<string, boolean>>(
+    `${resourceName}dataTableColumnVisibility`,
+    () => {
+      const visibility: Record<string, boolean> = {}
 
-    columns.forEach((column) => {
-      if ('accessorKey' in column && typeof column.accessorKey === 'string') {
-        visibility[column.accessorKey] = column.meta?.visible ?? true
-      } else if (column.id) {
-        visibility[column.id] = column.meta?.visible ?? true
-      }
-    })
+      columns.forEach((column) => {
+        if ('accessorKey' in column && typeof column.accessorKey === 'string') {
+          visibility[column.accessorKey] = column.meta?.visible ?? true
+        } else if (column.id) {
+          visibility[column.id] = column.meta?.visible ?? true
+        }
+      })
 
-    return visibility
-  }, [columns])
+      return visibility
+    }
+  )
 
   const table = useReactTable({
     data,
@@ -291,15 +295,16 @@ export function DataTable<TData, TValue>({
       })
     },
     getSortedRowModel: getSortedRowModel(),
-    onGlobalFilterChange: setFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnVisibilityChange: setColumnVisibility,
     initialState: {
       pagination: {
         pageSize: 10,
       },
-      columnVisibility: initialColumnVisibility,
     },
     state: {
-      globalFilter: filters,
+      columnVisibility,
+      globalFilter,
     },
   })
 
@@ -328,7 +333,7 @@ export function DataTable<TData, TValue>({
       <div className="flex items-center justify-between pb-2">
         <FilterBuilder
           columns={table.getAllColumns()}
-          onFiltersChange={setFilters}
+          onFiltersChange={setGlobalFilter}
           data={data}
         />
 

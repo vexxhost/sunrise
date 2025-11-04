@@ -4,8 +4,6 @@ import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { MoreHorizontal, Network } from "lucide-react";
 import { Button } from "../ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { useState } from "react";
 import { DataTable } from "../DataTable";
 
 
