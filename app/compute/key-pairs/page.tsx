@@ -1,112 +1,117 @@
-'use client';
+import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
+import { makeQueryClient } from '@/lib/query-client';
+import { getSession } from '@/lib/session';
+import { getSelectedRegion, getSelectedProject } from '@/lib/keystone/actions';
+import { KeypairsTable } from './KeypairsTable';
+import type { KeypairListResponse } from '@/types/openstack';
 
-import { DataTable, DataTableAction, DataTableRowAction } from "@/components/DataTable";
-import { KeyRound, Upload, Plus, Trash2 } from "lucide-react";
-import { useKeypairs } from "@/hooks/queries/useServers";
-import { Keypair } from "@/types/openstack";
-import { ColumnDef } from "@tanstack/react-table";
+export default async function Page() {
+  const queryClient = makeQueryClient();
 
-const columns: ColumnDef<Keypair>[] = [
-  {
-    accessorKey: "name",
-    header: "Name",
-    cell: ({ row }: { row: { original: Keypair } }) => row.original.name,
-    meta: {
-      fieldType: "string",
-      visible: true
-    }
-  },
-  {
-    accessorKey: "type",
-    header: "Type",
-    cell: ({ row }: { row: { original: Keypair } }) => row.original.type,
-    meta: {
-      fieldType: "string",
-      monospace: true,
-      visible: true
-    }
-  },
-  {
-    accessorKey: "fingerprint",
-    header: "Fingerprint",
-    cell: ({ row }: { row: { original: Keypair } }) => row.original.fingerprint,
-    meta: {
-      fieldType: "string",
-      monospace: true,
-      visible: true
-    }
-  },
-  {
-    accessorKey: "public_key",
-    header: "Public Key",
-    cell: ({ row }: { row: { original: Keypair } }) => {
-      const key = row.original.public_key;
-      return key.length > 50 ? `${key.substring(0, 50)}...` : key
+  // Get region and project for the query key
+  const regionId = await getSelectedRegion();
+  const projectId = await getSelectedProject();
+
+  // Prefetch keypairs data on the server
+  await queryClient.prefetchQuery({
+    queryKey: [regionId, projectId, 'keypairs'],
+    queryFn: async () => {
+      if (!regionId || !projectId) {
+        return [];
+      }
+
+      const session = await getSession();
+      if (!session.keystone_unscoped_token) {
+        return [];
+      }
+
+      try {
+        // Get project-scoped token
+        const tokenResponse = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            auth: {
+              identity: {
+                methods: ['token'],
+                token: {
+                  id: session.keystone_unscoped_token,
+                },
+              },
+              scope: {
+                project: {
+                  id: projectId,
+                },
+              },
+            },
+          }),
+        });
+
+        if (!tokenResponse.ok) {
+          return [];
+        }
+
+        const token = tokenResponse.headers.get('X-Subject-Token');
+        if (!token) {
+          return [];
+        }
+
+        // Get service catalog
+        const catalogResponse = await fetch(`${process.env.KEYSTONE_API}/v3/auth/catalog`, {
+          headers: {
+            'X-Auth-Token': token,
+          },
+          next: { revalidate: 300 }, // Cache for 5 minutes
+        });
+
+        if (!catalogResponse.ok) {
+          return [];
+        }
+
+        const catalogData = await catalogResponse.json();
+        const serviceEntry = catalogData.catalog.find(
+          (item: any) => item.type === 'compute' || item.name === 'nova'
+        );
+
+        if (!serviceEntry) {
+          return [];
+        }
+
+        const endpoint = serviceEntry.endpoints.find(
+          (ep: any) => ep.interface === 'public' && ep.region === regionId
+        );
+
+        if (!endpoint) {
+          return [];
+        }
+
+        // Fetch keypairs from Nova API
+        const response = await fetch(`${endpoint.url}/os-keypairs`, {
+          headers: {
+            'X-Auth-Token': token,
+            'OpenStack-API-Version': 'compute 2.79',
+          },
+          next: { revalidate: 60 }, // Cache for 1 minute
+        });
+
+        if (!response.ok) {
+          return [];
+        }
+
+        const data = await response.json() as KeypairListResponse;
+        return data.keypairs.map(item => item.keypair);
+      } catch (error) {
+        console.error('Error fetching keypairs:', error);
+        return [];
+      }
     },
-    meta: {
-      fieldType: "string",
-      monospace: true,
-      visible: true
-    }
-  },
-  {
-    accessorKey: "user_id",
-    header: "User ID",
-    cell: ({ row }: { row: { original: Keypair } }) => row.original.user_id || "-",
-    meta: {
-      fieldType: "string",
-      monospace: true,
-      visible: false
-    }
-  },
-  {
-    accessorKey: "created_at",
-    header: "Created At",
-    meta: {
-      fieldType: "date",
-      visible: false
-    }
-  }
-];
-
-export default function Page() {
-  const { data, isLoading, isRefetching, refetch } = useKeypairs();
-
-  const actions: DataTableAction[] = [
-    {
-      label: 'Import',
-      variant: 'outline',
-      icon: Upload,
-      onClick: () => console.log('Import key pair clicked'),
-    },
-    {
-      label: 'Create',
-      variant: 'default',
-      icon: Plus,
-      onClick: () => console.log('Create key pair clicked'),
-    },
-  ];
-
-  const rowActions: DataTableRowAction<Keypair>[] = [
-    {
-      label: 'Delete',
-      variant: 'destructive',
-      icon: Trash2,
-      onClick: (rows) => console.log('Delete key pairs:', rows),
-    },
-  ];
+  });
 
   return (
-    <DataTable
-      data={data || []}
-      isLoading={isLoading}
-      isRefetching={isRefetching}
-      refetch={refetch}
-      columns={columns}
-      resourceName="key pair"
-      emptyIcon={KeyRound}
-      actions={actions}
-      rowActions={rowActions}
-    />
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <KeypairsTable regionId={regionId} projectId={projectId} />
+    </HydrationBoundary>
   );
 }
