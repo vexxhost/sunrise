@@ -7,7 +7,7 @@ import { ServerIPAddresses } from "@/components/Instance/IpAddressList";
 import { FlavorInfo } from "@/components/Instance/FlavorInfo";
 import { InstanceInfo } from "@/components/Instance/InstanceInfo";
 import { Interfaces } from "@/components/Instance/Interfaces";
-import { Loader } from "@/components/Loader";
+import { Loader2 } from "lucide-react";
 import { useServer, useServerInterfaces, usePort, useNetwork } from "@/hooks/queries";
 import { useMemo } from "react";
 
@@ -64,7 +64,7 @@ export default function Instance({ params }: { params: Params }) {
   if (isLoading) {
     return (
       <div className="p-20 flex justify-center items-center">
-        <Loader />
+        <Loader2 className="w-32 h-32 animate-spin" />
       </div>
     );
   }
