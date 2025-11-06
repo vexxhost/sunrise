@@ -10,11 +10,10 @@ import {
   useReactTable,
   RowData,
 } from "@tanstack/react-table"
-import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { titleCase } from "title-case"
 import { formatDistanceToNow } from 'date-fns'
-import { FilterBuilder, Filter } from "@/components/FilterBuilder"
+import { FilterBuilder } from "@/components/FilterBuilder"
 import {
   Table,
   TableBody,
@@ -23,11 +22,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import React, { useMemo, useState } from "react"
+import React from "react"
 import { Button } from "@/components/ui/button"
 import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
-import { RefreshCw, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { RefreshCw, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import pluralize from "pluralize"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -40,7 +39,10 @@ import {
   PaginationEllipsis,
 } from "@/components/ui/pagination"
 import { DataTableDialog } from "@/components/DataTableDialog"
-import { useLocalStorage } from "usehooks-ts"
+import { IDCell } from "@/components/DataTable/IDCell"
+import { useColumnVisibility } from "@/hooks/useColumnVisibility"
+import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter"
+import { generatePaginationItems } from "@/lib/pagination"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
@@ -48,100 +50,6 @@ declare module '@tanstack/react-table' {
     fieldType: 'string' | 'number' | 'boolean' | 'date'
     visible: boolean
   }
-}
-
-// ID Cell Component with copy functionality and hover expand
-function IDCell({ value, isSelected, linkPath }: { value: string; isSelected: boolean; linkPath?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const content = (
-    <div className="relative w-[100px] flex-shrink-0 group/id">
-      <div className="absolute left-0 top-0 w-full overflow-hidden group-hover/id:left-[-9px] group-hover/id:top-[-5px] group-hover/id:z-50 group-hover/id:w-auto group-hover/id:px-2 group-hover/id:py-1 group-hover/id:bg-popover group-hover/id:text-popover-foreground group-hover/id:border group-hover/id:border-border group-hover/id:rounded-md group-hover/id:overflow-visible group-hover/id:underline">
-        <span className="font-mono text-sm tracking-tighter block whitespace-nowrap relative z-10">
-          {value}
-        </span>
-      </div>
-      {/* Gradient fade - visible when not hovering */}
-      <div className={`absolute inset-y-0 right-0 w-12 pointer-events-none opacity-100 group-hover/id:opacity-0 z-20 ${isSelected
-        ? 'bg-gradient-to-l from-muted to-transparent'
-        : 'bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50'
-        }`} />
-      {/* Invisible spacer to maintain height */}
-      <span className="font-mono text-sm tracking-tighter block whitespace-nowrap invisible">
-        {value.substring(0, 10)}
-      </span>
-    </div>
-  );
-
-  return (
-    <div className="flex items-center gap-1 group">
-      {linkPath ? (
-        <Link href={`${linkPath}/${value}`} onClick={(e) => e.stopPropagation()}>
-          {content}
-        </Link>
-      ) : (
-        content
-      )}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100 group-hover/id:opacity-0 transition-opacity duration-200 shrink-0 cursor-pointer"
-        onClick={handleCopy}
-      >
-        {copied ? (
-          <Check className="h-3 w-3 text-green-500" />
-        ) : (
-          <Copy className="h-3 w-3" />
-        )}
-      </Button>
-    </div>
-  );
-}
-
-
-
-// Helper function to generate page numbers with ellipsis
-function generatePaginationItems(currentPage: number, totalPages: number) {
-  const items: (number | 'ellipsis')[] = []
-
-  if (totalPages <= 7) {
-    // Show all pages if total is 7 or less
-    for (let i = 1; i <= totalPages; i++) {
-      items.push(i)
-    }
-  } else {
-    // Always show first page
-    items.push(1)
-
-    if (currentPage > 3) {
-      items.push('ellipsis')
-    }
-
-    // Show pages around current page
-    const start = Math.max(2, currentPage - 1)
-    const end = Math.min(totalPages - 1, currentPage + 1)
-
-    for (let i = start; i <= end; i++) {
-      items.push(i)
-    }
-
-    if (currentPage < totalPages - 2) {
-      items.push('ellipsis')
-    }
-
-    // Always show last page
-    items.push(totalPages)
-  }
-
-  return items
 }
 
 interface DataTableProps<TData, TValue> {
@@ -164,24 +72,10 @@ export function DataTable<TData, TValue>({
   emptyIcon,
 }: DataTableProps<TData, TValue>) {
   const pathname = usePathname()
-  const [globalFilter, setGlobalFilter] = useState<Filter[]>([])
 
-  const [columnVisibility, setColumnVisibility] = useLocalStorage<Record<string, boolean>>(
-    `${resourceName}dataTableColumnVisibility`,
-    () => {
-      const visibility: Record<string, boolean> = {}
-
-      columns.forEach((column) => {
-        if ('accessorKey' in column && typeof column.accessorKey === 'string') {
-          visibility[column.accessorKey] = column.meta?.visible ?? true
-        } else if (column.id) {
-          visibility[column.id] = column.meta?.visible ?? true
-        }
-      })
-
-      return visibility
-    }
-  )
+  // Use extracted hooks
+  const { globalFilter, setGlobalFilter } = useGlobalFilter()
+  const { columnVisibility, setColumnVisibility } = useColumnVisibility(columns, resourceName)
 
   const table = useReactTable({
     data,
@@ -213,87 +107,7 @@ export function DataTable<TData, TValue>({
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
-    globalFilterFn: (row, _columnId, filterValue: any) => {
-      const filters = filterValue as Filter[]
-      if (!filters || filters.length === 0) return true
-
-      return filters.every((filter) => {
-        const rawValue = (row.original as any)[filter.columnId]
-
-        // Get the column to check its field type
-        const column = columns.find(col => {
-          if ('accessorKey' in col) {
-            return col.accessorKey === filter.columnId
-          }
-          return col.id === filter.columnId
-        })
-        const fieldType = column?.meta?.fieldType
-
-        // Handle different field types
-        if (fieldType === 'number') {
-          const cellValue = Number(rawValue)
-          const filterValue = Number(filter.value)
-
-          if (isNaN(cellValue) || isNaN(filterValue)) return false
-
-          switch (filter.operator) {
-            case "equals":
-              return cellValue === filterValue
-            case "notEquals":
-              return cellValue !== filterValue
-            case "greaterThan":
-              return cellValue > filterValue
-            case "lessThan":
-              return cellValue < filterValue
-            case "greaterThanOrEqual":
-              return cellValue >= filterValue
-            case "lessThanOrEqual":
-              return cellValue <= filterValue
-            default:
-              return true
-          }
-        } else if (fieldType === 'boolean') {
-          const cellValue = Boolean(rawValue)
-          // Map "Yes"/"No" to boolean
-          const filterValue = filter.value.toLowerCase() === 'yes'
-
-          return filter.operator === "equals" ? cellValue === filterValue : cellValue !== filterValue
-        } else if (fieldType === 'date') {
-          const cellDate = new Date(rawValue)
-          const filterDate = new Date(filter.value)
-
-          if (isNaN(cellDate.getTime()) || isNaN(filterDate.getTime())) return false
-
-          switch (filter.operator) {
-            case "equals":
-              return cellDate.toDateString() === filterDate.toDateString()
-            case "before":
-              return cellDate < filterDate
-            case "after":
-              return cellDate > filterDate
-            default:
-              return true
-          }
-        } else {
-          // String type (default)
-          const cellValue = String(rawValue || "").toLowerCase()
-          const filterValue = filter.value.toLowerCase()
-
-          switch (filter.operator) {
-            case "equals":
-              return cellValue === filterValue
-            case "notEquals":
-              return cellValue !== filterValue
-            case "contains":
-              return cellValue.includes(filterValue)
-            case "notContains":
-              return !cellValue.includes(filterValue)
-            default:
-              return true
-          }
-        }
-      })
-    },
+    globalFilterFn: createGlobalFilterFn(columns),
     getSortedRowModel: getSortedRowModel(),
     onGlobalFilterChange: setGlobalFilter,
     onColumnVisibilityChange: setColumnVisibility,
