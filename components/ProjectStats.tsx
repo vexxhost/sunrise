@@ -1,5 +1,3 @@
-"use client";
-
 import ProgressCard from "@/components/ProgressCard";
 
 const limitSummaryData = [
