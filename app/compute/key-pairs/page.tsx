@@ -1,7 +1,7 @@
 'use client';
 
-import { DataTable } from "@/components/DataTable";
-import { KeyRound } from "lucide-react";
+import { DataTable, DataTableAction } from "@/components/DataTable";
+import { KeyRound, Upload, Plus } from "lucide-react";
 import { useKeypairs } from "@/hooks/queries/useServers";
 import { Badge } from "@/components/ui/badge";
 import { Keypair } from "@/types/openstack";
@@ -74,6 +74,21 @@ const columns: ColumnDef<Keypair>[] = [
 export default function Page() {
   const { data, isLoading, isRefetching, refetch } = useKeypairs();
 
+  const actions: DataTableAction[] = [
+    {
+      label: 'Import',
+      variant: 'outline',
+      icon: Upload,
+      onClick: () => console.log('Import key pair clicked'),
+    },
+    {
+      label: 'Create',
+      variant: 'default',
+      icon: Plus,
+      onClick: () => console.log('Create key pair clicked'),
+    },
+  ];
+
   return (
     <DataTable
       data={data || []}
@@ -83,6 +98,7 @@ export default function Page() {
       columns={columns}
       resourceName="key pair"
       emptyIcon={KeyRound}
+      actions={actions}
     />
   );
 }

@@ -53,6 +53,13 @@ declare module '@tanstack/react-table' {
   }
 }
 
+export interface DataTableAction {
+  label: string
+  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+  onClick: () => void
+  icon?: React.ComponentType<{ className?: string }>
+}
+
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
@@ -61,6 +68,7 @@ interface DataTableProps<TData, TValue> {
   refetch?: () => void
   resourceName?: string
   emptyIcon: React.ComponentType<{ className?: string }>
+  actions?: DataTableAction[]
 }
 
 export function DataTable<TData, TValue>({
@@ -71,6 +79,7 @@ export function DataTable<TData, TValue>({
   refetch,
   resourceName,
   emptyIcon,
+  actions = [],
 }: DataTableProps<TData, TValue>) {
   const pathname = usePathname()
 
@@ -131,6 +140,25 @@ export function DataTable<TData, TValue>({
           <h1 className="text-2xl font-semibold">
             {titleCase(pluralize(resourceName))}
           </h1>
+          {actions.length > 0 && (
+            <ButtonGroup>
+              {actions.map((action, index) => {
+                const Icon = action.icon;
+                return (
+                  <Button
+                    key={index}
+                    variant={action.variant || 'default'}
+                    size="sm"
+                    onClick={action.onClick}
+                    className="gap-2 h-10 cursor-pointer"
+                  >
+                    {Icon && <Icon className="h-4 w-4" />}
+                    {action.label}
+                  </Button>
+                );
+              })}
+            </ButtonGroup>
+          )}
         </div>
       )}
       <div className="flex items-center justify-between pb-2">
