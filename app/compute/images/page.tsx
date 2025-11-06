@@ -52,8 +52,6 @@ const columns: ColumnDef<Image>[] = [
           variant = "destructive";
           break;
         case "deactivated":
-          variant = "outline";
-          break;
         default:
           variant = "outline";
           break;
@@ -85,11 +83,7 @@ const columns: ColumnDef<Image>[] = [
           variant = "secondary";
           break;
         case "shared":
-          variant = "outline";
-          break;
         case "private":
-          variant = "outline";
-          break;
         default:
           variant = "outline";
           break;
