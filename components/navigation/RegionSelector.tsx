@@ -2,7 +2,7 @@
 
 import { MapPin } from "lucide-react";
 import { setRegionAction } from "@/lib/keystone/actions";
-import { useKeystoneStore } from "@/stores/useKeystoneStore";
+import { useRouter } from "next/navigation";
 import type { Region } from "@/types/openstack";
 import { Selector } from "./Selector";
 
@@ -12,14 +12,11 @@ interface RegionSelectorProps {
 }
 
 export function RegionSelector({ regions, selectedRegion }: RegionSelectorProps) {
-  const setRegion = useKeystoneStore(state => state.setRegion);
+  const router = useRouter();
 
   const handleSelect = async (regionId: string) => {
-    const region = regions.find(r => r.id === regionId);
-    if (region) {
-      setRegion(region);
-    }
     await setRegionAction(regionId);
+    router.refresh();
   };
 
   return (

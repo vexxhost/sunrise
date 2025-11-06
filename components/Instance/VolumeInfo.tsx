@@ -5,19 +5,22 @@ import { Volume } from "@/types/openstack";
 import { Server } from "@/types/openstack";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import { imageQueryOptions } from "@/hooks/queries/useImages";
-import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { useMemo } from "react";
 
-export default function VolumeInfo({ server }: { server: Server }) {
-    const { region, project } = useKeystoneStore();
+interface VolumeInfoProps {
+    server: Server;
+    regionId?: string;
+    projectId?: string;
+}
 
+export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoProps) {
     const serverVolumeKeys = server["os-extended-volumes:volumes_attached"].map(
         (volume: { id: string }) => volume.id,
     );
 
     // Call useQuery for each volume ID - TanStack Query handles parallel requests and caching
     const volumeQueries = serverVolumeKeys.map(id =>
-        useQuery(volumeQueryOptions(region?.id, project?.id, id))
+        useQuery(volumeQueryOptions(regionId, projectId, id))
     );
 
     // Combine all volume data
@@ -41,7 +44,7 @@ export default function VolumeInfo({ server }: { server: Server }) {
     }, [server.image, volumes]);
 
     const { data: image } = useQuery({
-        ...imageQueryOptions(region?.id, project?.id, imageId || ''),
+        ...imageQueryOptions(regionId, projectId, imageId || ''),
         enabled: !!imageId && !!server.image
     });
 

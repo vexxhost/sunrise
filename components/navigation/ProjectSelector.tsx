@@ -2,7 +2,7 @@
 
 import { FolderKanban } from "lucide-react";
 import { setProjectAction } from "@/lib/keystone/actions";
-import { useKeystoneStore } from "@/stores/useKeystoneStore";
+import { useRouter } from "next/navigation";
 import type { Project } from "@/types/openstack";
 import { Selector } from "./Selector";
 
@@ -12,14 +12,11 @@ interface ProjectSelectorProps {
 }
 
 export function ProjectSelector({ projects, selectedProject }: ProjectSelectorProps) {
-  const setProject = useKeystoneStore(state => state.setProject);
+  const router = useRouter();
 
   const handleSelect = async (projectId: string) => {
-    const project = projects.find(p => p.id === projectId);
-    if (project) {
-      setProject(project);
-    }
     await setProjectAction(projectId);
+    router.refresh();
   };
 
   return (

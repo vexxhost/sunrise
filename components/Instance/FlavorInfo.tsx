@@ -3,12 +3,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Server } from "@/types/openstack";
 import { flavorQueryOptions } from "@/hooks/queries/useServers";
-import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import bytes from "bytes";
 
-export function FlavorInfo({ server }: { server: Server }) {
-    const { region, project } = useKeystoneStore();
-    const { data: flavor } = useQuery(flavorQueryOptions(region?.id, project?.id, server.flavor.id));
+interface FlavorInfoProps {
+    server: Server;
+    regionId?: string;
+    projectId?: string;
+}
+
+export function FlavorInfo({ server, regionId, projectId }: FlavorInfoProps) {
+    const { data: flavor } = useQuery(flavorQueryOptions(regionId, projectId, server.flavor.id));
 
     if (!flavor) {
         return <div>Loading flavor...</div>;
