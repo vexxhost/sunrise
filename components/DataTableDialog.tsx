@@ -81,7 +81,8 @@ export function DataTableDialog<TData>({
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          size="icon"
+          size="sm"
+          className="h-10 px-3 cursor-pointer"
         >
           <Settings className="h-4 w-4" />
         </Button>

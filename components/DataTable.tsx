@@ -43,6 +43,7 @@ import { IDCell } from "@/components/DataTable/IDCell"
 import { useColumnVisibility } from "@/hooks/useColumnVisibility"
 import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter"
 import { generatePaginationItems } from "@/lib/pagination"
+import { ButtonGroup } from "@/components/ui/button-group"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
@@ -130,18 +131,6 @@ export function DataTable<TData, TValue>({
           <h1 className="text-2xl font-semibold">
             {titleCase(pluralize(resourceName))}
           </h1>
-          {refetch && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={refetch}
-              disabled={isLoading || isRefetching}
-              className={`gap-2 transition-opacity duration-300 ${isLoading || isRefetching ? '!opacity-50 !pointer-events-auto cursor-not-allowed' : '!opacity-100 cursor-pointer'} animate-in fade-in duration-500`}
-            >
-              <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          )}
         </div>
       )}
       <div className="flex items-center justify-between pb-2">
@@ -193,7 +182,21 @@ export function DataTable<TData, TValue>({
             </Pagination>
           )}
 
-          <DataTableDialog table={table} resourceName={resourceName} />
+          <ButtonGroup>
+            {refetch && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refetch}
+                disabled={isLoading || isRefetching}
+                className={`gap-2 h-10 ${isLoading || isRefetching ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            )}
+            <DataTableDialog table={table} resourceName={resourceName} />
+          </ButtonGroup>
         </div>
       </div>
 
