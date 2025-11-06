@@ -1,22 +1,20 @@
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { makeQueryClient } from '@/lib/query-client';
-import { getSelectedRegion, getSelectedProject } from '@/lib/keystone/actions';
+import { getSession } from '@/lib/session';
 import { KeypairsTable } from './KeypairsTable';
 import { keypairsQueryOptions } from '@/hooks/queries/useServers';
 
 export default async function Page() {
   const queryClient = makeQueryClient();
-
-  const regionId = await getSelectedRegion();
-  const projectId = await getSelectedProject();
+  const session = await getSession();
 
   await queryClient.prefetchQuery(
-    keypairsQueryOptions(regionId, projectId)
+    keypairsQueryOptions(session.regionId, session.projectId)
   );
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <KeypairsTable regionId={regionId} projectId={projectId} />
+      <KeypairsTable regionId={session.regionId} projectId={session.projectId} />
     </HydrationBoundary>
   );
 }

@@ -1,9 +1,8 @@
-import { getSelectedRegion, getSelectedProject } from '@/lib/keystone/actions';
+import { getSession } from '@/lib/session';
 import { NetworksClient } from './NetworksClient';
 
 export default async function Page() {
-  const regionId = await getSelectedRegion();
-  const projectId = await getSelectedProject();
+  const session = await getSession();
 
-  return <NetworksClient regionId={regionId} projectId={projectId} />;
+  return <NetworksClient regionId={session.regionId} projectId={session.projectId} />;
 }

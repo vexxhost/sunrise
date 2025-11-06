@@ -12,22 +12,23 @@ import { RegionSelector } from "./RegionSelector";
 import { ProjectSelector } from "./ProjectSelector";
 import { UserMenu } from "./UserMenu";
 import { getRegions, getProjects } from "@/lib/keystone/queries";
-import { getSelectedRegion, getSelectedProject } from "@/lib/keystone/actions";
+import { getSession } from "@/lib/session";
 import { getUserInfo } from "@/lib/openstack/keystone-actions";
 
 export async function NavigationMenu() {
+  // Get session to read selected region/project IDs
+  const session = await getSession();
+
   // Fetch regions and selected region
   const regions = await getRegions();
-  const selectedRegionId = await getSelectedRegion();
   const selectedRegion = regions.length > 0
-    ? (regions.find(r => r.id === selectedRegionId) || regions[0])
+    ? (regions.find(r => r.id === session.regionId) || regions[0])
     : null;
 
   // Fetch projects and selected project
   const projects = await getProjects();
-  const selectedProjectId = await getSelectedProject();
   const selectedProject = projects.length > 0
-    ? (projects.find(p => p.id === selectedProjectId) || projects[0])
+    ? (projects.find(p => p.id === session.projectId) || projects[0])
     : null;
 
   // Fetch user info from session token

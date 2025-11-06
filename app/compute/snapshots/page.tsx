@@ -1,9 +1,8 @@
-import { getSelectedRegion, getSelectedProject } from '@/lib/keystone/actions';
+import { getSession } from '@/lib/session';
 import { SnapshotsClient } from './SnapshotsClient';
 
 export default async function Page() {
-  const regionId = await getSelectedRegion();
-  const projectId = await getSelectedProject();
+  const session = await getSession();
 
-  return <SnapshotsClient regionId={regionId} projectId={projectId} />;
+  return <SnapshotsClient regionId={session.regionId} projectId={session.projectId} />;
 }

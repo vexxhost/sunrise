@@ -1,21 +1,17 @@
 'use server';
 
-import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
+import type { Region, Project } from '@/types/openstack';
 
 /**
  * Server Action to set the selected region
- * Stores region ID in a cookie so it's available server-side
+ * Stores region ID in session
  */
-export async function setRegionAction(regionId: string) {
-  const cookieStore = await cookies();
-  cookieStore.set('selected-region', regionId, {
-    path: '/',
-    maxAge: 60 * 60 * 24 * 365, // 1 year
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-  });
+export async function setRegion(region: Region) {
+  const session = await getSession();
+  session.regionId = region.id;
+  await session.save();
 
   // Revalidate all pages to pick up new region
   revalidatePath('/', 'layout');
@@ -23,19 +19,13 @@ export async function setRegionAction(regionId: string) {
 
 /**
  * Server Action to set the selected project
- * Stores project ID in a cookie and updates project-scoped token in session
+ * Stores project ID in session and updates project-scoped token
  */
-export async function setProjectAction(projectId: string) {
-  const cookieStore = await cookies();
-  cookieStore.set('selected-project', projectId, {
-    path: '/',
-    maxAge: 60 * 60 * 24 * 365, // 1 year
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-  });
+export async function setProject(project: Project) {
+  const session = await getSession();
+  session.projectId = project.id;
 
   // Get project-scoped token and store in session
-  const session = await getSession();
   if (session.keystone_unscoped_token) {
     try {
       const tokenResponse = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
@@ -53,7 +43,7 @@ export async function setProjectAction(projectId: string) {
             },
             scope: {
               project: {
-                id: projectId,
+                id: project.id,
               },
             },
           },
@@ -64,7 +54,6 @@ export async function setProjectAction(projectId: string) {
         const token = tokenResponse.headers.get('X-Subject-Token');
         if (token) {
           session.keystoneProjectToken = token;
-          await session.save();
         }
       }
     } catch (error) {
@@ -72,22 +61,8 @@ export async function setProjectAction(projectId: string) {
     }
   }
 
+  await session.save();
+
   // Revalidate all pages to pick up new project
   revalidatePath('/', 'layout');
-}
-
-/**
- * Get the selected region from cookies (read-only during render)
- */
-export async function getSelectedRegion(): Promise<string | undefined> {
-  const cookieStore = await cookies();
-  return cookieStore.get('selected-region')?.value;
-}
-
-/**
- * Get the selected project from cookies (read-only during render)
- */
-export async function getSelectedProject(): Promise<string | undefined> {
-  const cookieStore = await cookies();
-  return cookieStore.get('selected-project')?.value;
 }

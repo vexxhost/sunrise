@@ -1,4 +1,4 @@
-import { getSelectedRegion, getSelectedProject } from '@/lib/keystone/actions';
+import { getSession } from '@/lib/session';
 import { InstanceDetailClient } from './InstanceDetailClient';
 
 interface Params {
@@ -6,8 +6,7 @@ interface Params {
 }
 
 export default async function Instance({ params }: { params: Params }) {
-  const regionId = await getSelectedRegion();
-  const projectId = await getSelectedProject();
+  const session = await getSession();
 
-  return <InstanceDetailClient serverId={params.id} regionId={regionId} projectId={projectId} />;
+  return <InstanceDetailClient serverId={params.id} regionId={session.regionId} projectId={session.projectId} />;
 }

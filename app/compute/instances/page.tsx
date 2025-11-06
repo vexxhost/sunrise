@@ -1,9 +1,8 @@
-import { getSelectedRegion, getSelectedProject } from '@/lib/keystone/actions';
+import { getSession } from '@/lib/session';
 import { InstancesClient } from './InstancesClient';
 
 export default async function Page() {
-  const regionId = await getSelectedRegion();
-  const projectId = await getSelectedProject();
+  const session = await getSession();
 
-  return <InstancesClient regionId={regionId} projectId={projectId} />;
+  return <InstancesClient regionId={session.regionId} projectId={session.projectId} />;
 }

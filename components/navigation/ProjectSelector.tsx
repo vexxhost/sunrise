@@ -1,7 +1,7 @@
 'use client';
 
 import { FolderKanban } from "lucide-react";
-import { setProjectAction } from "@/lib/keystone/actions";
+import { setProject } from "@/lib/keystone/actions";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/types/openstack";
 import { Selector } from "./Selector";
@@ -15,8 +15,11 @@ export function ProjectSelector({ projects, selectedProject }: ProjectSelectorPr
   const router = useRouter();
 
   const handleSelect = async (projectId: string) => {
-    await setProjectAction(projectId);
-    router.refresh();
+    const project = projects.find(p => p.id === projectId);
+    if (project) {
+      await setProject(project);
+      router.refresh();
+    }
   };
 
   return (
