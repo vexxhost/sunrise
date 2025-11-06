@@ -1,8 +1,10 @@
 'use client';
 
+import { useQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Network as NetworkIcon } from "lucide-react";
-import { useNetworks } from "@/hooks/queries";
+import { networksQueryOptions } from "@/hooks/queries/useNetworks";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { Badge } from "@/components/ui/badge";
 import { Network } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
@@ -136,7 +138,8 @@ const columns: ColumnDef<Network>[] = [
 ]
 
 export default function Page() {
-  const { data, isLoading, isRefetching, refetch } = useNetworks();
+  const { region, project } = useKeystoneStore();
+  const { data, isLoading, isRefetching, refetch } = useQuery(networksQueryOptions(region?.id, project?.id));
 
   return (
     <DataTable

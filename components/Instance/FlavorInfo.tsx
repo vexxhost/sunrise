@@ -1,11 +1,14 @@
 'use client';
 
+import { useQuery } from "@tanstack/react-query";
 import { Server } from "@/types/openstack";
-import { useFlavor } from "@/hooks/queries";
+import { flavorQueryOptions } from "@/hooks/queries/useServers";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import bytes from "bytes";
 
 export function FlavorInfo({ server }: { server: Server }) {
-    const { data: flavor } = useFlavor(server.flavor.id);
+    const { region, project } = useKeystoneStore();
+    const { data: flavor } = useQuery(flavorQueryOptions(region?.id, project?.id, server.flavor.id));
 
     if (!flavor) {
         return <div>Loading flavor...</div>;

@@ -76,7 +76,6 @@ interface KeypairsTableProps {
 }
 
 export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
-  // Client-side uses proxy without explicit token (proxy reads session token)
   const { data, isLoading, isRefetching, refetch } = useQuery(
     keypairsQueryOptions(regionId, projectId)
   );

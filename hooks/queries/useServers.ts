@@ -1,132 +1,208 @@
 /**
- * TanStack Query hooks for Nova (Compute) API
+ * TanStack Query options for Nova (Compute) API
  */
 
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useKeystoneStore } from '@/stores/useKeystoneStore';
-import type { Server, Flavor, ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, Keypair, KeypairListResponse, KeypairResponse, InterfaceAttachment } from '@/types/openstack';
-import { useApiClient } from './useApiClient';
+import { queryOptions } from '@tanstack/react-query';
+import { openstack } from '@/lib/openstack/actions';
+import type { ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, KeypairListResponse, KeypairResponse, InterfaceAttachment } from '@/types/openstack';
 
 /**
- * Hook to fetch list of servers
+ * Query options for fetching list of servers
  */
-export function useServers() {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('nova');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'servers'],
+export function serversQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'servers'],
     queryFn: async () => {
-      const data = await client!.get('servers/detail').json<ServerListResponse>();
+      const data = await openstack<ServerListResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: '/servers/detail',
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        return [];
+      }
+
       return data.servers;
     },
-    enabled: !!client,
+    enabled: !!regionId,
   });
 }
 
 /**
- * Hook to fetch a single server by ID
+ * Query options for fetching a single server by ID
  */
-export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('nova');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'server', id],
+export function serverQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  id: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'server', id],
     queryFn: async () => {
-      const data = await client!.get(`servers/${id}`).json<ServerResponse>();
+      const data = await openstack<ServerResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: `/servers/${id}`,
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        throw new Error('Server not found');
+      }
+
       return data.server;
     },
-    enabled: !!id && !!client,
-    ...options,
+    enabled: !!id && !!regionId,
   });
 }
 
 /**
- * Hook to fetch list of flavors
+ * Query options for fetching list of flavors
  */
-export function useFlavors() {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('nova');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'flavors'],
+export function flavorsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'flavors'],
     queryFn: async () => {
-      const data = await client!.get('flavors/detail').json<FlavorListResponse>();
+      const data = await openstack<FlavorListResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: '/flavors/detail',
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        return [];
+      }
+
       return data.flavors;
     },
-    enabled: !!client,
+    enabled: !!regionId,
   });
 }
 
 /**
- * Hook to fetch a single flavor by ID
+ * Query options for fetching a single flavor by ID
  */
-export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('nova');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'flavor', id],
+export function flavorQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  id: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'flavor', id],
     queryFn: async () => {
-      const data = await client!.get(`flavors/${id}`).json<FlavorResponse>();
+      const data = await openstack<FlavorResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: `/flavors/${id}`,
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        throw new Error('Flavor not found');
+      }
+
       return data.flavor;
     },
-    enabled: !!id && !!client,
-    ...options,
+    enabled: !!id && !!regionId,
   });
 }
 
 /**
- * Hook to fetch server interface attachments
+ * Query options for fetching server interface attachments
  */
-export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOptions<InterfaceAttachment[]>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('nova');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'server-interfaces', serverId],
+export function serverInterfacesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  serverId: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'server-interfaces', serverId],
     queryFn: async () => {
-      const data = await client!.get(`servers/${serverId}/os-interface`).json<{ interfaceAttachments: InterfaceAttachment[] }>();
+      const data = await openstack<{ interfaceAttachments: InterfaceAttachment[] }>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: `/servers/${serverId}/os-interface`,
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        return [];
+      }
+
       return data.interfaceAttachments;
     },
-    enabled: !!serverId && !!client,
-    ...options,
+    enabled: !!serverId && !!regionId,
   });
 }
 
 /**
- * Hook to fetch list of keypairs
+ * Query options for fetching list of keypairs
+ * @deprecated Use the query options from /app/compute/key-pairs/queries.ts instead
  */
-export function useKeypairs() {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('nova');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'keypairs'],
+export function keypairsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'keypairs'],
     queryFn: async () => {
-      const data = await client!.get('os-keypairs').json<KeypairListResponse>();
-      // Nova returns keypairs as an array of objects with "keypair" property
+      const data = await openstack<KeypairListResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: '/os-keypairs',
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        return [];
+      }
+
       return data.keypairs.map(item => item.keypair);
     },
-    enabled: !!client,
+    enabled: !!regionId,
   });
 }
 
 /**
- * Hook to fetch a single keypair by name
+ * Query options for fetching a single keypair by name
  */
-export function useKeypair(name: string, options?: Omit<UseQueryOptions<Keypair>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('nova');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'keypair', name],
+export function keypairQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  name: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'keypair', name],
     queryFn: async () => {
-      const data = await client!.get(`os-keypairs/${name}`).json<KeypairResponse>();
+      const data = await openstack<KeypairResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: `/os-keypairs/${name}`,
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        throw new Error('Keypair not found');
+      }
+
       return data.keypair;
     },
-    enabled: !!name && !!client,
-    ...options,
+    enabled: !!name && !!regionId,
   });
 }

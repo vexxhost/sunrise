@@ -1,43 +1,63 @@
 /**
- * TanStack Query hooks for Glance (Image) API
+ * TanStack Query options for Glance (Image) API
  */
 
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useKeystoneStore } from '@/stores/useKeystoneStore';
+import { queryOptions } from '@tanstack/react-query';
+import { openstack } from '@/lib/openstack/actions';
 import type { Image, ImageListResponse } from '@/types/openstack';
-import { useApiClient } from './useApiClient';
 
 /**
- * Hook to fetch list of images
+ * Query options for fetching list of images
  */
-export function useImages() {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('glance');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'images'],
+export function imagesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'images'],
     queryFn: async () => {
-      const data = await client!.get('v2/images').json<ImageListResponse>();
+      const data = await openstack<ImageListResponse>({
+        regionId: regionId!,
+        serviceType: 'image',
+        serviceName: 'glance',
+        path: '/v2/images',
+      });
+
+      if (!data) {
+        return [];
+      }
+
       return data.images;
     },
-    enabled: !!client,
+    enabled: !!regionId,
   });
 }
 
 /**
- * Hook to fetch a single image by ID
+ * Query options for fetching a single image by ID
  */
-export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('glance');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'image', id],
+export function imageQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  id: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'image', id],
     queryFn: async () => {
+      const data = await openstack<Image>({
+        regionId: regionId!,
+        serviceType: 'image',
+        serviceName: 'glance',
+        path: `/v2/images/${id}`,
+      });
+
+      if (!data) {
+        throw new Error('Image not found');
+      }
+
       // Glance API returns the image object directly (not wrapped)
-      return client!.get(`v2/images/${id}`).json<Image>();
+      return data;
     },
-    enabled: !!id && !!client,
-    ...options,
+    enabled: !!id && !!regionId,
   });
 }

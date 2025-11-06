@@ -1,8 +1,10 @@
 'use client';
 
+import { useQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Cpu } from "lucide-react";
-import { useFlavors } from "@/hooks/queries";
+import { flavorsQueryOptions } from "@/hooks/queries/useServers";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { Badge } from "@/components/ui/badge";
 import { Flavor } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
@@ -164,7 +166,8 @@ const columns: ColumnDef<Flavor>[] = [
 ]
 
 export default function Page() {
-  const { data, isLoading, isRefetching, refetch } = useFlavors();
+  const { region, project } = useKeystoneStore();
+  const { data, isLoading, isRefetching, refetch } = useQuery(flavorsQueryOptions(region?.id, project?.id));
 
   return (
     <DataTable

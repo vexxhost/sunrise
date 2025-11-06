@@ -1,5 +1,6 @@
 'use client';
 
+import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VolumeInfo from "@/components/Instance/VolumeInfo";
 import SecurityGroupListByNames from "@/components/Instance/GroupList";
@@ -8,7 +9,9 @@ import { FlavorInfo } from "@/components/Instance/FlavorInfo";
 import { InstanceInfo } from "@/components/Instance/InstanceInfo";
 import { Interfaces } from "@/components/Instance/Interfaces";
 import { Loader2 } from "lucide-react";
-import { useServer, useServerInterfaces, usePort, useNetwork } from "@/hooks/queries";
+import { serverQueryOptions, serverInterfacesQueryOptions } from "@/hooks/queries/useServers";
+import { portQueryOptions, networkQueryOptions } from "@/hooks/queries/useNetworks";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { useMemo } from "react";
 
 interface Params {
@@ -16,27 +19,37 @@ interface Params {
 }
 
 export default function Instance({ params }: { params: Params }) {
-  const { data: server, isLoading: isLoadingServer } = useServer(params.id);
-  const { data: interfaceAttachments, isLoading: isLoadingInterfaces } = useServerInterfaces(params.id);
+  const { region, project } = useKeystoneStore();
+
+  const { data: server, isLoading: isLoadingServer } = useQuery(
+    serverQueryOptions(region?.id, project?.id, params.id)
+  );
+  const { data: interfaceAttachments, isLoading: isLoadingInterfaces } = useQuery(
+    serverInterfacesQueryOptions(region?.id, project?.id, params.id)
+  );
 
   const portIds = useMemo(() => {
     return interfaceAttachments?.map(attachment => attachment.port_id) || [];
   }, [interfaceAttachments]);
 
-  // Call usePort for each port ID
-  const portQueries = portIds.map(id => usePort(id));
+  // Call useQuery for each port ID
+  const portQueries = portIds.map(id =>
+    useQuery(portQueryOptions(region?.id, project?.id, id))
+  );
 
   // Get ports data
   const ports = useMemo(() => {
     return portQueries.map(query => query.data).filter(Boolean);
   }, [portQueries.map(q => q.data).join()]);
 
-  // Call useNetwork for each unique network ID
+  // Call useQuery for each unique network ID
   const networkIds = useMemo(() => {
     return [...new Set(ports.map(port => port?.network_id).filter(Boolean))];
   }, [ports]);
 
-  const networkQueries = networkIds.map(id => useNetwork(id!));
+  const networkQueries = networkIds.map(id =>
+    useQuery(networkQueryOptions(region?.id, project?.id, id!))
+  );
 
   // Enrich ports with network names
   const networkPorts = useMemo(() => {

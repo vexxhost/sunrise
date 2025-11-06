@@ -1,8 +1,10 @@
 'use client';
 
+import { useQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Camera } from "lucide-react";
-import { useSnapshots } from "@/hooks/queries";
+import { snapshotsQueryOptions } from "@/hooks/queries/useVolumes";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { Badge } from "@/components/ui/badge";
 import { Snapshot } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
@@ -104,7 +106,8 @@ const columns: ColumnDef<Snapshot>[] = [
 ]
 
 export default function Page() {
-  const { data, isLoading, isRefetching, refetch } = useSnapshots();
+  const { region, project } = useKeystoneStore();
+  const { data, isLoading, isRefetching, refetch } = useQuery(snapshotsQueryOptions(region?.id, project?.id));
 
   return (
     <DataTable

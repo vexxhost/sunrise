@@ -1,8 +1,8 @@
 /**
- * TanStack Query hooks for OpenStack APIs
+ * TanStack Query hooks and query options for OpenStack APIs
  *
- * Centralized hooks for fetching data from OpenStack services
- * via the Next.js API proxy using ky and TanStack Query.
+ * Most services use Server Actions (useServers, useVolumes, useNetworks, useImages)
+ * Keystone operations still use proxy for __UNSCOPED__ token handling (useRegions, useProjects, useProjectToken)
  */
 
 export * from './useServers';

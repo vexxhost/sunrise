@@ -1,79 +1,117 @@
 /**
- * TanStack Query hooks for Cinder (Block Storage) API
+ * TanStack Query options for Cinder (Block Storage) API
  */
 
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useKeystoneStore } from '@/stores/useKeystoneStore';
+import { queryOptions } from '@tanstack/react-query';
+import { openstack } from '@/lib/openstack/actions';
 import type { Volume, Snapshot } from '@/types/openstack';
-import { useApiClient } from './useApiClient';
 
 /**
- * Hook to fetch list of volumes
+ * Query options for fetching list of volumes
  */
-export function useVolumes() {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('cinder');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'volumes'],
+export function volumesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'volumes'],
     queryFn: async () => {
-      const data = await client!.get('volumes/detail').json<{ volumes: Volume[] }>();
+      const data = await openstack<{ volumes: Volume[] }>({
+        regionId: regionId!,
+        serviceType: 'volumev3',
+        serviceName: 'cinder',
+        path: '/volumes/detail',
+      });
+
+      if (!data) {
+        return [];
+      }
+
       return data.volumes;
     },
-    enabled: !!client,
+    enabled: !!regionId,
   });
 }
 
 /**
- * Hook to fetch a single volume by ID
+ * Query options for fetching a single volume by ID
  */
-export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('cinder');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'volume', id],
+export function volumeQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  id: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'volume', id],
     queryFn: async () => {
-      const data = await client!.get(`volumes/${id}`).json<{ volume: Volume }>();
+      const data = await openstack<{ volume: Volume }>({
+        regionId: regionId!,
+        serviceType: 'volumev3',
+        serviceName: 'cinder',
+        path: `/volumes/${id}`,
+      });
+
+      if (!data) {
+        throw new Error('Volume not found');
+      }
+
       return data.volume;
     },
-    enabled: !!id && !!client,
-    ...options,
+    enabled: !!id && !!regionId,
   });
 }
 
 /**
- * Hook to fetch list of snapshots
+ * Query options for fetching list of snapshots
  */
-export function useSnapshots() {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('cinder');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'snapshots'],
+export function snapshotsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'snapshots'],
     queryFn: async () => {
-      const data = await client!.get('snapshots/detail').json<{ snapshots: Snapshot[] }>();
+      const data = await openstack<{ snapshots: Snapshot[] }>({
+        regionId: regionId!,
+        serviceType: 'volumev3',
+        serviceName: 'cinder',
+        path: '/snapshots/detail',
+      });
+
+      if (!data) {
+        return [];
+      }
+
       return data.snapshots;
     },
-    enabled: !!client,
+    enabled: !!regionId,
   });
 }
 
 /**
- * Hook to fetch a single snapshot by ID
+ * Query options for fetching a single snapshot by ID
  */
-export function useSnapshot(id: string, options?: Omit<UseQueryOptions<Snapshot>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystoneStore();
-  const client = useApiClient('cinder');
-
-  return useQuery({
-    queryKey: [region?.id, project?.id, 'snapshot', id],
+export function snapshotQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  id: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'snapshot', id],
     queryFn: async () => {
-      const data = await client!.get(`snapshots/${id}`).json<{ snapshot: Snapshot }>();
+      const data = await openstack<{ snapshot: Snapshot }>({
+        regionId: regionId!,
+        serviceType: 'volumev3',
+        serviceName: 'cinder',
+        path: `/snapshots/${id}`,
+      });
+
+      if (!data) {
+        throw new Error('Snapshot not found');
+      }
+
       return data.snapshot;
     },
-    enabled: !!id && !!client,
-    ...options,
+    enabled: !!id && !!regionId,
   });
 }
-

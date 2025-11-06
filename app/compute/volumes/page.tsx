@@ -1,8 +1,10 @@
 'use client';
 
+import { useQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { HardDrive } from "lucide-react";
-import { useVolumes } from "@/hooks/queries";
+import { volumesQueryOptions } from "@/hooks/queries/useVolumes";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { Badge } from "@/components/ui/badge";
 import { Volume } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
@@ -135,7 +137,8 @@ const columns: ColumnDef<Volume>[] = [
 ]
 
 export default function Page() {
-  const { data, isLoading, isRefetching, refetch } = useVolumes();
+  const { region, project } = useKeystoneStore();
+  const { data, isLoading, isRefetching, refetch } = useQuery(volumesQueryOptions(region?.id, project?.id));
 
   return (
     <DataTable

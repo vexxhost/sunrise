@@ -1,8 +1,10 @@
 'use client';
 
+import { useQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { ImageIcon } from "lucide-react";
-import { useImages } from "@/hooks/queries";
+import { imagesQueryOptions } from "@/hooks/queries/useImages";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { Badge } from "@/components/ui/badge";
 import { Image } from "@/types/openstack/glance";
 import { ColumnDef } from "@tanstack/react-table";
@@ -285,7 +287,8 @@ const columns: ColumnDef<Image>[] = [
 ];
 
 export default function Page() {
-  const { data, isLoading, isRefetching, refetch } = useImages();
+  const { region, project } = useKeystoneStore();
+  const { data, isLoading, isRefetching, refetch } = useQuery(imagesQueryOptions(region?.id, project?.id));
 
   return (
     <DataTable

@@ -1,17 +1,24 @@
 'use client';
 
+import { useQuery } from "@tanstack/react-query";
 import { Volume } from "@/types/openstack";
 import { Server } from "@/types/openstack";
-import { useVolume, useImage } from "@/hooks/queries";
+import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
+import { imageQueryOptions } from "@/hooks/queries/useImages";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { useMemo } from "react";
 
 export default function VolumeInfo({ server }: { server: Server }) {
+    const { region, project } = useKeystoneStore();
+
     const serverVolumeKeys = server["os-extended-volumes:volumes_attached"].map(
         (volume: { id: string }) => volume.id,
     );
 
-    // Call useVolume for each volume ID - TanStack Query handles parallel requests and caching
-    const volumeQueries = serverVolumeKeys.map(id => useVolume(id));
+    // Call useQuery for each volume ID - TanStack Query handles parallel requests and caching
+    const volumeQueries = serverVolumeKeys.map(id =>
+        useQuery(volumeQueryOptions(region?.id, project?.id, id))
+    );
 
     // Combine all volume data
     const volumes = useMemo(() => {
@@ -33,7 +40,10 @@ export default function VolumeInfo({ server }: { server: Server }) {
         return undefined;
     }, [server.image, volumes]);
 
-    const { data: image } = useImage(imageId || '', { enabled: !!imageId && !!server.image });
+    const { data: image } = useQuery({
+        ...imageQueryOptions(region?.id, project?.id, imageId || ''),
+        enabled: !!imageId && !!server.image
+    });
 
     const imageName = useMemo(() => {
         if (server.image && image) {

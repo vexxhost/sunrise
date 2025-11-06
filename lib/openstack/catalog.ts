@@ -1,13 +1,20 @@
 /**
- * Get service endpoint URL from OpenStack service catalog
- * This is used server-side to make direct API calls to OpenStack services
+ * Get service endpoint URL
+ * - With token (server-side): Fetches from OpenStack service catalog and returns direct URL
+ * - Without token (client-side): Returns proxy URL
  */
 export async function getServiceEndpoint(
   regionId: string,
   serviceType: string,
   serviceName: string,
-  token: string
+  token?: string
 ): Promise<string | null> {
+  // Client-side without token: return proxy URL
+  if (!token) {
+    return `/api/proxy/${regionId}/${serviceName}`;
+  }
+
+  // Server-side with token: fetch from catalog and return direct OpenStack URL
   try {
     // Get service catalog
     const catalogResponse = await fetch(`${process.env.KEYSTONE_API}/v3/auth/catalog`, {

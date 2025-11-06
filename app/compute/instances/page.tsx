@@ -1,11 +1,15 @@
 'use client';
 
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Volume } from "@/types/openstack";
 import { Image, Server, Flavor } from "@/types/openstack";
 import { Server as ServerIcon } from "lucide-react";
-import { useServers, useFlavors, useVolumes, useImages } from "@/hooks/queries";
+import { serversQueryOptions, flavorsQueryOptions } from "@/hooks/queries/useServers";
+import { volumesQueryOptions } from "@/hooks/queries/useVolumes";
+import { imagesQueryOptions } from "@/hooks/queries/useImages";
+import { useKeystoneStore } from "@/stores/useKeystoneStore";
 import { Badge } from "@/components/ui/badge";
 import { ColumnDef } from "@tanstack/react-table";
 import { formatDistanceToNow } from 'date-fns';
@@ -22,17 +26,22 @@ const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: strin
 export default function Page() {
   console.log('[InstancesPage] render');
 
+  // Get region and project from Zustand store
+  const { region, project } = useKeystoneStore();
+
   // Fetch servers
-  const { data: serversData, isLoading: isLoadingServers, isRefetching: isRefetchingServers, refetch: refetchServers } = useServers();
+  const { data: serversData, isLoading: isLoadingServers, isRefetching: isRefetchingServers, refetch: refetchServers } = useQuery(
+    serversQueryOptions(region?.id, project?.id)
+  );
 
   // Fetch volumes
-  const { data: volumesData } = useVolumes();
+  const { data: volumesData } = useQuery(volumesQueryOptions(region?.id, project?.id));
 
   // Fetch images
-  const { data: imagesData } = useImages();
+  const { data: imagesData } = useQuery(imagesQueryOptions(region?.id, project?.id));
 
   // Fetch flavors
-  const { data: flavorsData } = useFlavors();
+  const { data: flavorsData } = useQuery(flavorsQueryOptions(region?.id, project?.id));
 
   // Process volume image IDs
   const volumeImageIds = useMemo(() => {
