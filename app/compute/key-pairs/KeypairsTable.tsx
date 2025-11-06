@@ -5,7 +5,7 @@ import { KeyRound, Upload, Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Keypair } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
-import { keypairsQueryOptions } from "./queries";
+import { keypairsQueryOptions } from "@/hooks/queries/useServers";
 
 const columns: ColumnDef<Keypair>[] = [
   {

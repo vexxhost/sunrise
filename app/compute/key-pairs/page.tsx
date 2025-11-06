@@ -2,7 +2,7 @@ import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { makeQueryClient } from '@/lib/query-client';
 import { getSelectedRegion, getSelectedProject } from '@/lib/keystone/actions';
 import { KeypairsTable } from './KeypairsTable';
-import { keypairsQueryOptions } from './queries';
+import { keypairsQueryOptions } from '@/hooks/queries/useServers';
 
 export default async function Page() {
   const queryClient = makeQueryClient();

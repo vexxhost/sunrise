@@ -3,27 +3,32 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { apiUrl } from '@/lib/api';
-import ky from 'ky';
+import { openstack } from '@/lib/openstack/actions';
 import type { Project } from '@/types/openstack';
 
 /**
  * Hook to fetch list of user's projects
  * Note: Projects are user-specific and global (not region-specific)
- * Uses unscoped token from server session via __UNSCOPED__ marker
+ * Uses unscoped token from server session
  */
 export function useProjects() {
   return useQuery({
     queryKey: ['projects'],
     queryFn: async () => {
-      const data = await ky.get(apiUrl('global', 'keystone', 'v3/auth/projects'), {
-        headers: {
-          'X-Auth-Token': '__UNSCOPED__', // Special marker for proxy to use session's unscoped token
-        },
-      }).json<{ projects: Project[] }>();
+      const data = await openstack<{ projects: Project[] }>({
+        regionId: 'global',
+        serviceType: 'identity',
+        serviceName: 'keystone',
+        path: '/v3/auth/projects',
+        unscoped: true,
+      });
+
+      if (!data) {
+        return [];
+      }
+
       // Sort projects alphabetically by name
-      const sortedProjects = data.projects.sort((a, b) => a.name.localeCompare(b.name));
-      return sortedProjects;
+      return data.projects.sort((a, b) => a.name.localeCompare(b.name));
     },
   });
 }

@@ -151,7 +151,6 @@ export function serverInterfacesQueryOptions(
 
 /**
  * Query options for fetching list of keypairs
- * @deprecated Use the query options from /app/compute/key-pairs/queries.ts instead
  */
 export function keypairsQueryOptions(
   regionId: string | undefined,
@@ -206,3 +205,4 @@ export function keypairQueryOptions(
     enabled: !!name && !!regionId,
   });
 }
+

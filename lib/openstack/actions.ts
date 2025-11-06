@@ -12,11 +12,14 @@ interface OpenStackActionOptions {
   headers?: Record<string, string>;
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: any;
+  unscoped?: boolean;
 }
 
 /**
  * Server Action for OpenStack API calls
  * Always uses session token, no need to pass token from client
+ *
+ * @param options.unscoped - If true, uses the unscoped token instead of the project-scoped token
  */
 export async function openstack<T = any>(
   options: OpenStackActionOptions
@@ -30,14 +33,15 @@ export async function openstack<T = any>(
     headers: customHeaders = {},
     method = 'GET',
     body,
+    unscoped = false,
   } = options;
 
-  // Get session token
+  // Get session token (either unscoped or project-scoped)
   const session = await getSession();
-  const token = session.keystoneProjectToken;
+  const token = unscoped ? session.keystone_unscoped_token : session.keystoneProjectToken;
 
   if (!token) {
-    console.error('No project token in session');
+    console.error(`No ${unscoped ? 'unscoped' : 'project'} token in session`);
     return null;
   }
 
