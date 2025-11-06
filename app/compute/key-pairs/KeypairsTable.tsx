@@ -3,7 +3,6 @@
 import { DataTable, DataTableAction, DataTableRowAction } from "@/components/DataTable";
 import { KeyRound, Upload, Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useProjectToken } from "@/hooks/queries/useProjectToken";
 import { Keypair } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
 import { keypairsQueryOptions } from "./queries";
@@ -77,12 +76,10 @@ interface KeypairsTableProps {
 }
 
 export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
-  const { data: tokenData } = useProjectToken();
-
-  const { data, isLoading, isRefetching, refetch } = useQuery({
-    ...keypairsQueryOptions(regionId, projectId, tokenData?.token || ''),
-    enabled: !!tokenData?.token,
-  });
+  // Client-side uses proxy without explicit token (proxy reads session token)
+  const { data, isLoading, isRefetching, refetch } = useQuery(
+    keypairsQueryOptions(regionId, projectId)
+  );
 
   const actions: DataTableAction[] = [
     {

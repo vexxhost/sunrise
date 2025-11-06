@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/session";
+import { getServiceEndpoint } from "@/lib/openstack/catalog";
 import { NextRequest } from "next/server";
 
 /**
@@ -98,10 +99,10 @@ async function handleRequest(
         );
       }
     } else {
-      // Regular request - require X-Auth-Token header from client
-      if (!clientAuthToken) {
+      // Regular request - prefer X-Auth-Token from header, fall back to session token
+      if (!clientAuthToken && !session.keystoneProjectToken) {
         return Response.json(
-          { error: 'Not authenticated - missing X-Auth-Token header' },
+          { error: 'Not authenticated - missing X-Auth-Token header and no session token' },
           { status: 401 }
         );
       }
@@ -136,58 +137,31 @@ async function handleRequest(
       }
 
       // Get the service catalog to find the correct endpoint
-      // Use unscoped token if marker is present, otherwise use client's token
-      const catalogToken = useUnscopedToken ? session.keystone_unscoped_token! : clientAuthToken!;
-      const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/catalog`, {
-        headers: {
-          "X-Auth-Token": catalogToken,
-        } as HeadersInit,
-        next: { revalidate: 300 }, // Cache for 5 minutes
-      });
+      // Use unscoped token if marker is present, otherwise use client's token or session token
+      const catalogToken = useUnscopedToken
+        ? session.keystone_unscoped_token!
+        : (clientAuthToken || session.keystoneProjectToken!);
 
-      if (!response.ok) {
-        return Response.json(
-          { error: `Failed to fetch catalog: ${response.statusText}` },
-          { status: response.status }
-        );
-      }
-
-      const catalogData = await response.json();
-      const catalog = catalogData.catalog;
-
-      // Find the service in the catalog
-      const serviceEntry = catalog.find(
-        (item: any) => item.type === serviceType || item.name === service
-      );
-
-      if (!serviceEntry) {
-        return Response.json(
-          { error: `Service '${service}' not found in catalog` },
-          { status: 404 }
-        );
-      }
-
-      // Find the endpoint for the specified region
-      const endpoint = serviceEntry.endpoints.find(
-        (ep: any) => ep.interface === 'public' && ep.region === region
-      );
+      const endpoint = await getServiceEndpoint(region, serviceType, service, catalogToken);
 
       if (!endpoint) {
         return Response.json(
-          { error: `No public endpoint found for service '${service}' in region '${region}'` },
+          { error: `Failed to get endpoint for service '${service}' in region '${region}'` },
           { status: 404 }
         );
       }
 
-      baseUrl = endpoint.url;
+      baseUrl = endpoint;
     }
 
     // Construct the full URL
     const url = `${baseUrl}/${apiPath.join('/')}${request.nextUrl.search}`;
 
-    // Forward headers - use unscoped token if marker present, otherwise use client's token
+    // Forward headers - use unscoped token if marker present, otherwise use client's token or session token
     const headers: HeadersInit = {
-      'X-Auth-Token': useUnscopedToken ? session.keystone_unscoped_token! : clientAuthToken!,
+      'X-Auth-Token': useUnscopedToken
+        ? session.keystone_unscoped_token!
+        : (clientAuthToken || session.keystoneProjectToken!),
       'Content-Type': 'application/json',
     };
 

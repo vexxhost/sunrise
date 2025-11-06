@@ -1,7 +1,7 @@
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { makeQueryClient } from '@/lib/query-client';
+import { getSession } from '@/lib/session';
 import { getSelectedRegion, getSelectedProject } from '@/lib/keystone/actions';
-import { getNovaAuth } from './queries.server';
 import { KeypairsTable } from './KeypairsTable';
 import { keypairsQueryOptions } from './queries';
 
@@ -12,13 +12,13 @@ export default async function Page() {
   const regionId = await getSelectedRegion();
   const projectId = await getSelectedProject();
 
-  // Get project-scoped token and Nova endpoint
-  const auth = await getNovaAuth(regionId, projectId);
+  // Get session token
+  const session = await getSession();
 
-  // Prefetch keypairs data on the server (calls OpenStack API directly)
-  if (auth) {
+  // Prefetch keypairs data on the server (fetches endpoint and calls OpenStack API directly)
+  if (session.keystoneProjectToken) {
     await queryClient.prefetchQuery(
-      keypairsQueryOptions(regionId, projectId, auth.token, auth.endpoint)
+      keypairsQueryOptions(regionId, projectId, session.keystoneProjectToken)
     );
   }
 

@@ -2,6 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import { getSession } from '@/lib/session';
 
 /**
  * Server Action to set the selected region
@@ -22,7 +23,7 @@ export async function setRegionAction(regionId: string) {
 
 /**
  * Server Action to set the selected project
- * Stores project ID in a cookie so it's available server-side
+ * Stores project ID in a cookie and updates project-scoped token in session
  */
 export async function setProjectAction(projectId: string) {
   const cookieStore = await cookies();
@@ -32,6 +33,44 @@ export async function setProjectAction(projectId: string) {
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
   });
+
+  // Get project-scoped token and store in session
+  const session = await getSession();
+  if (session.keystone_unscoped_token) {
+    try {
+      const tokenResponse = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          auth: {
+            identity: {
+              methods: ['token'],
+              token: {
+                id: session.keystone_unscoped_token,
+              },
+            },
+            scope: {
+              project: {
+                id: projectId,
+              },
+            },
+          },
+        }),
+      });
+
+      if (tokenResponse.ok) {
+        const token = tokenResponse.headers.get('X-Subject-Token');
+        if (token) {
+          session.keystoneProjectToken = token;
+          await session.save();
+        }
+      }
+    } catch (error) {
+      console.error('Error getting project-scoped token:', error);
+    }
+  }
 
   // Revalidate all pages to pick up new project
   revalidatePath('/', 'layout');
