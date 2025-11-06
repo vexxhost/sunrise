@@ -1,5 +1,5 @@
-import { ArrowPathIcon } from "@heroicons/react/24/solid";
+import { Loader2 } from "lucide-react";
 
 export const Loader = () => {
-  return <ArrowPathIcon className="w-32 h-32 animate-spin" />;
+  return <Loader2 className="w-32 h-32 animate-spin" />;
 };
