@@ -11,8 +11,24 @@ import { ServicesMenu } from "./ServicesMenu";
 import { RegionSelector } from "./RegionSelector";
 import { ProjectSelector } from "./ProjectSelector";
 import { UserMenu } from "./UserMenu";
+import { getRegions, getProjects } from "@/lib/keystone/queries";
+import { getSelectedRegion, getSelectedProject } from "@/lib/keystone/actions";
 
-export function NavigationMenu() {
+export async function NavigationMenu() {
+  // Fetch regions and selected region
+  const regions = await getRegions();
+  const selectedRegionId = await getSelectedRegion();
+  const selectedRegion = regions.length > 0
+    ? (regions.find(r => r.id === selectedRegionId) || regions[0])
+    : null;
+
+  // Fetch projects and selected project
+  const projects = await getProjects();
+  const selectedProjectId = await getSelectedProject();
+  const selectedProject = projects.length > 0
+    ? (projects.find(p => p.id === selectedProjectId) || projects[0])
+    : null;
+
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
       <div className="flex items-center justify-between w-full px-6 h-14">
@@ -54,8 +70,30 @@ export function NavigationMenu() {
               </Button>
             </NavigationMenuItem>
 
-            <RegionSelector />
-            <ProjectSelector />
+            {selectedRegion && (
+              <NavigationMenuItem>
+                <RegionSelector
+                  regions={regions}
+                  selectedRegion={selectedRegion}
+                />
+              </NavigationMenuItem>
+            )}
+
+            {selectedProject && (
+              <>
+                <NavigationMenuItem className="list-none">
+                  <div className="h-6 w-px bg-border" />
+                </NavigationMenuItem>
+
+                <NavigationMenuItem>
+                  <ProjectSelector
+                    projects={projects}
+                    selectedProject={selectedProject}
+                  />
+                </NavigationMenuItem>
+              </>
+            )}
+
             <UserMenu />
           </NavigationMenuList>
         </_NavigationMenu>
