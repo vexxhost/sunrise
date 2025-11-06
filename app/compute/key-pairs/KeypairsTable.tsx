@@ -3,9 +3,10 @@
 import { DataTable, DataTableAction, DataTableRowAction } from "@/components/DataTable";
 import { KeyRound, Upload, Plus, Trash2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useApiClient } from "@/hooks/queries/useApiClient";
-import { Keypair, KeypairListResponse } from "@/types/openstack";
+import { useProjectToken } from "@/hooks/queries/useProjectToken";
+import { Keypair } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
+import { keypairsQueryOptions } from "./queries";
 
 const columns: ColumnDef<Keypair>[] = [
   {
@@ -76,16 +77,11 @@ interface KeypairsTableProps {
 }
 
 export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
-  const client = useApiClient('nova');
+  const { data: tokenData } = useProjectToken();
 
   const { data, isLoading, isRefetching, refetch } = useQuery({
-    queryKey: [regionId, projectId, 'keypairs'],
-    queryFn: async () => {
-      const data = await client!.get('os-keypairs').json<KeypairListResponse>();
-      // Nova returns keypairs as an array of objects with "keypair" property
-      return data.keypairs.map(item => item.keypair);
-    },
-    enabled: !!client,
+    ...keypairsQueryOptions(regionId, projectId, tokenData?.token || ''),
+    enabled: !!tokenData?.token,
   });
 
   const actions: DataTableAction[] = [
