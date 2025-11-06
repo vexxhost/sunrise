@@ -252,6 +252,7 @@ export function DataTable<TData, TValue>({
               <DropdownMenuContent align="end">
                 {rowActions.map((action, index) => {
                   const Icon = action.icon;
+                  const isDestructive = action.variant === 'destructive';
                   return (
                     <DropdownMenuItem
                       key={index}
@@ -259,7 +260,7 @@ export function DataTable<TData, TValue>({
                         const selectedRows = table.getFilteredSelectedRowModel().rows.map(row => row.original);
                         action.onClick(selectedRows);
                       }}
-                      className="gap-2 cursor-pointer"
+                      className={`gap-2 cursor-pointer ${isDestructive ? 'text-destructive focus:text-destructive' : ''}`}
                     >
                       {Icon && <Icon className="h-4 w-4" />}
                       {action.label}
