@@ -5,9 +5,9 @@ import { KeypairsTable } from './KeypairsTable';
 import { keypairsQueryOptions } from '@/hooks/queries/useServers';
 
 export default async function Page() {
-  const queryClient = makeQueryClient();
   const session = await getSession();
 
+  const queryClient = makeQueryClient();
   await queryClient.prefetchQuery(
     keypairsQueryOptions(session.regionId, session.projectId)
   );

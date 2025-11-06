@@ -1,8 +1,20 @@
+import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
+import { makeQueryClient } from '@/lib/query-client';
 import { getSession } from '@/lib/session';
 import { ImagesClient } from './ImagesClient';
+import { imagesQueryOptions } from '@/hooks/queries/useImages';
 
 export default async function Page() {
   const session = await getSession();
 
-  return <ImagesClient regionId={session.regionId} projectId={session.projectId} />;
+  const queryClient = makeQueryClient();
+  await queryClient.prefetchQuery(
+    imagesQueryOptions(session.regionId, session.projectId)
+  );
+
+  return (
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <ImagesClient regionId={session.regionId} projectId={session.projectId} />
+    </HydrationBoundary>
+  );
 }
