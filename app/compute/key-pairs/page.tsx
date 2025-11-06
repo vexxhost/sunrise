@@ -1,12 +1,10 @@
 'use client';
 
-import { DataTable, DataTableAction } from "@/components/DataTable";
-import { KeyRound, Upload, Plus } from "lucide-react";
+import { DataTable, DataTableAction, DataTableRowAction } from "@/components/DataTable";
+import { KeyRound, Upload, Plus, Trash2 } from "lucide-react";
 import { useKeypairs } from "@/hooks/queries/useServers";
-import { Badge } from "@/components/ui/badge";
 import { Keypair } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
-import { titleCase } from "title-case";
 
 const columns: ColumnDef<Keypair>[] = [
   {
@@ -89,6 +87,15 @@ export default function Page() {
     },
   ];
 
+  const rowActions: DataTableRowAction<Keypair>[] = [
+    {
+      label: 'Delete',
+      variant: 'destructive',
+      icon: Trash2,
+      onClick: (rows) => console.log('Delete key pairs:', rows),
+    },
+  ];
+
   return (
     <DataTable
       data={data || []}
@@ -99,6 +106,7 @@ export default function Page() {
       resourceName="key pair"
       emptyIcon={KeyRound}
       actions={actions}
+      rowActions={rowActions}
     />
   );
 }

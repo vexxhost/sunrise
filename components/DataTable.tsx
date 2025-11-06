@@ -44,6 +44,13 @@ import { useColumnVisibility } from "@/hooks/useColumnVisibility"
 import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter"
 import { generatePaginationItems } from "@/lib/pagination"
 import { ButtonGroup } from "@/components/ui/button-group"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { ChevronDown } from "lucide-react"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
@@ -60,6 +67,13 @@ export interface DataTableAction {
   icon?: React.ComponentType<{ className?: string }>
 }
 
+export interface DataTableRowAction<TData> {
+  label: string
+  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
+  onClick: (rows: TData[]) => void
+  icon?: React.ComponentType<{ className?: string }>
+}
+
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
@@ -69,6 +83,7 @@ interface DataTableProps<TData, TValue> {
   resourceName?: string
   emptyIcon: React.ComponentType<{ className?: string }>
   actions?: DataTableAction[]
+  rowActions?: DataTableRowAction<TData>[]
 }
 
 export function DataTable<TData, TValue>({
@@ -80,6 +95,7 @@ export function DataTable<TData, TValue>({
   resourceName,
   emptyIcon,
   actions = [],
+  rowActions = [],
 }: DataTableProps<TData, TValue>) {
   const pathname = usePathname()
 
@@ -87,10 +103,13 @@ export function DataTable<TData, TValue>({
   const { globalFilter, setGlobalFilter } = useGlobalFilter()
   const { columnVisibility, setColumnVisibility } = useColumnVisibility(columns, resourceName)
 
-  const table = useReactTable({
-    data,
-    columns: [
-      {
+  // Build columns array conditionally including checkbox column
+  const tableColumns = React.useMemo(() => {
+    const cols: ColumnDef<TData, TValue>[] = [];
+
+    // Only add checkbox column if there are row actions
+    if (rowActions.length > 0) {
+      cols.push({
         id: "select",
         header: ({ table }) => (
           <Checkbox
@@ -111,9 +130,16 @@ export function DataTable<TData, TValue>({
         ),
         enableSorting: false,
         enableHiding: false,
-      } as ColumnDef<TData, TValue>,
-      ...columns,
-    ],
+      } as ColumnDef<TData, TValue>);
+    }
+
+    cols.push(...columns);
+    return cols;
+  }, [columns, rowActions.length]);
+
+  const table = useReactTable({
+    data,
+    columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -208,6 +234,40 @@ export function DataTable<TData, TValue>({
                 </PaginationItem>
               </PaginationContent>
             </Pagination>
+          )}
+
+          {rowActions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 h-10 cursor-pointer"
+                  disabled={table.getFilteredSelectedRowModel().rows.length === 0}
+                >
+                  Actions
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {rowActions.map((action, index) => {
+                  const Icon = action.icon;
+                  return (
+                    <DropdownMenuItem
+                      key={index}
+                      onClick={() => {
+                        const selectedRows = table.getFilteredSelectedRowModel().rows.map(row => row.original);
+                        action.onClick(selectedRows);
+                      }}
+                      className="gap-2 cursor-pointer"
+                    >
+                      {Icon && <Icon className="h-4 w-4" />}
+                      {action.label}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           <ButtonGroup>
