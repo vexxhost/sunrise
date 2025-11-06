@@ -4,7 +4,7 @@
 
 import { useMemo } from 'react';
 import ky from 'ky';
-import { useKeystone } from '@/contexts/KeystoneContext';
+import { useKeystoneStore } from '@/stores/useKeystoneStore';
 import { useProjectToken } from './useProjectToken';
 
 /**
@@ -23,7 +23,7 @@ import { useProjectToken } from './useProjectToken';
  * ```
  */
 export function useApiClient(service: string) {
-  const { region } = useKeystone();
+  const region = useKeystoneStore((state) => state.region);
   const { data: tokenData } = useProjectToken();
 
   return useMemo(() => {

@@ -3,7 +3,7 @@
  */
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useKeystone } from '@/contexts/KeystoneContext';
+import { useKeystoneStore } from '@/stores/useKeystoneStore';
 import type { Server, Flavor, ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, Keypair, KeypairListResponse, KeypairResponse, InterfaceAttachment } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
@@ -11,7 +11,7 @@ import { useApiClient } from './useApiClient';
  * Hook to fetch list of servers
  */
 export function useServers() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('nova');
 
   return useQuery({
@@ -28,7 +28,7 @@ export function useServers() {
  * Hook to fetch a single server by ID
  */
 export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('nova');
 
   return useQuery({
@@ -46,7 +46,7 @@ export function useServer(id: string, options?: Omit<UseQueryOptions<Server>, 'q
  * Hook to fetch list of flavors
  */
 export function useFlavors() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('nova');
 
   return useQuery({
@@ -63,7 +63,7 @@ export function useFlavors() {
  * Hook to fetch a single flavor by ID
  */
 export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('nova');
 
   return useQuery({
@@ -81,7 +81,7 @@ export function useFlavor(id: string, options?: Omit<UseQueryOptions<Flavor>, 'q
  * Hook to fetch server interface attachments
  */
 export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOptions<InterfaceAttachment[]>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('nova');
 
   return useQuery({
@@ -99,7 +99,7 @@ export function useServerInterfaces(serverId: string, options?: Omit<UseQueryOpt
  * Hook to fetch list of keypairs
  */
 export function useKeypairs() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('nova');
 
   return useQuery({
@@ -117,7 +117,7 @@ export function useKeypairs() {
  * Hook to fetch a single keypair by name
  */
 export function useKeypair(name: string, options?: Omit<UseQueryOptions<Keypair>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('nova');
 
   return useQuery({

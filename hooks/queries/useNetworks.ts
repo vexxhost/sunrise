@@ -3,7 +3,7 @@
  */
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useKeystone } from '@/contexts/KeystoneContext';
+import { useKeystoneStore } from '@/stores/useKeystoneStore';
 import type { Network, Port, SecurityGroup } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
@@ -11,7 +11,7 @@ import { useApiClient } from './useApiClient';
  * Hook to fetch list of networks
  */
 export function useNetworks() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('neutron');
 
   return useQuery({
@@ -28,7 +28,7 @@ export function useNetworks() {
  * Hook to fetch a single network by ID
  */
 export function useNetwork(id: string, options?: Omit<UseQueryOptions<Network>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('neutron');
 
   return useQuery({
@@ -46,7 +46,7 @@ export function useNetwork(id: string, options?: Omit<UseQueryOptions<Network>, 
  * Hook to fetch list of ports
  */
 export function usePorts() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('neutron');
 
   return useQuery({
@@ -63,7 +63,7 @@ export function usePorts() {
  * Hook to fetch a single port by ID
  */
 export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('neutron');
 
   return useQuery({
@@ -81,7 +81,7 @@ export function usePort(id: string, options?: Omit<UseQueryOptions<Port>, 'query
  * Hook to fetch list of security groups
  */
 export function useSecurityGroups() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('neutron');
 
   return useQuery({
@@ -98,7 +98,7 @@ export function useSecurityGroups() {
  * Hook to fetch a single security group by ID
  */
 export function useSecurityGroup(id: string, options?: Omit<UseQueryOptions<SecurityGroup>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('neutron');
 
   return useQuery({

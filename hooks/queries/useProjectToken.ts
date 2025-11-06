@@ -3,7 +3,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useKeystone } from '@/contexts/KeystoneContext';
+import { useKeystoneStore } from '@/stores/useKeystoneStore';
 import { apiUrl } from '@/lib/api';
 import ky from 'ky';
 
@@ -13,7 +13,7 @@ import ky from 'ky';
  * The token is stored client-side in TanStack Query cache
  */
 export function useProjectToken() {
-  const { project } = useKeystone();
+  const project = useKeystoneStore((state) => state.project);
 
   return useQuery({
     queryKey: ['projectToken', project?.id],

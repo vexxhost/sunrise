@@ -3,7 +3,7 @@
  */
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useKeystone } from '@/contexts/KeystoneContext';
+import { useKeystoneStore } from '@/stores/useKeystoneStore';
 import type { Image, ImageListResponse } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
@@ -11,7 +11,7 @@ import { useApiClient } from './useApiClient';
  * Hook to fetch list of images
  */
 export function useImages() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('glance');
 
   return useQuery({
@@ -28,7 +28,7 @@ export function useImages() {
  * Hook to fetch a single image by ID
  */
 export function useImage(id: string, options?: Omit<UseQueryOptions<Image>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('glance');
 
   return useQuery({

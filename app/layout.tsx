@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import { Providers } from "./providers";
 import { NavigationMenu } from "@/components/NavigationMenu";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { KeystoneProvider } from "@/contexts/KeystoneContext";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -41,12 +40,10 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <Providers>
-            <KeystoneProvider>
-              <NavigationMenu />
-              <main>
-                {children}
-              </main>
-            </KeystoneProvider>
+            <NavigationMenu />
+            <main>
+              {children}
+            </main>
           </Providers>
         </ThemeProvider>
       </body>

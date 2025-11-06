@@ -3,7 +3,7 @@
  */
 
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { useKeystone } from '@/contexts/KeystoneContext';
+import { useKeystoneStore } from '@/stores/useKeystoneStore';
 import type { Volume, Snapshot } from '@/types/openstack';
 import { useApiClient } from './useApiClient';
 
@@ -11,7 +11,7 @@ import { useApiClient } from './useApiClient';
  * Hook to fetch list of volumes
  */
 export function useVolumes() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('cinder');
 
   return useQuery({
@@ -28,7 +28,7 @@ export function useVolumes() {
  * Hook to fetch a single volume by ID
  */
 export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('cinder');
 
   return useQuery({
@@ -46,7 +46,7 @@ export function useVolume(id: string, options?: Omit<UseQueryOptions<Volume>, 'q
  * Hook to fetch list of snapshots
  */
 export function useSnapshots() {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('cinder');
 
   return useQuery({
@@ -63,7 +63,7 @@ export function useSnapshots() {
  * Hook to fetch a single snapshot by ID
  */
 export function useSnapshot(id: string, options?: Omit<UseQueryOptions<Snapshot>, 'queryKey' | 'queryFn'>) {
-  const { region, project } = useKeystone();
+  const { region, project } = useKeystoneStore();
   const client = useApiClient('cinder');
 
   return useQuery({

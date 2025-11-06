@@ -1,11 +1,12 @@
 "use client"
 
-import * as React from "react"
+import { useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { LayoutGrid, Server, Container, Database, Globe, FolderTree, MapPin, Layers, FolderKanban, User, LogOut, MessageSquare } from "lucide-react"
-import type { Project } from "@/types/openstack"
-import { useKeystone } from "@/contexts/KeystoneContext"
+import { useKeystoneStore } from "@/stores/useKeystoneStore"
+import { useRegions } from "@/hooks/queries/useRegions"
+import { useProjects } from "@/hooks/queries/useProjects"
 import { useMediaQuery } from "usehooks-ts"
 import { useProjectToken } from "@/hooks/queries"
 import { Button } from "@/components/ui/button"
@@ -17,7 +18,6 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-  navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
 
 const services: { title: string; href: string; description: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -61,8 +61,23 @@ const services: { title: string; href: string; description: string; icon: React.
 
 export function NavigationMenu() {
   const isMobile = useMediaQuery("(max-width: 767px)")
-  const { region, setRegion, project, setProject, regions, projects } = useKeystone()
+
+  const { region, project, setRegion, setProject } = useKeystoneStore()
   const { data: tokenData } = useProjectToken()
+
+  const { data: regions = [] } = useRegions()
+  useEffect(() => {
+    if (!region && regions.length > 0) {
+      setRegion(regions[0])
+    }
+  }, [region, regions, setRegion])
+
+  const { data: projects = [] } = useProjects()
+  useEffect(() => {
+    if (!project && projects.length > 0) {
+      setProject(projects[0])
+    }
+  }, [project, projects, setProject])
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
