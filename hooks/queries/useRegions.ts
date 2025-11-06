@@ -3,7 +3,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { openstack } from '@/lib/openstack/actions';
+import { getRegionsAction } from '@/lib/openstack/keystone-actions';
 import type { Region } from '@/types/openstack';
 
 /**
@@ -15,20 +15,7 @@ export function useRegions() {
   return useQuery({
     queryKey: ['regions'],
     queryFn: async () => {
-      const data = await openstack<{ regions: Region[] }>({
-        regionId: 'global',
-        serviceType: 'identity',
-        serviceName: 'keystone',
-        path: '/v3/regions',
-        unscoped: true,
-      });
-
-      if (!data) {
-        return [];
-      }
-
-      // Sort regions alphabetically by ID
-      return data.regions.sort((a, b) => a.id.localeCompare(b.id));
+      return await getRegionsAction();
     },
   });
 }

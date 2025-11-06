@@ -13,6 +13,7 @@ import { ProjectSelector } from "./ProjectSelector";
 import { UserMenu } from "./UserMenu";
 import { getRegions, getProjects } from "@/lib/keystone/queries";
 import { getSelectedRegion, getSelectedProject } from "@/lib/keystone/actions";
+import { getUserInfo } from "@/lib/openstack/keystone-actions";
 
 export async function NavigationMenu() {
   // Fetch regions and selected region
@@ -28,6 +29,9 @@ export async function NavigationMenu() {
   const selectedProject = projects.length > 0
     ? (projects.find(p => p.id === selectedProjectId) || projects[0])
     : null;
+
+  // Fetch user info from session token
+  const userInfo = await getUserInfo();
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -94,7 +98,7 @@ export async function NavigationMenu() {
               </>
             )}
 
-            <UserMenu />
+            <UserMenu userName={userInfo?.name} />
           </NavigationMenuList>
         </_NavigationMenu>
       </div>

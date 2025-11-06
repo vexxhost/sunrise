@@ -1,7 +1,6 @@
 'use client';
 
 import { User, LogOut } from "lucide-react";
-import { useProjectToken } from "@/hooks/queries";
 import Link from "next/link";
 import {
   NavigationMenuItem,
@@ -9,10 +8,12 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
 
-export function UserMenu() {
-  const { data: tokenData } = useProjectToken();
+interface UserMenuProps {
+  userName?: string | null;
+}
 
-  if (!tokenData?.data?.user?.name) {
+export function UserMenu({ userName }: UserMenuProps) {
+  if (!userName) {
     return null;
   }
 
@@ -25,7 +26,7 @@ export function UserMenu() {
       <NavigationMenuItem>
         <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
           <User className="h-3.5 w-3.5 shrink-0" />
-          <span className="leading-none max-w-[100px] truncate">{tokenData?.data?.user?.name}</span>
+          <span className="leading-none max-w-[100px] truncate">{userName}</span>
         </NavigationMenuTrigger>
         <NavigationMenuContent className="right-0 left-auto">
           <ul className="p-1 min-w-[140px]">
