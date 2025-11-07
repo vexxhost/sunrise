@@ -77,7 +77,6 @@ export interface DataTableRowAction<TData> {
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
-  isLoading?: boolean
   isRefetching?: boolean
   refetch?: () => void
   resourceName?: string
@@ -89,7 +88,6 @@ interface DataTableProps<TData, TValue> {
 export function DataTable<TData, TValue>({
   columns,
   data,
-  isLoading = false,
   isRefetching = false,
   refetch,
   resourceName,
@@ -276,8 +274,8 @@ export function DataTable<TData, TValue>({
                 variant="outline"
                 size="sm"
                 onClick={refetch}
-                disabled={isLoading || isRefetching}
-                className={`gap-2 h-10 ${isLoading || isRefetching ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                disabled={isRefetching}
+                className={`gap-2 h-10 ${isRefetching ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
                 Refresh
@@ -336,12 +334,7 @@ export function DataTable<TData, TValue>({
             ))}
           </TableHeader>
           <TableBody>
-            {isLoading ? (
-              <TableLoadingRows
-                columns={columns.length + 1}
-                message={resourceName ? `Loading ${pluralize(resourceName)}...` : "Loading data..."}
-              />
-            ) : table.getRowModel().rows?.length ? (
+            {table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
