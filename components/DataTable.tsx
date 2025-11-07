@@ -1,5 +1,3 @@
-"use client"
-
 import {
   ColumnDef,
   flexRender,
@@ -27,20 +25,10 @@ import { TableEmpty } from "./TableEmpty"
 import { RefreshCw, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import pluralize from "pluralize"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationPrevious,
-  PaginationNext,
-  PaginationLink,
-  PaginationEllipsis,
-} from "@/components/ui/pagination"
 import { DataTableDialog } from "@/components/DataTableDialog"
 import { IDCell } from "@/components/DataTable/IDCell"
 import { useColumnVisibility } from "@/hooks/useColumnVisibility"
 import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter"
-import { generatePaginationItems } from "@/lib/pagination"
 import { ButtonGroup } from "@/components/ui/button-group"
 import {
   DropdownMenu,
@@ -49,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ChevronDown } from "lucide-react"
+import { DataTablePagination } from "./DataTable/Pagination"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
@@ -145,7 +134,6 @@ export function DataTable<TData, TValue>({
     },
   })
 
-
   return (
     <>
       <div className="flex items-center justify-between pb-2">
@@ -156,47 +144,7 @@ export function DataTable<TData, TValue>({
         />
 
         <div className="flex items-center gap-2">
-          {data.length > 0 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => table.previousPage()}
-                    aria-disabled={!table.getCanPreviousPage()}
-                    className={!table.getCanPreviousPage() ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-
-                {generatePaginationItems(
-                  table.getState().pagination.pageIndex + 1,
-                  table.getPageCount()
-                ).map((item, index) => (
-                  <PaginationItem key={index}>
-                    {item === 'ellipsis' ? (
-                      <PaginationEllipsis />
-                    ) : (
-                      <PaginationLink
-                        onClick={() => table.setPageIndex(item - 1)}
-                        isActive={table.getState().pagination.pageIndex + 1 === item}
-                        className="cursor-pointer"
-                      >
-                        {item}
-                      </PaginationLink>
-                    )}
-                  </PaginationItem>
-                ))}
-
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => table.nextPage()}
-                    aria-disabled={!table.getCanNextPage()}
-                    className={!table.getCanNextPage() ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
-
+          <DataTablePagination table={table} />
           {rowActions.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
