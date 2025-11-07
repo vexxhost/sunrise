@@ -1,8 +1,9 @@
-import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
+import { dehydrate } from '@tanstack/react-query';
 import { makeQueryClient } from '@/lib/query-client';
 import { getSession } from '@/lib/session';
 import { KeypairsTable } from './KeypairsTable';
 import { keypairsQueryOptions } from '@/hooks/queries/useServers';
+import { DataTableHydrationBoundary } from '@/components/DataTable/HydrationBoundary';
 
 export default async function Page() {
   const session = await getSession();
@@ -13,8 +14,8 @@ export default async function Page() {
   );
 
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
+    <DataTableHydrationBoundary state={dehydrate(queryClient)}>
       <KeypairsTable regionId={session.regionId} projectId={session.projectId} />
-    </HydrationBoundary>
+    </DataTableHydrationBoundary>
   );
 }
