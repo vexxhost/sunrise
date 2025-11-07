@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Camera } from "lucide-react";
 import { snapshotsQueryOptions } from "@/hooks/queries/useVolumes";
@@ -110,12 +110,11 @@ interface SnapshotsClientProps {
 }
 
 export function SnapshotsClient({ regionId, projectId }: SnapshotsClientProps) {
-  const { data, isLoading, isRefetching, refetch } = useQuery(snapshotsQueryOptions(regionId, projectId));
+  const { data, isRefetching, refetch } = useSuspenseQuery(snapshotsQueryOptions(regionId, projectId));
 
   return (
     <DataTable
-      data={data || []}
-      isLoading={isLoading}
+      data={data}
       isRefetching={isRefetching}
       refetch={refetch}
       columns={columns}

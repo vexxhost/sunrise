@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Volume } from "@/types/openstack";
 import { Image, Server, Flavor } from "@/types/openstack";
@@ -31,22 +31,21 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
   console.log('[InstancesClient] render', { regionId, projectId });
 
   // Fetch servers
-  const { data: serversData, isLoading: isLoadingServers, isRefetching: isRefetchingServers, refetch: refetchServers } = useQuery(
+  const { data: serversData, isRefetching: isRefetchingServers, refetch: refetchServers } = useSuspenseQuery(
     serversQueryOptions(regionId, projectId)
   );
 
   // Fetch volumes
-  const { data: volumesData } = useQuery(volumesQueryOptions(regionId, projectId));
+  const { data: volumesData } = useSuspenseQuery(volumesQueryOptions(regionId, projectId));
 
   // Fetch images
-  const { data: imagesData } = useQuery(imagesQueryOptions(regionId, projectId));
+  const { data: imagesData } = useSuspenseQuery(imagesQueryOptions(regionId, projectId));
 
   // Fetch flavors
-  const { data: flavorsData } = useQuery(flavorsQueryOptions(regionId, projectId));
+  const { data: flavorsData } = useSuspenseQuery(flavorsQueryOptions(regionId, projectId));
 
   // Process volume image IDs
   const volumeImageIds = useMemo(() => {
-    if (!volumesData) return {};
     return volumesData.reduce(
       (acc: { [key: string]: string }, volume: Volume) => {
         if (volume.volume_image_metadata) {
@@ -60,7 +59,6 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
 
   // Process images map
   const images = useMemo(() => {
-    if (!imagesData) return {};
     const imagesMap: { [key: string]: string } = {};
     imagesData.forEach((image: Image) => {
       imagesMap[image.id] = image.name || '';
@@ -70,7 +68,6 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
 
   // Process flavors map
   const flavors = useMemo(() => {
-    if (!flavorsData) return {};
     const flavorsMap: { [key: string]: string } = {};
     flavorsData.forEach((flavor: Flavor) => {
       flavorsMap[flavor.id] = flavor.name;
@@ -202,8 +199,7 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
 
   return (
     <DataTable
-      data={serversData || []}
-      isLoading={isLoadingServers}
+      data={serversData}
       isRefetching={isRefetchingServers}
       refetch={refetchServers}
       columns={columns}

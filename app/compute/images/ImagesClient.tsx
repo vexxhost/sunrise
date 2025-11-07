@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { ImageIcon } from "lucide-react";
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
@@ -291,12 +291,11 @@ interface ImagesClientProps {
 }
 
 export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
-  const { data, isLoading, isRefetching, refetch } = useQuery(imagesQueryOptions(regionId, projectId));
+  const { data, isRefetching, refetch } = useSuspenseQuery(imagesQueryOptions(regionId, projectId));
 
   return (
     <DataTable
-      data={data || []}
-      isLoading={isLoading}
+      data={data}
       isRefetching={isRefetching}
       refetch={refetch}
       columns={columns}

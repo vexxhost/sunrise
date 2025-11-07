@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VolumeInfo from "@/components/Instance/VolumeInfo";
 import SecurityGroupListByNames from "@/components/Instance/GroupList";
@@ -8,7 +8,6 @@ import { ServerIPAddresses } from "@/components/Instance/IpAddressList";
 import { FlavorInfo } from "@/components/Instance/FlavorInfo";
 import { InstanceInfo } from "@/components/Instance/InstanceInfo";
 import { Interfaces } from "@/components/Instance/Interfaces";
-import { Loader2 } from "lucide-react";
 import { serverQueryOptions, serverInterfacesQueryOptions } from "@/hooks/queries/useServers";
 import { portQueryOptions, networkQueryOptions } from "@/hooks/queries/useNetworks";
 import { useMemo } from "react";
@@ -20,69 +19,52 @@ interface InstanceDetailClientProps {
 }
 
 export function InstanceDetailClient({ serverId, regionId, projectId }: InstanceDetailClientProps) {
-  const { data: server, isLoading: isLoadingServer } = useQuery(
+  const { data: server } = useSuspenseQuery(
     serverQueryOptions(regionId, projectId, serverId)
   );
-  const { data: interfaceAttachments, isLoading: isLoadingInterfaces } = useQuery(
+  const { data: interfaceAttachments } = useSuspenseQuery(
     serverInterfacesQueryOptions(regionId, projectId, serverId)
   );
 
   const portIds = useMemo(() => {
-    return interfaceAttachments?.map(attachment => attachment.port_id) || [];
+    return interfaceAttachments.map(attachment => attachment.port_id);
   }, [interfaceAttachments]);
 
-  // Call useQuery for each port ID
-  const portQueries = portIds.map(id =>
-    useQuery(portQueryOptions(regionId, projectId, id))
-  );
+  // Fetch all ports in parallel using useSuspenseQueries
+  const portQueries = useSuspenseQueries({
+    queries: portIds.map(id => portQueryOptions(regionId, projectId, id))
+  });
 
   // Get ports data
   const ports = useMemo(() => {
-    return portQueries.map(query => query.data).filter(Boolean);
-  }, [portQueries.map(q => q.data).join()]);
+    return portQueries.map(query => query.data);
+  }, [portQueries]);
 
-  // Call useQuery for each unique network ID
+  // Get unique network IDs
   const networkIds = useMemo(() => {
-    return Array.from(new Set(ports.map(port => port?.network_id).filter(Boolean)));
+    return Array.from(new Set(ports.map(port => port.network_id)));
   }, [ports]);
 
-  const networkQueries = networkIds.map(id =>
-    useQuery(networkQueryOptions(regionId, projectId, id!))
-  );
+  // Fetch all networks in parallel using useSuspenseQueries
+  const networkQueries = useSuspenseQueries({
+    queries: networkIds.map(id => networkQueryOptions(regionId, projectId, id))
+  });
 
   // Enrich ports with network names
   const networkPorts = useMemo(() => {
     const networksMap = new Map();
     networkQueries.forEach(query => {
-      if (query.data) {
-        networksMap.set(query.data.id, query.data);
-      }
+      networksMap.set(query.data.id, query.data);
     });
 
-    return ports.filter((port): port is NonNullable<typeof port> => port != null).map(port => {
+    return ports.map(port => {
       const network = networksMap.get(port.network_id);
       return {
         ...port,
         network_name: network?.name
       };
     });
-  }, [ports, networkQueries.map(q => q.data).join()]);
-
-  const isLoadingPorts = portQueries.some(q => q.isLoading) || networkQueries.some(q => q.isLoading);
-
-  const isLoading = isLoadingServer || isLoadingInterfaces || isLoadingPorts;
-
-  if (isLoading) {
-    return (
-      <div className="p-20 flex justify-center items-center">
-        <Loader2 className="w-32 h-32 animate-spin" />
-      </div>
-    );
-  }
-
-  if (!server) {
-    return <div>Server not found</div>;
-  }
+  }, [ports, networkQueries]);
 
   return (
     <>

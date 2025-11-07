@@ -2,7 +2,7 @@
 
 import { DataTable, DataTableAction, DataTableRowAction } from "@/components/DataTable";
 import { KeyRound, Upload, Plus, Trash2 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { Keypair } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
 import { keypairsQueryOptions } from "@/hooks/queries/useServers";
@@ -76,7 +76,7 @@ interface KeypairsTableProps {
 }
 
 export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
-  const { data, isLoading, isRefetching, refetch } = useQuery(
+  const { data, isRefetching, refetch } = useSuspenseQuery(
     keypairsQueryOptions(regionId, projectId)
   );
 
@@ -106,8 +106,7 @@ export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
 
   return (
     <DataTable
-      data={data || []}
-      isLoading={isLoading}
+      data={data}
       isRefetching={isRefetching}
       refetch={refetch}
       columns={columns}

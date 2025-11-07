@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { Volume } from "@/types/openstack";
 import { Server } from "@/types/openstack";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
@@ -18,15 +18,15 @@ export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoPr
         (volume: { id: string }) => volume.id,
     );
 
-    // Call useQuery for each volume ID - TanStack Query handles parallel requests and caching
-    const volumeQueries = serverVolumeKeys.map(id =>
-        useQuery(volumeQueryOptions(regionId, projectId, id))
-    );
+    // Fetch all volumes in parallel using useSuspenseQueries
+    const volumeQueries = useSuspenseQueries({
+        queries: serverVolumeKeys.map(id => volumeQueryOptions(regionId, projectId, id))
+    });
 
     // Combine all volume data
     const volumes = useMemo(() => {
-        return volumeQueries.map(query => query.data).filter(Boolean) as Volume[];
-    }, [volumeQueries.map(q => q.data).join()]);
+        return volumeQueries.map(query => query.data);
+    }, [volumeQueries]);
 
     // Determine image ID - either from server or from boot volume
     const imageId = useMemo(() => {
@@ -43,10 +43,11 @@ export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoPr
         return undefined;
     }, [server.image, volumes]);
 
-    const { data: image } = useQuery({
-        ...imageQueryOptions(regionId, projectId, imageId || ''),
-        enabled: !!imageId && !!server.image
-    });
+    // Only fetch image if server has image property and imageId exists
+    const imageQuery = imageId && server.image
+        ? useSuspenseQuery(imageQueryOptions(regionId, projectId, imageId))
+        : null;
+    const image = imageQuery?.data;
 
     const imageName = useMemo(() => {
         if (server.image && image) {

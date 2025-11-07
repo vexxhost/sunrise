@@ -8,7 +8,7 @@ export default async function Page() {
   const session = await getSession();
 
   const queryClient = makeQueryClient();
-  await queryClient.prefetchQuery(
+  queryClient.prefetchQuery(
     volumesQueryOptions(session.regionId, session.projectId)
   );
 

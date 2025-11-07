@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Cpu } from "lucide-react";
 import { flavorsQueryOptions } from "@/hooks/queries/useServers";
@@ -170,12 +170,11 @@ interface InstanceTypesClientProps {
 }
 
 export function InstanceTypesClient({ regionId, projectId }: InstanceTypesClientProps) {
-  const { data, isLoading, isRefetching, refetch } = useQuery(flavorsQueryOptions(regionId, projectId));
+  const { data, isRefetching, refetch } = useSuspenseQuery(flavorsQueryOptions(regionId, projectId));
 
   return (
     <DataTable
-      data={data || []}
-      isLoading={isLoading}
+      data={data}
       isRefetching={isRefetching}
       refetch={refetch}
       columns={columns}

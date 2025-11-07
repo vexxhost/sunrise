@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { HardDrive } from "lucide-react";
 import { volumesQueryOptions } from "@/hooks/queries/useVolumes";
@@ -141,12 +141,11 @@ interface VolumesClientProps {
 }
 
 export function VolumesClient({ regionId, projectId }: VolumesClientProps) {
-  const { data, isLoading, isRefetching, refetch } = useQuery(volumesQueryOptions(regionId, projectId));
+  const { data, isRefetching, refetch } = useSuspenseQuery(volumesQueryOptions(regionId, projectId));
 
   return (
     <DataTable
-      data={data || []}
-      isLoading={isLoading}
+      data={data}
       isRefetching={isRefetching}
       refetch={refetch}
       columns={columns}

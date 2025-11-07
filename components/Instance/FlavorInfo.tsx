@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { Server } from "@/types/openstack";
 import { flavorQueryOptions } from "@/hooks/queries/useServers";
 import bytes from "bytes";
@@ -12,11 +12,7 @@ interface FlavorInfoProps {
 }
 
 export function FlavorInfo({ server, regionId, projectId }: FlavorInfoProps) {
-    const { data: flavor } = useQuery(flavorQueryOptions(regionId, projectId, server.flavor.id));
-
-    if (!flavor) {
-        return <div>Loading flavor...</div>;
-    }
+    const { data: flavor } = useSuspenseQuery(flavorQueryOptions(regionId, projectId, server.flavor.id));
 
     return (
         <>

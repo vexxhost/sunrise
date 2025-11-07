@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Network as NetworkIcon } from "lucide-react";
 import { networksQueryOptions } from "@/hooks/queries/useNetworks";
@@ -142,12 +142,11 @@ interface NetworksClientProps {
 }
 
 export function NetworksClient({ regionId, projectId }: NetworksClientProps) {
-  const { data, isLoading, isRefetching, refetch } = useQuery(networksQueryOptions(regionId, projectId));
+  const { data, isRefetching, refetch } = useSuspenseQuery(networksQueryOptions(regionId, projectId));
 
   return (
     <DataTable
-      data={data || []}
-      isLoading={isLoading}
+      data={data}
       isRefetching={isRefetching}
       refetch={refetch}
       columns={columns}
