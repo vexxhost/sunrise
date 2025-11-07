@@ -1,7 +1,7 @@
 'use client';
 
-import { DataTable, DataTableAction, DataTableRowAction } from "@/components/DataTable";
-import { KeyRound, Upload, Plus, Trash2 } from "lucide-react";
+import { DataTable, DataTableRowAction } from "@/components/DataTable";
+import { KeyRound, Trash2 } from "lucide-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Keypair } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
@@ -80,21 +80,6 @@ export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
     keypairsQueryOptions(regionId, projectId)
   );
 
-  const actions: DataTableAction[] = [
-    {
-      label: 'Import',
-      variant: 'outline',
-      icon: Upload,
-      onClick: () => console.log('Import key pair clicked'),
-    },
-    {
-      label: 'Create',
-      variant: 'default',
-      icon: Plus,
-      onClick: () => console.log('Create key pair clicked'),
-    },
-  ];
-
   const rowActions: DataTableRowAction<Keypair>[] = [
     {
       label: 'Delete',
@@ -112,7 +97,6 @@ export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
       columns={columns}
       resourceName="key pair"
       emptyIcon={KeyRound}
-      actions={actions}
       rowActions={rowActions}
     />
   );

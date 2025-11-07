@@ -11,7 +11,6 @@ import {
   RowData,
 } from "@tanstack/react-table"
 import { usePathname } from "next/navigation"
-import { titleCase } from "title-case"
 import { formatDistanceToNow } from 'date-fns'
 import { FilterBuilder } from "@/components/FilterBuilder"
 import {
@@ -24,7 +23,6 @@ import {
 } from "@/components/ui/table"
 import React from "react"
 import { Button } from "@/components/ui/button"
-import { TableLoadingRows } from "./TableLoading"
 import { TableEmpty } from "./TableEmpty"
 import { RefreshCw, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import pluralize from "pluralize"
@@ -51,7 +49,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ChevronDown } from "lucide-react"
-import { DataTableHeader } from "./DataTable/Header"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
@@ -59,13 +56,6 @@ declare module '@tanstack/react-table' {
     fieldType: 'string' | 'number' | 'boolean' | 'date'
     visible: boolean
   }
-}
-
-export interface DataTableAction {
-  label: string
-  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
-  onClick: () => void
-  icon?: React.ComponentType<{ className?: string }>
 }
 
 export interface DataTableRowAction<TData> {
@@ -82,7 +72,6 @@ interface DataTableProps<TData, TValue> {
   refetch?: () => void
   resourceName: string
   emptyIcon: React.ComponentType<{ className?: string }>
-  actions?: DataTableAction[]
   rowActions?: DataTableRowAction<TData>[]
 }
 
@@ -93,7 +82,6 @@ export function DataTable<TData, TValue>({
   refetch,
   resourceName,
   emptyIcon,
-  actions = [],
   rowActions = [],
 }: DataTableProps<TData, TValue>) {
   const pathname = usePathname()
@@ -160,7 +148,6 @@ export function DataTable<TData, TValue>({
 
   return (
     <>
-      <DataTableHeader resourceName={resourceName} actions={actions} />
       <div className="flex items-center justify-between pb-2">
         <FilterBuilder
           columns={table.getAllColumns()}
