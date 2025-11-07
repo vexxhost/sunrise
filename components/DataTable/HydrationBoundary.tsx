@@ -1,9 +1,9 @@
-'use client';
-
-import { HydrationBoundary, HydrationBoundaryProps } from '@tanstack/react-query';
+import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { Suspense, ReactNode } from 'react';
+import { makeQueryClient } from '@/lib/query-client';
 
-interface DataTableHydrationBoundaryProps extends HydrationBoundaryProps {
+interface DataTableHydrationBoundaryProps {
+  queries: Array<any>;
   children: ReactNode;
   fallback?: ReactNode;
 }
@@ -16,13 +16,18 @@ function DataTableSkeleton() {
   );
 }
 
-export function DataTableHydrationBoundary({
+export async function DataTableHydrationBoundary({
+  queries,
   children,
   fallback = <DataTableSkeleton />,
-  ...hydrationBoundaryProps
 }: DataTableHydrationBoundaryProps) {
+  const queryClient = makeQueryClient();
+  queries.forEach(query => {
+    queryClient.prefetchQuery(query);
+  });
+
   return (
-    <HydrationBoundary {...hydrationBoundaryProps}>
+    <HydrationBoundary state={dehydrate(queryClient)}>
       <Suspense fallback={fallback}>
         {children}
       </Suspense>

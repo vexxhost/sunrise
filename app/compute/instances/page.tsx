@@ -1,5 +1,3 @@
-import { dehydrate } from '@tanstack/react-query';
-import { makeQueryClient } from '@/lib/query-client';
 import { getSession } from '@/lib/session';
 import { InstancesClient } from './InstancesClient';
 import { serversQueryOptions, flavorsQueryOptions } from '@/hooks/queries/useServers';
@@ -10,14 +8,15 @@ import { DataTableHydrationBoundary } from '@/components/DataTable/HydrationBoun
 export default async function Page() {
   const session = await getSession();
 
-  const queryClient = makeQueryClient();
-  queryClient.prefetchQuery(serversQueryOptions(session.regionId, session.projectId));
-  queryClient.prefetchQuery(volumesQueryOptions(session.regionId, session.projectId));
-  queryClient.prefetchQuery(imagesQueryOptions(session.regionId, session.projectId));
-  queryClient.prefetchQuery(flavorsQueryOptions(session.regionId, session.projectId));
-
   return (
-    <DataTableHydrationBoundary state={dehydrate(queryClient)}>
+    <DataTableHydrationBoundary
+      queries={[
+        serversQueryOptions(session.regionId, session.projectId),
+        volumesQueryOptions(session.regionId, session.projectId),
+        imagesQueryOptions(session.regionId, session.projectId),
+        flavorsQueryOptions(session.regionId, session.projectId),
+      ]}
+    >
       <InstancesClient regionId={session.regionId} projectId={session.projectId} />
     </DataTableHydrationBoundary>
   );
