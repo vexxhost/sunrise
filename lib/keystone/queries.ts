@@ -26,8 +26,14 @@ export async function getRegions(): Promise<Region[]> {
     }
 
     const data = await response.json() as { regions: Region[] };
-    // Sort regions alphabetically by ID
-    return data.regions.sort((a, b) => a.id.localeCompare(b.id));
+    const regions = data.regions.sort((a, b) => a.id.localeCompare(b.id));
+
+    if (!session.regionId && regions.length > 0) {
+      session.regionId = regions[0].id;
+      await session.save();
+    }
+
+    return regions;
   } catch (error) {
     console.error('Error fetching regions:', error);
     return [];
@@ -59,8 +65,14 @@ export async function getProjects(): Promise<Project[]> {
     }
 
     const data = await response.json() as { projects: Project[] };
-    // Sort projects alphabetically by name
-    return data.projects.sort((a, b) => a.name.localeCompare(b.name));
+    const projects = data.projects.sort((a, b) => a.name.localeCompare(b.name));
+
+    if (!session.projectId && projects.length > 0) {
+      session.projectId = projects[0].id;
+      await session.save();
+    }
+
+    return projects;
   } catch (error) {
     console.error('Error fetching projects:', error);
     return [];
