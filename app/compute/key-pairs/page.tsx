@@ -1,7 +1,7 @@
 import { DataTableHydrationBoundary } from '@/components/DataTable/HydrationBoundary';
 import { keypairsQueryOptions } from '@/hooks/queries/useServers';
 import { getSession } from '@/lib/session';
-import { KeypairsTable } from './KeypairsTable';
+import { KeypairsTable, keypairRowActions } from './KeypairsTable';
 import { Actions } from './actions';
 import { RESOURCE_NAME } from './constants';
 
@@ -12,6 +12,7 @@ export default async function Page() {
     <DataTableHydrationBoundary
       resourceName={RESOURCE_NAME}
       actions={<Actions />}
+      rowActions={keypairRowActions}
       queries={[
         keypairsQueryOptions(session.regionId, session.projectId)
       ]}

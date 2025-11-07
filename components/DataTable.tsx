@@ -10,7 +10,6 @@ import {
 } from "@tanstack/react-table"
 import { usePathname } from "next/navigation"
 import { formatDistanceToNow } from 'date-fns'
-import { FilterBuilder } from "@/components/FilterBuilder"
 import {
   Table,
   TableBody,
@@ -22,22 +21,13 @@ import {
 import React from "react"
 import { Button } from "@/components/ui/button"
 import { TableEmpty } from "./TableEmpty"
-import { RefreshCw, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import pluralize from "pluralize"
 import { Checkbox } from "@/components/ui/checkbox"
-import { DataTableDialog } from "@/components/DataTableDialog"
 import { IDCell } from "@/components/DataTable/IDCell"
 import { useColumnVisibility } from "@/hooks/useColumnVisibility"
 import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter"
-import { ButtonGroup } from "@/components/ui/button-group"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { ChevronDown } from "lucide-react"
-import { DataTablePagination } from "./DataTable/Pagination"
+import { DataTableToolbar } from "./DataTable/Toolbar"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
@@ -136,66 +126,15 @@ export function DataTable<TData, TValue>({
 
   return (
     <>
-      <div className="flex items-center justify-between pb-2">
-        <FilterBuilder
-          columns={table.getAllColumns()}
-          onFiltersChange={setGlobalFilter}
-          data={data}
-        />
-
-        <div className="flex items-center gap-2">
-          <DataTablePagination table={table} />
-          {rowActions.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 h-10 cursor-pointer"
-                  disabled={table.getFilteredSelectedRowModel().rows.length === 0}
-                >
-                  Actions
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {rowActions.map((action, index) => {
-                  const Icon = action.icon;
-                  return (
-                    <DropdownMenuItem
-                      key={index}
-                      onClick={() => {
-                        const selectedRows = table.getFilteredSelectedRowModel().rows.map(row => row.original);
-                        action.onClick(selectedRows);
-                      }}
-                      className="gap-2 cursor-pointer"
-                    >
-                      {Icon && <Icon className="h-4 w-4" />}
-                      {action.label}
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          <ButtonGroup>
-            {refetch && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refetch}
-                disabled={isRefetching}
-                className={`gap-2 h-10 ${isRefetching ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            )}
-            <DataTableDialog table={table} resourceName={resourceName} />
-          </ButtonGroup>
-        </div>
-      </div>
+      <DataTableToolbar
+        table={table}
+        data={data}
+        resourceName={resourceName}
+        rowActions={rowActions}
+        isRefetching={isRefetching}
+        refetch={refetch}
+        onFiltersChange={setGlobalFilter}
+      />
 
       <div className="rounded-md border">
         <Table>

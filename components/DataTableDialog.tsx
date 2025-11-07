@@ -1,12 +1,5 @@
 "use client"
 
-import { useState } from "react"
-import { Table } from "@tanstack/react-table"
-import { Settings } from "lucide-react"
-import pluralize from "pluralize"
-import { titleCase } from "title-case"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -16,8 +9,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Table } from "@tanstack/react-table"
+import pluralize from "pluralize"
+import { useState } from "react"
+import { titleCase } from "title-case"
+import { DataTableDialogButton } from "./DataTable/Dialog"
 
 // Helper function to extract label from column definition
 function getColumnLabel<TData, TValue>(column: any): string {
@@ -79,13 +78,7 @@ export function DataTableDialog<TData>({
   return (
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-10 px-3 cursor-pointer"
-        >
-          <Settings className="h-4 w-4" />
-        </Button>
+        <DataTableDialogButton />
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>

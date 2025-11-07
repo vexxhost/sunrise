@@ -8,7 +8,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { keypairsQueryOptions } from "@/hooks/queries/useServers";
 import { RESOURCE_NAME } from "./constants";
 
-const columns: ColumnDef<Keypair>[] = [
+export const keypairColumns: ColumnDef<Keypair>[] = [
   {
     accessorKey: "name",
     header: "Name",
@@ -76,6 +76,15 @@ interface KeypairsTableProps {
   projectId: string | undefined;
 }
 
+export const keypairRowActions: DataTableRowAction<Keypair>[] = [
+  {
+    label: 'Delete',
+    variant: 'destructive',
+    icon: Trash2,
+    onClick: (rows) => console.log('Delete key pairs:', rows),
+  },
+];
+
 export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
   const { data, isRefetching, refetch } = useSuspenseQuery(
     keypairsQueryOptions(regionId, projectId)
@@ -86,17 +95,10 @@ export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
       data={data}
       isRefetching={isRefetching}
       refetch={refetch}
-      columns={columns}
+      columns={keypairColumns}
       resourceName={RESOURCE_NAME}
       emptyIcon={KeyRound}
-      rowActions={[
-        {
-          label: 'Delete',
-          variant: 'destructive',
-          icon: Trash2,
-          onClick: (rows) => console.log('Delete key pairs:', rows),
-        },
-      ]}
+      rowActions={keypairRowActions}
     />
   );
 }
