@@ -51,6 +51,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ChevronDown } from "lucide-react"
+import { DataTableHeader } from "./DataTable/Header"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
@@ -79,7 +80,7 @@ interface DataTableProps<TData, TValue> {
   data: TData[]
   isRefetching?: boolean
   refetch?: () => void
-  resourceName?: string
+  resourceName: string
   emptyIcon: React.ComponentType<{ className?: string }>
   actions?: DataTableAction[]
   rowActions?: DataTableRowAction<TData>[]
@@ -159,32 +160,7 @@ export function DataTable<TData, TValue>({
 
   return (
     <>
-      {resourceName && (
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-semibold">
-            {titleCase(pluralize(resourceName))}
-          </h1>
-          {actions.length > 0 && (
-            <ButtonGroup>
-              {actions.map((action, index) => {
-                const Icon = action.icon;
-                return (
-                  <Button
-                    key={index}
-                    variant={action.variant || 'default'}
-                    size="sm"
-                    onClick={action.onClick}
-                    className="gap-2 h-10 cursor-pointer"
-                  >
-                    {Icon && <Icon className="h-4 w-4" />}
-                    {action.label}
-                  </Button>
-                );
-              })}
-            </ButtonGroup>
-          )}
-        </div>
-      )}
+      <DataTableHeader resourceName={resourceName} actions={actions} />
       <div className="flex items-center justify-between pb-2">
         <FilterBuilder
           columns={table.getAllColumns()}

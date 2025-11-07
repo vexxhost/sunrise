@@ -8,6 +8,7 @@ export default async function Page() {
 
   return (
     <DataTableHydrationBoundary
+      resourceName="image"
       queries={[
         imagesQueryOptions(session.regionId, session.projectId)
       ]}

@@ -1,36 +1,42 @@
-import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
-import { Suspense, ReactNode } from 'react';
 import { makeQueryClient } from '@/lib/query-client';
+import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
+import { ReactNode, Suspense } from 'react';
+import { DataTableHeader } from './Header';
 
-interface DataTableHydrationBoundaryProps {
-  queries: Array<any>;
-  children: ReactNode;
-  fallback?: ReactNode;
+interface DataTableSkeletonProps {
+  resourceName: string;
 }
 
-function DataTableSkeleton() {
-  return (
+function DataTableSkeleton({ resourceName }: DataTableSkeletonProps) {
+  return <>
+    <DataTableHeader resourceName={resourceName} actions={[]} />
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
     </div>
-  );
+  </>;
+}
+
+interface DataTableHydrationBoundaryProps {
+  resourceName: string;
+  queries: Array<any>;
+  children: ReactNode;
 }
 
 export async function DataTableHydrationBoundary({
+  resourceName,
   queries,
   children,
-  fallback = <DataTableSkeleton />,
 }: DataTableHydrationBoundaryProps) {
   const queryClient = makeQueryClient();
   queries.forEach(query => {
     queryClient.prefetchQuery(query);
   });
 
-  return (
+  return <>
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <Suspense fallback={fallback}>
+      <Suspense fallback={<DataTableSkeleton resourceName={resourceName} />}>
         {children}
       </Suspense>
     </HydrationBoundary>
-  );
+  </>;
 }

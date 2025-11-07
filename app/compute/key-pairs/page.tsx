@@ -8,6 +8,7 @@ export default async function Page() {
 
   return (
     <DataTableHydrationBoundary
+      resourceName="key pair"
       queries={[
         keypairsQueryOptions(session.regionId, session.projectId)
       ]}

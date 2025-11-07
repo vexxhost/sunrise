@@ -8,6 +8,7 @@ export default async function Page() {
 
   return (
     <DataTableHydrationBoundary
+      resourceName="volume"
       queries={[
         volumesQueryOptions(session.regionId, session.projectId)
       ]}

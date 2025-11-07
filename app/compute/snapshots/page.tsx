@@ -8,6 +8,7 @@ export default async function Page() {
 
   return (
     <DataTableHydrationBoundary
+      resourceName="snapshot"
       queries={[
         snapshotsQueryOptions(session.regionId, session.projectId)
       ]}

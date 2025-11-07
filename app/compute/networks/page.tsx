@@ -8,6 +8,7 @@ export default async function Page() {
 
   return (
     <DataTableHydrationBoundary
+      resourceName="network"
       queries={[
         networksQueryOptions(session.regionId, session.projectId)
       ]}
