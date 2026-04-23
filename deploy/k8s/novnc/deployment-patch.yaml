@@ -1,0 +1,53 @@
+# Strategic-merge patch for the openstack-helm `nova-novncproxy` Deployment.
+#
+# Why this targets an init container (and not the main container):
+#
+# In atmosphere/openstack-helm, the main `nova-novncproxy` container mounts
+# `/usr/share/novnc` *read-only* from an EmptyDir volume named
+# `pod-usr-share-novnc`. That EmptyDir is populated at pod start by the
+# `nova-novncproxy-init-assets` init container, which copies the noVNC
+# files baked into the image (`/usr/share/novnc/`) into
+# `/tmp/usr/share/novnc/` (the EmptyDir, mounted rw there).
+#
+# So to ship our overlay to the served filesystem we mount the two
+# ConfigMaps into THAT init container at the in-image paths:
+#   - /usr/share/novnc/sunrise.html  (subPath, single file)
+#   - /usr/share/novnc/fonts/        (directory mount)
+# The init-assets script then copies them across with the rest of noVNC,
+# and the main container serves them out of the EmptyDir.
+#
+# Adjust:
+#   - metadata.name        -> deployment name (default: nova-novncproxy)
+#   - container name       -> must match `nova-novncproxy-init-assets`
+#   - mountPath            -> only if the upstream image moves noVNC
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nova-novncproxy
+  namespace: openstack
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: nova-novncproxy-init-assets
+          volumeMounts:
+            - name: sunrise-novnc
+              mountPath: /usr/share/novnc/sunrise.html
+              subPath: sunrise.html
+              readOnly: true
+            # `/usr/share/novnc/fonts` does not exist in the upstream image,
+            # so a plain directory mount is safe and avoids per-file subPath
+            # entries for each woff2.
+            - name: sunrise-novnc-fonts
+              mountPath: /usr/share/novnc/fonts
+              readOnly: true
+      volumes:
+        - name: sunrise-novnc
+          configMap:
+            name: sunrise-novnc
+            items:
+              - key: sunrise.html
+                path: sunrise.html
+        - name: sunrise-novnc-fonts
+          configMap:
+            name: sunrise-novnc-fonts

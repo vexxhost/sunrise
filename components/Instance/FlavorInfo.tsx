@@ -1,29 +1,19 @@
-'use client';
-
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { Server } from "@/types/openstack";
-import { flavorQueryOptions } from "@/hooks/queries/useServers";
 import bytes from "bytes";
 
 interface FlavorInfoProps {
     server: Server;
-    regionId?: string;
-    projectId?: string;
 }
 
-export function FlavorInfo({ server, regionId, projectId }: FlavorInfoProps) {
-    const { data: flavor } = useSuspenseQuery(flavorQueryOptions(regionId, projectId, server.flavor.id));
+export function FlavorInfo({ server }: FlavorInfoProps) {
+    const flavor = server.flavor;
 
     return (
         <>
         <div className="font-bold text-l mt-2 p-4">Specs</div>
         <div className="flex flex-row  ml-2 pl-2 text-xs">
           <div className="basis-1/4 font-bold text-m">Flavor Name:</div>
-          <div className="basis-3/4">{flavor.name.toString()}</div>
-        </div>
-        <div className="flex flex-row  ml-2 pl-2 text-xs">
-          <div className="basis-1/4 font-bold text-m">Flavor ID:</div>
-          <div className="basis-3/4">{flavor.id}</div>
+          <div className="basis-3/4">{flavor.original_name}</div>
         </div>
         <div className="flex flex-row  ml-2 pl-2 text-xs">
           <div className="basis-1/4 font-bold text-m">RAM:</div>

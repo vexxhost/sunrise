@@ -1,8 +1,54 @@
 import { getSession } from "@/lib/session";
 
-export async function GET() {
+const KEYSTONE_API = process.env.KEYSTONE_API;
+
+async function revokeToken(subjectToken: string, authToken: string) {
+  if (!KEYSTONE_API) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${KEYSTONE_API}/v3/auth/tokens`, {
+      method: "DELETE",
+      headers: {
+        "X-Auth-Token": authToken,
+        "X-Subject-Token": subjectToken,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok && response.status !== 404) {
+      console.error(
+        "Failed to revoke Keystone token:",
+        response.status,
+        response.statusText,
+      );
+    }
+  } catch (error) {
+    console.error("Error revoking Keystone token:", error);
+  }
+}
+
+async function performLogout() {
   const session = await getSession();
+  const unscoped = session.keystone_unscoped_token;
+  const scoped = session.keystoneProjectToken;
+
+  // Revoke at Keystone before destroying the local session.
+  await Promise.all([
+    scoped && unscoped ? revokeToken(scoped, unscoped) : Promise.resolve(),
+    unscoped ? revokeToken(unscoped, unscoped) : Promise.resolve(),
+  ]);
+
   session.destroy();
 
   return Response.redirect(process.env.DASHBOARD_URL || "/", 303);
+}
+
+export async function GET() {
+  return performLogout();
+}
+
+export async function POST() {
+  return performLogout();
 }

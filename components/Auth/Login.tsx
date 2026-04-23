@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import { login } from "@/app/auth/login/action";
+import { login } from "@/app/(main)/auth/login/action";
 import Image from "next/image";
 
 export default function Login() {

@@ -8,6 +8,8 @@ import { ServerIPAddresses } from "@/components/Instance/IpAddressList";
 import { FlavorInfo } from "@/components/Instance/FlavorInfo";
 import { InstanceInfo } from "@/components/Instance/InstanceInfo";
 import { Interfaces } from "@/components/Instance/Interfaces";
+import { ActionLog } from "@/components/Instance/ActionLog";
+import { Console } from "@/components/Instance/Console";
 import { serverQueryOptions, serverInterfacesQueryOptions } from "@/hooks/queries/useServers";
 import { portQueryOptions, networkQueryOptions } from "@/hooks/queries/useNetworks";
 import { useMemo } from "react";
@@ -70,21 +72,33 @@ export function InstanceDetailClient({ serverId, regionId, projectId }: Instance
     <>
       <div key={server.id} className="font-bold text-l mt-4 pb-6"> {server.name} </div>
       <Tabs defaultValue="overview" className="max-w-screen-xl">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="interfaces">Interfaces</TabsTrigger>
+          <TabsTrigger value="action-log">Action Log</TabsTrigger>
+          <TabsTrigger value="console">Console</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="max-w-screen-l">
-          <div className="max-w-screen-xl mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-xl">
+          <div className="max-w-screen-xl mx-auto bg-card text-card-foreground rounded-xl shadow-md overflow-hidden md:max-xl">
             <InstanceInfo server={server} />
-            <FlavorInfo server={server} regionId={regionId} projectId={projectId} />
+            <FlavorInfo server={server} />
             <ServerIPAddresses server={server} />
-            <SecurityGroupListByNames server={server} />
+            <SecurityGroupListByNames server={server} regionId={regionId} projectId={projectId} />
             <VolumeInfo server={server} regionId={regionId} projectId={projectId} />
           </div>
         </TabsContent>
         <TabsContent value="interfaces">
           <Interfaces networkPorts={networkPorts || []} />
+        </TabsContent>
+        <TabsContent value="action-log" className="max-w-screen-l">
+          <div className="max-w-screen-xl mx-auto bg-card text-card-foreground rounded-xl shadow-md overflow-hidden md:max-xl p-4">
+            <ActionLog serverId={serverId} regionId={regionId} projectId={projectId} />
+          </div>
+        </TabsContent>
+        <TabsContent value="console" className="max-w-screen-l">
+          <div className="max-w-screen-xl mx-auto bg-card text-card-foreground rounded-xl shadow-md overflow-hidden md:max-xl p-4">
+            <Console serverId={serverId} projectId={projectId} regionId={regionId} />
+          </div>
         </TabsContent>
       </Tabs>
     </>

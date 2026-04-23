@@ -4,7 +4,7 @@
 
 import { queryOptions } from '@tanstack/react-query';
 import { openstack } from '@/lib/openstack/actions';
-import type { ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, KeypairListResponse, KeypairResponse, InterfaceAttachment } from '@/types/openstack';
+import type { ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, KeypairListResponse, KeypairResponse, InterfaceAttachment, ServerActionsListResponse, ServerActionResponse } from '@/types/openstack';
 
 /**
  * Query options for fetching list of servers
@@ -206,3 +206,61 @@ export function keypairQueryOptions(
   });
 }
 
+/**
+ * Query options for fetching the action log for a server
+ */
+export function serverActionsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  serverId: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'server-actions', serverId],
+    queryFn: async () => {
+      const data = await openstack<ServerActionsListResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: `/servers/${serverId}/os-instance-actions`,
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        return [];
+      }
+
+      return data.instanceActions;
+    },
+    enabled: !!serverId && !!regionId,
+  });
+}
+
+/**
+ * Query options for fetching a single action (with events) for a server
+ */
+export function serverActionQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  serverId: string,
+  requestId: string
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'server-action', serverId, requestId],
+    queryFn: async () => {
+      const data = await openstack<ServerActionResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: `/servers/${serverId}/os-instance-actions/${requestId}`,
+        apiVersion: 'compute 2.79',
+      });
+
+      if (!data) {
+        throw new Error('Server action not found');
+      }
+
+      return data.instanceAction;
+    },
+    enabled: !!serverId && !!requestId && !!regionId,
+  });
+}

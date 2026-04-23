@@ -1,0 +1,15 @@
+# Generated equivalent (for reference) — for a ConfigMap with the file
+# baked in, prefer `kubectl create configmap --from-file` or kustomize's
+# `configMapGenerator` so the contents stay in sync with sunrise.html.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sunrise-novnc
+  namespace: openstack
+data:
+  # Replace with the contents of sunrise.html (kept here as a placeholder so
+  # the manifest is valid; in practice generate this with kustomize).
+  sunrise.html: |
+    <!-- regenerate with: kubectl -n openstack create configmap sunrise-novnc \
+                           --from-file=sunrise.html=./sunrise.html \
+                           --dry-run=client -o yaml -->
