@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
-import { Folder, FileText, ChevronRight, Home } from 'lucide-react';
+import { Folder, FileText, ChevronRight, Home, AlertTriangle } from 'lucide-react';
 import bytes from 'bytes';
 import { DataTable } from '@/components/DataTable';
 import { objectsQueryOptions } from '@/hooks/queries/useObjects';
@@ -181,6 +181,19 @@ export function ObjectsClient({ bucket }: ObjectsClientProps) {
         resourceName="object"
         emptyIcon={Folder}
       />
+
+      {data.accessDenied && (
+        <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 flex gap-2 text-sm">
+          <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-medium">Access denied</div>
+            <div className="text-muted-foreground">
+              Your role does not have permission to list objects in
+              <code> {bucket}</code>{prefix ? <> at prefix <code>{prefix}</code></> : null}.
+            </div>
+          </div>
+        </div>
+      )}
 
       {data.isTruncated && (
         <p className="text-sm text-muted-foreground">

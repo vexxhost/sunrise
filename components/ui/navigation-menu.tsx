@@ -9,6 +9,8 @@ function NavigationMenu({
   className,
   children,
   viewport = true,
+  delayDuration = 600,
+  skipDelayDuration = 600,
   ...props
 }: React.ComponentProps<typeof NavigationMenuPrimitive.Root> & {
   viewport?: boolean
@@ -17,6 +19,8 @@ function NavigationMenu({
     <NavigationMenuPrimitive.Root
       data-slot="navigation-menu"
       data-viewport={viewport}
+      delayDuration={delayDuration}
+      skipDelayDuration={skipDelayDuration}
       className={cn(
         "group/navigation-menu relative flex max-w-max flex-1 items-center justify-center",
         className

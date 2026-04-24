@@ -29,6 +29,11 @@ export async function getServiceEndpoint(
 
     if (!serviceEntry) {
       console.error(`Service '${serviceName}' (${serviceType}) not found in catalog`);
+      // TODO(diagnostic): remove once s3 catalog lookup is verified.
+      console.error(
+        '[catalog] available services:',
+        (catalogData.catalog ?? []).map((s: any) => ({ type: s.type, name: s.name }))
+      );
       return null;
     }
 
@@ -38,6 +43,16 @@ export async function getServiceEndpoint(
 
     if (!endpointEntry) {
       console.error(`No public endpoint found for service '${serviceName}' in region '${regionId}'`);
+      // TODO(diagnostic): remove once s3 catalog lookup is verified.
+      console.error(
+        '[catalog] endpoints for service:',
+        (serviceEntry.endpoints ?? []).map((ep: any) => ({
+          interface: ep.interface,
+          region: ep.region,
+          region_id: ep.region_id,
+          url: ep.url,
+        }))
+      );
       return null;
     }
 

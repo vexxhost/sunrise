@@ -1,4 +1,35 @@
+import { getSession } from '@/lib/session';
+import { finalizeKeystoneSession } from '@/lib/keystone/login';
+
+const DASHBOARD_URL = process.env.DASHBOARD_URL ?? '/';
+
+/**
+ * Legacy Keystone WebSSO POST callback. Kept as a fallback for setups still
+ * driving login through Keystone's federation endpoint. The unified Sunrise
+ * OIDC flow at `/auth/oidc/login` is the preferred path.
+ */
+export async function POST(request: Request) {
+  const session = await getSession();
+  const formData = await request.formData();
+  const token = formData.get('token');
+
+  if (typeof token !== 'string' || token.length === 0) {
+    console.error('Missing token in WebSSO response');
+    session.keystone_unscoped_token = undefined;
+    session.keystoneProjectToken = undefined;
+    session.projectId = undefined;
+    session.regionId = undefined;
+    await session.save();
+    return new Response('Invalid WebSSO response', { status: 400 });
+  }
+
+  await finalizeKeystoneSession(session, token);
+  await session.save();
+
+  return Response.redirect(DASHBOARD_URL, 303);
+}
 import { getSession } from "@/lib/session";
+import { readPrefs, writePrefs } from "@/lib/prefs";
 import type { Project, Region } from "@/types/openstack/keystone";
 
 const KEYSTONE_API = process.env.KEYSTONE_API;
@@ -130,10 +161,33 @@ export async function POST(request: Request) {
     fetchRegions(token),
   ]);
 
-  const previousProjectId = session.projectId;
+  const prefs = await readPrefs();
+
+  // TODO(diagnostic): remove these logs once project/region preference
+  // restoration on login has been validated in additional environments.
+  console.log('[websso] prefs:', prefs);
+  console.log(
+    '[websso] available projects:',
+    projects.map((p) => ({ id: p.id, name: p.name }))
+  );
+  console.log(
+    '[websso] available regions:',
+    regions.map((r) => r.id)
+  );
+
+  // Resolve preferred project: prefer ID match (unique), fall back to name
+  // match (handles project re-creation with new UUID, same display name).
+  const previousProjectId = session.projectId ?? prefs.projectId;
+  const previousProjectName = prefs.projectName;
   const candidateProject =
-    (previousProjectId && projects.find((project) => project.id === previousProjectId)) ??
+    (previousProjectId &&
+      projects.find((project) => project.id === previousProjectId)) ??
+    (previousProjectName &&
+      projects.find((project) => project.name === previousProjectName)) ??
     projects[0];
+
+  // TODO(diagnostic): remove with the logs above.
+  console.log('[websso] picked project:', candidateProject ? { id: candidateProject.id, name: candidateProject.name } : null);
 
   if (candidateProject) {
     session.projectId = candidateProject.id;
@@ -143,7 +197,7 @@ export async function POST(request: Request) {
     session.keystoneProjectToken = undefined;
   }
 
-  const previousRegionId = session.regionId;
+  const previousRegionId = session.regionId ?? prefs.regionId;
   const candidateRegion =
     (previousRegionId && regions.find((region) => region.id === previousRegionId)) ??
     regions[0];
@@ -151,6 +205,11 @@ export async function POST(request: Request) {
   session.regionId = candidateRegion?.id ?? undefined;
 
   await session.save();
+  await writePrefs({
+    projectId: session.projectId,
+    projectName: candidateProject?.name,
+    regionId: session.regionId,
+  });
 
   return Response.redirect(DASHBOARD_URL, 303);
 }

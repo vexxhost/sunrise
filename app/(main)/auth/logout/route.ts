@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 
 const KEYSTONE_API = process.env.KEYSTONE_API;
@@ -42,7 +43,19 @@ async function performLogout() {
 
   session.destroy();
 
-  return Response.redirect(process.env.DASHBOARD_URL || "/", 303);
+  const response = NextResponse.redirect(
+    process.env.DASHBOARD_URL || "/",
+    { status: 303 }
+  );
+  // Defensively clear the session cookie on the redirect response itself,
+  // in case iron-session's destroy() doesn't propagate through the redirect.
+  response.cookies.set("sunrise", "", {
+    expires: new Date(0),
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+  });
+  return response;
 }
 
 export async function GET() {

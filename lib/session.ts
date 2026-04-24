@@ -16,6 +16,11 @@ export type SunriseSession = {
   s3Sts?: S3StsCredentials;
   s3OidcVerifier?: string;
   s3OidcState?: string;
+  // Unified Sunrise OIDC flow (Keycloak as IdP for both Keystone + S3 STS).
+  oidcVerifier?: string;
+  oidcState?: string;
+  oidcIdProvider?: string;
+  keycloakRefreshToken?: string;
 };
 
 // Setup the config for your session and cookie

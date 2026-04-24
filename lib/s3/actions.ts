@@ -98,6 +98,7 @@ export type ListObjectsResult =
       folders: S3CommonPrefix[];
       isTruncated: boolean;
       nextContinuationToken: string | null;
+      accessDenied?: boolean;
     }
   | { ok: false; needsAuth: true }
   | { ok: false; needsAuth: false; error: string };
@@ -144,6 +145,20 @@ export async function listObjects(
     };
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
+    if (isAccessDenied(e)) {
+      console.warn('[s3/listObjects] access denied for', bucket, prefix);
+      return {
+        ok: true,
+        bucket,
+        prefix,
+        delimiter: '/',
+        objects: [],
+        folders: [],
+        isTruncated: false,
+        nextContinuationToken: null,
+        accessDenied: true,
+      };
+    }
     const detail = describeAwsError(e);
     console.error('[s3/listObjects] FAILED:', detail, e);
     return { ok: false, needsAuth: false, error: detail };

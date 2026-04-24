@@ -2,6 +2,7 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent } from 'https';
 import { getSession } from '@/lib/session';
+import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
 
 export class S3AuthRequiredError extends Error {
   constructor() {
@@ -17,13 +18,11 @@ export async function getS3Client(): Promise<S3Client> {
   if (!creds || creds.expiration - Date.now() < 60_000) {
     throw new S3AuthRequiredError();
   }
-  const endpoint = process.env.S3_ENDPOINT;
-  const region = process.env.S3_REGION || 'us-east-1';
-  if (!endpoint) throw new Error('S3_ENDPOINT not set');
+  const endpoint = await getS3Endpoint();
 
   return new S3Client({
     endpoint,
-    region,
+    region: S3_REGION,
     forcePathStyle: true,
     credentials: {
       accessKeyId: creds.accessKeyId,

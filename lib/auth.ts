@@ -25,13 +25,8 @@ export type LoginFormState =
 
 export const redirectToIdentityProvider = (idProvider: string) => {
   redirect(
-    process.env.KEYSTONE_API +
-      "/v3/auth/OS-FEDERATION/identity_providers/" +
-      idProvider +
-      "/protocols/" +
-      process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDER_PROTOCOL +
-      "/websso?origin=" +
-      process.env.DASHBOARD_URL +
-      "/auth/websso/",
+    (process.env.DASHBOARD_URL ?? '') +
+      '/auth/oidc/login?idp=' +
+      encodeURIComponent(idProvider),
   );
 };

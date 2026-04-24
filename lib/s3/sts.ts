@@ -2,14 +2,13 @@ import { STSClient, AssumeRoleWithWebIdentityCommand } from '@aws-sdk/client-sts
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent } from 'https';
 import type { S3StsCredentials } from '@/lib/session';
+import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
 
-function getStsClient() {
-  const endpoint = process.env.S3_ENDPOINT;
-  const region = process.env.S3_REGION || 'us-east-1';
-  if (!endpoint) throw new Error('S3_ENDPOINT not set');
+async function getStsClient() {
+  const endpoint = await getS3Endpoint();
   return new STSClient({
     endpoint,
-    region,
+    region: S3_REGION,
     requestHandler: new NodeHttpHandler({
       httpsAgent: new Agent({
         rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0',
@@ -24,7 +23,7 @@ export async function assumeRoleWithIdToken(
   const roleArn = process.env.S3_STS_ROLE_ARN;
   if (!roleArn) throw new Error('S3_STS_ROLE_ARN not set');
 
-  const client = getStsClient();
+  const client = await getStsClient();
   const res = await client.send(
     new AssumeRoleWithWebIdentityCommand({
       RoleArn: roleArn,

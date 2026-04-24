@@ -2,6 +2,7 @@
 
 import { getSession } from '@/lib/session';
 import type { S3StsCredentials } from '@/lib/session';
+import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
 
 export type BrowserStsResult =
   | { ok: true; credentials: S3StsCredentials; endpoint: string; region: string }
@@ -21,10 +22,15 @@ export async function getStsCredentialsForBrowser(): Promise<BrowserStsResult> {
   if (!creds || creds.expiration - Date.now() < 60_000) {
     return { ok: false, needsAuth: true };
   }
-  const endpoint = process.env.S3_ENDPOINT;
-  const region = process.env.S3_REGION || 'us-east-1';
-  if (!endpoint) {
-    return { ok: false, needsAuth: false, error: 'S3_ENDPOINT not set' };
+  let endpoint: string;
+  try {
+    endpoint = await getS3Endpoint();
+  } catch (e) {
+    return {
+      ok: false,
+      needsAuth: false,
+      error: e instanceof Error ? e.message : 'failed to resolve S3 endpoint',
+    };
   }
-  return { ok: true, credentials: creds, endpoint, region };
+  return { ok: true, credentials: creds, endpoint, region: S3_REGION };
 }

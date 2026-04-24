@@ -1,11 +1,11 @@
 "use client";
-import React from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import React, { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { login } from "@/app/(main)/auth/login/action";
 import Image from "next/image";
 
 export default function Login() {
-  const [state, action] = useFormState(login, undefined);
+  const [state, action] = useActionState(login, undefined);
   const { pending } = useFormStatus();
 
   return (

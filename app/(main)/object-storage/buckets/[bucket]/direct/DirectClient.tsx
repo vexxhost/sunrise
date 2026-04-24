@@ -47,6 +47,7 @@ export function DirectClient({ bucket }: DirectClientProps) {
   const inspectKey = searchParams.get('inspect') ?? '';
 
   const [s3, setS3] = useState<S3Client | null>(null);
+  const [endpoint, setEndpoint] = useState<string | null>(null);
   const [credsError, setCredsError] = useState<string | null>(null);
 
   // Fetch creds once on mount; redirect to OIDC if missing.
@@ -64,6 +65,7 @@ export function DirectClient({ bucket }: DirectClientProps) {
         return;
       }
       setS3(makeBrowserS3Client(res.credentials, res.endpoint, res.region));
+      setEndpoint(res.endpoint);
     })();
     return () => {
       cancelled = true;
@@ -145,7 +147,7 @@ export function DirectClient({ bucket }: DirectClientProps) {
         <div className="font-medium">Direct browser mode</div>
         <div className="text-muted-foreground">
           All S3 calls below are made from your browser straight to{' '}
-          <code>{process.env.NEXT_PUBLIC_S3_ENDPOINT || 'the S3 endpoint'}</code>.
+          <code>{endpoint || 'the S3 endpoint'}</code>.
           Requires CORS to be configured on the bucket / gateway. Open DevTools
           → Network to inspect signed requests.
         </div>
