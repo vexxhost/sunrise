@@ -9,14 +9,7 @@ const objectStorageSidebarSections = [
   {
     title: "Storage",
     items: [
-      { name: "Containers", href: "/object-storage/containers", icon: "FolderOpen" },
-      { name: "Objects", href: "/object-storage/objects", icon: "Database" },
-    ],
-  },
-  {
-    title: "Settings",
-    items: [
-      { name: "Access Control", href: "/object-storage/access-control", icon: "Settings" },
+      { name: "Buckets", href: "/object-storage/buckets", icon: "Database" },
     ],
   },
 ];

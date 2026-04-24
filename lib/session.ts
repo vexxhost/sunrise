@@ -1,11 +1,21 @@
 import { getIronSession, IronSession } from 'iron-session';
 import { cookies } from 'next/headers';
 
+export type S3StsCredentials = {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken: string;
+  expiration: number; // epoch ms
+};
+
 export type SunriseSession = {
   keystone_unscoped_token?: string;
   keystoneProjectToken?: string;
   regionId?: string;
   projectId?: string;
+  s3Sts?: S3StsCredentials;
+  s3OidcVerifier?: string;
+  s3OidcState?: string;
 };
 
 // Setup the config for your session and cookie
