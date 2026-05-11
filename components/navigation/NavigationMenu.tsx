@@ -55,7 +55,7 @@ export async function NavigationMenu() {
         </div>
 
         {/* Right side: Feedback + Region + Project + User */}
-        <_NavigationMenu>
+        <_NavigationMenu viewport={false} delayDuration={600} skipDelayDuration={0}>
           <NavigationMenuList className="flex items-center gap-2">
             <NavigationMenuItem className="list-none">
               <Button

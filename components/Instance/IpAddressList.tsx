@@ -1,6 +1,6 @@
 import { AddressItem, Server } from "@/types/openstack";
 
-export async function ServerIPAddresses({ server }: { server: Server }) {
+export function ServerIPAddresses({ server }: { server: Server }) {
     const serverAddressKeys = Object.keys(server.addresses);
     return (
         <>

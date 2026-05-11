@@ -1,0 +1,2 @@
+# Ignore the binary woff2 files — fetch them via download.sh.
+*.woff2

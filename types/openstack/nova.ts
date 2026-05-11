@@ -124,7 +124,15 @@ export interface Server {
   metadata: {};
   hostId: string;
   image: { id: string } | "";
-  flavor: { id: string; links: [] };
+  flavor: {
+    vcpus: number;
+    ram: number;
+    disk: number;
+    ephemeral: number;
+    swap: number;
+    original_name: string;
+    extra_specs?: Record<string, string>;
+  };
   created: string;
   updated: string;
   addresses: { [key: string]: AddressItem[] };
@@ -144,6 +152,43 @@ export interface Server {
   "os-extended-volumes:volumes_attached": { id: string }[];
   security_groups: SecurityGroup[];
   locked: boolean;
+}
+
+/**
+ * Server action event (per Nova os-instance-actions/{request_id})
+ */
+export interface ServerActionEvent {
+  event: string;
+  start_time: string | null;
+  finish_time: string | null;
+  result: string | null;
+  traceback?: string | null;
+  host?: string | null;
+  hostId?: string | null;
+  details?: string | null;
+}
+
+/**
+ * Server action summary (per Nova os-instance-actions list)
+ */
+export interface ServerAction {
+  action: string;
+  instance_uuid: string;
+  request_id: string;
+  user_id: string | null;
+  project_id: string | null;
+  start_time: string;
+  message: string | null;
+  updated_at?: string | null;
+  events?: ServerActionEvent[];
+}
+
+export interface ServerActionsListResponse {
+  instanceActions: ServerAction[];
+}
+
+export interface ServerActionResponse {
+  instanceAction: ServerAction;
 }
 
 /**
@@ -288,4 +333,96 @@ export interface ListKeypairsOptions {
   limit?: number; // Page size (v2.35+)
   marker?: string; // Pagination marker (v2.35+)
   user_id?: string; // Filter by user ID (admin only, v2.10+)
+}
+
+// ============================================================================
+// Server Action / Lifecycle Request Types
+// ============================================================================
+
+export type VncConsoleType = "novnc" | "xvpvnc";
+
+export interface ServerConsole {
+  type: string;
+  url: string;
+}
+
+export interface ServerNetworkRequest {
+  uuid?: string;
+  port?: string;
+  fixed_ip?: string;
+  tag?: string;
+}
+
+export interface ServerSecurityGroupRequest {
+  name: string;
+}
+
+export interface ServerBlockDeviceMapping {
+  uuid?: string;
+  source_type: "volume" | "snapshot" | "image" | "blank";
+  destination_type?: "volume" | "local";
+  boot_index?: number;
+  volume_size?: number;
+  delete_on_termination?: boolean;
+  device_name?: string;
+  guest_format?: string;
+  tag?: string;
+}
+
+export interface CreateServerRequest {
+  name: string;
+  flavorRef: string;
+  imageRef?: string;
+  key_name?: string;
+  networks?: ServerNetworkRequest[] | "auto" | "none";
+  security_groups?: ServerSecurityGroupRequest[];
+  availability_zone?: string;
+  metadata?: Record<string, string>;
+  user_data?: string;
+  config_drive?: boolean;
+  block_device_mapping_v2?: ServerBlockDeviceMapping[];
+  min_count?: number;
+  max_count?: number;
+  [key: string]: unknown;
+}
+
+export interface RebuildServerRequest {
+  imageRef: string;
+  name?: string;
+  adminPass?: string;
+  metadata?: Record<string, string>;
+  preserve_ephemeral?: boolean;
+  description?: string | null;
+  key_name?: string | null;
+  user_data?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ResizeServerRequest {
+  flavorRef: string;
+  [key: string]: unknown;
+}
+
+export interface MigrateServerRequest {
+  host?: string;
+  [key: string]: unknown;
+}
+
+export interface LiveMigrateServerRequest {
+  host?: string | null;
+  block_migration?: boolean | "auto";
+  disk_over_commit?: boolean;
+  force?: boolean;
+  [key: string]: unknown;
+}
+
+export interface RescueServerRequest {
+  adminPass?: string;
+  rescue_image_ref?: string;
+  [key: string]: unknown;
+}
+
+export interface CreateServerImageRequest {
+  name: string;
+  metadata?: Record<string, string>;
 }

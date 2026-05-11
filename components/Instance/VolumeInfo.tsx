@@ -1,6 +1,6 @@
 'use client';
 
-import { useSuspenseQuery, useSuspenseQueries } from "@tanstack/react-query";
+import { useSuspenseQueries } from "@tanstack/react-query";
 import { Volume } from "@/types/openstack";
 import { Server } from "@/types/openstack";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
@@ -33,34 +33,29 @@ export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoPr
         if (server.image) {
             return server.image.id;
         }
-        // Get image from volume if server has no image
-        if (volumes) {
-            const bootVolume = volumes.find(
-                (volume: Volume) => volume.volume_image_metadata,
-            );
-            return bootVolume?.volume_image_metadata?.image_id;
-        }
-        return undefined;
+        const bootVolume = volumes.find(
+            (volume: Volume) => volume.volume_image_metadata,
+        );
+        return bootVolume?.volume_image_metadata?.image_id;
     }, [server.image, volumes]);
 
-    // Only fetch image if server has image property and imageId exists
-    const imageQuery = imageId && server.image
-        ? useSuspenseQuery(imageQueryOptions(regionId, projectId, imageId))
-        : null;
-    const image = imageQuery?.data;
+    // Always run the hook; disable when no image is needed.
+    const imageQueries = useSuspenseQueries({
+        queries:
+            server.image && imageId
+                ? [imageQueryOptions(regionId, projectId, imageId)]
+                : [],
+    });
+    const image = imageQueries[0]?.data;
 
     const imageName = useMemo(() => {
         if (server.image && image) {
             return image.name;
         }
-        // Get image name from volume metadata if available
-        if (volumes) {
-            const bootVolume = volumes.find(
-                (volume: Volume) => volume.volume_image_metadata,
-            );
-            return bootVolume?.volume_image_metadata?.image_name;
-        }
-        return undefined;
+        const bootVolume = volumes.find(
+            (volume: Volume) => volume.volume_image_metadata,
+        );
+        return bootVolume?.volume_image_metadata?.image_name;
     }, [server.image, image, volumes]);
 
     return (

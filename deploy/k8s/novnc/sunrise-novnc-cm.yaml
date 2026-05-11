@@ -1,0 +1,168 @@
+apiVersion: v1
+data:
+  sunrise.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <title>Sunrise Console</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+
+      <!--
+        Inter is self-hosted via the `sunrise-novnc-fonts` ConfigMap, mounted at
+        /usr/share/novnc/fonts/ in the nova-novncproxy pod. Files come from the
+        upstream rsms/inter release; see deploy/k8s/novnc/fonts/download.sh.
+      -->
+      <style>
+        @font-face {
+          font-family: "Inter";
+          font-style: normal;
+          font-weight: 400;
+          font-display: swap;
+          src: url("./fonts/Inter-Regular.woff2") format("woff2");
+        }
+        @font-face {
+          font-family: "Inter";
+          font-style: normal;
+          font-weight: 500;
+          font-display: swap;
+          src: url("./fonts/Inter-Medium.woff2") format("woff2");
+        }
+        @font-face {
+          font-family: "Inter";
+          font-style: normal;
+          font-weight: 600;
+          font-display: swap;
+          src: url("./fonts/Inter-SemiBold.woff2") format("woff2");
+        }
+
+        :root { color-scheme: dark; }
+        html, body {
+          margin: 0; padding: 0; height: 100%; width: 100%;
+          background: #000; color: #fff; overflow: hidden;
+          font-family: "Inter", system-ui, -apple-system, sans-serif;
+          /* 15% smaller than the previous 13px sunrise default. */
+          font-size: 11px;
+        }
+        #status {
+          position: fixed; inset: 0;
+          display: flex; align-items: center; justify-content: center;
+          background: #000; color: rgba(255, 255, 255, 0.6);
+          font-weight: 500; letter-spacing: 0.02em;
+          transition: opacity 200ms ease;
+          pointer-events: none;
+        }
+        #status.hidden { opacity: 0; }
+        #screen { width: 100%; height: 100%; background: #000; }
+        /*
+          Force the local OS cursor to stay visible over the canvas. noVNC hides
+          it by default and tries to render the remote cursor instead, which is
+          empty on text consoles or before X starts. `!important` is needed
+          because RFB sets an inline `cursor` style on the canvas every frame.
+        */
+        #screen, #screen canvas { cursor: default !important; }
+        /* Hide any noVNC chrome the bundled module may inject. */
+        #noVNC_control_bar_anchor, #noVNC_control_bar { display: none !important; }
+      </style>
+    </head>
+    <body>
+      <div id="status">Connecting…</div>
+      <div id="screen"></div>
+
+      <!--
+        `data-parents` lists the dashboard origins allowed to send postMessage
+        commands (Ctrl+Alt+Del, etc.). Comma-separate multiple values. Use "*"
+        only for local development.
+      -->
+      <script
+        id="sunrise-bridge"
+        type="module"
+        data-parents="http://localhost:9990"
+      >
+        // The noVNC core module ships at /core/rfb.js in the standard layout
+        // used by Nova's nova-novncproxy image (Kolla, openstack-helm, etc.).
+        // If your image bundles noVNC differently, update this import path.
+        import RFB from "./core/rfb.js";
+
+        const scriptEl = document.getElementById("sunrise-bridge");
+        const ALLOWED_PARENT_ORIGINS = (scriptEl?.dataset.parents || "*")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        const params = new URLSearchParams(window.location.search);
+        const path = params.get("path") || "";
+        const proto = window.location.protocol === "https:" ? "wss" : "ws";
+        const host = window.location.hostname;
+        const port = window.location.port;
+        const wsUrl = `${proto}://${host}${port ? ":" + port : ""}/${path}`;
+
+        const status = document.getElementById("status");
+        const setStatus = (msg, hide = false) => {
+          status.textContent = msg;
+          status.classList.toggle("hidden", hide);
+        };
+
+        let rfb;
+        try {
+          rfb = new RFB(document.getElementById("screen"), wsUrl);
+          rfb.viewOnly = false;
+          rfb.scaleViewport = true;
+          rfb.resizeSession = true;
+          rfb.background = "#000";
+          // Always render at least a small dot when the guest sends an empty
+          // cursor (Linux text consoles, BIOS, pre-X states). Combined with the
+          // CSS rule above this guarantees the user always sees *something*.
+          rfb.showDotCursor = true;
+        } catch (err) {
+          setStatus("Failed to initialize: " + err.message);
+          throw err;
+        }
+
+        rfb.addEventListener("connect", () => setStatus("Connected", true));
+        rfb.addEventListener("disconnect", (e) =>
+          setStatus(e.detail.clean ? "Disconnected" : "Connection lost"),
+        );
+        rfb.addEventListener("credentialsrequired", () => setStatus("Credentials required"));
+        rfb.addEventListener("securityfailure", (e) =>
+          setStatus("Auth failed: " + (e.detail.reason || "")),
+        );
+
+        // ----- postMessage bridge -------------------------------------------------
+        const isAllowed = (origin) =>
+          ALLOWED_PARENT_ORIGINS.includes("*") || ALLOWED_PARENT_ORIGINS.includes(origin);
+
+        window.addEventListener("message", (e) => {
+          if (!isAllowed(e.origin)) return;
+          const { type, payload } = e.data || {};
+          if (!rfb || typeof type !== "string") return;
+          switch (type) {
+            case "sunrise:ctrlAltDel":
+              rfb.sendCtrlAltDel();
+              break;
+            case "sunrise:sendKey":
+              rfb.sendKey(payload?.keysym, payload?.code, payload?.down);
+              break;
+            case "sunrise:disconnect":
+              rfb.disconnect();
+              break;
+            case "sunrise:focus":
+              rfb.focus();
+              break;
+            case "sunrise:ping":
+              e.source?.postMessage({ type: "sunrise:pong" }, e.origin);
+              break;
+          }
+        });
+
+        // Announce readiness so the parent can enable the Ctrl+Alt+Del button.
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: "sunrise:ready" }, "*");
+        }
+      </script>
+    </body>
+    </html>
+kind: ConfigMap
+metadata:
+  name: sunrise-novnc
+  namespace: openstack

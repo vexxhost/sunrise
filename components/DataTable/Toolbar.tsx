@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { RefreshCw, Filter as FilterIcon, ChevronDown } from "lucide-react";
@@ -43,6 +44,11 @@ export function DataTableToolbar<TData>({
   onFiltersChange,
 }: DataTableToolbarProps<TData>) {
   const hasTable = !!table;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const showRefetching = mounted && isRefetching;
 
   return (
     <div className="flex items-center justify-between pb-2">
@@ -111,10 +117,10 @@ export function DataTableToolbar<TData>({
             variant="outline"
             size="sm"
             onClick={refetch}
-            disabled={!hasTable || isRefetching}
-            className={`gap-2 h-10 ${isRefetching ? 'opacity-50 cursor-not-allowed' : hasTable ? 'cursor-pointer' : ''}`}
+            disabled={!hasTable || showRefetching}
+            className={`gap-2 h-10 ${showRefetching ? 'opacity-50 cursor-not-allowed' : hasTable ? 'cursor-pointer' : ''}`}
           >
-            <RefreshCw className={`h-4 w-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${showRefetching ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           {table ? (

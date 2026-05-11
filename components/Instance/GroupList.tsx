@@ -1,9 +1,12 @@
+'use client';
+
+import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   SecurityGroup,
   SecurityGroupRule,
-  listSecurityGroups,
+  Server,
 } from "@/types/openstack";
-import { Server } from "@/types/openstack";
+import { securityGroupsQueryOptions } from "@/hooks/queries/useNetworks";
 
 
 export function getGroupNameFromId(
@@ -16,27 +19,25 @@ export function getGroupNameFromId(
 }
 
 
-export async function getSecurityGroups(secGroupNames: string[]) {
-  const securityGroups = await listSecurityGroups();
-  let foundGroups: SecurityGroup[];
+export default function SecurityGroupListByNames({
+  server,
+  regionId,
+  projectId,
+}: {
+  server: Server;
+  regionId?: string;
+  projectId?: string;
+}) {
+  const { data: securityGroups } = useSuspenseQuery(
+    securityGroupsQueryOptions(regionId, projectId),
+  );
 
-  foundGroups = secGroupNames.map((secGroupName) => {
-    const foundGroup = securityGroups.find((secGroup) => secGroup.name === secGroupName);
-    if (foundGroup) {
-      return foundGroup;
-    }
-    return null;
-  }).filter((group): group is SecurityGroup => group !== null);
-
-  return foundGroups;
-}
-
-export default async function SecurityGroupListByNames({ server }: { server: Server }) {
-  const securityGroups = await listSecurityGroups();
   const secGroupNames = server["security_groups"].map(
     (secGroup: { name: string }) => secGroup.name,
   );
-  const secGroups = await getSecurityGroups(secGroupNames);
+  const secGroups = secGroupNames
+    .map((name) => securityGroups.find((sg) => sg.name === name))
+    .filter((group): group is SecurityGroup => group !== undefined);
 
   return (
     <>

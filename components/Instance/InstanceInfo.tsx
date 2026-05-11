@@ -1,7 +1,7 @@
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { Server } from "@/types/openstack";
 
-export async function InstanceInfo({ server }: { server: Server }) {
+export function InstanceInfo({ server }: { server: Server }) {
   return (
     <>
       <div className="flex flex-row  ml-2 pl-2 text-xs">
