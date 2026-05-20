@@ -2,6 +2,8 @@ import { ColumnDef } from '@tanstack/react-table';
 import { useLocalStorage } from 'usehooks-ts';
 import { useEffect, useMemo } from 'react';
 
+const LOCAL_STORAGE_OPTIONS = { initializeWithValue: false };
+
 function getColumnId<TData, TValue>(column: ColumnDef<TData, TValue>): string | undefined {
   if ('accessorKey' in column && typeof column.accessorKey === 'string') {
     return column.accessorKey;
@@ -64,6 +66,7 @@ export function useColumnVisibility<TData, TValue>(
   const [columnVisibility, setColumnVisibility] = useLocalStorage<Record<string, boolean>>(
     `${resourceName}dataTableColumnVisibility`,
     () => defaultVisibility,
+    LOCAL_STORAGE_OPTIONS,
   );
 
   const effectiveColumnVisibility = useMemo(

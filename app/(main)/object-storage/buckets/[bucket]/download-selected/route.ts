@@ -280,7 +280,12 @@ export async function POST(request: Request, { params }: RouteContext) {
     );
     headers.set('Content-Length', String(zip.length));
 
-    return new Response(zip, { headers });
+    const body = zip.buffer.slice(
+      zip.byteOffset,
+      zip.byteOffset + zip.byteLength,
+    ) as ArrayBuffer;
+
+    return new Response(body, { headers });
   } catch (e) {
     if (e instanceof S3AuthRequiredError) {
       return new Response(null, {
