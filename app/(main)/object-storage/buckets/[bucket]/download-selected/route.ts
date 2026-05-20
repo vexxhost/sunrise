@@ -75,7 +75,7 @@ function writeUint32(target: Uint8Array, offset: number, value: number) {
   target[offset + 3] = (value >>> 24) & 0xff;
 }
 
-function concatParts(parts: Uint8Array[], totalLength: number): Uint8Array {
+function concatParts(parts: Uint8Array[], totalLength: number): Uint8Array<ArrayBuffer> {
   const output = new Uint8Array(totalLength);
   let offset = 0;
   for (const part of parts) {
@@ -85,7 +85,7 @@ function concatParts(parts: Uint8Array[], totalLength: number): Uint8Array {
   return output;
 }
 
-function makeZip(entries: ZipEntry[]): Uint8Array {
+function makeZip(entries: ZipEntry[]): Uint8Array<ArrayBuffer> {
   const parts: Uint8Array[] = [];
   const centralDirectoryParts: Uint8Array[] = [];
   let offset = 0;
