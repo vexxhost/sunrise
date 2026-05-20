@@ -6,6 +6,7 @@ import { Server } from "@/types/openstack";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import { imageQueryOptions } from "@/hooks/queries/useImages";
 import { useMemo } from "react";
+import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 
 interface VolumeInfoProps {
     server: Server;
@@ -65,34 +66,24 @@ export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoPr
 
     return (
         <>
-           <div className="font-bold text-l mt-2 p-4">Metadata</div>
-          <div className="flex flex-row ml-2 pl-2 text-xs">
-            <div className="basis-1/4 font-bold text-xs">Key Name:</div>
-            <div className="basis-3/4 text-xs">{server.key_name}</div>
-          </div>
-          <div className="flex flex-row  ml-2 pl-2 text-xs">
-            <div className="basis-1/4 font-bold text-m">Image ID:</div>
-            <div className="basis-3/4">{imageId}</div>
-          </div>
-          <div className="flex flex-row  ml-2 pl-2 text-xs">
-            <div className="basis-1/4 font-bold text-m">Image Name:</div>
-            <div className="basis-3/4">{imageName}</div>
-          </div>
-          <div className="font-bold text-l mt-2 p-4">Volumes Attached</div>
+          <DetailSection title="Metadata">
+            <DetailField label="Key Name">{server.key_name}</DetailField>
+            <DetailField label="Image ID" className="font-mono text-xs">
+              {imageId}
+            </DetailField>
+            <DetailField label="Image Name">{imageName}</DetailField>
+          </DetailSection>
+          <DetailSection title="Volumes Attached">
           {serverVolumeKeys.length > 0 ? (
             volumes?.map((key, index) => (
-                <div key={index} className="flex flex-row ml-2 pl-2 text-xs">
-                  <div className="basis-1/4 font-bold text-m">Attached to</div>
-                  <div className="basis-3/4">
-                    {key.name} on {key.attachments[0].device}{" "}
-                  </div>
-                </div>
+                <DetailField key={key.id ?? index} label="Attached to">
+                  {key.name} on {key.attachments[0].device}
+                </DetailField>
             ))
           ) : (
-            <p className="ml-2 pl-2 text-xs text-gray-500">
-              No Volumes Attached
-            </p>
+            <DetailField label="Volumes">No volumes attached</DetailField>
           )}
+          </DetailSection>
         </>
     )
 }

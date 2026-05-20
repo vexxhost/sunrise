@@ -26,6 +26,7 @@ import pluralize from "pluralize"
 import { Checkbox } from "@/components/ui/checkbox"
 import { IDCell } from "@/components/DataTable/IDCell"
 import { useColumnVisibility } from "@/hooks/useColumnVisibility"
+import { useColumnOrder } from "@/hooks/useColumnOrder"
 import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter"
 import { DataTableToolbar } from "./DataTable/Toolbar"
 declare module '@tanstack/react-table' {
@@ -54,6 +55,14 @@ interface DataTableProps<TData, TValue> {
   rowActions?: DataTableRowAction<TData>[]
 }
 
+function isIDColumn<TData, TValue>(column: ColumnDef<TData, TValue>) {
+  return (
+    ('accessorKey' in column && column.accessorKey === 'id') ||
+    column.id === 'id' ||
+    column.header === 'ID'
+  );
+}
+
 export function DataTable<TData, TValue>({
   columns,
   data,
@@ -67,7 +76,6 @@ export function DataTable<TData, TValue>({
 
   // Use extracted hooks
   const { globalFilter, setGlobalFilter } = useGlobalFilter()
-  const { columnVisibility, setColumnVisibility } = useColumnVisibility(columns, resourceName)
 
   // Build columns array conditionally including checkbox column
   const tableColumns = React.useMemo(() => {
@@ -99,9 +107,17 @@ export function DataTable<TData, TValue>({
       } as ColumnDef<TData, TValue>);
     }
 
-    cols.push(...columns);
+    cols.push(
+      ...columns.map((column) =>
+        isIDColumn(column)
+          ? { ...column, enableHiding: false }
+          : column,
+      ),
+    );
     return cols;
   }, [columns, rowActions.length]);
+  const { columnVisibility, setColumnVisibility } = useColumnVisibility(tableColumns, resourceName)
+  const { columnOrder, setColumnOrder } = useColumnOrder(tableColumns, resourceName)
 
   const table = useReactTable({
     data,
@@ -113,6 +129,7 @@ export function DataTable<TData, TValue>({
     getSortedRowModel: getSortedRowModel(),
     onGlobalFilterChange: setGlobalFilter,
     onColumnVisibilityChange: setColumnVisibility,
+    onColumnOrderChange: setColumnOrder,
     initialState: {
       pagination: {
         pageSize: 10,
@@ -120,6 +137,7 @@ export function DataTable<TData, TValue>({
     },
     state: {
       columnVisibility,
+      columnOrder,
       globalFilter,
     },
   })

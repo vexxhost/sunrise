@@ -7,6 +7,7 @@ import {
   Server,
 } from "@/types/openstack";
 import { securityGroupsQueryOptions } from "@/hooks/queries/useNetworks";
+import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 
 
 export function getGroupNameFromId(
@@ -40,15 +41,11 @@ export default function SecurityGroupListByNames({
     .filter((group): group is SecurityGroup => group !== undefined);
 
   return (
-    <>
-    <div className="font-bold text-l mt-2 p-4">Security Groups</div>
-      {secGroups.map((secGroup, index) => (
-        <div className="flex flex-row  ml-2 pl-2 text-xs" key={index}>
-          <div className="basis-1/4 mb-2 pb-2">
-            <p className="font-bold text-xs">{secGroup.name}</p>
-          </div>
-          <div className="basis-3/4 mb-2 pb-2">
-            <ol>
+    <DetailSection title="Security Groups">
+      {secGroups.length > 0 ? (
+        secGroups.map((secGroup) => (
+          <DetailField key={secGroup.id} label={secGroup.name}>
+            <ol className="space-y-1">
               {secGroup.security_group_rules.map(
                 (rule: SecurityGroupRule) => (
                   <li key={rule.id}>
@@ -64,10 +61,12 @@ export default function SecurityGroupListByNames({
                 ),
               )}
             </ol>
-          </div>
-        </div>
-      ))}
-    </>
+          </DetailField>
+        ))
+      ) : (
+        <DetailField label="Security Groups" />
+      )}
+    </DetailSection>
   )
   
 }

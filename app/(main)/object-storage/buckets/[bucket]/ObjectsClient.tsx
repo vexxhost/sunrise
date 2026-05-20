@@ -417,6 +417,7 @@ export function ObjectsClient({ bucket }: ObjectsClientProps) {
     {
       accessorKey: 'name',
       header: 'Name',
+      enableHiding: false,
       cell: ({ row }) => {
         const r = row.original;
         if (r.kind === 'folder') {

@@ -19,7 +19,7 @@ const serviceNames: Record<string, string> = {
   "file-system": "File System",
   instances: "Instances",
   instance: "Instance",
-  "instance-types": "Instance Types",
+  "instance-flavors": "Instance Flavors",
   networks: "Networks",
   volumes: "Volumes",
   snapshots: "Snapshots",

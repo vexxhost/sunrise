@@ -5,7 +5,7 @@ const computeSidebarSections = [
     title: "Instances",
     items: [
       { name: "Instances", href: "/compute/instances", icon: "Server" },
-      { name: "Instance Types", href: "/compute/instance-types", icon: "Cpu" },
+      { name: "Instance Flavors", href: "/compute/instance-flavors", icon: "Cpu" },
       { name: "Images", href: "/compute/images", icon: "Image" },
     ],
   },

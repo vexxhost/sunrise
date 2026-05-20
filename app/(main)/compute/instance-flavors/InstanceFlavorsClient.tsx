@@ -164,12 +164,12 @@ const columns: ColumnDef<Flavor>[] = [
   }
 ]
 
-interface InstanceTypesClientProps {
+interface InstanceFlavorsClientProps {
   regionId?: string;
   projectId?: string;
 }
 
-export function InstanceTypesClient({ regionId, projectId }: InstanceTypesClientProps) {
+export function InstanceFlavorsClient({ regionId, projectId }: InstanceFlavorsClientProps) {
   const { data, isRefetching, refetch } = useSuspenseQuery(flavorsQueryOptions(regionId, projectId));
 
   return (
@@ -178,7 +178,7 @@ export function InstanceTypesClient({ regionId, projectId }: InstanceTypesClient
       isRefetching={isRefetching}
       refetch={refetch}
       columns={columns}
-      resourceName="instance type"
+      resourceName="instance flavor"
       emptyIcon={Cpu}
     />
   );

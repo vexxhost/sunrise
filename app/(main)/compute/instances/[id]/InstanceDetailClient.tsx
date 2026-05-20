@@ -1,6 +1,7 @@
 'use client';
 
 import { useSuspenseQuery, useSuspenseQueries } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VolumeInfo from "@/components/Instance/VolumeInfo";
 import SecurityGroupListByNames from "@/components/Instance/GroupList";
@@ -10,17 +11,30 @@ import { InstanceInfo } from "@/components/Instance/InstanceInfo";
 import { Interfaces } from "@/components/Instance/Interfaces";
 import { ActionLog } from "@/components/Instance/ActionLog";
 import { Console } from "@/components/Instance/Console";
+import { ConsoleLog } from "@/components/Instance/ConsoleLog";
 import { serverQueryOptions, serverInterfacesQueryOptions } from "@/hooks/queries/useServers";
 import { portQueryOptions, networkQueryOptions } from "@/hooks/queries/useNetworks";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { isInstanceDetailTab, type InstanceDetailTab } from "./tabs";
 
 interface InstanceDetailClientProps {
   serverId: string;
   regionId?: string;
   projectId?: string;
+  activeTab: InstanceDetailTab;
 }
 
-export function InstanceDetailClient({ serverId, regionId, projectId }: InstanceDetailClientProps) {
+const tabContentClass =
+  "mt-4 rounded-md border bg-card p-4 text-card-foreground";
+
+export function InstanceDetailClient({
+  serverId,
+  regionId,
+  projectId,
+  activeTab,
+}: InstanceDetailClientProps) {
+  const router = useRouter();
+  const [selectedTab, setSelectedTab] = useState<InstanceDetailTab>(activeTab);
   const { data: server } = useSuspenseQuery(
     serverQueryOptions(regionId, projectId, serverId)
   );
@@ -68,18 +82,33 @@ export function InstanceDetailClient({ serverId, regionId, projectId }: Instance
     });
   }, [ports, networkQueries]);
 
+  useEffect(() => {
+    setSelectedTab(activeTab);
+  }, [activeTab]);
+
+  const handleTabChange = (value: string) => {
+    if (!isInstanceDetailTab(value)) return;
+
+    setSelectedTab(value);
+    router.push(`/compute/instances/${serverId}/${value}`);
+  };
+
   return (
-    <>
-      <div key={server.id} className="font-bold text-l mt-4 pb-6"> {server.name} </div>
-      <Tabs defaultValue="overview" className="max-w-screen-xl">
-        <TabsList className="grid w-full grid-cols-4">
+    <div className="max-w-screen-xl space-y-4">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">{server.name}</h1>
+        <p className="font-mono text-sm text-muted-foreground">{server.id}</p>
+      </div>
+      <Tabs value={selectedTab} onValueChange={handleTabChange} className="w-full">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="interfaces">Interfaces</TabsTrigger>
-          <TabsTrigger value="action-log">Action Log</TabsTrigger>
+          <TabsTrigger value="log">Log</TabsTrigger>
           <TabsTrigger value="console">Console</TabsTrigger>
+          <TabsTrigger value="action-log">Action Log</TabsTrigger>
         </TabsList>
-        <TabsContent value="overview" className="max-w-screen-l">
-          <div className="max-w-screen-xl mx-auto bg-card text-card-foreground rounded-xl shadow-md overflow-hidden md:max-xl">
+        <TabsContent value="overview" className={tabContentClass}>
+          <div className="space-y-6">
             <InstanceInfo server={server} />
             <FlavorInfo server={server} />
             <ServerIPAddresses server={server} />
@@ -87,20 +116,19 @@ export function InstanceDetailClient({ serverId, regionId, projectId }: Instance
             <VolumeInfo server={server} regionId={regionId} projectId={projectId} />
           </div>
         </TabsContent>
-        <TabsContent value="interfaces">
+        <TabsContent value="interfaces" className={tabContentClass}>
           <Interfaces networkPorts={networkPorts || []} />
         </TabsContent>
-        <TabsContent value="action-log" className="max-w-screen-l">
-          <div className="max-w-screen-xl mx-auto bg-card text-card-foreground rounded-xl shadow-md overflow-hidden md:max-xl p-4">
-            <ActionLog serverId={serverId} regionId={regionId} projectId={projectId} />
-          </div>
+        <TabsContent value="log" className={tabContentClass}>
+          <ConsoleLog serverId={serverId} regionId={regionId} projectId={projectId} />
         </TabsContent>
-        <TabsContent value="console" className="max-w-screen-l">
-          <div className="max-w-screen-xl mx-auto bg-card text-card-foreground rounded-xl shadow-md overflow-hidden md:max-xl p-4">
-            <Console serverId={serverId} projectId={projectId} regionId={regionId} />
-          </div>
+        <TabsContent value="console" className={tabContentClass}>
+          <Console serverId={serverId} projectId={projectId} regionId={regionId} />
+        </TabsContent>
+        <TabsContent value="action-log" className={tabContentClass}>
+          <ActionLog serverId={serverId} regionId={regionId} projectId={projectId} />
         </TabsContent>
       </Tabs>
-    </>
+    </div>
   );
 }

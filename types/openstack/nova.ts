@@ -191,6 +191,10 @@ export interface ServerActionResponse {
   instanceAction: ServerAction;
 }
 
+export interface ServerConsoleOutputResponse {
+  output: string;
+}
+
 /**
  * Single server response
  * Nova API wraps single server in a "server" property

@@ -25,7 +25,7 @@ export function Console({ serverId, projectId, regionId }: ConsoleProps) {
 
   const openPopup = () => {
     const features =
-      "popup=yes,width=1280,height=800,menubar=no,toolbar=no,location=no,status=no";
+      "popup=yes,width=960,height=600,menubar=no,toolbar=no,location=no,status=no";
     window.open(consoleHref, `console-${projectSegment}-${serverId}`, features);
   };
 

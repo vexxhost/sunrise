@@ -4,6 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { ExternalLink, Keyboard, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   getRemoteConsoleAction,
   type ConsoleProtocol,
 } from "@/lib/openstack/console-actions";
@@ -62,6 +70,7 @@ export function ConsoleWindow({
   const [rawUrl, setRawUrl] = useState<string | null>(initialRawUrl);
   const [error, setError] = useState<string | null>(initialError);
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [confirmCtrlAltDelOpen, setConfirmCtrlAltDelOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -109,8 +118,9 @@ export function ConsoleWindow({
     [proxyOrigin],
   );
 
-  const sendCtrlAltDel = useCallback(() => {
+  const confirmCtrlAltDel = useCallback(() => {
     postToConsole({ type: "sunrise:ctrlAltDel" });
+    setConfirmCtrlAltDelOpen(false);
   }, [postToConsole]);
 
   const reconnect = () => {
@@ -176,7 +186,7 @@ export function ConsoleWindow({
           <Button
             size="sm"
             variant="secondary"
-            onClick={sendCtrlAltDel}
+            onClick={() => setConfirmCtrlAltDelOpen(true)}
             disabled={!canSendKeys}
             title={
               canSendKeys
@@ -208,6 +218,30 @@ export function ConsoleWindow({
           </Button>
         </div>
       </div>
+      <Dialog open={confirmCtrlAltDelOpen} onOpenChange={setConfirmCtrlAltDelOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Ctrl+Alt+Del?</DialogTitle>
+            <DialogDescription>
+              This sends Ctrl+Alt+Del to {serverName}. Depending on the guest operating
+              system, it may reboot the instance or interrupt an active login session.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmCtrlAltDelOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={confirmCtrlAltDel}>
+              <Keyboard className="h-4 w-4" />
+              Send Ctrl+Alt+Del
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
