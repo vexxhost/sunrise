@@ -4,7 +4,7 @@
 
 import { queryOptions } from '@tanstack/react-query';
 import { openstack } from '@/lib/openstack/actions';
-import type { ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, KeypairListResponse, KeypairResponse, InterfaceAttachment, ServerActionsListResponse, ServerActionResponse } from '@/types/openstack';
+import type { ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, KeypairListResponse, KeypairResponse, InterfaceAttachment, ServerActionsListResponse, ServerActionResponse, ServerConsoleOutputResponse } from '@/types/openstack';
 
 /**
  * Query options for fetching list of servers
@@ -262,5 +262,41 @@ export function serverActionQueryOptions(
       return data.instanceAction;
     },
     enabled: !!serverId && !!requestId && !!regionId,
+  });
+}
+
+/**
+ * Query options for fetching the guest console log for a server
+ */
+export function serverConsoleOutputQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  serverId: string,
+  length: number | null
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'server-console-output', serverId, length ?? 'full'],
+    queryFn: async () => {
+      const body =
+        length === null
+          ? { 'os-getConsoleOutput': {} }
+          : { 'os-getConsoleOutput': { length } };
+      const data = await openstack<ServerConsoleOutputResponse>({
+        regionId: regionId!,
+        serviceType: 'compute',
+        serviceName: 'nova',
+        path: `/servers/${serverId}/action`,
+        method: 'POST',
+        apiVersion: 'compute 2.79',
+        body,
+      });
+
+      if (!data) {
+        throw new Error('Failed to fetch console log');
+      }
+
+      return data.output ?? '';
+    },
+    enabled: !!serverId && !!regionId,
   });
 }

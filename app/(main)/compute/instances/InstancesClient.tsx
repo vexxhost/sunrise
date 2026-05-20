@@ -27,6 +27,32 @@ interface InstancesClientProps {
   projectId?: string;
 }
 
+function getFlavorName(server: Server, flavors: Record<string, string>) {
+  const flavor = server.flavor as Server["flavor"] & {
+    id?: string | number;
+    name?: string;
+    original_name?: string;
+  };
+
+  if (!flavor || typeof flavor !== "object") {
+    return "unavailable";
+  }
+
+  if (typeof flavor.original_name === "string" && flavor.original_name.trim()) {
+    return flavor.original_name;
+  }
+
+  if (flavor.id !== undefined && flavors[String(flavor.id)]) {
+    return flavors[String(flavor.id)];
+  }
+
+  if (typeof flavor.name === "string" && flavor.name.trim()) {
+    return flavor.name;
+  }
+
+  return "unavailable";
+}
+
 export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
   console.log('[InstancesClient] render', { regionId, projectId });
 
@@ -118,8 +144,7 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       accessorKey: "flavor",
       header: "Flavor",
       cell: ({ row }) => {
-        const flavor: Flavor = row.getValue('flavor')
-        return flavors[flavor.id]
+        return getFlavorName(row.original, flavors)
       },
       meta: {
         fieldType: "string",

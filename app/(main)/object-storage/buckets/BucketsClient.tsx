@@ -16,6 +16,7 @@ const columns: ColumnDef<Bucket>[] = [
   {
     accessorKey: 'name',
     header: 'Name',
+    enableHiding: false,
     cell: ({ row }) => (
       <Link
         href={`/object-storage/buckets/${encodeURIComponent(row.original.name)}`}

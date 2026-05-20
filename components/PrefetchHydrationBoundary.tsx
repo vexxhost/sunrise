@@ -1,24 +1,32 @@
 import { ReactNode, Suspense } from "react";
-import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import {
+  HydrationBoundary,
+  dehydrate,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { makeQueryClient } from "@/lib/query-client";
 
 interface PrefetchHydrationBoundaryProps {
   queries: Array<any>;
   children: ReactNode;
   fallback?: ReactNode;
+  queryClient?: QueryClient;
 }
 
 export async function PrefetchHydrationBoundary({
   queries,
   children,
   fallback,
+  queryClient,
 }: PrefetchHydrationBoundaryProps) {
-  const queryClient = makeQueryClient();
+  const prefetchQueryClient = queryClient ?? makeQueryClient();
 
-  await Promise.all(queries.map((query) => queryClient.prefetchQuery(query)));
+  await Promise.all(
+    queries.map((query) => prefetchQueryClient.prefetchQuery(query)),
+  );
 
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
+    <HydrationBoundary state={dehydrate(prefetchQueryClient)}>
       <Suspense fallback={fallback ?? <div>Loading...</div>}>{children}</Suspense>
     </HydrationBoundary>
   );

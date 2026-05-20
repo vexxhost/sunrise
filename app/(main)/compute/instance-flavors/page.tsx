@@ -1,5 +1,5 @@
 import { getSession } from '@/lib/session';
-import { InstanceTypesClient } from './InstanceTypesClient';
+import { InstanceFlavorsClient } from './InstanceFlavorsClient';
 import { flavorsQueryOptions } from '@/hooks/queries/useServers';
 import { DataTableHydrationBoundary } from '@/components/DataTable/HydrationBoundary';
 
@@ -8,12 +8,12 @@ export default async function Page() {
 
   return (
     <DataTableHydrationBoundary
-      resourceName="instance type"
+      resourceName="instance flavor"
       queries={[
         flavorsQueryOptions(session.regionId, session.projectId)
       ]}
     >
-      <InstanceTypesClient regionId={session.regionId} projectId={session.projectId} />
+      <InstanceFlavorsClient regionId={session.regionId} projectId={session.projectId} />
     </DataTableHydrationBoundary>
   );
 }
