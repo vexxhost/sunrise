@@ -71,7 +71,7 @@ export async function InstanceDetailPage({ id, activeTab }: InstanceDetailPagePr
   }
 
   return (
-    <PrefetchHydrationBoundary queries={queries}>
+    <PrefetchHydrationBoundary queries={queries} queryClient={queryClient}>
       <InstanceDetailClient
         serverId={id}
         regionId={regionId}
