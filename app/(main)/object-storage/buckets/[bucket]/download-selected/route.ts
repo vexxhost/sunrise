@@ -3,7 +3,6 @@ import {
   ListObjectsV2Command,
   type S3Client,
 } from '@aws-sdk/client-s3';
-import { redirect } from 'next/navigation';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
 
 interface RouteContext {
@@ -42,21 +41,16 @@ function describeAwsError(e: unknown): string {
   return String(e);
 }
 
-function normalizePrefix(prefix: string): string {
-  const trimmed = prefix.trim().replace(/^\/+/, '');
-  if (!trimmed) return '';
-  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
-}
-
-function normalizeKey(key: string): string {
-  return key.replace(/^\/+/, '').replace(/\/{2,}/g, '/');
+function listedFolderPrefix(prefix: string): string {
+  if (!prefix) return '';
+  return prefix.endsWith('/') ? prefix : `${prefix}/`;
 }
 
 function safeZipPath(key: string): string {
-  const normalized = normalizeKey(key);
-  return normalized
+  return key
+    .replace(/^\/+/, '')
     .split('/')
-    .filter((part) => part && part !== '.' && part !== '..')
+    .filter((part) => part !== '.' && part !== '..')
     .join('/');
 }
 
@@ -215,12 +209,12 @@ async function collectKeys(
     .filter((entry): entry is Extract<SelectedEntry, { kind: 'folder' }> => {
       return entry.kind === 'folder';
     })
-    .map((entry) => normalizePrefix(entry.fullPath))
+    .map((entry) => listedFolderPrefix(entry.fullPath))
     .filter(Boolean);
 
   for (const entry of entries) {
     if (entry.kind !== 'object') continue;
-    const key = normalizeKey(entry.fullPath);
+    const key = entry.fullPath;
     if (key) keys.add(key);
   }
 
@@ -289,7 +283,12 @@ export async function POST(request: Request, { params }: RouteContext) {
     return new Response(zip, { headers });
   } catch (e) {
     if (e instanceof S3AuthRequiredError) {
-      redirect('/object-storage/auth/login');
+      return new Response(null, {
+        status: 303,
+        headers: {
+          Location: new URL('/object-storage/auth/login', request.url).toString(),
+        },
+      });
     }
     return new Response(describeAwsError(e), { status: 502 });
   }

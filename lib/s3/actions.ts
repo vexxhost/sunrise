@@ -52,14 +52,13 @@ function isNoSuchBucketPolicy(e: unknown): boolean {
   return name === 'NoSuchBucketPolicy' || status === 404;
 }
 
-function normalizePrefix(prefix: string): string {
-  const trimmed = prefix.trim().replace(/^\/+/, '');
-  if (!trimmed) return '';
-  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
-}
-
 function normalizeObjectKey(key: string): string {
   return key.replace(/^\/+/, '').replace(/\/{2,}/g, '/');
+}
+
+function listedFolderPrefix(prefix: string): string {
+  if (!prefix) return '';
+  return prefix.endsWith('/') ? prefix : `${prefix}/`;
 }
 
 export async function listBuckets(): Promise<ListBucketsResult> {
@@ -290,7 +289,7 @@ export async function createFolder(
     return { ok: false, needsAuth: false, error: 'Missing folder name' };
   }
 
-  const key = normalizeObjectKey(`${normalizePrefix(prefix)}${name}/`);
+  const key = `${listedFolderPrefix(prefix)}${normalizeObjectKey(name)}/`;
 
   try {
     const client = await getS3Client();
@@ -348,7 +347,7 @@ export async function calculateSelectionSize(
           .filter((entry): entry is Extract<SizeSelectionEntry, { kind: 'folder' }> => {
             return entry.kind === 'folder';
           })
-          .map((entry) => normalizePrefix(entry.fullPath))
+          .map((entry) => listedFolderPrefix(entry.fullPath))
           .filter(Boolean)
       )
     )
@@ -390,7 +389,7 @@ export async function calculateSelectionSize(
 
     for (const entry of entries) {
       if (entry.kind !== 'object') continue;
-      const key = normalizeObjectKey(entry.fullPath);
+      const key = entry.fullPath;
       if (!key || countedKeys.has(key)) continue;
       if (folderPrefixes.some((prefix) => key.startsWith(prefix))) continue;
 
@@ -438,7 +437,7 @@ async function collectSelectionKeys(
         .filter((entry): entry is Extract<RemoveSelectionEntry, { kind: 'folder' }> => {
           return entry.kind === 'folder';
         })
-        .map((entry) => normalizePrefix(entry.fullPath))
+        .map((entry) => listedFolderPrefix(entry.fullPath))
         .filter(Boolean)
     )
   )
@@ -451,7 +450,7 @@ async function collectSelectionKeys(
 
   for (const entry of entries) {
     if (entry.kind !== 'object') continue;
-    const key = normalizeObjectKey(entry.fullPath);
+    const key = entry.fullPath;
     if (!key) continue;
     if (folderPrefixes.some((prefix) => key.startsWith(prefix))) continue;
     keys.add(key);
