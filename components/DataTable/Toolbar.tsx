@@ -95,6 +95,7 @@ export function DataTableToolbar<TData>({
                 return (
                   <DropdownMenuItem
                     key={index}
+                    variant={action.variant === 'destructive' ? 'destructive' : 'default'}
                     onClick={() => {
                       if (hasTable) {
                         const selectedRows = table.getFilteredSelectedRowModel().rows.map(row => row.original);

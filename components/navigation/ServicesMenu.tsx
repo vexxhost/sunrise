@@ -84,7 +84,9 @@ function ServiceItem({
 }
 
 export function ServicesMenu() {
-  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isMobile = useMediaQuery("(max-width: 767px)", {
+    initializeWithValue: false,
+  });
 
   return (
     <NavigationMenu viewport={isMobile}>

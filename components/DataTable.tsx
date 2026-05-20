@@ -32,8 +32,8 @@ declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string
     monospace?: boolean
-    fieldType: 'string' | 'number' | 'boolean' | 'date'
-    visible: boolean
+    fieldType?: 'string' | 'number' | 'boolean' | 'date'
+    visible?: boolean
   }
 }
 
@@ -237,4 +237,3 @@ export function DataTable<TData, TValue>({
     </>
   )
 }
-

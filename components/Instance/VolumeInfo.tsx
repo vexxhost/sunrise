@@ -39,12 +39,17 @@ export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoPr
         return bootVolume?.volume_image_metadata?.image_id;
     }, [server.image, volumes]);
 
-    // Always run the hook; disable when no image is needed.
+    const imageQueryList = useMemo(() => {
+        if (!server.image || !imageId) {
+            return [];
+        }
+
+        return [imageQueryOptions(regionId, projectId, imageId)];
+    }, [imageId, projectId, regionId, server.image]);
+
+    // Always run the hook; use an empty query list when no image is needed.
     const imageQueries = useSuspenseQueries({
-        queries:
-            server.image && imageId
-                ? [imageQueryOptions(regionId, projectId, imageId)]
-                : [],
+        queries: imageQueryList,
     });
     const image = imageQueries[0]?.data;
 
