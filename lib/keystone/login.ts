@@ -132,10 +132,12 @@ export async function finalizeKeystoneSession(
   const previousProjectId = session.projectId ?? prefs.projectId;
   const previousProjectName = prefs.projectName;
   const candidateProject =
-    (previousProjectId &&
-      projects.find((p) => p.id === previousProjectId)) ??
-    (previousProjectName &&
-      projects.find((p) => p.name === previousProjectName)) ??
+    (previousProjectId
+      ? projects.find((p) => p.id === previousProjectId)
+      : undefined) ??
+    (previousProjectName
+      ? projects.find((p) => p.name === previousProjectName)
+      : undefined) ??
     projects[0];
 
   if (candidateProject) {
@@ -151,7 +153,9 @@ export async function finalizeKeystoneSession(
 
   const previousRegionId = session.regionId ?? prefs.regionId;
   const candidateRegion =
-    (previousRegionId && regions.find((r) => r.id === previousRegionId)) ??
+    (previousRegionId
+      ? regions.find((r) => r.id === previousRegionId)
+      : undefined) ??
     regions[0];
   session.regionId = candidateRegion?.id ?? undefined;
 

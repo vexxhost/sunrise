@@ -12,7 +12,13 @@ export default function Login() {
     <>
       <div className="flex min-h-full flex-1 flex-col justify-center px-6 py-12 lg:px-8">
         <div className="bg-gray-900 max-w-lg mx-auto py-4 pl-4 rounded-t-lg">
-          <Image src="/img/logo.png" alt="Sunrise" width="1225" height="189" />
+          <Image
+            src="/img/logo.png"
+            alt="Sunrise"
+            width={1225}
+            height={189}
+            priority
+          />
         </div>
         <div className="sm:mx-auto sm:w-full sm:max-w-lg">
           <div className="bg-white px-6 py-12 shadow sm:rounded-b-lg sm:px-12">
@@ -24,7 +30,7 @@ export default function Login() {
                     Identity Provider ID
                   </label>
                   <input
-                    id="id-provider"
+                    id="id_provider"
                     name="id_provider"
                     type="text"
                     required
