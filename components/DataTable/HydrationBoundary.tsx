@@ -21,9 +21,7 @@ export async function DataTableHydrationBoundary({
   rowActions = [],
 }: DataTableHydrationBoundaryProps) {
   const queryClient = makeQueryClient();
-  queries.forEach(query => {
-    queryClient.prefetchQuery(query);
-  });
+  await Promise.all(queries.map((query) => queryClient.prefetchQuery(query)));
 
   return <>
     <DataTableHeader resourceName={resourceName} actions={actions} />

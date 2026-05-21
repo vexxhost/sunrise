@@ -44,8 +44,9 @@ export async function NavigationMenu() {
             <Image
               src="/openstack-logo.svg"
               alt="OpenStack"
-              width={32}
+              width={37}
               height={32}
+              className="h-8 w-auto"
               priority
             />
           </Link>

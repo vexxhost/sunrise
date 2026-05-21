@@ -43,9 +43,22 @@ export function useColumnOrder<TData, TValue>(
       seen.add(id);
       return true;
     });
-    const missing = defaultColumnOrder.filter((id) => !seen.has(id));
+    const merged = [...ordered];
 
-    return [...pinnedStart, ...ordered, ...missing];
+    defaultColumnOrder.forEach((id, index) => {
+      if (seen.has(id)) {
+        return;
+      }
+
+      const nextColumn = defaultColumnOrder
+        .slice(index + 1)
+        .find((candidate) => merged.includes(candidate));
+      const insertIndex = nextColumn ? merged.indexOf(nextColumn) : merged.length;
+      merged.splice(insertIndex, 0, id);
+      seen.add(id);
+    });
+
+    return [...pinnedStart, ...merged];
   }, [defaultColumnOrder]);
 
   const columnOrder = useMemo(

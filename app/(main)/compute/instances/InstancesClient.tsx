@@ -1,5 +1,6 @@
 'use client';
 
+import Link from "next/link";
 import { useMemo } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
@@ -12,13 +13,28 @@ import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { Badge } from "@/components/ui/badge";
 import { ColumnDef } from "@tanstack/react-table";
 import { formatDistanceToNow } from 'date-fns';
+import { OsIcon } from "@/components/icons/OsIcon";
+import { imageOperatingSystemMetadata } from "@/lib/openstack/image-metadata";
+import {
+  formatServerPowerState,
+  formatServerStatus,
+  formatServerTaskState,
+  serverStatusBadgeVariant,
+} from "@/lib/openstack/server-state";
+import { cn } from "@/lib/utils";
 
 const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string }[] } }) => {
   return Object.keys(addresses).map((key: string) => {
-    return <table key={key}><tbody><tr className="pb-2">
-      <td className="align-top pr-2"><small><strong>{key}</strong></small></td>
-      <td className="align-top">{addresses[key].map((address) => <div key={address.addr}>{address.addr}</div>)}</td>
-    </tr></tbody></table>
+    return (
+      <div className="flex items-start gap-2 pb-1" key={key}>
+        <small className="shrink-0 font-bold">{key}</small>
+        <div>
+          {addresses[key].map((address) => (
+            <div key={address.addr}>{address.addr}</div>
+          ))}
+        </div>
+      </div>
+    );
   })
 }
 
@@ -53,6 +69,51 @@ function getFlavorName(server: Server, flavors: Record<string, string>) {
   return "unavailable";
 }
 
+function getServerImageId(server: Server, volumeImageIds: Record<string, string>) {
+  if (server.image && typeof server.image === "object" && server.image.id) {
+    return server.image.id;
+  }
+
+  const attachedVolumes = server["os-extended-volumes:volumes_attached"];
+  return volumeImageIds[attachedVolumes?.[0]?.id];
+}
+
+function formatAge(value: unknown) {
+  if (typeof value !== "string" || !value) {
+    return "-";
+  }
+
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return "-";
+  }
+
+  return formatDistanceToNow(timestamp);
+}
+
+type ServerTableRow = Server & {
+  imageId?: string;
+  imageOsLabel: string;
+  imageOsSlug: string;
+  imageOsText?: string;
+  imageName: string;
+};
+
+function FadedTableText({
+  value,
+  className,
+}: {
+  value: string;
+  className?: string;
+}) {
+  return (
+    <span className={cn("relative block min-w-0 overflow-hidden", className)}>
+      <span className="block whitespace-nowrap">{value}</span>
+      <span className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50" />
+    </span>
+  );
+}
+
 export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
   console.log('[InstancesClient] render', { regionId, projectId });
 
@@ -83,11 +144,11 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
     );
   }, [volumesData]);
 
-  // Process images map
-  const images = useMemo(() => {
-    const imagesMap: { [key: string]: string } = {};
+  // Process images map by ID. Glance image names are not unique.
+  const imagesById = useMemo(() => {
+    const imagesMap: { [key: string]: Image } = {};
     imagesData.forEach((image: Image) => {
-      imagesMap[image.id] = image.name || '';
+      imagesMap[image.id] = image;
     });
     return imagesMap;
   }, [imagesData]);
@@ -101,7 +162,24 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
     return flavorsMap;
   }, [flavorsData]);
 
-  const columns = useMemo((): ColumnDef<Server>[] => [
+  const servers = useMemo<ServerTableRow[]>(() => {
+    return serversData.map((server) => {
+      const imageId = getServerImageId(server, volumeImageIds);
+      const image = imageId ? imagesById[imageId] : undefined;
+      const imageOs = imageOperatingSystemMetadata(image);
+
+      return {
+        ...server,
+        imageId,
+        imageName: image?.name || "",
+        imageOsLabel: imageOs?.label ?? "VM",
+        imageOsSlug: imageOs?.slug ?? "vm",
+        imageOsText: imageOs?.known ? imageOs.version : imageOs?.label,
+      };
+    });
+  }, [imagesById, serversData, volumeImageIds]);
+
+  const columns = useMemo((): ColumnDef<ServerTableRow>[] => [
     {
       accessorKey: "name",
       header: "Instance Name",
@@ -119,12 +197,40 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       }
     },
     {
-      accessorKey: "image",
+      accessorKey: "imageName",
       header: "Image Name",
       cell: ({ row }) => {
-        const image: Image = row.getValue('image')
-        const attachedVolumes = row.original['os-extended-volumes:volumes_attached' as keyof Server] as { id: string }[]
-        return image && (typeof image == 'object') ? images[image.id] : images[volumeImageIds[attachedVolumes[0]?.id]]
+        const content = (
+          <div
+            className="flex w-64 max-w-64 min-w-0 flex-col gap-0.5"
+            title={`${row.original.imageName || "-"}\n${row.original.imageOsLabel}`}
+          >
+            <FadedTableText value={row.original.imageName || "-"} />
+            <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <OsIcon
+                className="size-3.5"
+                decorative
+                slug={row.original.imageOsSlug}
+              />
+              {row.original.imageOsText ? (
+                <span className="block min-w-0 truncate">
+                  {row.original.imageOsText}
+                </span>
+              ) : null}
+            </span>
+          </div>
+        );
+
+        return row.original.imageId ? (
+          <Link
+            href={`/compute/images/${encodeURIComponent(row.original.imageId)}`}
+            className="block w-fit max-w-full hover:underline"
+          >
+            {content}
+          </Link>
+        ) : (
+          content
+        );
       },
       meta: {
         fieldType: "string",
@@ -163,11 +269,10 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => {
-        const status = row.getValue('status')
-        const variant = status === 'ACTIVE' ? 'default' : 'secondary'
+        const status = row.getValue("status");
         return (
-          <Badge className="text-xs capitalize" variant={variant}>
-            <span className="font-bold">{row.getValue('status')}</span>
+          <Badge className="text-xs" variant={serverStatusBadgeVariant(status)}>
+            <span className="font-bold">{formatServerStatus(status)}</span>
           </Badge>
         )
       },
@@ -194,9 +299,10 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       }
     },
     {
-      accessorKey: "task",
+      id: "task",
+      accessorFn: (row) => row["OS-EXT-STS:task_state"],
       header: "Task",
-      cell: ({ row }) => "None",
+      cell: ({ row }) => formatServerTaskState(row.original["OS-EXT-STS:task_state"]),
       meta: {
         fieldType: "string",
         visible: true
@@ -205,26 +311,26 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
     {
       accessorKey: "OS-EXT-STS:power_state",
       header: "Power State",
-      cell: ({ row }) => row.getValue('OS-EXT-STS:power_state') == 1 ? "Running" : "Stopped",
+      cell: ({ row }) => formatServerPowerState(row.getValue("OS-EXT-STS:power_state")),
       meta: {
         fieldType: "number",
         visible: true
       }
     },
     {
-      accessorKey: "OS-SRV-USG:launched_at",
+      accessorKey: "created",
       header: "Age",
-      cell: ({ row }) => formatDistanceToNow(Date.parse(row.getValue('OS-SRV-USG:launched_at')), { addSuffix: true }),
+      cell: ({ row }) => formatAge(row.getValue("created")),
       meta: {
-        fieldType: "date",
+        fieldType: "string",
         visible: true
       }
     }
-  ], [images, flavors, volumeImageIds]);
+  ], [flavors]);
 
   return (
     <DataTable
-      data={serversData}
+      data={servers}
       isRefetching={isRefetchingServers}
       refetch={refetchServers}
       columns={columns}
