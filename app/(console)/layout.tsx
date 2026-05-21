@@ -26,11 +26,11 @@ export default function ConsoleRootLayout({
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body
         className={cn(
-          "min-h-screen bg-black font-sans antialiased h-full overflow-hidden",
+          "min-h-screen bg-background font-sans antialiased h-full overflow-hidden",
           fontSans.variable,
         )}
       >
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <Providers>{children}</Providers>
         </ThemeProvider>
       </body>

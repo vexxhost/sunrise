@@ -15,6 +15,7 @@ import {
   getRemoteConsoleAction,
   type ConsoleProtocol,
 } from "@/lib/openstack/console-actions";
+import { ThemeToggle } from "@/components/navigation/ThemeToggle";
 
 interface ConsoleWindowProps {
   serverId: string;
@@ -145,8 +146,8 @@ export function ConsoleWindow({
   const canSendKeys = bridgeReady && protocol === "vnc";
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-black text-white">
-      <div className="flex-1 min-h-0 relative">
+    <div className="flex flex-col h-screen w-screen bg-background text-foreground">
+      <div className="flex-1 min-h-0 relative bg-black">
         {url ? (
           <iframe
             ref={iframeRef}
@@ -164,25 +165,26 @@ export function ConsoleWindow({
           </div>
         )}
       </div>
-      <div className="flex items-center justify-between gap-4 px-4 py-2 border-t border-white/10 bg-zinc-900 text-xs">
+      <div className="flex items-center justify-between gap-4 px-4 py-2 border-t bg-background/95 text-xs shadow-[0_-1px_0_var(--border)]">
         <div className="flex items-center gap-6 truncate">
           <span>
-            <span className="text-white/50">SERVER:</span>{" "}
+            <span className="text-muted-foreground">SERVER:</span>{" "}
             <span className="font-medium">{serverName}</span>
           </span>
           {ipv4 && (
             <span>
-              <span className="text-white/50">IPV4:</span>{" "}
+              <span className="text-muted-foreground">IPV4:</span>{" "}
               <span className="font-medium">{ipv4}</span>
             </span>
           )}
           <span>
-            <span className="text-white/50">REGION:</span>{" "}
+            <span className="text-muted-foreground">REGION:</span>{" "}
             <span className="font-medium">{regionId}</span>
           </span>
-          <span className="uppercase text-white/40">{protocol}</span>
+          <span className="uppercase text-muted-foreground">{protocol}</span>
         </div>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <Button
             size="sm"
             variant="secondary"
