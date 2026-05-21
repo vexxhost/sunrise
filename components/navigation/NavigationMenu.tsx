@@ -11,6 +11,7 @@ import { ServicesMenu } from "./ServicesMenu";
 import { RegionSelector } from "./RegionSelector";
 import { ProjectSelector } from "./ProjectSelector";
 import { UserMenu } from "./UserMenu";
+import { ThemeToggle } from "./ThemeToggle";
 import { getRegions, getProjects } from "@/lib/keystone/queries";
 import { getSession } from "@/lib/session";
 import { getUserInfo } from "@/lib/openstack/keystone-actions";
@@ -73,6 +74,10 @@ export async function NavigationMenu() {
                   Feedback
                 </a>
               </Button>
+            </NavigationMenuItem>
+
+            <NavigationMenuItem className="list-none">
+              <ThemeToggle />
             </NavigationMenuItem>
 
             {selectedRegion && (
