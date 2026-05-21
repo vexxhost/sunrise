@@ -74,6 +74,7 @@ export async function openstack<T = any>(
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      cache: 'no-store',
     });
 
     if (!response.ok) {

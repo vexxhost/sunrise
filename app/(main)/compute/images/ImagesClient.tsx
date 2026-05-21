@@ -9,12 +9,36 @@ import { Image } from "@/types/openstack/glance";
 import { ColumnDef } from "@tanstack/react-table";
 import { titleCase } from "title-case";
 import bytes from 'bytes';
+import { OsIcon } from "@/components/icons/OsIcon";
+import { imageOperatingSystemMetadata } from "@/lib/openstack/image-metadata";
 
 const columns: ColumnDef<Image>[] = [
   {
     accessorKey: "name",
     header: "Name",
-    cell: ({ row }: { row: { original: Image } }) => row.original.name || "-",
+    cell: ({ row }: { row: { original: Image } }) => {
+      const imageOs = imageOperatingSystemMetadata(row.original);
+      const osLabel = imageOs?.label ?? "VM";
+      const osSlug = imageOs?.slug ?? "vm";
+      const osText = imageOs?.known ? imageOs.version : imageOs?.label;
+
+      return (
+        <div
+          className="flex min-w-0 flex-col gap-0.5"
+          title={`${row.original.name || "-"}\n${osLabel}`}
+        >
+          <span className="block min-w-0 truncate">
+            {row.original.name || "-"}
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <OsIcon className="size-3.5" decorative slug={osSlug} />
+            {osText ? (
+              <span className="block min-w-0 truncate">{osText}</span>
+            ) : null}
+          </span>
+        </div>
+      );
+    },
     meta: {
       fieldType: "string",
       visible: true
