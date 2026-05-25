@@ -9,6 +9,16 @@ import { Volume } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
 import { titleCase } from "title-case";
 
+function formatBooleanLike(value: unknown) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "yes", "1"].includes(normalized)) return "Yes";
+  if (["false", "no", "0"].includes(normalized)) return "No";
+  return String(value);
+}
+
 const columns: ColumnDef<Volume>[] = [
   {
     accessorKey: "name",
@@ -109,7 +119,7 @@ const columns: ColumnDef<Volume>[] = [
   {
     accessorKey: "bootable",
     header: "Bootable",
-    cell: ({ row }: { row: { original: Volume } }) => row.original.bootable ? "Yes" : "No",
+    cell: ({ row }: { row: { original: Volume } }) => formatBooleanLike(row.original.bootable),
     meta: {
       fieldType: "boolean",
       visible: true
@@ -118,7 +128,7 @@ const columns: ColumnDef<Volume>[] = [
   {
     accessorKey: "encrypted",
     header: "Encrypted",
-    cell: ({ row }: { row: { original: Volume } }) => row.original.encrypted ? "Yes" : "No",
+    cell: ({ row }: { row: { original: Volume } }) => formatBooleanLike(row.original.encrypted),
     meta: {
       fieldType: "boolean",
       visible: true
@@ -127,7 +137,7 @@ const columns: ColumnDef<Volume>[] = [
   {
     accessorKey: "multiattach",
     header: "Multi-Attached",
-    cell: ({ row }: { row: { original: Volume } }) => row.original.multiattach ? "Yes" : "No",
+    cell: ({ row }: { row: { original: Volume } }) => formatBooleanLike(row.original.multiattach),
     meta: {
       fieldType: "boolean",
       visible: true
