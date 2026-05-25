@@ -1,6 +1,8 @@
 'use server';
 
 import { getSession } from '@/lib/session';
+import { isKeystoneAuthFailure } from '@/lib/keystone/session';
+import { redirect } from 'next/navigation';
 
 /**
  * Get user information from the project-scoped token in the session
@@ -14,20 +16,30 @@ export async function getUserInfo() {
     return null;
   }
 
+  let response: Response;
   try {
     // Validate token and get its details directly from Keystone
-    const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
+    response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
       method: 'GET',
       headers: {
         'X-Auth-Token': token,
         'X-Subject-Token': token,
       },
+      cache: 'no-store',
     });
+  } catch (error) {
+    console.error('Error getting user info:', error);
+    return null;
+  }
 
-    if (!response.ok) {
-      return null;
+  if (!response.ok) {
+    if (isKeystoneAuthFailure(response.status)) {
+      redirect('/auth/logout?reason=expired');
     }
+    return null;
+  }
 
+  try {
     const data = await response.json() as { token: any };
     return {
       name: data.token?.user?.name,
@@ -51,19 +63,28 @@ export async function getRegionsAction() {
     return [];
   }
 
+  let response: Response;
   try {
-    const response = await fetch(`${process.env.KEYSTONE_API}/v3/regions`, {
+    response = await fetch(`${process.env.KEYSTONE_API}/v3/regions`, {
       headers: {
         'X-Auth-Token': token,
       },
-      next: { revalidate: 300 }, // Cache for 5 minutes
+      cache: 'no-store',
     });
+  } catch (error) {
+    console.error('Error fetching regions:', error);
+    return [];
+  }
 
-    if (!response.ok) {
-      console.error('Failed to fetch regions:', response.statusText);
-      return [];
+  if (!response.ok) {
+    if (isKeystoneAuthFailure(response.status)) {
+      redirect('/auth/logout?reason=expired');
     }
+    console.error('Failed to fetch regions:', response.statusText);
+    return [];
+  }
 
+  try {
     const data = await response.json() as { regions: any[] };
     // Sort regions alphabetically by ID
     return data.regions.sort((a, b) => a.id.localeCompare(b.id));
@@ -85,19 +106,28 @@ export async function getProjectsAction() {
     return [];
   }
 
+  let response: Response;
   try {
-    const response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/projects`, {
+    response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/projects`, {
       headers: {
         'X-Auth-Token': token,
       },
-      next: { revalidate: 300 }, // Cache for 5 minutes
+      cache: 'no-store',
     });
+  } catch (error) {
+    console.error('Error fetching projects:', error);
+    return [];
+  }
 
-    if (!response.ok) {
-      console.error('Failed to fetch projects:', response.statusText);
-      return [];
+  if (!response.ok) {
+    if (isKeystoneAuthFailure(response.status)) {
+      redirect('/auth/logout?reason=expired');
     }
+    console.error('Failed to fetch projects:', response.statusText);
+    return [];
+  }
 
+  try {
     const data = await response.json() as { projects: any[] };
     // Sort projects alphabetically by name
     return data.projects.sort((a, b) => a.name.localeCompare(b.name));
@@ -106,4 +136,3 @@ export async function getProjectsAction() {
     return [];
   }
 }
-

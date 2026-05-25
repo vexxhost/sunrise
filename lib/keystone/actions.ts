@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
 import { writePrefs } from '@/lib/prefs';
 import type { Region, Project } from '@/types/openstack';
+import { getProjectScopedToken } from '@/lib/keystone/login';
 
 /**
  * Server Action to set the selected region
@@ -28,43 +29,27 @@ export async function setRegion(region: Region) {
  */
 export async function setProject(project: Project) {
   const session = await getSession();
-  session.projectId = project.id;
 
   // Get project-scoped token and store in session
-  if (session.keystone_unscoped_token) {
-    try {
-      const tokenResponse = await fetch(`${process.env.KEYSTONE_API}/v3/auth/tokens`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          auth: {
-            identity: {
-              methods: ['token'],
-              token: {
-                id: session.keystone_unscoped_token,
-              },
-            },
-            scope: {
-              project: {
-                id: project.id,
-              },
-            },
-          },
-        }),
-      });
-
-      if (tokenResponse.ok) {
-        const token = tokenResponse.headers.get('X-Subject-Token');
-        if (token) {
-          session.keystoneProjectToken = token;
-        }
-      }
-    } catch (error) {
-      console.error('Error getting project-scoped token:', error);
-    }
+  if (!session.keystone_unscoped_token) {
+    return;
   }
+
+  const token = await getProjectScopedToken(
+    session.keystone_unscoped_token,
+    project.id,
+  );
+
+  if (!token) {
+    console.error('[keystone] failed to switch project: scoped token unavailable', {
+      projectId: project.id,
+      projectName: project.name,
+    });
+    return;
+  }
+
+  session.projectId = project.id;
+  session.keystoneProjectToken = token;
 
   await session.save();
   await writePrefs({ projectId: project.id, projectName: project.name });

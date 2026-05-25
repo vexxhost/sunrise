@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+
 /**
  * Get service endpoint URL from OpenStack service catalog
  * Fetches from Keystone and returns the direct OpenStack endpoint URL
@@ -9,26 +11,42 @@ export async function getServiceEndpoint(
   token: string
 ): Promise<string | null> {
   // Fetch from catalog and return direct OpenStack URL
+  let catalogResponse: Response;
   try {
     // Get service catalog
-    const catalogResponse = await fetch(`${process.env.KEYSTONE_API}/v3/auth/catalog`, {
+    catalogResponse = await fetch(`${process.env.KEYSTONE_API}/v3/auth/catalog`, {
       headers: {
         'X-Auth-Token': token,
       },
-      next: { revalidate: 300 }, // Cache for 5 minutes
+      cache: 'no-store',
     });
+  } catch (error) {
+    console.error('[catalog] failed to fetch service catalog', {
+      error,
+      serviceName,
+      serviceType,
+    });
+    return null;
+  }
 
-    if (!catalogResponse.ok) {
-      return null;
+  if (!catalogResponse.ok) {
+    if (catalogResponse.status === 401) {
+      redirect('/auth/logout?reason=expired');
     }
+    return null;
+  }
 
+  try {
     const catalogData = await catalogResponse.json();
     const serviceEntry = catalogData.catalog.find(
       (item: any) => item.type === serviceType || item.name === serviceName
     );
 
     if (!serviceEntry) {
-      console.error(`Service '${serviceName}' (${serviceType}) not found in catalog`);
+      console.error('[catalog] service not found', {
+        serviceName,
+        serviceType,
+      });
       // TODO(diagnostic): remove once s3 catalog lookup is verified.
       console.error(
         '[catalog] available services:',
@@ -42,7 +60,11 @@ export async function getServiceEndpoint(
     );
 
     if (!endpointEntry) {
-      console.error(`No public endpoint found for service '${serviceName}' in region '${regionId}'`);
+      console.error('[catalog] public endpoint not found', {
+        regionId,
+        serviceName,
+        serviceType,
+      });
       // TODO(diagnostic): remove once s3 catalog lookup is verified.
       console.error(
         '[catalog] endpoints for service:',
@@ -58,7 +80,11 @@ export async function getServiceEndpoint(
 
     return endpointEntry.url;
   } catch (error) {
-    console.error(`Error getting ${serviceName} endpoint:`, error);
+    console.error('[catalog] failed to parse service catalog', {
+      error,
+      serviceName,
+      serviceType,
+    });
     return null;
   }
 }
