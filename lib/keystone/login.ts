@@ -96,6 +96,7 @@ export async function getProjectScopedToken(
           scope: { project: { id: projectId } },
         },
       }),
+      cache: 'no-store',
     });
     if (!response.ok) {
       console.error(
@@ -140,12 +141,21 @@ export async function finalizeKeystoneSession(
       : undefined) ??
     projects[0];
 
+  let selectedProject: Project | undefined;
   if (candidateProject) {
-    session.projectId = candidateProject.id;
-    session.keystoneProjectToken = await getProjectScopedToken(
+    const scopedToken = await getProjectScopedToken(
       unscopedToken,
       candidateProject.id
     );
+
+    if (scopedToken) {
+      selectedProject = candidateProject;
+      session.projectId = candidateProject.id;
+      session.keystoneProjectToken = scopedToken;
+    } else {
+      session.projectId = undefined;
+      session.keystoneProjectToken = undefined;
+    }
   } else {
     session.projectId = undefined;
     session.keystoneProjectToken = undefined;
@@ -161,7 +171,7 @@ export async function finalizeKeystoneSession(
 
   await writePrefs({
     projectId: session.projectId,
-    projectName: candidateProject?.name,
+    projectName: selectedProject?.name,
     regionId: session.regionId,
   });
 }

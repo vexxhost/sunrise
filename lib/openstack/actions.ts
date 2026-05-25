@@ -2,6 +2,7 @@
 
 import { getSession } from '@/lib/session';
 import { getServiceEndpoint } from './catalog';
+import { redirect } from 'next/navigation';
 
 interface OpenStackActionOptions {
   regionId: string;
@@ -42,7 +43,7 @@ export async function openstack<T = any>(
 
   if (!token) {
     console.error(`No ${unscoped ? 'unscoped' : 'project'} token in session`);
-    return null;
+    redirect('/auth/logout?reason=expired');
   }
 
   // Get endpoint (always calls OpenStack directly on server)
@@ -69,28 +70,32 @@ export async function openstack<T = any>(
 
   // Make the request
   const url = `${endpoint}${path}`;
+  let response: Response;
   try {
-    const response = await fetch(url, {
+    response = await fetch(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
       cache: 'no-store',
     });
-
-    if (!response.ok) {
-      console.error(`OpenStack API error: ${response.status} ${response.statusText} for ${url}`);
-      return null;
-    }
-
-    // Return parsed JSON
-    try {
-      return await response.json();
-    } catch (error) {
-      // Some APIs return empty responses
-      return null;
-    }
   } catch (error) {
     console.error('OpenStack fetch error:', error);
+    return null;
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      redirect('/auth/logout?reason=expired');
+    }
+    console.error(`OpenStack API error: ${response.status} ${response.statusText} for ${url}`);
+    return null;
+  }
+
+  // Return parsed JSON
+  try {
+    return await response.json();
+  } catch (error) {
+    // Some APIs return empty responses
     return null;
   }
 }
