@@ -57,7 +57,7 @@ function isKubernetesCluster(
 ) {
   const template =
     cluster.cluster_template ?? templatesById.get(cluster.cluster_template_id);
-  if (!template) return true;
+  if (!template) return false;
 
   const coe = template.coe?.toLowerCase();
   return coe === "kubernetes" || coe?.startsWith("k8s");
