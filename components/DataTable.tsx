@@ -53,6 +53,7 @@ interface DataTableProps<TData, TValue> {
   resourceName: string
   emptyIcon: React.ComponentType<{ className?: string }>
   rowActions?: DataTableRowAction<TData>[]
+  onPageRowsChange?: (rows: TData[]) => void
 }
 
 function isIDColumn<TData, TValue>(column: ColumnDef<TData, TValue>) {
@@ -71,6 +72,7 @@ export function DataTable<TData, TValue>({
   resourceName,
   emptyIcon,
   rowActions = [],
+  onPageRowsChange,
 }: DataTableProps<TData, TValue>) {
   const pathname = usePathname()
 
@@ -141,6 +143,17 @@ export function DataTable<TData, TValue>({
       globalFilter,
     },
   })
+
+  const pageRows = table.getRowModel().rows
+  const pageRowsSignature = pageRows.map((row) => row.id).join('|')
+  const pageRowOriginals = React.useMemo(
+    () => pageRows.map((row) => row.original),
+    [data, pageRowsSignature],
+  )
+
+  React.useEffect(() => {
+    onPageRowsChange?.(pageRowOriginals)
+  }, [onPageRowsChange, pageRowOriginals])
 
   return (
     <>

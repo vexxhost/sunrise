@@ -1,7 +1,6 @@
 'use client';
 
 import { useSuspenseQuery, useSuspenseQueries } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VolumeInfo from "@/components/Instance/VolumeInfo";
 import SecurityGroupListByNames from "@/components/Instance/GroupList";
@@ -33,7 +32,6 @@ export function InstanceDetailClient({
   projectId,
   activeTab,
 }: InstanceDetailClientProps) {
-  const router = useRouter();
   const [selectedTab, setSelectedTab] = useState<InstanceDetailTab>(activeTab);
   const { data: server } = useSuspenseQuery(
     serverQueryOptions(regionId, projectId, serverId)
@@ -86,11 +84,32 @@ export function InstanceDetailClient({
     setSelectedTab(activeTab);
   }, [activeTab]);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      const segments = window.location.pathname.split("/").filter(Boolean);
+      const tab = segments[segments.length - 1];
+
+      if (tab && isInstanceDetailTab(tab)) {
+        setSelectedTab(tab);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
+
   const handleTabChange = (value: string) => {
     if (!isInstanceDetailTab(value)) return;
 
     setSelectedTab(value);
-    router.push(`/compute/instances/${serverId}/${value}`);
+    const nextPath = `/compute/instances/${serverId}/${value}`;
+
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, "", nextPath);
+    }
   };
 
   return (

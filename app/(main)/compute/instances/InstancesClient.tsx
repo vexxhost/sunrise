@@ -106,10 +106,29 @@ function FadedTableText({
   value: string;
   className?: string;
 }) {
+  const displayValue = value || "-";
+  const spacerValue = displayValue.slice(0, 16);
+
   return (
-    <span className={cn("relative block min-w-0 overflow-hidden", className)}>
-      <span className="block whitespace-nowrap">{value}</span>
-      <span className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50" />
+    <span
+      className={cn(
+        "group/faded relative block w-full min-w-0 flex-shrink-0",
+        className,
+      )}
+    >
+      <span
+        className={cn(
+          "absolute left-0 top-0 z-10 block w-full overflow-hidden whitespace-nowrap",
+          "[mask-image:linear-gradient(to_right,black_calc(100%_-_3rem),transparent)] [-webkit-mask-image:linear-gradient(to_right,black_calc(100%_-_3rem),transparent)]",
+          "group-hover/faded:left-[-9px] group-hover/faded:top-[-5px] group-hover/faded:z-50 group-hover/faded:w-auto group-hover/faded:max-w-[min(80vw,48rem)]",
+          "group-hover/faded:overflow-visible group-hover/faded:rounded-md group-hover/faded:border group-hover/faded:border-border group-hover/faded:bg-popover",
+          "group-hover/faded:px-2 group-hover/faded:py-1 group-hover/faded:text-popover-foreground group-hover/faded:underline",
+          "group-hover/faded:[mask-image:none] group-hover/faded:[-webkit-mask-image:none]",
+        )}
+      >
+        {displayValue}
+      </span>
+      <span className="invisible block whitespace-nowrap">{spacerValue}</span>
     </span>
   );
 }

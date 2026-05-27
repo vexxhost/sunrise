@@ -1,16 +1,96 @@
 'use client';
 
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useQueries,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { ImageIcon } from "lucide-react";
-import { imagesQueryOptions } from "@/hooks/queries/useImages";
+import { imageQueryOptions, imagesQueryOptions } from "@/hooks/queries/useImages";
 import { Badge } from "@/components/ui/badge";
-import { Image } from "@/types/openstack/glance";
+import type { Image } from "@/types/openstack/glance";
 import { ColumnDef } from "@tanstack/react-table";
 import { titleCase } from "title-case";
 import bytes from 'bytes';
 import { OsIcon } from "@/components/icons/OsIcon";
 import { imageOperatingSystemMetadata } from "@/lib/openstack/image-metadata";
+
+const ACTIVE_IMAGE_REFETCH_INTERVAL_MS = 5000;
+
+const ACTIVE_IMAGE_STATUSES: Image["status"][] = [
+  "queued",
+  "saving",
+  "uploading",
+  "importing",
+  "pending_delete",
+];
+
+function isActiveImageStatus(status: Image["status"]) {
+  return ACTIVE_IMAGE_STATUSES.includes(status);
+}
+
+function formatImageStatus(status: Image["status"]) {
+  return titleCase(status.replace(/_/g, " "));
+}
+
+function StatusOrbit() {
+  return (
+    <svg
+      aria-hidden
+      className="pointer-events-none absolute inset-[-1px] z-10 h-[calc(100%+2px)] w-[calc(100%+2px)] overflow-visible text-sky-400"
+      preserveAspectRatio="none"
+      viewBox="0 0 100 24"
+    >
+      <rect
+        x="1"
+        y="1"
+        width="98"
+        height="22"
+        rx="11"
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity="0.35"
+        strokeWidth="1.5"
+      />
+      <rect
+        x="1"
+        y="1"
+        width="98"
+        height="22"
+        rx="11"
+        fill="none"
+        pathLength="100"
+        stroke="currentColor"
+        strokeDasharray="22 78"
+        strokeLinecap="round"
+        strokeWidth="2.5"
+      >
+        <animate
+          attributeName="stroke-dashoffset"
+          dur="1.2s"
+          from="100"
+          repeatCount="indefinite"
+          to="0"
+        />
+      </rect>
+    </svg>
+  );
+}
+
+function ActiveStatusBadge({ label }: { label: string }) {
+  return (
+    <span
+      data-slot="badge"
+      className="relative isolate inline-flex w-fit shrink-0 items-center justify-center overflow-visible whitespace-nowrap rounded-full bg-transparent px-2 py-0.5 text-xs font-medium text-sky-700 shadow-[0_0_0_1px_rgba(14,165,233,0.32)] dark:text-sky-100 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.24)]"
+    >
+      <span className="absolute inset-[2px] z-0 rounded-full bg-sky-50 dark:bg-sky-500/10" />
+      <StatusOrbit />
+      <span className="relative z-20 px-0.5">{label}</span>
+    </span>
+  );
+}
 
 const columns: ColumnDef<Image>[] = [
   {
@@ -57,7 +137,8 @@ const columns: ColumnDef<Image>[] = [
     accessorKey: "status",
     header: "Status",
     cell: ({ row }: { row: { original: Image } }) => {
-      const status = titleCase(row.original.status);
+      const status = formatImageStatus(row.original.status);
+      const active = isActiveImageStatus(row.original.status);
       let variant: "default" | "secondary" | "destructive" | "outline";
 
       // Determine the badge variant based on the status value
@@ -82,10 +163,10 @@ const columns: ColumnDef<Image>[] = [
           break;
       }
 
-      return (
-        <Badge variant={variant}>
-          {status}
-        </Badge>
+      return active ? (
+        <ActiveStatusBadge label={status} />
+      ) : (
+        <Badge variant={variant}>{status}</Badge>
       );
     },
     meta: {
@@ -315,7 +396,79 @@ interface ImagesClientProps {
 }
 
 export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
-  const { data, isRefetching, refetch } = useSuspenseQuery(imagesQueryOptions(regionId, projectId));
+  const queryClient = useQueryClient();
+  const imageListOptions = useMemo(
+    () => imagesQueryOptions(regionId, projectId),
+    [projectId, regionId],
+  );
+  const { data, isRefetching, refetch } = useSuspenseQuery({
+    ...imageListOptions,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
+  const [visiblePageImages, setVisiblePageImages] = useState<Image[]>([]);
+  const activeVisibleImages = useMemo(
+    () =>
+      visiblePageImages.filter((image) => isActiveImageStatus(image.status)),
+    [visiblePageImages],
+  );
+  const activeVisibleImageQueries = useQueries({
+    queries: activeVisibleImages.map((image) => ({
+      ...imageQueryOptions(regionId, projectId, image.id),
+      refetchInterval: ACTIVE_IMAGE_REFETCH_INTERVAL_MS,
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+    })),
+  });
+  const activeVisibleImageVersion = activeVisibleImageQueries
+    .map(
+      (result) =>
+        `${result.dataUpdatedAt}:${result.data?.id ?? ""}:${result.data?.status ?? ""}`,
+    )
+    .join("|");
+  const activeVisibleImageUpdates = useMemo(
+    () =>
+      new Map(
+        activeVisibleImageQueries
+          .map((result) => result.data)
+          .filter((image): image is Image => Boolean(image))
+          .map((image) => [image.id, image]),
+      ),
+    [activeVisibleImageVersion],
+  );
+
+  const handlePageRowsChange = useCallback((images: Image[]) => {
+    setVisiblePageImages(images);
+  }, []);
+
+  useEffect(() => {
+    if (activeVisibleImageUpdates.size === 0) {
+      return;
+    }
+
+    queryClient.setQueryData<Image[]>(imageListOptions.queryKey, (existing) => {
+      if (!existing) {
+        return existing;
+      }
+
+      let changed = false;
+      const nextImages = existing.map((image) => {
+        const updated = activeVisibleImageUpdates.get(image.id);
+        if (!updated) {
+          return image;
+        }
+
+        changed = changed || updated !== image;
+        return updated;
+      });
+
+      return changed ? nextImages : existing;
+    });
+  }, [
+    activeVisibleImageUpdates,
+    imageListOptions.queryKey,
+    queryClient,
+  ]);
 
   return (
     <DataTable
@@ -325,6 +478,7 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
       columns={columns}
       resourceName="image"
       emptyIcon={ImageIcon}
+      onPageRowsChange={handlePageRowsChange}
     />
   );
 }

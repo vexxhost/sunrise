@@ -16,16 +16,19 @@ export type SortDirection = "asc" | "desc";
 // ============================================================================
 
 // Cinder (Block Storage)
-export * from './cinder';
+export * from "./cinder";
 
 // Glance (Image)
-export * from './glance';
+export * from "./glance";
 
 // Keystone (Identity)
-export * from './keystone';
+export * from "./keystone";
+
+// Magnum (Container Infrastructure)
+export * from "./magnum";
 
 // Neutron (Network)
-export * from './neutron';
+export * from "./neutron";
 
 // Nova (Compute)
-export * from './nova';
+export * from "./nova";
