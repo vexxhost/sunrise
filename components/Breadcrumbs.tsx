@@ -17,6 +17,8 @@ const serviceNames: Record<string, string> = {
   orchestration: "Orchestration",
   dns: "DNS",
   "file-system": "File System",
+  clusters: "Clusters",
+  templates: "Templates",
   instances: "Instances",
   instance: "Instance",
   "instance-flavors": "Instance Flavors",
@@ -26,6 +28,13 @@ const serviceNames: Record<string, string> = {
   images: "Images",
   "key-pairs": "Key Pairs",
   "security-groups": "Security Groups",
+  overview: "Overview",
+  "node-groups": "Node Groups",
+  components: "Components",
+  networking: "Networking",
+  authority: "Authority",
+  template: "Template",
+  labels: "Labels",
 };
 
 export function Breadcrumbs() {
