@@ -11,6 +11,7 @@ import {
 import {
   refreshAccessToken,
   tokenExchangeForRgw,
+  type RefreshTokenResult,
 } from '@/lib/oidc/sunrise';
 import {
   assumeRoleWithIdToken,
@@ -24,7 +25,16 @@ export async function refreshActiveProjectS3Credentials(
   if (!projectId) return undefined;
   if (!session.keycloakRefreshToken) return undefined;
 
-  const refreshed = await refreshAccessToken(session.keycloakRefreshToken);
+  let refreshed: RefreshTokenResult;
+  try {
+    refreshed = await refreshAccessToken(session.keycloakRefreshToken);
+  } catch (error) {
+    console.warn('[s3/session] failed to refresh Keycloak token', {
+      projectId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
   let sessionChanged = false;
 
   if (refreshed.refresh_token) {
