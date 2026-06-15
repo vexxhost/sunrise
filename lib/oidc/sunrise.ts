@@ -98,6 +98,10 @@ export type CodeExchangeResult = {
   token_type: string;
 };
 
+export type RefreshTokenResult = Omit<CodeExchangeResult, 'id_token'> & {
+  id_token?: string;
+};
+
 export async function exchangeCodeForTokens(
   code: string,
   verifier: string
@@ -125,6 +129,33 @@ export async function exchangeCodeForTokens(
     throw new Error(`OIDC code exchange failed: ${res.status} ${text}`);
   }
   return (await res.json()) as CodeExchangeResult;
+}
+
+export async function refreshAccessToken(
+  refreshToken: string
+): Promise<RefreshTokenResult> {
+  const { token_endpoint } = await discoverOidc();
+  const { clientId, clientSecret } = getSunriseOidcConfig();
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+  });
+
+  const res = await fetch(token_endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization:
+        'Basic ' +
+        Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+    },
+    body,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`OIDC refresh failed: ${res.status} ${text}`);
+  }
+  return (await res.json()) as RefreshTokenResult;
 }
 
 export type TokenExchangeResult = {

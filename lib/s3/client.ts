@@ -3,6 +3,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent } from 'https';
 import { getSession } from '@/lib/session';
 import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
+import { ensureActiveProjectS3Credentials } from '@/lib/s3/session';
 
 export class S3AuthRequiredError extends Error {
   constructor() {
@@ -13,11 +14,12 @@ export class S3AuthRequiredError extends Error {
 
 export async function getS3Client(): Promise<S3Client> {
   const session = await getSession();
-  const creds = session.s3Sts;
-  // Refresh threshold: 60s before expiry
-  if (!creds || creds.expiration - Date.now() < 60_000) {
+  const { creds } = await ensureActiveProjectS3Credentials(session);
+
+  if (!creds) {
     throw new S3AuthRequiredError();
   }
+
   const endpoint = await getS3Endpoint();
 
   return new S3Client({

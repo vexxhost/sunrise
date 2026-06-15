@@ -3,6 +3,7 @@
 import { FolderKanban } from "lucide-react";
 import { setProject } from "@/lib/keystone/actions";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Project } from "@/types/openstack";
 import { Selector } from "./Selector";
 
@@ -13,11 +14,13 @@ interface ProjectSelectorProps {
 
 export function ProjectSelector({ projects, selectedProject }: ProjectSelectorProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const handleSelect = async (projectId: string) => {
     const project = projects.find(p => p.id === projectId);
     if (project) {
       await setProject(project);
+      queryClient.clear();
       router.refresh();
     }
   };

@@ -3,6 +3,7 @@
 import { getSession } from '@/lib/session';
 import type { S3StsCredentials } from '@/lib/session';
 import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
+import { ensureActiveProjectS3Credentials } from '@/lib/s3/session';
 
 export type BrowserStsResult =
   | { ok: true; credentials: S3StsCredentials; endpoint: string; region: string }
@@ -18,8 +19,12 @@ export type BrowserStsResult =
  */
 export async function getStsCredentialsForBrowser(): Promise<BrowserStsResult> {
   const session = await getSession();
-  const creds = session.s3Sts;
-  if (!creds || creds.expiration - Date.now() < 60_000) {
+  const { creds, refreshed } = await ensureActiveProjectS3Credentials(session);
+  if (refreshed) {
+    await session.save();
+  }
+
+  if (!creds) {
     return { ok: false, needsAuth: true };
   }
   let endpoint: string;
