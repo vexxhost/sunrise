@@ -7,6 +7,7 @@ import bytes from 'bytes';
 import { objectMetadataQueryOptions } from '@/hooks/queries/useObjects';
 
 interface ObjectDetailClientProps {
+  activeProjectId: string;
   bucket: string;
   objectKey: string;
 }
@@ -20,8 +21,14 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-export function ObjectDetailClient({ bucket, objectKey }: ObjectDetailClientProps) {
-  const { data } = useSuspenseQuery(objectMetadataQueryOptions(bucket, objectKey));
+export function ObjectDetailClient({
+  activeProjectId,
+  bucket,
+  objectKey,
+}: ObjectDetailClientProps) {
+  const { data } = useSuspenseQuery(
+    objectMetadataQueryOptions(activeProjectId, bucket, objectKey)
+  );
 
   // Build breadcrumb segments from key
   const segments = objectKey.split('/').filter((s) => s.length > 0);

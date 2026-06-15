@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { DirectClient } from './DirectClient';
 import { getSession } from '@/lib/session';
+import { ensureActiveProjectS3Credentials } from '@/lib/s3/session';
 
 interface PageProps {
   params: Promise<{ bucket: string }>;
@@ -12,7 +13,9 @@ export default async function Page({ params }: PageProps) {
 
   // Server-side preflight: if no STS creds in session, kick off OIDC.
   const session = await getSession();
-  if (!session.s3Sts || session.s3Sts.expiration - Date.now() < 60_000) {
+  const creds = await ensureActiveProjectS3Credentials(session);
+
+  if (!creds) {
     redirect('/object-storage/auth/login');
   }
 

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { Database, AlertTriangle, ArrowRight } from 'lucide-react';
 import { DataTable } from '@/components/DataTable';
@@ -11,6 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { bucketsQueryOptions } from '@/hooks/queries/useBuckets';
 import type { Bucket } from '@/lib/s3/actions';
+
+type BucketsData = {
+  buckets: Bucket[];
+  accessDenied: boolean;
+};
 
 const columns: ColumnDef<Bucket>[] = [
   {
@@ -35,9 +40,18 @@ const columns: ColumnDef<Bucket>[] = [
   },
 ];
 
-export function BucketsClient() {
+export function BucketsClient({
+  activeProjectId,
+  initialData,
+}: {
+  activeProjectId: string;
+  initialData: BucketsData;
+}) {
   const router = useRouter();
-  const { data, refetch, isRefetching } = useSuspenseQuery(bucketsQueryOptions());
+  const { data = initialData, refetch, isRefetching } = useQuery({
+    ...bucketsQueryOptions(activeProjectId),
+    initialData,
+  });
   const [bucketName, setBucketName] = useState('');
 
   const open = () => {

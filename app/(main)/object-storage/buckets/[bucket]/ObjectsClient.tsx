@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import {
   AlertTriangle,
@@ -36,6 +36,7 @@ import {
   calculateSelectionSize,
   createFolder,
   getBucketPolicy,
+  type ListObjectsResult,
   removeSelection,
   type CalculateSelectionSizeResult,
   type RemoveSelectionEntry,
@@ -135,19 +136,28 @@ function downloadSelection(bucket: string, rows: Row[]) {
 }
 
 interface ObjectsClientProps {
+  activeProjectId: string;
   bucket: string;
+  initialPrefix: string;
+  initialData: Extract<ListObjectsResult, { ok: true }>;
 }
 
-export function ObjectsClient({ bucket }: ObjectsClientProps) {
+export function ObjectsClient({
+  activeProjectId,
+  bucket,
+  initialPrefix,
+  initialData,
+}: ObjectsClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefix = searchParams.get('prefix') ?? '';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  const { data, refetch, isRefetching } = useSuspenseQuery(
-    objectsQueryOptions(bucket, prefix)
-  );
+  const { data = initialData, refetch, isRefetching } = useQuery({
+    ...objectsQueryOptions(activeProjectId, bucket, prefix),
+    initialData: prefix === initialPrefix ? initialData : undefined,
+  });
 
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);

@@ -1,9 +1,9 @@
 import { queryOptions } from '@tanstack/react-query';
 import { listBuckets } from '@/lib/s3/actions';
 
-export function bucketsQueryOptions() {
+export function bucketsQueryOptions(projectId: string) {
   return queryOptions({
-    queryKey: ['s3', 'buckets'],
+    queryKey: ['s3', projectId, 'buckets'],
     queryFn: async () => {
       const res = await listBuckets();
       if (!res.ok) {

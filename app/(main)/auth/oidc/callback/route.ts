@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import {
+  getSession,
+  normalizeProjectId,
+  setS3CredentialsForProject,
+} from '@/lib/session';
 import {
   exchangeCodeForTokens,
   tokenExchangeForRgw,
@@ -8,7 +12,10 @@ import {
   federateOidcWithKeystone,
   finalizeKeystoneSession,
 } from '@/lib/keystone/login';
-import { assumeRoleWithIdToken } from '@/lib/s3/sts';
+import {
+  assumeRoleWithIdToken,
+  tryExtractRgwProjectRoles,
+} from '@/lib/s3/sts';
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? '/';
 const PROTOCOL =
@@ -93,11 +100,28 @@ export async function GET(request: Request) {
   try {
     const exchanged = await tokenExchangeForRgw(tokens.access_token);
     const rgwIdToken = exchanged.id_token ?? exchanged.access_token;
-    const creds = await assumeRoleWithIdToken(rgwIdToken);
-    session.s3Sts = creds;
+    const projectRoles = tryExtractRgwProjectRoles(
+      rgwIdToken,
+      exchanged.id_token,
+      exchanged.access_token,
+      tokens.id_token,
+      tokens.access_token
+    );
+    if (!projectRoles) {
+      throw new Error('RGW project roles claim is missing from token');
+    }
+    const projectId = normalizeProjectId(session.projectId);
+    const roleArn = projectRoles[projectId];
+    if (!roleArn) {
+      throw new Error(`No RGW role ARN found for active project ${projectId}`);
+    }
+
+    session.s3ProjectRoles = projectRoles;
+    const creds = await assumeRoleWithIdToken(rgwIdToken, projectId, roleArn);
+    setS3CredentialsForProject(session, creds);
   } catch (e) {
     // Non-fatal: user can still use other services. S3 pages will redirect
-    // to `/object-storage/auth/login` if `s3Sts` is missing.
+    // to `/object-storage/auth/login` if S3 credentials are missing.
     const msg = e instanceof Error ? e.message : 'unknown error';
     console.error('[oidc/callback] STS exchange failed (non-fatal):', msg);
   }

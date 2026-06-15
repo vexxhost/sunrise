@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@/lib/session';
+import {
+  getSession,
+  normalizeProjectId,
+  setS3CredentialsForProject,
+} from '@/lib/session';
 import { exchangeCodeForTokens } from '@/lib/s3/oidc';
-import { assumeRoleWithIdToken } from '@/lib/s3/sts';
+import {
+  assumeRoleWithIdToken,
+  tryExtractRgwProjectRoles,
+} from '@/lib/s3/sts';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -32,8 +39,22 @@ export async function GET(request: Request) {
 
   try {
     const tokens = await exchangeCodeForTokens(code, verifier);
-    const creds = await assumeRoleWithIdToken(tokens.id_token);
-    session.s3Sts = creds;
+    const projectRoles = tryExtractRgwProjectRoles(
+      tokens.id_token,
+      tokens.access_token
+    );
+    if (!projectRoles) {
+      throw new Error('RGW project roles claim is missing from token');
+    }
+    const projectId = normalizeProjectId(session.projectId);
+    const roleArn = projectRoles[projectId];
+    if (!roleArn) {
+      throw new Error(`No RGW role ARN found for active project ${projectId}`);
+    }
+
+    session.s3ProjectRoles = projectRoles;
+    const creds = await assumeRoleWithIdToken(tokens.id_token, projectId, roleArn);
+    setS3CredentialsForProject(session, creds);
     await session.save();
   } catch (e) {
     await session.save();
