@@ -25,8 +25,11 @@ export async function refreshActiveProjectS3Credentials(
   if (!session.keycloakRefreshToken) return undefined;
 
   const refreshed = await refreshAccessToken(session.keycloakRefreshToken);
+  let sessionChanged = false;
+
   if (refreshed.refresh_token) {
     session.keycloakRefreshToken = refreshed.refresh_token;
+    sessionChanged = true;
   }
 
   const exchanged = await tokenExchangeForRgw(refreshed.access_token);
@@ -43,22 +46,28 @@ export async function refreshActiveProjectS3Credentials(
       ...session.s3ProjectRoles,
       ...projectRoles,
     };
+    sessionChanged = true;
   }
 
   const roleArn = session.s3ProjectRoles?.[projectId];
-  if (!roleArn) return undefined;
+  if (!roleArn) {
+    if (sessionChanged) {
+      await session.save();
+    }
+    return undefined;
+  }
 
   const creds = await assumeRoleWithIdToken(rgwToken, projectId, roleArn);
   setS3CredentialsForProject(session, creds);
+  await session.save();
   return creds;
 }
 
 export async function ensureActiveProjectS3Credentials(
   session: IronSession<SunriseSession>
-): Promise<{ creds?: S3StsCredentials; refreshed: boolean }> {
+): Promise<S3StsCredentials | undefined> {
   const current = getActiveS3Credentials(session);
-  if (current) return { creds: current, refreshed: false };
+  if (current) return current;
 
-  const refreshed = await refreshActiveProjectS3Credentials(session);
-  return { creds: refreshed, refreshed: Boolean(refreshed) };
+  return refreshActiveProjectS3Credentials(session);
 }

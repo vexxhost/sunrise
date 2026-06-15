@@ -14,7 +14,7 @@ export class S3AuthRequiredError extends Error {
 
 export async function getS3Client(): Promise<S3Client> {
   const session = await getSession();
-  const { creds } = await ensureActiveProjectS3Credentials(session);
+  const creds = await ensureActiveProjectS3Credentials(session);
 
   if (!creds) {
     throw new S3AuthRequiredError();

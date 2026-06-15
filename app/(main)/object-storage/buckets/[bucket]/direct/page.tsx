@@ -13,7 +13,7 @@ export default async function Page({ params }: PageProps) {
 
   // Server-side preflight: if no STS creds in session, kick off OIDC.
   const session = await getSession();
-  const { creds } = await ensureActiveProjectS3Credentials(session);
+  const creds = await ensureActiveProjectS3Credentials(session);
 
   if (!creds) {
     redirect('/object-storage/auth/login');

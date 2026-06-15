@@ -19,10 +19,7 @@ export type BrowserStsResult =
  */
 export async function getStsCredentialsForBrowser(): Promise<BrowserStsResult> {
   const session = await getSession();
-  const { creds, refreshed } = await ensureActiveProjectS3Credentials(session);
-  if (refreshed) {
-    await session.save();
-  }
+  const creds = await ensureActiveProjectS3Credentials(session);
 
   if (!creds) {
     return { ok: false, needsAuth: true };
