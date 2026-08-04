@@ -145,10 +145,9 @@ export function DataTable<TData, TValue>({
   })
 
   const pageRows = table.getRowModel().rows
-  const pageRowsSignature = pageRows.map((row) => row.id).join('|')
   const pageRowOriginals = React.useMemo(
     () => pageRows.map((row) => row.original),
-    [data, pageRowsSignature],
+    [pageRows],
   )
 
   React.useEffect(() => {

@@ -31,6 +31,15 @@ function isActiveImageStatus(status: Image["status"]) {
   return ACTIVE_IMAGE_STATUSES.includes(status);
 }
 
+function collectImageUpdates(results: readonly { data?: Image }[]) {
+  return new Map(
+    results
+      .map((result) => result.data)
+      .filter((image): image is Image => Boolean(image))
+      .map((image) => [image.id, image]),
+  );
+}
+
 function formatImageStatus(status: Image["status"]) {
   return titleCase(status.replace(/_/g, " "));
 }
@@ -412,30 +421,15 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
       visiblePageImages.filter((image) => isActiveImageStatus(image.status)),
     [visiblePageImages],
   );
-  const activeVisibleImageQueries = useQueries({
+  const activeVisibleImageUpdates = useQueries({
     queries: activeVisibleImages.map((image) => ({
       ...imageQueryOptions(regionId, projectId, image.id),
       refetchInterval: ACTIVE_IMAGE_REFETCH_INTERVAL_MS,
       refetchOnReconnect: false,
       refetchOnWindowFocus: false,
     })),
+    combine: collectImageUpdates,
   });
-  const activeVisibleImageVersion = activeVisibleImageQueries
-    .map(
-      (result) =>
-        `${result.dataUpdatedAt}:${result.data?.id ?? ""}:${result.data?.status ?? ""}`,
-    )
-    .join("|");
-  const activeVisibleImageUpdates = useMemo(
-    () =>
-      new Map(
-        activeVisibleImageQueries
-          .map((result) => result.data)
-          .filter((image): image is Image => Boolean(image))
-          .map((image) => [image.id, image]),
-      ),
-    [activeVisibleImageVersion],
-  );
 
   const handlePageRowsChange = useCallback((images: Image[]) => {
     setVisiblePageImages(images);

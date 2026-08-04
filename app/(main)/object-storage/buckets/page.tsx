@@ -1,17 +1,17 @@
-import { redirect } from 'next/navigation';
 import { BucketsClient } from './BucketsClient';
+import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
 import { DataTableHeader } from '@/components/DataTable/Header';
-import { listBuckets } from '@/lib/s3/actions';
+import { listBucketsForRender } from '@/lib/s3/actions';
 import { getSession, normalizeProjectId } from '@/lib/session';
 
 export default async function Page() {
   const session = await getSession();
   const activeProjectId = normalizeProjectId(session.projectId);
 
-  // Pre-flight auth check on the server so we can redirect to OIDC cleanly
-  const probe = await listBuckets();
+  // Render a client handoff so Next does not request the auth handler as RSC.
+  const probe = await listBucketsForRender();
   if (!probe.ok && probe.needsAuth) {
-    redirect('/object-storage/auth/login');
+    return <ObjectStorageAuthRedirect />;
   }
   if (!probe.ok) {
     throw new Error(probe.error);

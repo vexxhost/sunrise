@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useIsHydrated } from '@/hooks/useIsHydrated';
 
 const themeOptions = [
   {
@@ -33,25 +34,21 @@ const themeOptions = [
 
 export function ThemeToggle() {
   const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const isHydrated = useIsHydrated();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const activeTheme = mounted ? theme ?? 'system' : 'system';
-  const appearance = mounted ? resolvedTheme ?? systemTheme ?? 'light' : 'light';
+  const activeTheme = isHydrated ? theme ?? 'system' : 'system';
+  const appearance = isHydrated ? resolvedTheme ?? systemTheme ?? 'light' : 'light';
   const StatusIcon = appearance === 'dark' ? Moon : Sun;
   const systemLabel = systemTheme === 'dark' ? 'Dark' : 'Light';
 
   const triggerLabel = useMemo(() => {
-    if (!mounted) return 'Appearance';
+    if (!isHydrated) return 'Appearance';
     if (activeTheme === 'system') {
       return `Appearance: system (${systemLabel.toLowerCase()})`;
     }
 
     return `Appearance: ${activeTheme}`;
-  }, [activeTheme, mounted, systemLabel]);
+  }, [activeTheme, isHydrated, systemLabel]);
 
   return (
     <DropdownMenu>
@@ -86,7 +83,7 @@ export function ThemeToggle() {
                 {option.label}
               </span>
               <span className="ml-auto flex items-center gap-2">
-                {option.value === 'system' && mounted ? (
+                {option.value === 'system' && isHydrated ? (
                   <span className="text-xs text-muted-foreground">
                     {systemLabel}
                   </span>
