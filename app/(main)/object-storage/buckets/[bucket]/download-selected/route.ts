@@ -254,7 +254,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh: true });
     const keys = await collectKeys(client, bucket, entries);
     if (keys.length === 0) {
       return new Response('Selected folders contain no objects', { status: 404 });

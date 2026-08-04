@@ -52,7 +52,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh: true });
     const normalizedKeys = files.map((file, index) => {
       return normalizeObjectKey(requestedKeys[index] || file.name);
     });

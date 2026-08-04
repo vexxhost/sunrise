@@ -70,7 +70,7 @@ export function ConsoleWindow({
   const [url, setUrl] = useState<string | null>(initialUrl);
   const [rawUrl, setRawUrl] = useState<string | null>(initialRawUrl);
   const [error, setError] = useState<string | null>(initialError);
-  const [bridgeReady, setBridgeReady] = useState(false);
+  const [bridgeReadyUrl, setBridgeReadyUrl] = useState<string | null>(null);
   const [confirmCtrlAltDelOpen, setConfirmCtrlAltDelOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -96,15 +96,15 @@ export function ConsoleWindow({
   // - If a strict CSP on the noVNC proxy blocks the inline module script in
   //   sunrise.html, no `sunrise:ready` arrives and the button stays disabled.
   useEffect(() => {
-    setBridgeReady(false);
     if (!proxyOrigin) return;
 
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== proxyOrigin) return;
+      if (e.source !== iframeRef.current?.contentWindow) return;
       const data = e.data as { type?: string } | null;
       if (!data || typeof data.type !== "string") return;
       if (data.type === "sunrise:ready" || data.type === "sunrise:pong") {
-        setBridgeReady(true);
+        setBridgeReadyUrl(url);
       }
     };
     window.addEventListener("message", onMessage);
@@ -127,7 +127,7 @@ export function ConsoleWindow({
   const reconnect = () => {
     startTransition(async () => {
       setError(null);
-      setBridgeReady(false);
+      setBridgeReadyUrl(null);
       try {
         // projectId is encoded in the URL purely so the operator can keep
         // multiple sessions open across projects in different popups; the
@@ -143,7 +143,7 @@ export function ConsoleWindow({
   };
 
   const ipv4 = pickIp(addresses, 4);
-  const canSendKeys = bridgeReady && protocol === "vnc";
+  const canSendKeys = bridgeReadyUrl === url && url !== null && protocol === "vnc";
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground">

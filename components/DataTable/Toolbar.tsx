@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { RefreshCw, Filter as FilterIcon, ChevronDown } from "lucide-react";
@@ -23,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DataTableDialogButton } from "./Dialog";
+import { useIsHydrated } from "@/hooks/useIsHydrated";
 
 interface DataTableToolbarProps<TData> {
   table?: Table<TData>;
@@ -44,11 +44,8 @@ export function DataTableToolbar<TData>({
   onFiltersChange,
 }: DataTableToolbarProps<TData>) {
   const hasTable = !!table;
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  const showRefetching = mounted && isRefetching;
+  const isHydrated = useIsHydrated();
+  const showRefetching = isHydrated && isRefetching;
 
   return (
     <div className="flex items-center justify-between pb-2">

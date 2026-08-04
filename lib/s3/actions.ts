@@ -61,11 +61,13 @@ function listedFolderPrefix(prefix: string): string {
   return prefix.endsWith('/') ? prefix : `${prefix}/`;
 }
 
-export async function listBuckets(): Promise<ListBucketsResult> {
+async function listBucketsWithCredentialRefresh(
+  allowCredentialRefresh: boolean
+): Promise<ListBucketsResult> {
   console.log('[s3/listBuckets] called');
   let client;
   try {
-    client = await getS3Client();
+    client = await getS3Client({ allowCredentialRefresh });
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
     const detail = describeAwsError(e);
@@ -92,6 +94,14 @@ export async function listBuckets(): Promise<ListBucketsResult> {
     console.error('[s3/listBuckets] FAILED:', detail, e);
     return { ok: false, needsAuth: false, error: detail };
   }
+}
+
+export async function listBuckets(): Promise<ListBucketsResult> {
+  return listBucketsWithCredentialRefresh(true);
+}
+
+export async function listBucketsForRender(): Promise<ListBucketsResult> {
+  return listBucketsWithCredentialRefresh(false);
 }
 
 // ---------------- Objects ----------------
@@ -123,14 +133,15 @@ export type ListObjectsResult =
   | { ok: false; needsAuth: true }
   | { ok: false; needsAuth: false; error: string };
 
-export async function listObjects(
+async function listObjectsWithCredentialRefresh(
   bucket: string,
-  prefix = '',
-  continuationToken?: string
+  prefix: string,
+  continuationToken: string | undefined,
+  allowCredentialRefresh: boolean
 ): Promise<ListObjectsResult> {
   console.log('[s3/listObjects]', { bucket, prefix, continuationToken });
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh });
     const res = await client.send(
       new ListObjectsV2Command({
         Bucket: bucket,
@@ -185,6 +196,32 @@ export async function listObjects(
   }
 }
 
+export async function listObjects(
+  bucket: string,
+  prefix = '',
+  continuationToken?: string
+): Promise<ListObjectsResult> {
+  return listObjectsWithCredentialRefresh(
+    bucket,
+    prefix,
+    continuationToken,
+    true
+  );
+}
+
+export async function listObjectsForRender(
+  bucket: string,
+  prefix = '',
+  continuationToken?: string
+): Promise<ListObjectsResult> {
+  return listObjectsWithCredentialRefresh(
+    bucket,
+    prefix,
+    continuationToken,
+    false
+  );
+}
+
 export type S3ObjectMetadata = {
   bucket: string;
   key: string;
@@ -208,13 +245,14 @@ export type HeadObjectResult =
   | { ok: false; needsAuth: true }
   | { ok: false; needsAuth: false; error: string };
 
-export async function headObject(
+async function headObjectWithCredentialRefresh(
   bucket: string,
-  key: string
+  key: string,
+  allowCredentialRefresh: boolean
 ): Promise<HeadObjectResult> {
   console.log('[s3/headObject]', { bucket, key });
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh });
     const res = await client.send(
       new HeadObjectCommand({ Bucket: bucket, Key: key })
     );
@@ -246,6 +284,20 @@ export async function headObject(
   }
 }
 
+export async function headObject(
+  bucket: string,
+  key: string
+): Promise<HeadObjectResult> {
+  return headObjectWithCredentialRefresh(bucket, key, true);
+}
+
+export async function headObjectForRender(
+  bucket: string,
+  key: string
+): Promise<HeadObjectResult> {
+  return headObjectWithCredentialRefresh(bucket, key, false);
+}
+
 export type BucketInfoResult =
   | { ok: true; bucket: string; locationConstraint: string | null }
   | { ok: false; needsAuth: true }
@@ -254,7 +306,7 @@ export type BucketInfoResult =
 export async function getBucketInfo(bucket: string): Promise<BucketInfoResult> {
   console.log('[s3/getBucketInfo]', { bucket });
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh: true });
     const res = await client.send(
       new GetBucketLocationCommand({ Bucket: bucket })
     );
@@ -292,7 +344,7 @@ export async function createFolder(
   const key = `${listedFolderPrefix(prefix)}${normalizeObjectKey(name)}/`;
 
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh: true });
     await client.send(
       new PutObjectCommand({
         Bucket: bucket,
@@ -340,7 +392,7 @@ export async function calculateSelectionSize(
   }
 
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh: true });
     const folderPrefixes = Array.from(
       new Set(
         entries
@@ -494,7 +546,7 @@ export async function removeSelection(
   }
 
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh: true });
     const keys = await collectSelectionKeys(client, bucket, entries);
     const errors: { key: string; error: string }[] = [];
     let deleted = 0;
@@ -544,7 +596,7 @@ export async function getBucketPolicy(
   }
 
   try {
-    const client = await getS3Client();
+    const client = await getS3Client({ allowCredentialRefresh: true });
     const res = await client.send(new GetBucketPolicyCommand({ Bucket: bucket }));
     const policy = res.Policy ?? null;
     return {

@@ -1,13 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { Search, X, Filter as FilterIcon } from "lucide-react"
+import { X, Filter as FilterIcon } from "lucide-react"
 import { Column } from "@tanstack/react-table"
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group"
 import {
   Command,
   CommandEmpty,
@@ -93,6 +88,11 @@ function getColumnLabel(column: Column<any, unknown>): string {
     .replace(/\b\w/g, (l: string) => l.toUpperCase())
 }
 
+function getOperatorsForColumn<TData>(column: Column<TData, unknown>) {
+  const fieldType = column.columnDef.meta?.fieldType as FieldType | undefined
+  return OPERATORS_BY_TYPE[fieldType || 'string']
+}
+
 export function FilterBuilder<TData>({
   columns,
   onFiltersChange,
@@ -100,14 +100,14 @@ export function FilterBuilder<TData>({
 }: FilterBuilderProps<TData>) {
   const [open, setOpen] = React.useState(false)
   const [filters, setFilters] = React.useState<Filter[]>([])
-  const [searchValue, setSearchValue] = React.useState("")
+  const filterIdPrefix = React.useId()
+  const nextFilterId = React.useRef(0)
 
   // Builder state
   const [builderStep, setBuilderStep] = React.useState<BuilderStep>("field")
   const [selectedColumn, setSelectedColumn] = React.useState<Column<TData, unknown> | null>(null)
   const [selectedOperator, setSelectedOperator] = React.useState<FilterOperator | null>(null)
   const [valueInput, setValueInput] = React.useState("")
-  const [highlightedIndex, setHighlightedIndex] = React.useState<number>(-1)
 
   // Get filterable columns (exclude select checkbox and ID columns)
   const filterableColumns = React.useMemo(() => {
@@ -151,8 +151,10 @@ export function FilterBuilder<TData>({
   const addFilter = () => {
     if (!selectedColumn || !selectedOperator || !valueInput.trim()) return
 
+    const filterId = `${filterIdPrefix}-${nextFilterId.current}`
+    nextFilterId.current += 1
     const newFilter: Filter = {
-      id: Math.random().toString(36).substring(7),
+      id: filterId,
       columnId: selectedColumn.id,
       columnLabel: getColumnLabel(selectedColumn),
       operator: selectedOperator,
@@ -184,45 +186,18 @@ export function FilterBuilder<TData>({
     setSelectedColumn(null)
     setSelectedOperator(null)
     setValueInput("")
-    setSearchValue("")
-    setHighlightedIndex(-1)
   }
 
   const handleFieldSelect = (column: Column<TData, unknown>) => {
     setSelectedColumn(column)
     setBuilderStep("operator")
-    setHighlightedIndex(-1)
-    setSearchValue("")
   }
 
   const handleOperatorSelect = (operator: FilterOperator) => {
     setSelectedOperator(operator)
     setBuilderStep("value")
-    setHighlightedIndex(-1)
-    setSearchValue("")
     setValueInput("")
   }
-
-  // Get current list of items for navigation
-  const getCurrentItems = () => {
-    if (builderStep === "field") {
-      return filterableColumns.filter((column) =>
-        getColumnLabel(column).toLowerCase().includes(searchValue.toLowerCase())
-      )
-    } else if (builderStep === "operator" && selectedColumn) {
-      return getOperatorsForColumn(selectedColumn)
-    } else if (builderStep === "value") {
-      return columnValues.filter((val) =>
-        val.toLowerCase().includes(valueInput.toLowerCase())
-      )
-    }
-    return []
-  }
-
-  // Reset highlighted index only when switching steps, not when typing
-  React.useEffect(() => {
-    setHighlightedIndex(-1)
-  }, [builderStep])
 
   // Refocus the input when step changes
   React.useEffect(() => {
@@ -238,76 +213,6 @@ export function FilterBuilder<TData>({
     }
   }, [builderStep, open])
 
-  // Clamp highlighted index when list changes
-  React.useEffect(() => {
-    const items = getCurrentItems()
-    if (highlightedIndex >= items.length && items.length > 0) {
-      setHighlightedIndex(items.length - 1)
-    }
-  }, [searchValue, valueInput])
-
-  // Scroll highlighted item into view
-  React.useEffect(() => {
-    const items = document.querySelectorAll('[data-highlighted="true"]')
-    if (items.length > 0) {
-      items[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    }
-  }, [highlightedIndex])
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    const items = getCurrentItems()
-    const maxIndex = items.length - 1
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault()
-      setHighlightedIndex((prev) => {
-        // If nothing selected yet, select first item
-        if (prev === -1) return 0
-        const next = prev < maxIndex ? prev + 1 : prev
-        console.log('ArrowDown: prev=', prev, 'next=', next, 'maxIndex=', maxIndex)
-        return next
-      })
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault()
-      setHighlightedIndex((prev) => {
-        const next = prev > 0 ? prev - 1 : 0
-        console.log('ArrowUp: prev=', prev, 'next=', next)
-        return next
-      })
-    } else if (e.key === "Enter") {
-      e.preventDefault()
-
-      if (builderStep === "field") {
-        const filtered = filterableColumns.filter((column) =>
-          getColumnLabel(column).toLowerCase().includes(searchValue.toLowerCase())
-        )
-        // If nothing highlighted, select first item
-        const indexToSelect = highlightedIndex >= 0 ? highlightedIndex : 0
-        if (filtered.length > 0 && indexToSelect < filtered.length) {
-          handleFieldSelect(filtered[indexToSelect])
-        }
-      } else if (builderStep === "operator" && selectedColumn) {
-        const operators = getOperatorsForColumn(selectedColumn)
-        const indexToSelect = highlightedIndex >= 0 ? highlightedIndex : 0
-        if (operators.length > 0 && indexToSelect < operators.length) {
-          handleOperatorSelect(operators[indexToSelect].value)
-        }
-      } else if (builderStep === "value" && valueInput.trim()) {
-        const filtered = columnValues.filter((val) =>
-          val.toLowerCase().includes(valueInput.toLowerCase())
-        )
-        const indexToSelect = highlightedIndex >= 0 ? highlightedIndex : -1
-        if (filtered.length > 0 && indexToSelect >= 0 && indexToSelect < filtered.length) {
-          // Use the highlighted autocomplete value
-          setValueInput(filtered[indexToSelect])
-          setTimeout(() => addFilter(), 100)
-        } else {
-          // Otherwise add the filter with current input
-          addFilter()
-        }
-      }
-    }
-  }
 
   const getOperatorLabel = (operator: FilterOperator) => {
     for (const operators of Object.values(OPERATORS_BY_TYPE)) {
@@ -315,27 +220,6 @@ export function FilterBuilder<TData>({
       if (found) return found.label
     }
     return operator
-  }
-
-  const getOperatorsForColumn = (column: Column<TData, unknown>) => {
-    const fieldType = column.columnDef.meta?.fieldType as FieldType | undefined
-    return OPERATORS_BY_TYPE[fieldType || 'string']
-  }
-
-  const getPlaceholder = () => {
-    if (builderStep === "field") return "Search fields..."
-    if (builderStep === "operator") return "Select operator..."
-    if (builderStep === "value") return "Type value..."
-    return "Add filter..."
-  }
-
-  const getCurrentHeading = () => {
-    if (builderStep === "field") return "Client Filters"
-    if (builderStep === "operator" && selectedColumn) return `Field: ${getColumnLabel(selectedColumn)}`
-    if (builderStep === "value" && selectedColumn && selectedOperator) {
-      return `${getColumnLabel(selectedColumn)} ${getOperatorLabel(selectedOperator)}`
-    }
-    return ""
   }
 
   return (
@@ -425,7 +309,7 @@ export function FilterBuilder<TData>({
                                 }}
                                 className="text-primary"
                               >
-                                Use "{valueInput}"
+                                Use &quot;{valueInput}&quot;
                               </CommandItem>
                             )}
                             {filteredValues.slice(0, 10).map((value) => (
@@ -484,7 +368,7 @@ export function FilterBuilder<TData>({
           className="gap-1 pl-3 pr-2 py-1.5 rounded-lg"
         >
           <span className="text-sm">
-            {filter.columnLabel} {getOperatorLabel(filter.operator)} "{filter.value}"
+            {filter.columnLabel} {getOperatorLabel(filter.operator)} &quot;{filter.value}&quot;
           </span>
           <Button
             variant="ghost"

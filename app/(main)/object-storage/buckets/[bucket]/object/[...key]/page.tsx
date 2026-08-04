@@ -1,8 +1,8 @@
-import { redirect } from 'next/navigation';
 import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
 import { ObjectDetailClient } from './ObjectDetailClient';
+import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
 import { objectMetadataQueryOptions } from '@/hooks/queries/useObjects';
-import { headObject } from '@/lib/s3/actions';
+import { headObjectForRender } from '@/lib/s3/actions';
 import { makeQueryClient } from '@/lib/query-client';
 import { getSession, normalizeProjectId } from '@/lib/session';
 
@@ -17,9 +17,9 @@ export default async function Page({ params }: PageProps) {
   const session = await getSession();
   const activeProjectId = normalizeProjectId(session.projectId);
 
-  const probe = await headObject(bucket, objectKey);
+  const probe = await headObjectForRender(bucket, objectKey);
   if (!probe.ok && probe.needsAuth) {
-    redirect('/object-storage/auth/login');
+    return <ObjectStorageAuthRedirect />;
   }
 
   const queryClient = makeQueryClient();

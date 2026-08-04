@@ -1,7 +1,7 @@
 import { S3Client } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent } from 'https';
-import { getSession } from '@/lib/session';
+import { getActiveS3Credentials, getSession } from '@/lib/session';
 import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
 import { ensureActiveProjectS3Credentials } from '@/lib/s3/session';
 
@@ -12,9 +12,17 @@ export class S3AuthRequiredError extends Error {
   }
 }
 
-export async function getS3Client(): Promise<S3Client> {
+type GetS3ClientOptions = {
+  allowCredentialRefresh?: boolean;
+};
+
+export async function getS3Client({
+  allowCredentialRefresh = false,
+}: GetS3ClientOptions = {}): Promise<S3Client> {
   const session = await getSession();
-  const creds = await ensureActiveProjectS3Credentials(session);
+  const creds = allowCredentialRefresh
+    ? await ensureActiveProjectS3Credentials(session)
+    : getActiveS3Credentials(session);
 
   if (!creds) {
     throw new S3AuthRequiredError();
