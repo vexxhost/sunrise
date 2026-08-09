@@ -12,6 +12,7 @@ import {
 import { Buffer } from 'node:buffer';
 import { bucketArn } from '@/lib/s3/arn';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
+import { normalizeStorageClass } from '@/lib/s3/storage-class';
 
 export type Bucket = {
   name: string;
@@ -270,7 +271,7 @@ async function headObjectWithCredentialRefresh(
         contentDisposition: res.ContentDisposition ?? null,
         contentLanguage: res.ContentLanguage ?? null,
         cacheControl: res.CacheControl ?? null,
-        storageClass: res.StorageClass ?? null,
+        storageClass: normalizeStorageClass(res.StorageClass),
         versionId: res.VersionId ?? null,
         serverSideEncryption: res.ServerSideEncryption ?? null,
         sseKmsKeyId: res.SSEKMSKeyId ?? null,

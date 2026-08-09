@@ -1,25 +1,27 @@
 import { redirect } from 'next/navigation';
-import { DirectClient } from './DirectClient';
 import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
 import { DataTableHeader } from '@/components/DataTable/Header';
-import { directObjectPath } from '@/lib/s3/direct-route';
 import { getActiveS3Credentials, getSession } from '@/lib/session';
+
+import { DirectClient } from '../DirectClient';
 
 interface PageProps {
   params: Promise<{ bucket: string }>;
-  searchParams: Promise<{ inspect?: string | string[] }>;
+  searchParams: Promise<{ key?: string | string[] }>;
 }
 
 export default async function Page({ params, searchParams }: PageProps) {
-  const { bucket: rawBucket } = await params;
+  const [{ bucket: rawBucket }, { key }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const bucket = decodeURIComponent(rawBucket);
-  const { inspect } = await searchParams;
+  const objectKey = typeof key === 'string' ? key : null;
 
-  if (typeof inspect === 'string' && inspect.length > 0) {
-    redirect(directObjectPath(bucket, inspect));
+  if (objectKey === null) {
+    redirect(`/object-storage/buckets/${encodeURIComponent(bucket)}/direct`);
   }
 
-  // Server-side preflight: if no STS creds exist, hand off to OIDC in-browser.
   const session = await getSession();
   const creds = getActiveS3Credentials(session);
 
@@ -30,7 +32,7 @@ export default async function Page({ params, searchParams }: PageProps) {
   return (
     <>
       <DataTableHeader resourceName="object" actions={undefined} />
-      <DirectClient bucket={bucket} />
+      <DirectClient bucket={bucket} objectKey={objectKey} />
     </>
   );
 }

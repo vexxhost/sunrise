@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import bytes from 'bytes';
 import { DataTable } from '@/components/DataTable';
+import { UploadQueueMenu } from '@/components/UploadQueueMenu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -161,6 +162,9 @@ export function ObjectsClient({
 
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<'sending' | 'storing' | null>(
+    null
+  );
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -216,6 +220,7 @@ export function ObjectsClient({
     input.value = '';
     setUploadMessage(null);
     setUploadError(null);
+    setUploadPhase(null);
     setUploadProgress(null);
     setOverwriteOpen(false);
     setOverwriteKeys([]);
@@ -239,9 +244,14 @@ export function ObjectsClient({
       );
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
+        setUploadPhase('sending');
         setUploadProgress(
-          Math.min(100, Math.round((event.loaded / event.total) * 100))
+          Math.min(99, Math.round((event.loaded / event.total) * 100))
         );
+      };
+      request.upload.onload = () => {
+        setUploadPhase('storing');
+        setUploadProgress(null);
       };
       request.onload = () => {
         try {
@@ -268,6 +278,7 @@ export function ObjectsClient({
   const handleUpload = async (confirmOverwrite = false) => {
     if (uploadFiles.length === 0 || uploading) return;
     setUploading(true);
+    setUploadPhase('sending');
     setUploadProgress(0);
     setUploadMessage(null);
     setUploadError(null);
@@ -277,6 +288,7 @@ export function ObjectsClient({
 
     const result = await sendUploadRequest(confirmOverwrite);
     setUploading(false);
+    setUploadPhase(null);
     setUploadProgress(null);
 
     if (!result.ok) {
@@ -622,9 +634,11 @@ export function ObjectsClient({
           <Upload className="h-4 w-4" />
           Folder
         </Button>
-        {uploadFiles.length > 0 && (
-          <Badge variant="secondary">{uploadFiles.length} selected</Badge>
-        )}
+        <UploadQueueMenu
+          files={uploadFiles}
+          disabled={uploading}
+          onChange={setUploadFiles}
+        />
         <Button
           type="button"
           size="sm"
@@ -635,9 +649,9 @@ export function ObjectsClient({
         >
           <Upload className="h-4 w-4" />
           {uploading
-            ? uploadProgress === null
-              ? 'Uploading'
-              : `Uploading ${uploadProgress}%`
+            ? uploadPhase === 'storing'
+              ? 'Storing in RGW'
+              : `Sending ${uploadProgress ?? 0}%`
             : 'Upload'}
         </Button>
 
@@ -824,7 +838,11 @@ export function ObjectsClient({
               }}
             >
               <Upload className="h-4 w-4" />
-              {uploading ? 'Uploading' : 'Overwrite'}
+              {uploading
+                ? uploadPhase === 'storing'
+                  ? 'Storing in RGW'
+                  : `Sending ${uploadProgress ?? 0}%`
+                : 'Overwrite'}
             </Button>
           </DialogFooter>
         </DialogContent>

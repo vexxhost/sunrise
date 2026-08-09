@@ -1,0 +1,28 @@
+import { DirectClient } from '../../DirectClient';
+import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
+import { DataTableHeader } from '@/components/DataTable/Header';
+import { getActiveS3Credentials, getSession } from '@/lib/session';
+
+interface PageProps {
+  params: Promise<{ bucket: string; key: string[] }>;
+}
+
+export default async function Page({ params }: PageProps) {
+  const { bucket: rawBucket, key: rawKeyParts } = await params;
+  const bucket = decodeURIComponent(rawBucket);
+  const objectKey = rawKeyParts.map((part) => decodeURIComponent(part)).join('/');
+
+  const session = await getSession();
+  const creds = getActiveS3Credentials(session);
+
+  if (!creds) {
+    return <ObjectStorageAuthRedirect />;
+  }
+
+  return (
+    <>
+      <DataTableHeader resourceName="object" actions={undefined} />
+      <DirectClient bucket={bucket} objectKey={objectKey} />
+    </>
+  );
+}

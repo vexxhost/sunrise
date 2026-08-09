@@ -1,20 +1,10 @@
 import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { Buffer } from 'node:buffer';
+import { Readable } from 'node:stream';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
+import { describeS3UploadError } from '@/lib/s3/upload-error';
 
 interface RouteContext {
   params: Promise<{ bucket: string }>;
-}
-
-function describeAwsError(e: unknown): string {
-  if (e instanceof Error) {
-    const anyErr = e as any;
-    const name = anyErr.name || 'Error';
-    const code = anyErr.Code || anyErr.$metadata?.httpStatusCode;
-    const msg = anyErr.message || String(e);
-    return `${name}${code ? ` (${code})` : ''}: ${msg}`;
-  }
-  return String(e);
 }
 
 function normalizeObjectKey(key: string): string {
@@ -84,7 +74,7 @@ export async function POST(request: Request, { params }: RouteContext) {
             {
               ok: false,
               needsAuth: false,
-              error: `Overwrite check failed for ${key}: ${describeAwsError(e)}`,
+              error: `Overwrite check failed for ${key}: ${describeS3UploadError(e)}`,
             },
             { status: 502 }
           );
@@ -112,18 +102,21 @@ export async function POST(request: Request, { params }: RouteContext) {
       const key = normalizedKeys[index];
 
       try {
-        const body = Buffer.from(await file.arrayBuffer());
+        const body = Readable.fromWeb(
+          file.stream() as unknown as Parameters<typeof Readable.fromWeb>[0]
+        );
         await client.send(
           new PutObjectCommand({
             Bucket: bucket,
             Key: key,
             Body: body,
+            ContentLength: file.size,
             ContentType: file.type || undefined,
           })
         );
         uploaded += 1;
       } catch (e) {
-        errors.push({ key, error: describeAwsError(e) });
+        errors.push({ key, error: describeS3UploadError(e) });
       }
     }
 
@@ -133,7 +126,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       return Response.json({ ok: false, needsAuth: true }, { status: 401 });
     }
     return Response.json(
-      { ok: false, needsAuth: false, error: describeAwsError(e) },
+      { ok: false, needsAuth: false, error: describeS3UploadError(e) },
       { status: 502 }
     );
   }
