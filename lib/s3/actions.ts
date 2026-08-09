@@ -10,6 +10,7 @@ import {
   GetBucketLocationCommand,
 } from '@aws-sdk/client-s3';
 import { Buffer } from 'node:buffer';
+import { bucketArn } from '@/lib/s3/arn';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
 
 export type Bucket = {
@@ -584,7 +585,7 @@ export async function removeSelection(
 }
 
 export type BucketPolicyResult =
-  | { ok: true; bucket: string; policy: string | null }
+  | { ok: true; bucket: string; bucketArn: string | null; policy: string | null }
   | { ok: false; needsAuth: true }
   | { ok: false; needsAuth: false; accessDenied?: boolean; error: string };
 
@@ -597,16 +598,25 @@ export async function getBucketPolicy(
 
   try {
     const client = await getS3Client({ allowCredentialRefresh: true });
-    const res = await client.send(new GetBucketPolicyCommand({ Bucket: bucket }));
-    const policy = res.Policy ?? null;
-    return {
-      ok: true,
-      bucket,
-      policy: policy ? JSON.stringify(JSON.parse(policy), null, 2) : null,
-    };
+    const arn = bucketArn(bucket);
+
+    try {
+      const res = await client.send(new GetBucketPolicyCommand({ Bucket: bucket }));
+      const policy = res.Policy ?? null;
+      return {
+        ok: true,
+        bucket,
+        bucketArn: arn,
+        policy: policy ? JSON.stringify(JSON.parse(policy), null, 2) : null,
+      };
+    } catch (e) {
+      if (isNoSuchBucketPolicy(e)) {
+        return { ok: true, bucket, bucketArn: arn, policy: null };
+      }
+      throw e;
+    }
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
-    if (isNoSuchBucketPolicy(e)) return { ok: true, bucket, policy: null };
     const detail = describeAwsError(e);
     console.error('[s3/getBucketPolicy] FAILED:', detail, e);
     return {

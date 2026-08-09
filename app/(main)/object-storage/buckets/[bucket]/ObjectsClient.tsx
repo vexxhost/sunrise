@@ -62,7 +62,7 @@ type SizeState = Extract<CalculateSelectionSizeResult, { ok: true }> & {
 
 type PolicyState =
   | { status: 'idle' | 'loading' }
-  | { status: 'loaded'; policy: string | null }
+  | { status: 'loaded'; bucketArn: string | null; policy: string | null }
   | { status: 'error'; error: string; accessDenied: boolean };
 
 type UploadResult =
@@ -420,7 +420,11 @@ export function ObjectsClient({
       });
       return;
     }
-    setPolicyState({ status: 'loaded', policy: result.policy });
+    setPolicyState({
+      status: 'loaded',
+      bucketArn: result.bucketArn,
+      policy: result.policy,
+    });
   };
 
   const columns: ColumnDef<Row>[] = [
@@ -889,6 +893,16 @@ export function ObjectsClient({
             <DialogTitle>Bucket policy</DialogTitle>
             <DialogDescription>{bucket}</DialogDescription>
           </DialogHeader>
+          <div className="space-y-1">
+            <div className="text-sm font-medium">Bucket ARN</div>
+            <div className="break-all font-mono text-sm text-muted-foreground">
+              {policyState.status === 'loading'
+                ? 'Loading ARN'
+                : policyState.status === 'loaded'
+                  ? policyState.bucketArn ?? 'Unavailable'
+                  : 'Unavailable'}
+            </div>
+          </div>
           {policyState.status === 'loading' && (
             <div className="text-sm text-muted-foreground">Loading policy</div>
           )}
