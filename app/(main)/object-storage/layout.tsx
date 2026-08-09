@@ -12,6 +12,12 @@ const objectStorageSidebarSections = [
       { name: "Buckets", href: "/object-storage/buckets", icon: "Database" },
     ],
   },
+  {
+    title: "Access",
+    items: [
+      { name: "Roles", href: "/object-storage/roles", icon: "ShieldCheck" },
+    ],
+  },
 ];
 
 export default function ObjectStorageLayout({
