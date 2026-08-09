@@ -8,4 +8,17 @@ describe('directObjectPath', () => {
       '/object-storage/buckets/bucket%20name/direct/object/folder%20one/report%20%231.txt'
     );
   });
+
+  it.each([
+    'folder/./report.txt',
+    'folder/../report.txt',
+    '/leading-slash.txt',
+    'folder//report.txt',
+  ])('keeps the exact S3 key in a query parameter for %s', (key) => {
+    expect(directObjectPath('bucket name', key)).toBe(
+      `/object-storage/buckets/bucket%20name/direct/object?key=${encodeURIComponent(
+        key
+      )}`
+    );
+  });
 });

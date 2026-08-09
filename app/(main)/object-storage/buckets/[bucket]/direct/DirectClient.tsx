@@ -70,6 +70,11 @@ type PolicyState =
 
 type SizeState = BrowserSizeResult & { label: string };
 
+interface DirectDownload {
+  key: string;
+  url: string;
+}
+
 function filePath(file: File) {
   return (
     (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
@@ -119,6 +124,11 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [downloadQueue, setDownloadQueue] = useState<DirectDownload[]>([]);
+  const [startedDownloads, setStartedDownloads] = useState<Set<string>>(
+    () => new Set()
+  );
   const [policyOpen, setPolicyOpen] = useState(false);
   const [policyState, setPolicyState] = useState<PolicyState>({
     status: 'idle',
@@ -358,18 +368,37 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
   const downloadRows = async (selectedRows: BrowserObjectRow[]) => {
     if (!s3 || selectedRows.length === 0 || downloadBusy) return;
     clearMessages();
+    setDownloadOpen(false);
+    setDownloadQueue([]);
+    setStartedDownloads(new Set());
     setDownloadBusy(true);
     try {
-      const keys = (
-        await collectBrowserSelectionKeys(s3, bucket, selectedRows)
-      ).filter((key) => !key.endsWith('/'));
+      const keys = Array.from(
+        new Set(
+          (
+            await collectBrowserSelectionKeys(s3, bucket, selectedRows)
+          ).filter((key) => !key.endsWith('/'))
+        )
+      );
+
+      if (keys.length === 0) {
+        setDownloadError('No downloadable objects were found.');
+        return;
+      }
+
+      const downloads: DirectDownload[] = [];
       for (const key of keys) {
         const url = await getBrowserDownloadUrl(s3, bucket, key);
-        triggerNativeDownload(url);
+        downloads.push({ key, url });
       }
-      setDownloadMessage(
-        `Started ${keys.length} direct ${keys.length === 1 ? 'download' : 'downloads'}.`
-      );
+
+      if (downloads.length === 1) {
+        triggerNativeDownload(downloads[0].url);
+        setDownloadMessage('Started 1 direct download.');
+      } else {
+        setDownloadQueue(downloads);
+        setDownloadOpen(true);
+      }
     } catch (error) {
       setDownloadError(describeBrowserS3Error(error));
     } finally {
@@ -925,6 +954,62 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
             >
               <Trash2 className="h-4 w-4" />
               {removing ? 'Removing' : 'Remove'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Download selected objects</DialogTitle>
+            <DialogDescription>
+              Browsers may block pages that start several downloads at once.
+              Start each direct RGW download explicitly below.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 space-y-2 overflow-auto rounded-md border p-2">
+            {downloadQueue.map((download) => {
+              const started = startedDownloads.has(download.key);
+              return (
+                <div
+                  key={download.key}
+                  className="flex min-w-0 items-center justify-between gap-3 rounded-sm px-2 py-1.5"
+                >
+                  <span
+                    className="min-w-0 truncate font-mono text-xs"
+                    title={download.key}
+                  >
+                    {download.key}
+                  </span>
+                  <Button asChild size="sm" variant="outline">
+                    <a
+                      href={download.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() =>
+                        setStartedDownloads((current) => {
+                          const next = new Set(current);
+                          next.add(download.key);
+                          return next;
+                        })
+                      }
+                    >
+                      <Download className="h-4 w-4" />
+                      {started ? 'Download again' : 'Download'}
+                    </a>
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDownloadOpen(false)}
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
