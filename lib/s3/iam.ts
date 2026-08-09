@@ -43,16 +43,16 @@ export async function getActiveRoleIamContext(
     throw new Error('No active project in session');
   }
 
-  const roleArn = session.s3ProjectRoles?.[projectId];
-  if (!roleArn) {
-    throw new Error(`No RGW role ARN found for project ${projectId}`);
-  }
-
   const credentials = options.allowCredentialRefresh
     ? await ensureActiveProjectS3Credentials(session)
     : getActiveS3Credentials(session);
   if (!credentials) {
     throw new S3AuthRequiredError();
+  }
+
+  const roleArn = session.s3ProjectRoles?.[projectId];
+  if (!roleArn) {
+    throw new Error(`No RGW role ARN found for project ${projectId}`);
   }
 
   const endpoint = await getS3Endpoint();

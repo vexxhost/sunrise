@@ -50,6 +50,16 @@ function accessDeniedError() {
   });
 }
 
+function unknownHttp403Error() {
+  return Object.assign(new Error('UnknownError'), {
+    name: 'UnknownError',
+    $metadata: { requestId: 'tx-unknown-403', httpStatusCode: 403 },
+    $response: {
+      headers: { server: 'Ceph Object Gateway (tentacle)' },
+    },
+  });
+}
+
 describe('IAM role actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -166,6 +176,49 @@ describe('IAM role actions', () => {
     expect(client.destroy).toHaveBeenCalledOnce();
   });
 
+  it('recognizes an unmodeled HTTP 403 as restricted access', async () => {
+    const client = createClient();
+    client.send.mockRejectedValue(unknownHttp403Error());
+    mocks.getActiveRoleIamContext.mockResolvedValue({
+      client,
+      roleArn: activeRoleArn,
+      roleName: 'AssumeRoleSunriseReadWrite',
+    });
+
+    const result = await listRoles();
+
+    expect(result).toEqual({
+      ok: true,
+      roles: [],
+      accessDenied: true,
+      denialRequestId: 'tx-unknown-403',
+    });
+  });
+
+  it('recognizes AccessDeniedException without relying on HTTP status', async () => {
+    const client = createClient();
+    client.send.mockRejectedValue(
+      Object.assign(new Error('Forbidden'), {
+        name: 'AccessDeniedException',
+        $metadata: { requestId: 'tx-access-denied-exception' },
+      })
+    );
+    mocks.getActiveRoleIamContext.mockResolvedValue({
+      client,
+      roleArn: activeRoleArn,
+      roleName: 'AssumeRoleSunriseReadWrite',
+    });
+
+    const result = await listRoles();
+
+    expect(result).toEqual({
+      ok: true,
+      roles: [],
+      accessDenied: true,
+      denialRequestId: 'tx-access-denied-exception',
+    });
+  });
+
   it('returns complete active-role metadata and policy documents', async () => {
     const client = createClient();
     client.send.mockImplementation((command) => {
@@ -181,6 +234,7 @@ describe('IAM role actions', () => {
             MaxSessionDuration: 3600,
             Tags: [
               { Key: 'project-access', Value: 'project:readwrite' },
+              { Key: 'presence-only', Value: '' },
               { Key: 'ignored-without-value' },
             ],
             AssumeRolePolicyDocument: encodeURIComponent(
@@ -236,6 +290,7 @@ describe('IAM role actions', () => {
       maxSessionDuration: 3600,
       tags: [
         { key: 'project-access', value: 'project:readwrite' },
+        { key: 'presence-only', value: '' },
       ],
       inlinePoliciesAvailable: true,
       attachedPoliciesAvailable: true,
@@ -256,6 +311,51 @@ describe('IAM role actions', () => {
       Statement: [{ Action: 's3:*' }],
     });
     expect(client.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('preserves literal plus characters in raw policy JSON', async () => {
+    const client = createClient();
+    const rawPolicy = {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Condition: {
+            StringEquals: { 'aws:RequestTag/example': 'team+platform' },
+          },
+        },
+      ],
+    };
+    client.send.mockImplementation((command) => {
+      if (command instanceof GetRoleCommand) {
+        return Promise.resolve({
+          Role: {
+            Arn: activeRoleArn,
+            AssumeRolePolicyDocument: JSON.stringify(rawPolicy),
+          },
+        });
+      }
+      if (command instanceof ListRolePoliciesCommand) {
+        return Promise.resolve({ PolicyNames: [], IsTruncated: false });
+      }
+      if (command instanceof ListAttachedRolePoliciesCommand) {
+        return Promise.resolve({
+          AttachedPolicies: [],
+          IsTruncated: false,
+        });
+      }
+      throw new Error('Unexpected IAM command');
+    });
+    mocks.getActiveRoleIamContext.mockResolvedValue({
+      client,
+      roleArn: activeRoleArn,
+      roleName: 'AssumeRoleSunriseReadWrite',
+    });
+
+    const result = await getAccessRoleDetails();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Expected role details');
+    expect(JSON.parse(result.assumeRolePolicy ?? '{}')).toEqual(rawPolicy);
   });
 
   it('keeps partial role details and replaces Ceph diagnostics with friendly permission warnings', async () => {

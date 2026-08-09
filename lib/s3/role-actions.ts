@@ -114,14 +114,15 @@ function describeAwsError(error: unknown): string {
 function isAccessDeniedError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
-  const awsError = error as Error & {
-    Code?: string;
-    code?: string;
-  };
+  const awsError = error as AwsServiceError;
   return (
     awsError.name === 'AccessDenied' ||
+    awsError.name === 'AccessDeniedException' ||
     awsError.Code === 'AccessDenied' ||
-    awsError.code === 'AccessDenied'
+    awsError.Code === 'AccessDeniedException' ||
+    awsError.code === 'AccessDenied' ||
+    awsError.code === 'AccessDeniedException' ||
+    awsError.$metadata?.httpStatusCode === 403
   );
 }
 
@@ -151,7 +152,7 @@ function formatPolicyDocument(document?: string): string | null {
   const candidates = [document];
   try {
     const decoded = decodeURIComponent(document.replace(/\+/g, ' '));
-    if (decoded !== document) candidates.unshift(decoded);
+    if (decoded !== document) candidates.push(decoded);
   } catch {
     // Keep the original response if it was not URL encoded.
   }
@@ -164,7 +165,7 @@ function formatPolicyDocument(document?: string): string | null {
     }
   }
 
-  return candidates[0];
+  return candidates.at(-1) ?? document;
 }
 
 async function listRolesWithCredentialRefresh(
@@ -272,7 +273,9 @@ async function readRoleDetails(
         createdAt = response.Role?.CreateDate?.toISOString() ?? null;
         maxSessionDuration = response.Role?.MaxSessionDuration ?? null;
         tags = (response.Role?.Tags ?? []).flatMap((tag) =>
-          tag.Key && tag.Value ? [{ key: tag.Key, value: tag.Value }] : []
+          tag.Key !== undefined && tag.Value !== undefined
+            ? [{ key: tag.Key, value: tag.Value }]
+            : []
         );
         assumeRolePolicy = formatPolicyDocument(
           response.Role?.AssumeRolePolicyDocument
