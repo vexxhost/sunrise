@@ -34,6 +34,9 @@ export async function getS3Client({
     endpoint,
     region: S3_REGION,
     forcePathStyle: true,
+    // RGW does not require the optional AWS SDK v3 request checksums. Keeping
+    // them off also avoids aws-chunked checksum trailers for streamed uploads.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
     credentials: {
       accessKeyId: creds.accessKeyId,
       secretAccessKey: creds.secretAccessKey,

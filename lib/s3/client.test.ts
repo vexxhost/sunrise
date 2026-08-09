@@ -51,6 +51,9 @@ describe('getS3Client', () => {
 
     expect(mocks.getActiveS3Credentials).toHaveBeenCalledWith(session);
     expect(mocks.ensureActiveProjectS3Credentials).not.toHaveBeenCalled();
+    expect(await client.config.requestChecksumCalculation()).toBe(
+      'WHEN_REQUIRED'
+    );
     client.destroy();
   });
 

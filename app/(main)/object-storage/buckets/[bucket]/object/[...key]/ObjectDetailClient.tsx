@@ -3,22 +3,13 @@
 import Link from 'next/link';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { ChevronRight, Home } from 'lucide-react';
-import bytes from 'bytes';
+import { ObjectMetadataDetails } from '@/components/ObjectMetadataDetails';
 import { objectMetadataQueryOptions } from '@/hooks/queries/useObjects';
 
 interface ObjectDetailClientProps {
   activeProjectId: string;
   bucket: string;
   objectKey: string;
-}
-
-function Field({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[200px_1fr] gap-4 py-2 border-b last:border-b-0">
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="text-sm font-mono break-all">{value ?? '-'}</div>
-    </div>
-  );
 }
 
 export function ObjectDetailClient({
@@ -70,40 +61,7 @@ export function ObjectDetailClient({
         <p className="text-sm text-muted-foreground font-mono break-all">{objectKey}</p>
       </div>
 
-      <div className="rounded-md border p-4">
-        <Field label="Bucket" value={data.bucket} />
-        <Field label="Key" value={data.key} />
-        <Field
-          label="Size"
-          value={
-            data.size !== null
-              ? `${bytes(data.size, { unitSeparator: ' ' })} (${data.size} bytes)`
-              : null
-          }
-        />
-        <Field label="Last Modified" value={data.lastModified} />
-        <Field label="ETag" value={data.etag} />
-        <Field label="Content-Type" value={data.contentType} />
-        <Field label="Content-Encoding" value={data.contentEncoding} />
-        <Field label="Content-Disposition" value={data.contentDisposition} />
-        <Field label="Content-Language" value={data.contentLanguage} />
-        <Field label="Cache-Control" value={data.cacheControl} />
-        <Field label="Storage Class" value={data.storageClass} />
-        <Field label="Version ID" value={data.versionId} />
-        <Field label="Server-Side Encryption" value={data.serverSideEncryption} />
-        <Field label="SSE-KMS Key ID" value={data.sseKmsKeyId} />
-      </div>
-
-      {Object.keys(data.metadata).length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold mb-2">User Metadata</h3>
-          <div className="rounded-md border p-4">
-            {Object.entries(data.metadata).map(([k, v]) => (
-              <Field key={k} label={`x-amz-meta-${k}`} value={v} />
-            ))}
-          </div>
-        </div>
-      )}
+      <ObjectMetadataDetails data={data} />
     </div>
   );
 }
