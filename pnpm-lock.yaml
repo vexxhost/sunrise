@@ -173,7 +173,7 @@ importers:
         version: 8.5.25
       prettier:
         specifier: ^3.6.2
-        version: 3.6.2
+        version: 3.9.6
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -2255,6 +2255,7 @@ packages:
   eslint@9.39.0:
     resolution: {integrity: sha512-iy2GE3MHrYTL5lrCtMZ0X1KLEKKUjmK0kzwcnefhR66txcEmXZD2YWgR5GNdcEwkNx3a0siYkSvl0vIC+Svjmg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -2936,8 +2937,8 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
-  prettier@3.6.2:
-    resolution: {integrity: sha512-I7AIg5boAr5R0FFtJ6rCfD+LFsWHp81dolrFD8S79U9tb8Az2nGrJncnMSnys+bpQJfRUzqs9hnA81OAA3hCuQ==}
+  prettier@3.9.6:
+    resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -6351,7 +6352,7 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  prettier@3.6.2: {}
+  prettier@3.9.6: {}
 
   prop-types@15.8.1:
     dependencies:
