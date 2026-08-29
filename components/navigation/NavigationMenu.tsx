@@ -37,9 +37,9 @@ export async function NavigationMenu() {
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-      <div className="flex items-center justify-between w-full px-6 h-14">
+      <div className="flex h-14 w-full items-center justify-between gap-2 px-3 sm:px-6">
         {/* Left side: Logo + Services Menu */}
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Link href="/" className="flex items-center hover:opacity-80 transition-opacity">
             <Image
               src="/openstack-logo.svg"
@@ -59,7 +59,7 @@ export async function NavigationMenu() {
         {/* Right side: Feedback + Region + Project + User */}
         <_NavigationMenu viewport={false} delayDuration={600} skipDelayDuration={0}>
           <NavigationMenuList className="flex items-center gap-2">
-            <NavigationMenuItem className="list-none">
+            <NavigationMenuItem className="hidden list-none lg:block">
               <Button
                 variant="outline"
                 size="sm"
@@ -92,7 +92,7 @@ export async function NavigationMenu() {
 
             {selectedProject && (
               <>
-                <NavigationMenuItem className="list-none">
+                <NavigationMenuItem className="hidden list-none sm:block">
                   <div className="h-6 w-px bg-border" />
                 </NavigationMenuItem>
 

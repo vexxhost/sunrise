@@ -21,6 +21,7 @@ interface SelectorProps<T extends SelectorItem> {
   listClassName?: string;
   triggerClassName?: string;
   buttonClassName?: string;
+  collapseLabelOnMobile?: boolean;
 }
 
 export function Selector<T extends SelectorItem>({
@@ -32,8 +33,10 @@ export function Selector<T extends SelectorItem>({
   listClassName = "min-w-[120px]",
   triggerClassName = "",
   buttonClassName = "",
+  collapseLabelOnMobile = false,
 }: SelectorProps<T>) {
   const [isPending, startTransition] = useTransition();
+  const selectedLabel = selectedItem[displayKey] as string;
 
   const handleItemChange = (itemId: string) => {
     startTransition(async () => {
@@ -44,12 +47,20 @@ export function Selector<T extends SelectorItem>({
   return (
     <>
       <NavigationMenuTrigger
-        className={`gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted ${triggerClassName}`}
+        className={`gap-2 text-xs h-9 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted ${
+          collapseLabelOnMobile ? 'px-2.5 sm:px-3' : 'px-3'
+        } ${triggerClassName}`}
         disabled={isPending}
+        aria-label={collapseLabelOnMobile ? selectedLabel : undefined}
+        title={collapseLabelOnMobile ? selectedLabel : undefined}
       >
         <Icon className="h-3.5 w-3.5 shrink-0" />
-        <span className={`leading-none ${buttonClassName}`}>
-          {selectedItem[displayKey] as string}
+        <span
+          className={`leading-none ${
+            collapseLabelOnMobile ? 'hidden sm:inline' : ''
+          } ${buttonClassName}`}
+        >
+          {selectedLabel}
         </span>
       </NavigationMenuTrigger>
       <NavigationMenuContent>

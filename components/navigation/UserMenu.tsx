@@ -18,14 +18,20 @@ export function UserMenu({ userName }: UserMenuProps) {
 
   return (
     <>
-      <NavigationMenuItem className="list-none">
+      <NavigationMenuItem className="hidden list-none sm:block">
         <div className="h-6 w-px bg-border" />
       </NavigationMenuItem>
 
       <NavigationMenuItem>
-        <NavigationMenuTrigger className="gap-2 text-xs h-9 px-3 bg-muted/50 hover:bg-muted data-[state=open]:bg-muted">
+        <NavigationMenuTrigger
+          className="h-9 gap-2 bg-muted/50 px-2.5 text-xs hover:bg-muted data-[state=open]:bg-muted sm:px-3"
+          aria-label={userName}
+          title={userName}
+        >
           <User className="h-3.5 w-3.5 shrink-0" />
-          <span className="leading-none max-w-[100px] truncate">{userName}</span>
+          <span className="hidden max-w-[100px] truncate leading-none sm:inline">
+            {userName}
+          </span>
         </NavigationMenuTrigger>
         <NavigationMenuContent className="right-0 left-auto">
           <ul className="p-1 min-w-[140px]">
