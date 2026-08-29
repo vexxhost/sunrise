@@ -1,7 +1,10 @@
 import Link from "next/link";
 import type { ComponentType } from "react";
+import { formatDistanceToNow } from "date-fns";
 import {
+  Activity,
   ChevronRight,
+  CheckCircle2,
   CircleAlert,
   Container,
   Database,
@@ -9,13 +12,20 @@ import {
   Globe2,
   HardDrive,
   ImageIcon,
+  KeyRound,
   Layers,
   Network,
   Server,
+  TriangleAlert,
   Waypoints,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import type {
+  OperationalCategory,
+  OperationalFeed,
+  OperationalSignal,
+} from "@/lib/openstack/operational";
 import type { OverviewService } from "@/lib/openstack/overview";
 import { quotaPercentage, type QuotaMetric } from "@/lib/openstack/quota";
 
@@ -181,18 +191,143 @@ function ResourceGroup({ service }: { service: OverviewService }) {
   );
 }
 
+const operationalIcons: Record<
+  OperationalCategory,
+  ComponentType<{ className?: string }>
+> = {
+  quota: Activity,
+  resource: CircleAlert,
+  operation: TriangleAlert,
+  credential: KeyRound,
+  service: CircleAlert,
+};
+
+function signalTime(signal: OperationalSignal) {
+  if (!signal.timestamp) return null;
+  const date = new Date(signal.timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const distance = formatDistanceToNow(date, { addSuffix: true });
+  return signal.timestampKind === "expires" ? `Expires ${distance}` : distance;
+}
+
+function OperationalFeedSection({ feed }: { feed: OperationalFeed }) {
+  const visibleSignals = feed.signals.slice(0, 8);
+  const hiddenSignals = feed.signals.length - visibleSignals.length;
+  const availableSources = feed.sources.filter(
+    (source) => source.status === "available",
+  ).length;
+  const unavailableSources = feed.sources.filter(
+    (source) => source.status !== "available",
+  );
+
+  return (
+    <section aria-labelledby="attention-heading" className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 id="attention-heading" className="text-sm font-semibold">
+            Needs attention
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Quota pressure, resource health, failed operations, and credentials
+          </p>
+        </div>
+        <Badge variant="outline" className="w-fit font-normal">
+          {availableSources} of {feed.sources.length} resource checks available
+        </Badge>
+      </div>
+
+      <div className="border-y">
+        {visibleSignals.length > 0 ? (
+          <div className="divide-y">
+            {visibleSignals.map((signal) => {
+              const Icon = operationalIcons[signal.category];
+              const time = signalTime(signal);
+              return (
+                <Link
+                  key={signal.id}
+                  href={signal.href}
+                  className="group grid gap-3 px-2 py-3 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
+                >
+                  <span
+                    className={cn(
+                      "flex size-9 items-center justify-center rounded-md",
+                      signal.severity === "critical"
+                        ? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                        : "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                    )}
+                  >
+                    <Icon className="size-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-sm font-medium group-hover:underline">
+                        {signal.title}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {signal.service}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block text-sm text-muted-foreground">
+                      {signal.detail}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-2 pl-12 text-xs text-muted-foreground sm:pl-0">
+                    {time ? <span className="whitespace-nowrap">{time}</span> : null}
+                    <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex items-start gap-3 px-2 py-5">
+            <span className="flex size-9 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+              <CheckCircle2 className="size-4" />
+            </span>
+            <div>
+              <div className="text-sm font-medium">
+                {unavailableSources.length > 0
+                  ? "No issues detected in available checks"
+                  : "No issues detected"}
+              </div>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {unavailableSources.length > 0
+                  ? "Completed quota and resource checks have not reported anything requiring action."
+                  : "Current quota and resource checks have not reported anything requiring action."}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {hiddenSignals > 0 || unavailableSources.length > 0 ? (
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          {unavailableSources.length > 0 ? (
+            <span>
+              Checks unavailable: {unavailableSources.map((source) => source.label).join(", ")}
+            </span>
+          ) : (
+            <span />
+          )}
+          {hiddenSignals > 0 ? (
+            <span>
+              {hiddenSignals} more {hiddenSignals === 1 ? "issue" : "issues"} available in service views
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function OverviewDashboard({
   services,
+  operationalFeed,
 }: {
   services: OverviewService[];
+  operationalFeed: OperationalFeed;
 }) {
-  const warningMetrics = services.flatMap((service) =>
-    service.metrics
-      .filter(
-        (metric) => metric.level === "warning" || metric.level === "critical",
-      )
-      .map((metric) => ({ service: service.label, metric })),
-  );
   const unavailable = services.filter(
     (service) => service.status !== "available",
   );
@@ -225,33 +360,7 @@ export function OverviewDashboard({
         </div>
       </section>
 
-      {warningMetrics.length > 0 ? (
-        <section
-          aria-labelledby="attention-heading"
-          className="border-y border-amber-500/30 bg-amber-500/5 py-4"
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <CircleAlert className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
-            <div className="min-w-0 flex-1">
-              <h2 id="attention-heading" className="text-sm font-semibold">
-                Needs attention
-              </h2>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {warningMetrics.map(({ service, metric }) => (
-                  <Badge
-                    key={`${service}-${metric.id}`}
-                    variant="outline"
-                    className="border-amber-500/30 bg-background/60"
-                  >
-                    {service}: {metric.label}{" "}
-                    {Math.round(quotaPercentage(metric) ?? 0)}%
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
+      <OperationalFeedSection feed={operationalFeed} />
 
       <div className="grid gap-10 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <section

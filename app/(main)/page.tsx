@@ -4,20 +4,37 @@ import { OverviewRefreshButton } from '@/components/overview/OverviewRefreshButt
 import { OverviewSkeleton } from '@/components/overview/OverviewSkeleton';
 import { ProjectContextHeader } from '@/components/overview/ProjectContextHeader';
 import { readPrefs } from '@/lib/prefs';
-import { getSession } from '@/lib/session';
+import { getServiceCatalog } from '@/lib/openstack/catalog';
+import { loadOperationalFeed } from '@/lib/openstack/operational-feed';
+import { compileOperationalFeed } from '@/lib/openstack/operational';
 import { loadProjectOverview } from '@/lib/openstack/overview';
+import { getSession, normalizeProjectId } from '@/lib/session';
 
 async function OverviewData({
   token,
   regionId,
   projectId,
+  credentialExpiration,
 }: {
   token?: string;
   regionId?: string;
   projectId?: string;
+  credentialExpiration?: number;
 }) {
-  const services = await loadProjectOverview({ token, regionId, projectId });
-  return <OverviewDashboard services={services} />;
+  const catalog = token ? await getServiceCatalog(token) : null;
+  const [services, resourceFeed] = await Promise.all([
+    loadProjectOverview({ token, regionId, projectId, catalog }),
+    loadOperationalFeed({ token, regionId, projectId, catalog }),
+  ]);
+  const operationalFeed = compileOperationalFeed({
+    services,
+    resourceFeed,
+    credentialExpiration,
+  });
+
+  return (
+    <OverviewDashboard services={services} operationalFeed={operationalFeed} />
+  );
 }
 
 export default async function Page() {
@@ -27,6 +44,11 @@ export default async function Page() {
       ? prefs.projectName
       : session.projectId ?? 'No project selected';
   const regionName = session.regionId ?? 'No region selected';
+  const credentialExpiration =
+    normalizeProjectId(session.s3Credentials?.projectId) ===
+    normalizeProjectId(session.projectId)
+      ? session.s3Credentials?.expiration
+      : undefined;
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-9 px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
@@ -45,6 +67,7 @@ export default async function Page() {
           token={session.keystoneProjectToken}
           regionId={session.regionId}
           projectId={session.projectId}
+          credentialExpiration={credentialExpiration}
         />
       </Suspense>
     </div>
