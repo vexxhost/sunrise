@@ -11,6 +11,7 @@ import { Interfaces } from "@/components/Instance/Interfaces";
 import { ActionLog } from "@/components/Instance/ActionLog";
 import { Console } from "@/components/Instance/Console";
 import { ConsoleLog } from "@/components/Instance/ConsoleLog";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { serverQueryOptions, serverInterfacesQueryOptions } from "@/hooks/queries/useServers";
 import { portQueryOptions, networkQueryOptions } from "@/hooks/queries/useNetworks";
 import { useEffect, useMemo, useState } from "react";
@@ -114,6 +115,11 @@ export function InstanceDetailClient({
 
   return (
     <div className="max-w-screen-xl space-y-4">
+      <RecentResourceTracker
+        kind="instance"
+        id={String(server.id)}
+        name={server.name || "Unnamed instance"}
+      />
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">{server.name}</h1>
         <p className="font-mono text-sm text-muted-foreground">{server.id}</p>

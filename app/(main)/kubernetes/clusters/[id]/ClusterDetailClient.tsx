@@ -29,6 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -1093,6 +1094,11 @@ export function ClusterDetailClient({
 
   return (
     <div className="max-w-screen-xl space-y-4">
+      <RecentResourceTracker
+        kind="cluster"
+        id={cluster.uuid}
+        name={cluster.name || "Unnamed cluster"}
+      />
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">

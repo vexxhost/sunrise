@@ -8,6 +8,7 @@ import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import type { Volume } from "@/types/openstack";
 import { statuses as volumeStatusDescriptions } from "@/types/openstack/cinder";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -140,6 +141,11 @@ export function VolumeDetailClient({
 
   return (
     <div className="max-w-screen-xl space-y-4">
+      <RecentResourceTracker
+        kind="volume"
+        id={volume.id}
+        name={volume.name || "Unnamed volume"}
+      />
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">
           {volume.name || "Unnamed volume"}
