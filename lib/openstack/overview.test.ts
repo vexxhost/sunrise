@@ -151,7 +151,7 @@ const successfulPayloads: Record<string, unknown> = {
       l7rule: null,
     },
   },
-  "https://octavia.example.test/v2/lbaas/quotas/defaults": {
+  "https://octavia.example.test/v2/lbaas/quotas/project-id/default": {
     quota: {
       load_balancer: -1,
       listener: -1,
@@ -263,6 +263,13 @@ describe("project overview loading", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(13);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://octavia.example.test/v2/lbaas/quotas/project-id/default",
+      expect.objectContaining({
+        cache: "no-store",
+        headers: expect.objectContaining({ "X-Auth-Token": "project-token" }),
+      }),
+    );
     expect(services.map(({ id, status }) => ({ id, status }))).toEqual([
       { id: "compute", status: "available" },
       { id: "storage", status: "available" },

@@ -292,7 +292,10 @@ async function loadOctaviaMetrics(
     l7policies,
   ] = await Promise.all([
     requestJson(serviceUrl(endpoint, definition.path(projectId)), headers),
-    requestJson(serviceUrl(endpoint, "/v2/lbaas/quotas/defaults"), headers),
+    requestJson(
+      serviceUrl(endpoint, `/v2/lbaas/quotas/${projectId}/default`),
+      headers,
+    ),
     loadOctaviaCollection(endpoint, headers, projectId, "loadbalancers"),
     loadOctaviaCollection(endpoint, headers, projectId, "listeners"),
     loadOctaviaCollection(endpoint, headers, projectId, "pools"),
