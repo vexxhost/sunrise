@@ -1,8 +1,20 @@
-'use client';
+"use client";
 
-import { LayoutGrid, Server, Container, Database, Globe, FolderTree, Layers } from "lucide-react";
+import type { ComponentType } from "react";
+import {
+  ChevronRight,
+  Container,
+  Database,
+  FolderTree,
+  Globe,
+  Layers,
+  LayoutGrid,
+  Server,
+} from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useMediaQuery } from "usehooks-ts";
+import { Badge } from "@/components/ui/badge";
 import {
   NavigationMenu,
   NavigationMenuItem,
@@ -11,106 +23,155 @@ import {
   NavigationMenuList,
   NavigationMenuLink,
 } from "@/components/ui/navigation-menu";
+import type {
+  ServiceDirectoryId,
+  ServiceDirectoryItem,
+} from "@/lib/openstack/service-directory";
+import { cn } from "@/lib/utils";
 
-const services: { title: string; href: string; description: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  {
-    title: "Compute",
-    href: "/compute/instances",
-    description: "Virtual machines, networks, and storage volumes.",
-    icon: Server,
-  },
-  {
-    title: "Kubernetes",
-    href: "/kubernetes",
-    description: "Deploy and manage orchestration clusters.",
-    icon: Container,
-  },
-  {
-    title: "Object Storage",
-    href: "/object-storage",
-    description: "S3-compatible storage for files and objects.",
-    icon: Database,
-  },
-  {
-    title: "Orchestration",
-    href: "/orchestration",
-    description: "Template-based infrastructure deployment.",
-    icon: Layers,
-  },
-  {
-    title: "DNS",
-    href: "/dns",
-    description: "Manage DNS zones and domain records.",
-    icon: Globe,
-  },
-  {
-    title: "File System",
-    href: "/file-system",
-    description: "Shared file system storage and shares.",
-    icon: FolderTree,
-  },
-];
+const serviceIcons: Record<
+  ServiceDirectoryId,
+  ComponentType<{ className?: string }>
+> = {
+  compute: Server,
+  kubernetes: Container,
+  "object-storage": Database,
+  orchestration: Layers,
+  dns: Globe,
+  "file-system": FolderTree,
+};
+
+const servicePathPrefixes: Record<ServiceDirectoryId, string> = {
+  compute: "/compute",
+  kubernetes: "/kubernetes",
+  "object-storage": "/object-storage",
+  orchestration: "/orchestration",
+  dns: "/dns",
+  "file-system": "/file-system",
+};
 
 function ServiceItem({
-  title,
-  children,
-  href,
-  icon: Icon,
-  ...props
-}: React.ComponentPropsWithoutRef<"li"> & {
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  service,
+  active,
+}: {
+  service: ServiceDirectoryItem;
+  active: boolean;
 }) {
-  return (
-    <li {...props} className="h-full">
-      <NavigationMenuLink asChild>
-        <Link
-          href={href}
-          className="group flex flex-col h-full p-4 rounded-lg border border-border/40 bg-card hover:bg-accent hover:border-border transition-all duration-200 hover:shadow-sm"
+  const Icon = serviceIcons[service.id];
+  const unavailable = service.status === "unavailable";
+  const content = (
+    <>
+      <span
+        className={cn(
+          "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground",
+          active && "border-primary/40 text-primary",
+        )}
+      >
+        <Icon className="size-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center justify-between gap-2">
+          <span className="truncate font-medium text-foreground">
+            {service.label}
+          </span>
+          {active ? (
+            <Badge variant="secondary">Current</Badge>
+          ) : unavailable ? (
+            <Badge variant="outline" className="text-muted-foreground">
+              Unavailable
+            </Badge>
+          ) : service.status === "unknown" ? (
+            <Badge variant="outline" className="text-muted-foreground">
+              Unknown
+            </Badge>
+          ) : (
+            <ChevronRight
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+          {service.description}
+        </span>
+      </span>
+    </>
+  );
+
+  if (unavailable) {
+    return (
+      <li>
+        <div
+          className="flex min-h-20 items-start gap-3 rounded-md p-3 opacity-60"
+          aria-disabled="true"
+          title={service.message}
         >
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-md bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-              <Icon className="h-5 w-5" />
-            </div>
-            <div className="font-semibold text-sm">{title}</div>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
-            {children}
-          </p>
+          {content}
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <NavigationMenuLink asChild active={active}>
+        <Link
+          href={service.href}
+          className="flex min-h-20 flex-row items-start gap-3 rounded-md p-3"
+          title={service.message}
+        >
+          {content}
         </Link>
       </NavigationMenuLink>
     </li>
   );
 }
 
-export function ServicesMenu() {
+export function ServicesMenu({ services }: { services: ServiceDirectoryItem[] }) {
+  const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 767px)", {
     initializeWithValue: false,
   });
+  const availableCount = services.filter(
+    ({ status }) => status === "available",
+  ).length;
+  const availabilityKnown = services.every(
+    ({ status }) => status !== "unknown",
+  );
 
   return (
     <NavigationMenu viewport={isMobile}>
       <NavigationMenuList className="flex items-center gap-1 sm:gap-3">
         <NavigationMenuItem>
-          <NavigationMenuTrigger className="flex items-center justify-center px-2 hover:bg-accent sm:px-3">
-            <LayoutGrid className="h-5 w-5" />
+          <NavigationMenuTrigger
+            className="flex items-center justify-center px-2 hover:bg-accent sm:px-3"
+            aria-label="Services"
+            title="Services"
+          >
+            <LayoutGrid className="size-5" aria-hidden="true" />
           </NavigationMenuTrigger>
           <NavigationMenuContent>
-            <div className="p-6 w-[500px]">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold mb-1">Services</h3>
-                <p className="text-sm text-muted-foreground">Access your OpenStack services</p>
+            <div className="w-[calc(100vw-5.5rem)] max-w-[34rem] p-3 sm:w-[34rem] sm:p-4">
+              <div className="mb-2 flex items-center justify-between gap-3 px-2">
+                <div>
+                  <h2 className="text-sm font-semibold">Services</h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    OpenStack services in the active region
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-muted-foreground">
+                  {availabilityKnown
+                    ? `${availableCount} of ${services.length} available`
+                    : "Availability unknown"}
+                </Badge>
               </div>
-              <ul className="grid grid-cols-2 gap-3">
+              <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
                 {services.map((service) => (
                   <ServiceItem
-                    key={service.title}
-                    title={service.title}
-                    href={service.href}
-                    icon={service.icon}
-                  >
-                    {service.description}
-                  </ServiceItem>
+                    key={service.id}
+                    service={service}
+                    active={pathname.startsWith(servicePathPrefixes[service.id])}
+                  />
                 ))}
               </ul>
             </div>

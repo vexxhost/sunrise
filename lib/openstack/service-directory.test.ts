@@ -63,6 +63,25 @@ describe("service directory", () => {
     });
   });
 
+  it("provides shared navigation metadata for every supported service", () => {
+    const directory = buildServiceDirectory(catalog, "RegionOne");
+
+    expect(directory).toHaveLength(6);
+    expect(directory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "object-storage",
+          label: "Object Storage",
+          href: "/object-storage",
+          description: "Browse buckets, objects, and S3 access roles.",
+        }),
+      ]),
+    );
+    expect(directory.every(({ description }) => description.length > 0)).toBe(
+      true,
+    );
+  });
+
   it("keeps navigation available when catalog status is unknown", () => {
     expect(buildServiceDirectory(null, "RegionOne")).toEqual(
       expect.arrayContaining([
