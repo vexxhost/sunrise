@@ -299,40 +299,72 @@ async function loadMagnumSignals(
   headers: Record<string, string>,
   projectId: string,
 ): Promise<SourceLoadResult> {
-  const query = new URLSearchParams({
-    project_id: projectId,
-  });
-  const clusters = recordList(
-    await requestJson(serviceUrl(endpoint, `/clusters?${query}`), headers),
-    "clusters",
-    "Magnum clusters",
-  );
+  const signals: OperationalSignal[] = [];
+  const seenMarkers = new Set<string>();
+  let failedDetails = 0;
+  let marker: string | undefined;
 
-  const details = await Promise.allSettled(
-    clusters.slice(0, RESOURCE_LIMIT).map(async (cluster) => {
-      const id = stringValue(cluster, "uuid");
-      if (!id) {
-        throw new OpenStackPayloadError("Invalid Magnum cluster identifier");
+  while (true) {
+    const query = new URLSearchParams({
+      project_id: projectId,
+      limit: String(RESOURCE_LIMIT),
+      sort_key: "uuid",
+      sort_dir: "asc",
+    });
+    if (marker) query.set("marker", marker);
+
+    const clusters = recordList(
+      await requestJson(serviceUrl(endpoint, `/clusters?${query}`), headers),
+      "clusters",
+      "Magnum clusters",
+    );
+    if (clusters.length === 0) break;
+
+    const details = await Promise.allSettled(
+      clusters.map(async (cluster) => {
+        const id = stringValue(cluster, "uuid");
+        if (!id) {
+          throw new OpenStackPayloadError("Invalid Magnum cluster identifier");
+        }
+        const payload = await requestJson(
+          serviceUrl(endpoint, `/clusters/${id}`),
+          headers,
+        );
+        const root = asRecord(payload, "Magnum cluster detail");
+        return root.cluster
+          ? asRecord(root.cluster, "Magnum cluster")
+          : root;
+      }),
+    );
+
+    const authenticationFailure = details.find(
+      (result) =>
+        result.status === "rejected" &&
+        result.reason instanceof OpenStackRequestError &&
+        result.reason.status === 401,
+    );
+    if (authenticationFailure?.status === "rejected") {
+      throw authenticationFailure.reason;
+    }
+
+    for (const result of details) {
+      if (result.status === "rejected") {
+        failedDetails += 1;
+        continue;
       }
-      const payload = await requestJson(
-        serviceUrl(endpoint, `/clusters/${id}`),
-        headers,
-      );
-      const root = asRecord(payload, "Magnum cluster detail");
-      return root.cluster
-        ? asRecord(root.cluster, "Magnum cluster")
-        : root;
-    }),
-  );
+      const signal = magnumSignal(result.value, projectId);
+      if (signal) signals.push(signal);
+    }
 
-  const signals = details.flatMap((result) => {
-    if (result.status === "rejected") return [];
-    const signal = magnumSignal(result.value, projectId);
-    return signal ? [signal] : [];
-  });
-  const failedDetails = details.filter(
-    (result) => result.status === "rejected",
-  ).length;
+    if (clusters.length < RESOURCE_LIMIT) break;
+
+    const nextMarker = stringValue(clusters[clusters.length - 1], "uuid");
+    if (!nextMarker || seenMarkers.has(nextMarker)) {
+      throw new OpenStackPayloadError("Invalid Magnum cluster pagination");
+    }
+    seenMarkers.add(nextMarker);
+    marker = nextMarker;
+  }
 
   return {
     signals,

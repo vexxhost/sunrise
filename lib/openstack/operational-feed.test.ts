@@ -124,7 +124,7 @@ const payloads: Record<string, unknown> = {
         },
       ],
     },
-  "https://magnum.example.test/v1/clusters?project_id=project-id": {
+  "https://magnum.example.test/v1/clusters?project_id=project-id&limit=20&sort_key=uuid&sort_dir=asc": {
     clusters: [
       { uuid: "failed-cluster" },
       { uuid: "unhealthy-cluster" },
@@ -268,6 +268,111 @@ describe("operational feed loading", () => {
         message: "Project-scoped resource health is not supported",
       });
     expect(result.signals).toEqual([]);
+  });
+
+  it("paginates Magnum clusters before declaring the health check complete", async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) => ({
+      uuid: `cluster-${String(index + 1).padStart(2, "0")}`,
+    }));
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("nova.example.test")) {
+        return Response.json({ servers: [] });
+      }
+      if (url.includes("cinder.example.test")) {
+        return Response.json({ messages: [] });
+      }
+      if (url.includes("glance.example.test")) {
+        return Response.json({ images: [] });
+      }
+      if (
+        url ===
+        "https://magnum.example.test/v1/clusters?project_id=project-id&limit=20&sort_key=uuid&sort_dir=asc"
+      ) {
+        return Response.json({ clusters: firstPage });
+      }
+      if (
+        url ===
+        "https://magnum.example.test/v1/clusters?project_id=project-id&limit=20&sort_key=uuid&sort_dir=asc&marker=cluster-20"
+      ) {
+        return Response.json({ clusters: [{ uuid: "cluster-21" }] });
+      }
+      if (url.endsWith("/clusters/cluster-21")) {
+        return Response.json({
+          uuid: "cluster-21",
+          name: "last-cluster",
+          project_id: "project-id",
+          status: "UPDATE_FAILED",
+        });
+      }
+      if (url.includes("/clusters/cluster-")) {
+        const id = url.split("/").at(-1);
+        return Response.json({
+          uuid: id,
+          project_id: "project-id",
+          status: "CREATE_COMPLETE",
+          health_status: "HEALTHY",
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await loadOperationalFeed({
+      token: "project-token",
+      regionId: "RegionOne",
+      projectId: "project-id",
+      catalog,
+      now,
+    });
+
+    expect(result.sources.find((source) => source.id === "kubernetes"))
+      .toMatchObject({ status: "available" });
+    expect(result.signals).toEqual([
+      expect.objectContaining({ id: "kubernetes:cluster-21" }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://magnum.example.test/v1/clusters?project_id=project-id&limit=20&sort_key=uuid&sort_dir=asc&marker=cluster-20",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
+  it("redirects when a Magnum detail request reports an expired token", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes("nova.example.test")) {
+          return Response.json({ servers: [] });
+        }
+        if (url.includes("cinder.example.test")) {
+          return Response.json({ messages: [] });
+        }
+        if (url.includes("glance.example.test")) {
+          return Response.json({ images: [] });
+        }
+        if (url.includes("/clusters/expired-cluster")) {
+          return new Response(null, {
+            status: 401,
+            statusText: "Unauthorized",
+          });
+        }
+        return Response.json({ clusters: [{ uuid: "expired-cluster" }] });
+      }),
+    );
+
+    await expect(
+      loadOperationalFeed({
+        token: "project-token",
+        regionId: "RegionOne",
+        projectId: "project-id",
+        catalog,
+        now,
+      }),
+    ).rejects.toThrow("redirect:/auth/logout?reason=expired");
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/auth/logout?reason=expired",
+    );
   });
 
   it("redirects when a resource check reports an expired token", async () => {
