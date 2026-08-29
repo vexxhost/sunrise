@@ -11,10 +11,7 @@ export type ServiceDirectoryId =
   | "dns"
   | "file-system";
 
-export type ServiceDirectoryStatus =
-  | "available"
-  | "unavailable"
-  | "unknown";
+export type ServiceDirectoryStatus = "available" | "unavailable" | "unknown";
 
 export type ServiceDirectoryItem = {
   id: ServiceDirectoryId;
@@ -42,7 +39,7 @@ const serviceDirectoryDefinitions: ServiceDirectoryDefinition[] = [
     id: "compute",
     label: "Compute",
     description: "Virtual machines, images, networks, and block storage.",
-    href: "/compute/instances",
+    href: "/compute",
     catalogIdentities: [{ serviceType: "compute", serviceName: "nova" }],
   },
   {
@@ -73,9 +70,7 @@ const serviceDirectoryDefinitions: ServiceDirectoryDefinition[] = [
     label: "Orchestration",
     description: "Deploy infrastructure from reusable Heat templates.",
     href: "/orchestration",
-    catalogIdentities: [
-      { serviceType: "orchestration", serviceName: "heat" },
-    ],
+    catalogIdentities: [{ serviceType: "orchestration", serviceName: "heat" }],
   },
   {
     id: "dns",
@@ -117,12 +112,8 @@ export function buildServiceDirectory(
   return serviceDirectoryDefinitions.map((definition) => {
     const available = definition.catalogIdentities.some(
       ({ serviceType, serviceName }) =>
-        resolveServiceEndpoint(
-          catalog,
-          regionId,
-          serviceType,
-          serviceName,
-        ) !== null,
+        resolveServiceEndpoint(catalog, regionId, serviceType, serviceName) !==
+        null,
     );
 
     return {

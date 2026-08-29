@@ -2,10 +2,17 @@ import { ServiceLayout } from "@/components/ServiceLayout";
 
 const computeSidebarSections = [
   {
+    items: [{ name: "Overview", href: "/compute", icon: "Gauge" }],
+  },
+  {
     title: "Instances",
     items: [
       { name: "Instances", href: "/compute/instances", icon: "Server" },
-      { name: "Instance Flavors", href: "/compute/instance-flavors", icon: "Cpu" },
+      {
+        name: "Instance Flavors",
+        href: "/compute/instance-flavors",
+        icon: "Cpu",
+      },
       { name: "Images", href: "/compute/images", icon: "Image" },
     ],
   },
@@ -20,7 +27,6 @@ const computeSidebarSections = [
     title: "Network & Security",
     items: [
       { name: "Networks", href: "/compute/networks", icon: "Network" },
-      { name: "Security Groups", href: "/compute/security-groups", icon: "Shield" },
       { name: "Key Pairs", href: "/compute/key-pairs", icon: "Key" },
     ],
   },

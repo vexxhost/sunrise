@@ -39,9 +39,10 @@ const catalog: OpenStackCatalogService[] = [
 describe("service directory", () => {
   it("derives service availability from the active region catalog", () => {
     expect(
-      buildServiceDirectory(catalog, "RegionOne").map(
-        ({ id, status }) => ({ id, status }),
-      ),
+      buildServiceDirectory(catalog, "RegionOne").map(({ id, status }) => ({
+        id,
+        status,
+      })),
     ).toEqual([
       { id: "compute", status: "available" },
       { id: "kubernetes", status: "available" },
@@ -69,6 +70,10 @@ describe("service directory", () => {
     expect(directory).toHaveLength(6);
     expect(directory).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          id: "compute",
+          href: "/compute",
+        }),
         expect.objectContaining({
           id: "object-storage",
           label: "Object Storage",

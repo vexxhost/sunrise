@@ -1,26 +1,26 @@
-import Link from 'next/link';
-import { Database, ShieldCheck } from 'lucide-react';
-import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
-import { Badge } from '@/components/ui/badge';
+import { Database, KeyRound, ShieldCheck, UserRoundCheck } from "lucide-react";
+import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { listBucketsForRender } from '@/lib/s3/actions';
-import { listRolesForRender } from '@/lib/s3/role-actions';
-import { RoleDetailsDialog } from './RoleDetailsDialog';
+  ServiceLandingPage,
+  ServiceLandingSection,
+  ServiceRecentResources,
+  ServiceResourceGrid,
+  type ServiceLandingMetric,
+} from "@/components/service-landing/ServiceLanding";
+import { listBucketsForRender } from "@/lib/s3/actions";
+import { listRolesForRender } from "@/lib/s3/role-actions";
+import { loadServiceLandingContext } from "@/lib/service-landing";
+import { RoleDetailsDialog } from "./RoleDetailsDialog";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export default async function ObjectStoragePage() {
-  const [bucketResult, roleResult] = await Promise.all([
-    listBucketsForRender(),
-    listRolesForRender(),
-  ]);
+  const [{ projectName, regionName, resources }, bucketResult, roleResult] =
+    await Promise.all([
+      loadServiceLandingContext(),
+      listBucketsForRender(),
+      listRolesForRender(),
+    ]);
 
   if (
     (!bucketResult.ok && bucketResult.needsAuth) ||
@@ -29,79 +29,89 @@ export default async function ObjectStoragePage() {
     return <ObjectStorageAuthRedirect />;
   }
 
-  const resources = [
+  const bucketCount = bucketResult.ok ? bucketResult.buckets.length : null;
+  const roleCount = roleResult.ok ? roleResult.roles.length : null;
+  const bucketRestricted = bucketResult.ok
+    ? Boolean(bucketResult.accessDenied)
+    : true;
+  const roleRestricted = roleResult.ok ? roleResult.accessDenied : true;
+  const bucketError = bucketResult.ok ? null : bucketResult.error;
+  const roleError = roleResult.ok ? null : roleResult.error;
+  const metrics: ServiceLandingMetric[] = [
     {
-      name: 'Buckets',
-      href: '/object-storage/buckets',
       icon: Database,
-      description: 'Buckets and stored objects',
-      count: bucketResult.ok ? bucketResult.buckets.length : null,
-      restricted: bucketResult.ok ? Boolean(bucketResult.accessDenied) : true,
-      error: bucketResult.ok ? null : bucketResult.error,
+      label: "Buckets",
+      value: bucketCount === null ? "-" : String(bucketCount),
+      detail: bucketError ?? "Buckets in the active RGW account",
     },
     {
-      name: 'Roles',
-      href: '/object-storage/roles',
       icon: ShieldCheck,
-      description: 'IAM roles in the active RGW account',
-      count: roleResult.ok ? roleResult.roles.length : null,
-      restricted: roleResult.ok ? roleResult.accessDenied : true,
-      error: roleResult.ok ? null : roleResult.error,
+      label: "Access roles",
+      value: roleCount === null ? "-" : String(roleCount),
+      detail: roleError ?? "IAM roles visible to the current session",
+    },
+    {
+      icon: UserRoundCheck,
+      label: "Bucket access",
+      value: bucketRestricted ? "Restricted" : "Available",
+      detail: bucketError ?? "S3 list access for the active project",
+    },
+    {
+      icon: KeyRound,
+      label: "Role access",
+      value: roleRestricted ? "Restricted" : "Available",
+      detail: roleError ?? "RGW IAM list access for the active project",
     },
   ];
 
   return (
-    <div className="max-w-screen-xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Object Storage</h1>
-        <RoleDetailsDialog />
-      </div>
+    <ServiceLandingPage
+      title="Object Storage"
+      description="Browse S3-compatible buckets and objects, and inspect the RGW role used by the active project."
+      projectName={projectName}
+      regionName={regionName}
+      actions={<RoleDetailsDialog />}
+      metrics={metrics}
+    >
+      <ServiceLandingSection
+        title="Quick access"
+        description="Open storage resources available through the current RGW credentials."
+      >
+        <ServiceResourceGrid
+          resources={[
+            {
+              name: "Buckets",
+              href: "/object-storage/buckets",
+              icon: Database,
+              description:
+                "Browse buckets and manage objects through server or direct browser mode.",
+              meta:
+                bucketCount === null
+                  ? (bucketError ?? "Count unavailable")
+                  : `${bucketCount} visible`,
+              badge: bucketRestricted ? "Restricted" : "Available",
+            },
+            {
+              name: "Access roles",
+              href: "/object-storage/roles",
+              icon: ShieldCheck,
+              description:
+                "Inspect IAM roles, trust policies, and permissions in the active RGW account.",
+              meta:
+                roleCount === null
+                  ? (roleError ?? "Count unavailable")
+                  : `${roleCount} visible`,
+              badge: roleRestricted ? "Restricted" : "Available",
+            },
+          ]}
+        />
+      </ServiceLandingSection>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold">Resources</h2>
-        <div className="overflow-hidden rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Resource</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Count</TableHead>
-                <TableHead>Access</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {resources.map((resource) => {
-                const Icon = resource.icon;
-                return (
-                  <TableRow key={resource.href}>
-                    <TableCell>
-                      <Link
-                        href={resource.href}
-                        className="inline-flex items-center gap-2 font-medium underline-offset-2 hover:underline"
-                      >
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                        {resource.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {resource.description}
-                    </TableCell>
-                    <TableCell>{resource.count ?? '-'}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={resource.restricted ? 'secondary' : 'default'}
-                        title={resource.error ?? undefined}
-                      >
-                        {resource.restricted ? 'Restricted' : 'Available'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
-    </div>
+      <ServiceRecentResources
+        resources={resources}
+        kinds={["bucket"]}
+        emptyMessage="No pinned or recently viewed buckets in this project."
+      />
+    </ServiceLandingPage>
   );
 }

@@ -233,6 +233,32 @@ describe("project overview loading", () => {
     ).toBe(true);
   });
 
+  it("loads only the services requested by a service landing page", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input) => {
+        const url = String(input);
+        const payload = successfulPayloads[url];
+        if (!payload) throw new Error(`Unexpected URL: ${url}`);
+        return jsonResponse(payload);
+      });
+
+    const services = await loadProjectOverview({
+      token: "project-token",
+      regionId: "RegionOne",
+      projectId: "project-id",
+      catalog,
+      serviceIds: ["compute", "network"],
+    });
+
+    expect(services.map(({ id }) => id)).toEqual(["compute", "network"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("magnum"),
+      expect.anything(),
+    );
+  });
+
   it("loads all services concurrently from the active region and project", async () => {
     mocks.getServiceCatalog.mockResolvedValue(catalog);
     const fetchMock = vi
