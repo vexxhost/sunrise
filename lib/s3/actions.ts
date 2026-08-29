@@ -221,7 +221,7 @@ async function listObjectsWithCredentialRefresh(
         ok: false,
         needsAuth: false,
         notFound: true,
-        error: 'Bucket not found.',
+        error: 'Bucket could not be found or accessed.',
       };
     }
     const detail = describeAwsError(e);

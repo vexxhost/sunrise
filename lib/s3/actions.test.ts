@@ -34,7 +34,7 @@ describe('S3 object listing failures', () => {
       ok: false,
       needsAuth: false,
       notFound: true,
-      error: 'Bucket not found.',
+      error: 'Bucket could not be found or accessed.',
     });
     expect(consoleError).not.toHaveBeenCalled();
   });

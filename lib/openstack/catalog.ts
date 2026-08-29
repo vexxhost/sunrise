@@ -34,6 +34,11 @@ export async function getServiceCatalog(
     if (catalogResponse.status === 401) {
       redirect('/auth/logout?reason=expired');
     }
+    console.error('[catalog] service catalog request failed', {
+      requestId:
+        catalogResponse.headers.get('x-openstack-request-id') ?? undefined,
+      status: catalogResponse.status,
+    });
     return null;
   }
 

@@ -9,7 +9,10 @@ import {
   type MutationResult,
   type MutationScope,
 } from "@/lib/mutations";
-import { getServiceEndpoint } from "@/lib/openstack/catalog";
+import {
+  getServiceCatalog,
+  resolveServiceEndpoint,
+} from "@/lib/openstack/catalog";
 import { serviceUrl } from "@/lib/openstack/request";
 
 type OpenStackMutationOptions<T> = {
@@ -65,11 +68,24 @@ export async function executeOpenStackMutation<T = null>({
   if (!guarded.ok) return guarded.result;
 
   const { projectToken, scope: activeScope } = guarded.context;
-  const endpoint = await getServiceEndpoint(
+  const catalog = await getServiceCatalog(projectToken!);
+  if (!catalog) {
+    return mutationFailure(
+      {
+        code: "service-error",
+        message:
+          "Cloud service discovery is temporarily unavailable. Try again shortly.",
+        retryable: true,
+      },
+      activeScope,
+    );
+  }
+
+  const endpoint = resolveServiceEndpoint(
+    catalog,
     activeScope.regionId!,
     serviceType,
     serviceName,
-    projectToken!,
   );
 
   if (!endpoint) {

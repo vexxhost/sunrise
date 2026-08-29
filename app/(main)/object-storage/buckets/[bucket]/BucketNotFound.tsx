@@ -17,10 +17,11 @@ export function BucketNotFound({ bucket }: { bucket: string }) {
         <EmptyMedia variant="icon">
           <Database />
         </EmptyMedia>
-        <EmptyTitle>Bucket not found</EmptyTitle>
+        <EmptyTitle>Bucket unavailable</EmptyTitle>
         <EmptyDescription>
-          <span className="font-mono text-foreground">{bucket}</span> does not
-          exist in the active project, or it is no longer available.
+          <span className="font-mono text-foreground">{bucket}</span> could not
+          be found or accessed with the current Object Storage role. Check the
+          bucket name or switch to a role with access.
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>

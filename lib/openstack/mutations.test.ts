@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getServiceEndpoint: vi.fn(),
+  getServiceCatalog: vi.fn(),
   guardMutationContext: vi.fn(),
   revalidatePath: vi.fn(),
+  resolveServiceEndpoint: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
@@ -12,7 +13,8 @@ vi.mock("@/lib/mutation-context", () => ({
   guardMutationContext: mocks.guardMutationContext,
 }));
 vi.mock("@/lib/openstack/catalog", () => ({
-  getServiceEndpoint: mocks.getServiceEndpoint,
+  getServiceCatalog: mocks.getServiceCatalog,
+  resolveServiceEndpoint: mocks.resolveServiceEndpoint,
 }));
 
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
@@ -23,7 +25,10 @@ describe("OpenStack mutation executor", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
-    mocks.getServiceEndpoint.mockResolvedValue("https://nova.example/v2.1");
+    mocks.getServiceCatalog.mockResolvedValue([]);
+    mocks.resolveServiceEndpoint.mockReturnValue(
+      "https://nova.example/v2.1",
+    );
     mocks.guardMutationContext.mockResolvedValue({
       ok: true,
       context: { projectToken: "token", scope },
@@ -124,6 +129,59 @@ describe("OpenStack mutation executor", () => {
       error: { code: "context-changed" },
     });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(mocks.getServiceEndpoint).not.toHaveBeenCalled();
+    expect(mocks.getServiceCatalog).not.toHaveBeenCalled();
+    expect(mocks.resolveServiceEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable error when service discovery fails", async () => {
+    mocks.getServiceCatalog.mockResolvedValue(null);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "launch an instance",
+      method: "POST",
+      path: "/servers",
+      scope,
+      serviceName: "nova",
+      serviceType: "compute",
+      successMessage: "Instance is being created.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-error",
+        message:
+          "Cloud service discovery is temporarily unavailable. Try again shortly.",
+        retryable: true,
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.resolveServiceEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("reports a genuinely absent endpoint as non-retryable", async () => {
+    mocks.resolveServiceEndpoint.mockReturnValue(null);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "launch an instance",
+      method: "POST",
+      path: "/servers",
+      scope,
+      serviceName: "nova",
+      serviceType: "compute",
+      successMessage: "Instance is being created.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: "nova is not available in RegionOne.",
+        retryable: false,
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
