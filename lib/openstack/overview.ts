@@ -381,14 +381,22 @@ export async function loadProjectOverview({
   regionId,
   projectId,
   catalog: providedCatalog,
+  serviceIds,
 }: {
   token?: string;
   regionId?: string;
   projectId?: string;
   catalog?: OpenStackCatalogService[] | null;
+  serviceIds?: OverviewServiceId[];
 }): Promise<OverviewService[]> {
+  const definitions = serviceIds
+    ? serviceDefinitions.filter((definition) =>
+        serviceIds.includes(definition.id),
+      )
+    : serviceDefinitions;
+
   if (!token || !regionId || !projectId) {
-    return serviceDefinitions.map((definition) =>
+    return definitions.map((definition) =>
       unavailableService(definition, "Select a project and region"),
     );
   }
@@ -398,13 +406,13 @@ export async function loadProjectOverview({
       ? await getServiceCatalog(token)
       : providedCatalog;
   if (!catalog) {
-    return serviceDefinitions.map((definition) =>
+    return definitions.map((definition) =>
       unavailableService(definition, "Service catalog is unavailable"),
     );
   }
 
   return Promise.all(
-    serviceDefinitions.map((definition) =>
+    definitions.map((definition) =>
       loadService(definition, catalog, token, regionId, projectId),
     ),
   );
