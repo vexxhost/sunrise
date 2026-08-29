@@ -30,17 +30,6 @@ for (let index = 0; index < 256; index += 1) {
   crcTable[index] = value >>> 0;
 }
 
-function describeAwsError(e: unknown): string {
-  if (e instanceof Error) {
-    const anyErr = e as any;
-    const name = anyErr.name || 'Error';
-    const code = anyErr.Code || anyErr.$metadata?.httpStatusCode;
-    const msg = anyErr.message || String(e);
-    return `${name}${code ? ` (${code})` : ''}: ${msg}`;
-  }
-  return String(e);
-}
-
 function listedFolderPrefix(prefix: string): string {
   if (!prefix) return '';
   return prefix.endsWith('/') ? prefix : `${prefix}/`;
@@ -290,6 +279,10 @@ export async function POST(request: Request, { params }: RouteContext) {
         },
       });
     }
-    return new Response(describeAwsError(e), { status: 502 });
+    console.error('[s3/download-selected] FAILED:', e);
+    return new Response(
+      'Unable to download selected objects. Please try again.',
+      { status: 502 }
+    );
   }
 }

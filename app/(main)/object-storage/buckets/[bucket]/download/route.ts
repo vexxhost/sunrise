@@ -20,17 +20,6 @@ function fallbackFileName(name: string): string {
   return name.replace(/[^\x20-\x7E]+/g, '_').replace(/["\\]/g, '_');
 }
 
-function describeAwsError(e: unknown): string {
-  if (e instanceof Error) {
-    const anyErr = e as any;
-    const name = anyErr.name || 'Error';
-    const code = anyErr.Code || anyErr.$metadata?.httpStatusCode;
-    const msg = anyErr.message || String(e);
-    return `${name}${code ? ` (${code})` : ''}: ${msg}`;
-  }
-  return String(e);
-}
-
 export async function GET(request: Request, { params }: RouteContext) {
   const { bucket: rawBucket } = await params;
   const bucket = decodeURIComponent(rawBucket);
@@ -85,6 +74,9 @@ export async function GET(request: Request, { params }: RouteContext) {
     if (e instanceof S3AuthRequiredError) {
       redirect('/object-storage/auth/login');
     }
-    return new Response(describeAwsError(e), { status: 502 });
+    console.error('[s3/download] FAILED:', e);
+    return new Response('Unable to download object. Please try again.', {
+      status: 502,
+    });
   }
 }
