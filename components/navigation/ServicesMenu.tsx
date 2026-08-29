@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentType } from "react";
+import { useState, type ComponentType } from "react";
 import {
   ChevronRight,
   Container,
@@ -9,12 +9,15 @@ import {
   Globe,
   Layers,
   LayoutGrid,
+  Search,
   Server,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMediaQuery } from "usehooks-ts";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { openGlobalSearch } from "@/components/navigation/global-search-events";
 import {
   NavigationMenu,
   NavigationMenuItem,
@@ -129,6 +132,7 @@ function ServiceItem({
 
 export function ServicesMenu({ services }: { services: ServiceDirectoryItem[] }) {
   const pathname = usePathname();
+  const [value, setValue] = useState("");
   const isMobile = useMediaQuery("(max-width: 767px)", {
     initializeWithValue: false,
   });
@@ -140,9 +144,9 @@ export function ServicesMenu({ services }: { services: ServiceDirectoryItem[] })
   );
 
   return (
-    <NavigationMenu viewport={isMobile}>
+    <NavigationMenu viewport={isMobile} value={value} onValueChange={setValue}>
       <NavigationMenuList className="flex items-center gap-1 sm:gap-3">
-        <NavigationMenuItem>
+        <NavigationMenuItem value="services">
           <NavigationMenuTrigger
             className="flex items-center justify-center px-2 hover:bg-accent sm:px-3"
             aria-label="Services"
@@ -152,6 +156,21 @@ export function ServicesMenu({ services }: { services: ServiceDirectoryItem[] })
           </NavigationMenuTrigger>
           <NavigationMenuContent>
             <div className="w-[calc(100vw-5.5rem)] max-w-[34rem] p-3 sm:w-[34rem] sm:p-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="mb-3 w-full justify-start text-muted-foreground"
+                onClick={() => {
+                  setValue("");
+                  window.setTimeout(openGlobalSearch, 0);
+                }}
+              >
+                <Search className="size-4" aria-hidden="true" />
+                <span>Search Sunrise</span>
+                <kbd className="ml-auto rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                  ⌘K
+                </kbd>
+              </Button>
               <div className="mb-2 flex items-center justify-between gap-3 px-2">
                 <div>
                   <h2 className="text-sm font-semibold">Services</h2>
