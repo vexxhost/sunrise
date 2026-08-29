@@ -112,7 +112,7 @@ export function GlobalCommandPalette({
   const hasContext = Boolean(regionId && projectId);
   const searchIndex = useQuery({
     queryKey: ["global-search-index", regionId, projectId],
-    queryFn: loadGlobalSearchIndex,
+    queryFn: () => loadGlobalSearchIndex(),
     enabled: open && hasContext,
     staleTime: 60_000,
     retry: false,
