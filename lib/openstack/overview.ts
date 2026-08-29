@@ -16,6 +16,14 @@ import {
   type OctaviaQuotaUsage,
   type QuotaMetric,
 } from "@/lib/openstack/quota";
+import {
+  asRecord,
+  OpenStackConnectionError,
+  OpenStackPayloadError,
+  OpenStackRequestError,
+  requestJson,
+  serviceUrl,
+} from "@/lib/openstack/request";
 
 export type OverviewServiceId =
   | "compute"
@@ -111,31 +119,6 @@ const serviceDefinitions: ServiceDefinition[] = [
   },
 ];
 
-class OpenStackRequestError extends Error {
-  constructor(
-    readonly status: number,
-    readonly statusText: string,
-  ) {
-    super(`OpenStack request failed: ${status} ${statusText}`);
-  }
-}
-
-class OpenStackConnectionError extends Error {
-  constructor(readonly originalError: unknown) {
-    super("OpenStack service is unreachable");
-  }
-}
-
-class OpenStackPayloadError extends Error {}
-
-function serviceUrl(endpoint: string, path: string) {
-  const url = new URL(endpoint);
-  const requested = new URL(path, "http://openstack.invalid");
-  url.pathname = `${url.pathname.replace(/\/$/, "")}${requested.pathname}`;
-  url.search = requested.search;
-  return url.toString();
-}
-
 function serviceHeaders(definition: ServiceDefinition, token: string) {
   const headers: Record<string, string> = { "X-Auth-Token": token };
   if (definition.apiVersion) {
@@ -143,34 +126,6 @@ function serviceHeaders(definition: ServiceDefinition, token: string) {
       definition.apiVersion;
   }
   return headers;
-}
-
-async function requestJson(url: string, headers: Record<string, string>) {
-  let response: Response;
-  try {
-    response = await fetch(url, { headers, cache: "no-store" });
-  } catch (error) {
-    throw new OpenStackConnectionError(error);
-  }
-
-  if (!response.ok) {
-    throw new OpenStackRequestError(response.status, response.statusText);
-  }
-
-  try {
-    return await response.json();
-  } catch (error) {
-    throw new OpenStackPayloadError(
-      error instanceof Error ? error.message : "Invalid JSON response",
-    );
-  }
-}
-
-function asRecord(value: unknown, name: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new OpenStackPayloadError(`Invalid ${name} response`);
-  }
-  return value as Record<string, unknown>;
 }
 
 async function loadMagnumClusterCount(
@@ -425,10 +380,12 @@ export async function loadProjectOverview({
   token,
   regionId,
   projectId,
+  catalog: providedCatalog,
 }: {
   token?: string;
   regionId?: string;
   projectId?: string;
+  catalog?: OpenStackCatalogService[] | null;
 }): Promise<OverviewService[]> {
   if (!token || !regionId || !projectId) {
     return serviceDefinitions.map((definition) =>
@@ -436,7 +393,10 @@ export async function loadProjectOverview({
     );
   }
 
-  const catalog = await getServiceCatalog(token);
+  const catalog =
+    providedCatalog === undefined
+      ? await getServiceCatalog(token)
+      : providedCatalog;
   if (!catalog) {
     return serviceDefinitions.map((definition) =>
       unavailableService(definition, "Service catalog is unavailable"),
