@@ -31,6 +31,7 @@ export function RegionSelector({ regions, selectedRegion }: RegionSelectorProps)
       onSelect={handleSelect}
       listClassName="min-w-[120px]"
       buttonClassName="font-mono"
+      collapseLabelOnMobile
     />
   );
 }

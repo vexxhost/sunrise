@@ -90,9 +90,9 @@ export function ServicesMenu() {
 
   return (
     <NavigationMenu viewport={isMobile}>
-      <NavigationMenuList className="flex items-center gap-3">
+      <NavigationMenuList className="flex items-center gap-1 sm:gap-3">
         <NavigationMenuItem>
-          <NavigationMenuTrigger className="p-0 px-3 flex items-center justify-center hover:bg-accent">
+          <NavigationMenuTrigger className="flex items-center justify-center px-2 hover:bg-accent sm:px-3">
             <LayoutGrid className="h-5 w-5" />
           </NavigationMenuTrigger>
           <NavigationMenuContent>

@@ -33,6 +33,7 @@ export function ProjectSelector({ projects, selectedProject }: ProjectSelectorPr
       displayKey="name"
       onSelect={handleSelect}
       listClassName="min-w-[200px] max-h-[400px] overflow-y-auto"
+      collapseLabelOnMobile
     />
   );
 }
