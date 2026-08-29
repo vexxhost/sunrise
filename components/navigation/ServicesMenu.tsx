@@ -64,7 +64,7 @@ function ServiceItem({
       <span
         className={cn(
           "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground",
-          active && "border-primary/40 text-primary",
+          active && !unavailable && "border-primary/40 text-primary",
         )}
       >
         <Icon className="size-4" aria-hidden="true" />
@@ -74,12 +74,12 @@ function ServiceItem({
           <span className="truncate font-medium text-foreground">
             {service.label}
           </span>
-          {active ? (
-            <Badge variant="secondary">Current</Badge>
-          ) : unavailable ? (
+          {unavailable ? (
             <Badge variant="outline" className="text-muted-foreground">
               Unavailable
             </Badge>
+          ) : active ? (
+            <Badge variant="secondary">Current</Badge>
           ) : service.status === "unknown" ? (
             <Badge variant="outline" className="text-muted-foreground">
               Unknown
