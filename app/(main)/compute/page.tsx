@@ -15,13 +15,12 @@ import {
   ServiceResourceGrid,
   type ServiceLandingMetric,
 } from "@/components/service-landing/ServiceLanding";
-import { getServiceCatalog } from "@/lib/openstack/catalog";
+import { loadCloudContext } from "@/lib/cloud-context";
 import {
   loadProjectOverview,
   type OverviewService,
 } from "@/lib/openstack/overview";
 import { quotaPercentage, type QuotaMetric } from "@/lib/openstack/quota";
-import { loadServiceLandingContext } from "@/lib/service-landing";
 
 const numberFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
@@ -67,16 +66,17 @@ function currentMeta(summary: ReturnType<typeof metricSummary>) {
 }
 
 export default async function ComputePage() {
-  const { session, projectName, regionName, resources } =
-    await loadServiceLandingContext();
-  const catalog = session.keystoneProjectToken
-    ? await getServiceCatalog(session.keystoneProjectToken)
-    : null;
+  const cloud = await loadCloudContext();
+  const { snapshot } = cloud;
+  const resources = [
+    ...snapshot.personalResources.pinned,
+    ...snapshot.personalResources.recent,
+  ];
   const services = await loadProjectOverview({
-    token: session.keystoneProjectToken,
-    regionId: session.regionId,
-    projectId: session.projectId,
-    catalog,
+    token: cloud.keystoneToken,
+    regionId: snapshot.region.id ?? undefined,
+    projectId: snapshot.project.id ?? undefined,
+    catalog: cloud.catalog,
     serviceIds: ["compute", "storage", "network"],
   });
   const serviceById = new Map(services.map((service) => [service.id, service]));
@@ -100,8 +100,8 @@ export default async function ComputePage() {
     <ServiceLandingPage
       title="Compute"
       description="Operate virtual machines and the images, storage, networking, and access resources that support them."
-      projectName={projectName}
-      regionName={regionName}
+      context={snapshot}
+      serviceId="compute"
       metrics={metrics}
     >
       <ServiceLandingSection

@@ -41,10 +41,8 @@ vi.mock('@/lib/s3/session', () => ({
     mocks.ensureActiveProjectS3Credentials,
 }));
 
-import {
-  getActiveRoleIamContext,
-  roleNameFromArn,
-} from '@/lib/s3/iam';
+import { roleNameFromArn } from '@/lib/s3/arn';
+import { getActiveRoleIamContext } from '@/lib/s3/iam';
 import { S3AuthRequiredError } from '@/lib/s3/client';
 
 const projectId = '7a96a68dc8264f3d84fafd95a72265c5';
@@ -57,24 +55,6 @@ const credentials = {
   expiration: Date.now() + 3_600_000,
   projectId,
 };
-
-describe('roleNameFromArn', () => {
-  it('extracts a role name from a Ceph RGW account ARN', () => {
-    expect(roleNameFromArn(roleArn)).toBe('AssumeRoleSunriseReadWrite');
-  });
-
-  it('extracts a role name from an ARN without a path', () => {
-    expect(roleNameFromArn('arn:aws:iam::123456789012:role/ReadOnly')).toBe(
-      'ReadOnly'
-    );
-  });
-
-  it('rejects malformed role ARNs', () => {
-    expect(() => roleNameFromArn('arn:aws:s3:::example')).toThrow(
-      'Invalid IAM role ARN'
-    );
-  });
-});
 
 describe('getActiveRoleIamContext', () => {
   beforeEach(() => {

@@ -9,60 +9,11 @@ import {
 } from "@/components/ui/navigation-menu";
 import { ServicesMenu } from "./ServicesMenu";
 import { GlobalCommandPalette } from "./GlobalCommandPalette";
-import { RegionSelector } from "./RegionSelector";
-import { ProjectSelector } from "./ProjectSelector";
+import { CloudContextControls } from "./CloudContextControls";
 import { UserMenu } from "./UserMenu";
 import { ThemeToggle } from "./ThemeToggle";
-import { getRegions, getProjects } from "@/lib/keystone/queries";
-import { getSession } from "@/lib/session";
-import { getUserInfo } from "@/lib/openstack/keystone-actions";
-import { getServiceCatalog } from "@/lib/openstack/catalog";
-import { buildServiceDirectory } from "@/lib/openstack/service-directory";
-import { readPrefs } from "@/lib/prefs";
-import { visibleResourcePreferences } from "@/lib/resource-preferences";
 
-export async function NavigationMenu() {
-  // Get session to read selected region/project IDs
-  const session = await getSession();
-
-  // Fetch regions and selected region
-  const regions = await getRegions();
-  const selectedRegion = regions.length > 0
-    ? (regions.find(r => r.id === session.regionId) || regions[0])
-    : null;
-
-  // Fetch projects and selected project
-  const projects = await getProjects();
-  const selectedProject = projects.length > 0
-    ? (projects.find(p => p.id === session.projectId) || projects[0])
-    : null;
-
-  // Region/project discovery can initialize session defaults. Re-read the
-  // session before using its scoped token so the service switcher reflects the
-  // same active context as the selectors.
-  const activeSession = await getSession();
-  const [userInfo, catalog, prefs] = await Promise.all([
-    getUserInfo(),
-    activeSession.keystoneProjectToken
-      ? getServiceCatalog(activeSession.keystoneProjectToken)
-      : Promise.resolve(null),
-    readPrefs(),
-  ]);
-  const regionId = selectedRegion?.id ?? activeSession.regionId;
-  const projectId = selectedProject?.id ?? activeSession.projectId;
-  const services = buildServiceDirectory(
-    catalog,
-    regionId,
-  );
-  const personalResources = visibleResourcePreferences({
-    recent: prefs.recentResources ?? [],
-    pinned: prefs.pinnedResources ?? [],
-    context: {
-      projectId: projectId ?? "",
-      regionId: regionId ?? "",
-    },
-  });
-
+export function NavigationMenu() {
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
       <div className="flex h-14 w-full items-center justify-between gap-2 px-3 sm:px-6">
@@ -81,18 +32,11 @@ export async function NavigationMenu() {
 
           <div className="h-6 w-px bg-border" />
 
-          <ServicesMenu services={services} />
+          <ServicesMenu />
         </div>
 
         <div className="hidden min-w-0 flex-1 justify-center px-2 lg:flex">
-          <GlobalCommandPalette
-            key={`${regionId ?? "none"}:${projectId ?? "none"}`}
-            services={services}
-            pinnedResources={personalResources.pinned}
-            recentResources={personalResources.recent}
-            regionId={regionId}
-            projectId={projectId}
-          />
+          <GlobalCommandPalette />
         </div>
 
         {/* Right side: Feedback + Region + Project + User */}
@@ -125,31 +69,8 @@ export async function NavigationMenu() {
               <ThemeToggle />
             </NavigationMenuItem>
 
-            {selectedRegion && (
-              <NavigationMenuItem>
-                <RegionSelector
-                  regions={regions}
-                  selectedRegion={selectedRegion}
-                />
-              </NavigationMenuItem>
-            )}
-
-            {selectedProject && (
-              <>
-                <NavigationMenuItem className="hidden list-none sm:block">
-                  <div className="h-6 w-px bg-border" />
-                </NavigationMenuItem>
-
-                <NavigationMenuItem>
-                  <ProjectSelector
-                    projects={projects}
-                    selectedProject={selectedProject}
-                  />
-                </NavigationMenuItem>
-              </>
-            )}
-
-            <UserMenu userName={userInfo?.name} />
+            <CloudContextControls />
+            <UserMenu />
           </NavigationMenuList>
         </_NavigationMenu>
       </div>

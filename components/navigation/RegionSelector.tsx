@@ -1,21 +1,20 @@
-'use client';
+"use client";
 
 import { MapPin } from "lucide-react";
+import { useCloudContext } from "@/components/cloud/CloudContext";
 import { setRegion } from "@/lib/keystone/actions";
 import { useRouter } from "next/navigation";
-import type { Region } from "@/types/openstack";
 import { Selector } from "./Selector";
 
-interface RegionSelectorProps {
-  regions: Region[];
-  selectedRegion: Region;
-}
-
-export function RegionSelector({ regions, selectedRegion }: RegionSelectorProps) {
+export function RegionSelector() {
+  const { regions, region: activeRegion } = useCloudContext();
   const router = useRouter();
+  const selectedRegion = regions.find((region) => region.id === activeRegion.id);
+
+  if (!selectedRegion) return null;
 
   const handleSelect = async (regionId: string) => {
-    const region = regions.find(r => r.id === regionId);
+    const region = regions.find((item) => item.id === regionId);
     if (region) {
       await setRegion(region);
       router.refresh();

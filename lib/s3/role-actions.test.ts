@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/s3/iam', () => ({
   getActiveRoleIamContext: mocks.getActiveRoleIamContext,
+}));
+
+vi.mock('@/lib/s3/arn', () => ({
   roleNameFromArn: mocks.roleNameFromArn,
 }));
 

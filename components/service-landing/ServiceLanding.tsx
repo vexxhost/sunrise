@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
 import {
   ArrowRight,
+  CircleCheck,
+  CircleHelp,
+  CircleX,
   Container,
   Database,
   HardDrive,
@@ -10,6 +13,8 @@ import {
 } from "lucide-react";
 import { ProjectContextHeader } from "@/components/overview/ProjectContextHeader";
 import { Badge } from "@/components/ui/badge";
+import type { CloudContextSnapshot } from "@/lib/cloud-context-snapshot";
+import type { ServiceDirectoryId } from "@/lib/openstack/service-directory";
 import { cn } from "@/lib/utils";
 import {
   resourceKindLabel,
@@ -51,16 +56,16 @@ const recentResourceIcons: Record<ResourceKind, LandingIcon> = {
 export function ServiceLandingPage({
   title,
   description,
-  projectName,
-  regionName,
+  context,
+  serviceId,
   actions,
   metrics,
   children,
 }: {
   title: string;
   description: string;
-  projectName: string;
-  regionName: string;
+  context: CloudContextSnapshot;
+  serviceId: ServiceDirectoryId;
   actions?: ReactNode;
   metrics: ServiceLandingMetric[];
   children: ReactNode;
@@ -70,8 +75,8 @@ export function ServiceLandingPage({
       <ProjectContextHeader
         title={title}
         description={description}
-        projectName={projectName}
-        regionName={regionName}
+        context={context}
+        serviceId={serviceId}
         actions={actions}
       />
 
@@ -160,6 +165,72 @@ export function ServiceLandingSection({
       </div>
       {children}
     </section>
+  );
+}
+
+export function ServiceAvailabilityPage({
+  title,
+  description,
+  context,
+  serviceId,
+  resourceLabel,
+}: {
+  title: string;
+  description: string;
+  context: CloudContextSnapshot;
+  serviceId: ServiceDirectoryId;
+  resourceLabel: string;
+}) {
+  const service = context.services.find((item) => item.id === serviceId);
+  const status = service?.status ?? "unknown";
+  const StatusIcon =
+    status === "available"
+      ? CircleCheck
+      : status === "unavailable"
+        ? CircleX
+        : CircleHelp;
+
+  return (
+    <div className="max-w-screen-xl space-y-8">
+      <ProjectContextHeader
+        title={title}
+        description={description}
+        context={context}
+        serviceId={serviceId}
+      />
+      <section
+        className="border-y py-6"
+        aria-labelledby={`${serviceId}-status`}
+      >
+        <div className="flex items-start gap-3">
+          <StatusIcon
+            className={cn(
+              "mt-0.5 size-5 shrink-0",
+              status === "available" &&
+                "text-emerald-700 dark:text-emerald-400",
+              status === "unavailable" && "text-rose-700 dark:text-rose-400",
+              status === "unknown" && "text-muted-foreground",
+            )}
+            aria-hidden="true"
+          />
+          <div>
+            <h2 id={`${serviceId}-status`} className="font-medium">
+              {status === "available"
+                ? `${resourceLabel} service is available`
+                : status === "unavailable"
+                  ? `${resourceLabel} service is unavailable`
+                  : `${resourceLabel} availability is unknown`}
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              {service?.message ?? context.catalog.message}
+              {status === "available"
+                ? ` ${resourceLabel} resource management is planned for a future Sunrise release.`
+                : null}
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 

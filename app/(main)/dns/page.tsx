@@ -1,10 +1,16 @@
-export default function DNSPage() {
+import { ServiceAvailabilityPage } from "@/components/service-landing/ServiceLanding";
+import { loadCloudContext } from "@/lib/cloud-context";
+
+export default async function DNSPage() {
+  const { snapshot } = await loadCloudContext();
+
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6">DNS Overview</h1>
-      <p className="text-muted-foreground">
-        Manage DNS zones and domain records with OpenStack Designate.
-      </p>
-    </div>
+    <ServiceAvailabilityPage
+      title="DNS"
+      description="Manage DNS zones and domain records with OpenStack Designate."
+      context={snapshot}
+      serviceId="dns"
+      resourceLabel="Designate"
+    />
   );
 }
