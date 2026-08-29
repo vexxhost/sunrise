@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import bytes from 'bytes';
 import { DataTable } from '@/components/DataTable';
+import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
 import { UploadQueueMenu } from '@/components/UploadQueueMenu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { objectsQueryOptions } from '@/hooks/queries/useObjects';
+import { useMutationRefresh } from '@/hooks/useMutationRefresh';
 import {
   calculateSelectionSize,
   createFolder,
@@ -149,16 +151,20 @@ export function ObjectsClient({
   initialPrefix,
   initialData,
 }: ObjectsClientProps) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const prefix = searchParams.get('prefix') ?? '';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const objectListOptions = useMemo(
+    () => objectsQueryOptions(activeProjectId, bucket, prefix),
+    [activeProjectId, bucket, prefix]
+  );
 
   const { data = initialData, refetch, isRefetching } = useQuery({
-    ...objectsQueryOptions(activeProjectId, bucket, prefix),
+    ...objectListOptions,
     initialData: prefix === initialPrefix ? initialData : undefined,
   });
+  const refreshObjects = useMutationRefresh(objectListOptions.queryKey);
 
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -207,11 +213,6 @@ export function ObjectsClient({
     [data.folders, data.objects, prefix]
   );
 
-  const refreshObjects = async () => {
-    await refetch();
-    router.refresh();
-  };
-
   const handleFilesSelected = (input: HTMLInputElement) => {
     const selectedFiles = input.files ? Array.from(input.files) : [];
     if (selectedFiles.length > 0) {
@@ -242,6 +243,7 @@ export function ObjectsClient({
         'POST',
         `/object-storage/buckets/${encodeURIComponent(bucket)}/upload`
       );
+      request.setRequestHeader('X-Sunrise-Project-Id', activeProjectId);
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
         setUploadPhase('sending');
@@ -327,7 +329,12 @@ export function ObjectsClient({
     setFolderMessage(null);
     setFolderError(null);
 
-    const result = await createFolder(bucket, prefix, folderName);
+    const result = await createFolder(
+      activeProjectId,
+      bucket,
+      prefix,
+      folderName
+    );
     setFolderBusy(false);
 
     if (!result.ok) {
@@ -359,6 +366,7 @@ export function ObjectsClient({
     setRemoveMessage(null);
 
     const result: RemoveSelectionResult = await removeSelection(
+      activeProjectId,
       bucket,
       removalFor(removeTargets)
     );
@@ -848,62 +856,34 @@ export function ObjectsClient({
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <MutationConfirmationDialog
         open={removeOpen}
-        onOpenChange={(open) => {
-          if (!removing) setRemoveOpen(open);
-        }}
+        onOpenChange={setRemoveOpen}
+        onConfirm={confirmRemove}
+        pending={removing}
+        title={removeDialogTitle}
+        description={removeDialogDescription}
+        confirmLabel="Remove"
+        pendingLabel="Removing"
+        error={removeError}
+        variant="destructive"
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{removeDialogTitle}</DialogTitle>
-            <DialogDescription>
-              {removeDialogDescription}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-64 overflow-auto rounded-md border p-3 text-sm">
-            {removeTargets.slice(0, 10).map((target) => (
-              <div key={target.fullPath} className="flex gap-2 text-xs">
-                <span className="shrink-0 text-muted-foreground">
-                  {target.kind === 'folder' ? 'Folder' : 'Item'}
-                </span>
-                <span className="font-mono break-all">{target.fullPath}</span>
-              </div>
-            ))}
-            {removeTargets.length > 10 && (
-              <div className="mt-2 text-muted-foreground">
-                and {removeTargets.length - 10} more
-              </div>
-            )}
-          </div>
-          {removeError && (
-            <div className="rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-destructive">
-              {removeError}
+        <div className="max-h-64 overflow-auto rounded-md border p-3 text-sm">
+          {removeTargets.slice(0, 10).map((target) => (
+            <div key={target.fullPath} className="flex gap-2 text-xs">
+              <span className="shrink-0 text-muted-foreground">
+                {target.kind === 'folder' ? 'Folder' : 'Item'}
+              </span>
+              <span className="font-mono break-all">{target.fullPath}</span>
+            </div>
+          ))}
+          {removeTargets.length > 10 && (
+            <div className="mt-2 text-muted-foreground">
+              and {removeTargets.length - 10} more
             </div>
           )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={removing}
-              onClick={() => setRemoveOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={removing}
-              onClick={() => {
-                void confirmRemove();
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-              {removing ? 'Removing' : 'Remove'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </MutationConfirmationDialog>
 
       <Dialog open={policyOpen} onOpenChange={setPolicyOpen}>
         <DialogContent className="sm:max-w-3xl">

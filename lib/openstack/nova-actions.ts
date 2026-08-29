@@ -1,7 +1,9 @@
 'use server';
 
 import { openstack } from '@/lib/openstack/actions';
+import { executeOpenStackMutation } from '@/lib/openstack/mutations';
 import { getSession } from '@/lib/session';
+import type { MutationResult, MutationScope } from '@/lib/mutations';
 import type {
   CreateServerImageRequest,
   CreateServerRequest,
@@ -62,22 +64,34 @@ async function performInstanceAction(
 }
 
 export async function createServerAction(
+  scope: MutationScope,
   payload: CreateServerRequest,
-  regionId?: string,
-): Promise<Server> {
-  const resolvedRegion = await resolveRegionId(regionId);
-
-  const data = await openstack<ServerResponse>({
-    regionId: resolvedRegion,
+): Promise<MutationResult<Server>> {
+  return executeOpenStackMutation<Server>({
+    actionLabel: 'launch an instance',
+    scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: '/servers',
     method: 'POST',
     apiVersion: API_VERSION,
     body: { server: payload },
-  });
+    invalidates: ['/compute', '/compute/instances'],
+    successMessage: `Instance ${payload.name} is being created.`,
+    transform: (responsePayload) => {
+      if (
+        !responsePayload ||
+        typeof responsePayload !== 'object' ||
+        !('server' in responsePayload) ||
+        !responsePayload.server ||
+        typeof responsePayload.server !== 'object'
+      ) {
+        throw new Error('Nova did not return the created server');
+      }
 
-  return ensureResponse(data, 'Failed to launch instance').server;
+      return responsePayload.server as Server;
+    },
+  });
 }
 
 export async function deleteServerAction(

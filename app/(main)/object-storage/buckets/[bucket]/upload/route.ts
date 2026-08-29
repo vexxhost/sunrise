@@ -2,6 +2,7 @@ import { HeadObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'node:stream';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
 import { describeS3UploadError } from '@/lib/s3/upload-error';
+import { guardMutationContext } from '@/lib/mutation-context';
 
 interface RouteContext {
   params: Promise<{ bucket: string }>;
@@ -21,12 +22,7 @@ function isNoSuchObject(e: unknown): boolean {
 export async function POST(request: Request, { params }: RouteContext) {
   const { bucket: rawBucket } = await params;
   const bucket = decodeURIComponent(rawBucket);
-  const formData = await request.formData();
-  const files = formData.getAll('files').filter((value): value is File => {
-    return value instanceof File && value.size >= 0;
-  });
-  const requestedKeys = formData.getAll('keys').map((value) => String(value));
-  const confirmOverwrite = formData.get('confirmOverwrite') === 'true';
+  const expectedProjectId = request.headers.get('x-sunrise-project-id') ?? '';
 
   if (!bucket) {
     return Response.json(
@@ -34,6 +30,36 @@ export async function POST(request: Request, { params }: RouteContext) {
       { status: 400 }
     );
   }
+  const guarded = await guardMutationContext(
+    { projectId: expectedProjectId },
+    { requireProjectToken: false, requireRegion: false }
+  );
+  if (!guarded.ok) {
+    const { error } = guarded.result;
+    return Response.json(
+      {
+        ok: false,
+        needsAuth: error.code === 'authentication-required',
+        error: error.message,
+      },
+      {
+        status:
+          error.code === 'authentication-required'
+            ? 401
+            : error.code === 'context-changed'
+              ? 409
+              : 400,
+      }
+    );
+  }
+
+  const formData = await request.formData();
+  const files = formData.getAll('files').filter((value): value is File => {
+    return value instanceof File && value.size >= 0;
+  });
+  const requestedKeys = formData.getAll('keys').map((value) => String(value));
+  const confirmOverwrite = formData.get('confirmOverwrite') === 'true';
+
   if (files.length === 0) {
     return Response.json(
       { ok: false, needsAuth: false, error: 'No files selected' },

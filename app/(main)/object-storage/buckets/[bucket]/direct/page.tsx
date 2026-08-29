@@ -4,7 +4,11 @@ import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRe
 import { DataTableHeader } from '@/components/DataTable/Header';
 import { RecentResourceTracker } from '@/components/resources/RecentResourceTracker';
 import { directObjectPath } from '@/lib/s3/direct-route';
-import { getActiveS3Credentials, getSession } from '@/lib/session';
+import {
+  getActiveS3Credentials,
+  getSession,
+  normalizeProjectId,
+} from '@/lib/session';
 
 interface PageProps {
   params: Promise<{ bucket: string }>;
@@ -23,6 +27,7 @@ export default async function Page({ params, searchParams }: PageProps) {
   // Server-side preflight: if no STS creds exist, hand off to OIDC in-browser.
   const session = await getSession();
   const creds = getActiveS3Credentials(session);
+  const activeProjectId = normalizeProjectId(session.projectId);
 
   if (!creds) {
     return <ObjectStorageAuthRedirect />;
@@ -32,7 +37,7 @@ export default async function Page({ params, searchParams }: PageProps) {
     <>
       <RecentResourceTracker kind="bucket" id={bucket} name={bucket} />
       <DataTableHeader resourceName="object" actions={undefined} />
-      <DirectClient bucket={bucket} />
+      <DirectClient activeProjectId={activeProjectId} bucket={bucket} />
     </>
   );
 }

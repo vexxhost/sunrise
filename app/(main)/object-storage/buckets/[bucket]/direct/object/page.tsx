@@ -1,7 +1,11 @@
 import { redirect } from 'next/navigation';
 import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
 import { DataTableHeader } from '@/components/DataTable/Header';
-import { getActiveS3Credentials, getSession } from '@/lib/session';
+import {
+  getActiveS3Credentials,
+  getSession,
+  normalizeProjectId,
+} from '@/lib/session';
 
 import { DirectClient } from '../DirectClient';
 
@@ -24,6 +28,7 @@ export default async function Page({ params, searchParams }: PageProps) {
 
   const session = await getSession();
   const creds = getActiveS3Credentials(session);
+  const activeProjectId = normalizeProjectId(session.projectId);
 
   if (!creds) {
     return <ObjectStorageAuthRedirect />;
@@ -32,7 +37,11 @@ export default async function Page({ params, searchParams }: PageProps) {
   return (
     <>
       <DataTableHeader resourceName="object" actions={undefined} />
-      <DirectClient bucket={bucket} objectKey={objectKey} />
+      <DirectClient
+        activeProjectId={activeProjectId}
+        bucket={bucket}
+        objectKey={objectKey}
+      />
     </>
   );
 }

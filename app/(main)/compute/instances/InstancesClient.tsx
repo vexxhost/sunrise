@@ -134,8 +134,6 @@ function FadedTableText({
 }
 
 export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
-  console.log('[InstancesClient] render', { regionId, projectId });
-
   // Fetch servers
   const { data: serversData, isRefetching: isRefetchingServers, refetch: refetchServers } = useSuspenseQuery(
     serversQueryOptions(regionId, projectId)

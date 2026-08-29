@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import bytes from 'bytes';
 import { DataTable } from '@/components/DataTable';
+import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
 import {
   ObjectMetadataDetails,
   type ObjectMetadataDetailsData,
@@ -57,8 +58,10 @@ import {
   type BrowserSizeResult,
 } from '@/lib/s3/browser-objects';
 import { normalizeStorageClass } from '@/lib/s3/storage-class';
+import { useMutationRefresh } from '@/hooks/useMutationRefresh';
 
 interface DirectClientProps {
+  activeProjectId: string;
   bucket: string;
   objectKey?: string;
 }
@@ -73,6 +76,12 @@ type SizeState = BrowserSizeResult & { label: string };
 interface DirectDownload {
   key: string;
   url: string;
+}
+
+interface DirectBrowserSession {
+  client: S3Client;
+  endpoint: string;
+  projectId: string;
 }
 
 function filePath(file: File) {
@@ -92,15 +101,19 @@ function triggerNativeDownload(url: string) {
   link.remove();
 }
 
-export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
+export function DirectClient({
+  activeProjectId,
+  bucket,
+  objectKey = '',
+}: DirectClientProps) {
   const searchParams = useSearchParams();
   const prefix = searchParams.get('prefix') ?? '';
   const inspectKey = objectKey;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  const [s3, setS3] = useState<S3Client | null>(null);
-  const [endpoint, setEndpoint] = useState<string | null>(null);
+  const [browserSession, setBrowserSession] =
+    useState<DirectBrowserSession | null>(null);
   const [credsError, setCredsError] = useState<string | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -133,9 +146,18 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
   const [policyState, setPolicyState] = useState<PolicyState>({
     status: 'idle',
   });
+  const activeBrowserSession =
+    browserSession?.projectId === activeProjectId ? browserSession : null;
+  const s3 = activeBrowserSession?.client ?? null;
+  const endpoint = activeBrowserSession?.endpoint ?? null;
+  const directObjectsKey = useMemo(
+    () => ['s3-direct', activeProjectId, 'objects', bucket, prefix] as const,
+    [activeProjectId, bucket, prefix]
+  );
 
   useEffect(() => {
     let cancelled = false;
+    setCredsError(null);
     void (async () => {
       const result = await getStsCredentialsForBrowser();
       if (cancelled) return;
@@ -147,34 +169,36 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
         setCredsError(result.error);
         return;
       }
-      setS3(
-        makeBrowserS3Client(
+      setBrowserSession({
+        client: makeBrowserS3Client(
           result.credentials,
           result.endpoint,
           result.region
-        )
-      );
-      setEndpoint(result.endpoint);
+        ),
+        endpoint: result.endpoint,
+        projectId: activeProjectId,
+      });
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeProjectId]);
 
   const listQuery = useQuery({
-    queryKey: ['s3-direct', 'objects', bucket, prefix],
+    queryKey: directObjectsKey,
     enabled: !!s3 && !inspectKey,
     retry: false,
     queryFn: () => listBrowserObjects(s3!, bucket, prefix),
   });
 
   const headQuery = useQuery({
-    queryKey: ['s3-direct', 'head', bucket, inspectKey],
+    queryKey: ['s3-direct', activeProjectId, 'head', bucket, inspectKey],
     enabled: !!s3 && !!inspectKey,
     retry: false,
     queryFn: () =>
       s3!.send(new HeadObjectCommand({ Bucket: bucket, Key: inspectKey })),
   });
+  const refreshObjects = useMutationRefresh(directObjectsKey);
 
   const rows = useMemo(() => listQuery.data?.rows ?? [], [listQuery.data?.rows]);
   const segments = useMemo(
@@ -282,7 +306,7 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
         );
       }
       setUploadFiles([]);
-      await listQuery.refetch();
+      await refreshObjects();
     } catch (error) {
       setUploadError(describeBrowserS3Error(error));
     } finally {
@@ -299,7 +323,7 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
       const key = await createBrowserFolder(s3, bucket, prefix, folderName);
       setFolderName('');
       setFolderMessage(`Created ${key} directly in RGW.`);
-      await listQuery.refetch();
+      await refreshObjects();
     } catch (error) {
       setFolderError(describeBrowserS3Error(error));
     } finally {
@@ -332,7 +356,7 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
           `${result.errors.length} delete failed. ${result.errors[0].key}: ${result.errors[0].error}`
         );
       }
-      await listQuery.refetch();
+      await refreshObjects();
     } catch (error) {
       setRemoveError(describeBrowserS3Error(error));
     } finally {
@@ -906,58 +930,34 @@ export function DirectClient({ bucket, objectKey = '' }: DirectClientProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <MutationConfirmationDialog
         open={removeOpen}
-        onOpenChange={(open) => {
-          if (!removing) setRemoveOpen(open);
-        }}
+        onOpenChange={setRemoveOpen}
+        onConfirm={confirmRemove}
+        pending={removing}
+        title={removeDialogTitle}
+        description={removeDialogDescription}
+        confirmLabel="Remove"
+        pendingLabel="Removing"
+        error={removeError}
+        variant="destructive"
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{removeDialogTitle}</DialogTitle>
-            <DialogDescription>{removeDialogDescription}</DialogDescription>
-          </DialogHeader>
-          <div className="max-h-64 overflow-auto rounded-md border p-3 text-sm">
-            {removeTargets.slice(0, 10).map((target) => (
-              <div key={target.fullPath} className="flex gap-2 text-xs">
-                <span className="shrink-0 text-muted-foreground">
-                  {target.kind === 'folder' ? 'Folder' : 'Item'}
-                </span>
-                <span className="break-all font-mono">{target.fullPath}</span>
-              </div>
-            ))}
-            {removeTargets.length > 10 && (
-              <div className="mt-2 text-muted-foreground">
-                and {removeTargets.length - 10} more
-              </div>
-            )}
-          </div>
-          {removeError && (
-            <div className="rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-destructive">
-              {removeError}
+        <div className="max-h-64 overflow-auto rounded-md border p-3 text-sm">
+          {removeTargets.slice(0, 10).map((target) => (
+            <div key={target.fullPath} className="flex gap-2 text-xs">
+              <span className="shrink-0 text-muted-foreground">
+                {target.kind === 'folder' ? 'Folder' : 'Item'}
+              </span>
+              <span className="break-all font-mono">{target.fullPath}</span>
+            </div>
+          ))}
+          {removeTargets.length > 10 && (
+            <div className="mt-2 text-muted-foreground">
+              and {removeTargets.length - 10} more
             </div>
           )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={removing}
-              onClick={() => setRemoveOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={removing}
-              onClick={() => void confirmRemove()}
-            >
-              <Trash2 className="h-4 w-4" />
-              {removing ? 'Removing' : 'Remove'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </MutationConfirmationDialog>
 
       <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
         <DialogContent className="sm:max-w-2xl">
