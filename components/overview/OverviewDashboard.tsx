@@ -28,6 +28,10 @@ import type {
 } from "@/lib/openstack/operational";
 import type { OverviewService } from "@/lib/openstack/overview";
 import { quotaPercentage, type QuotaMetric } from "@/lib/openstack/quota";
+import type {
+  ServiceDirectoryId,
+  ServiceDirectoryItem,
+} from "@/lib/openstack/service-directory";
 
 const quickAccess = [
   { label: "Instances", href: "/compute/instances", icon: Server, tone: "sky" },
@@ -69,14 +73,17 @@ const toneClasses = {
   violet: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
 } as const;
 
-const serviceDirectory = [
-  { label: "Compute", href: "/compute/instances", icon: Server },
-  { label: "Kubernetes", href: "/kubernetes", icon: Container },
-  { label: "Object Storage", href: "/object-storage", icon: Database },
-  { label: "Orchestration", href: "/orchestration", icon: Layers },
-  { label: "DNS", href: "/dns", icon: Globe2 },
-  { label: "File System", href: "/file-system", icon: FolderTree },
-];
+const serviceDirectoryIcons: Record<
+  ServiceDirectoryId,
+  ComponentType<{ className?: string }>
+> = {
+  compute: Server,
+  kubernetes: Container,
+  "object-storage": Database,
+  orchestration: Layers,
+  dns: Globe2,
+  "file-system": FolderTree,
+};
 
 function formatValue(value: number, unit?: string) {
   const formatted = new Intl.NumberFormat("en", {
@@ -324,12 +331,20 @@ function OperationalFeedSection({ feed }: { feed: OperationalFeed }) {
 export function OverviewDashboard({
   services,
   operationalFeed,
+  serviceDirectory,
 }: {
   services: OverviewService[];
   operationalFeed: OperationalFeed;
+  serviceDirectory: ServiceDirectoryItem[];
 }) {
   const unavailable = services.filter(
     (service) => service.status !== "available",
+  );
+  const availableDirectoryServices = serviceDirectory.filter(
+    (service) => service.status === "available",
+  ).length;
+  const directoryStatusUnknown = serviceDirectory.some(
+    (service) => service.status === "unknown",
   );
 
   return (
@@ -450,28 +465,68 @@ export function OverviewDashboard({
       </div>
 
       <section aria-labelledby="services-heading" className="space-y-3 pb-4">
-        <h2 id="services-heading" className="text-sm font-semibold">
-          Services
-        </h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="services-heading" className="text-sm font-semibold">
+            Services
+          </h2>
+          <Badge variant="outline" className="font-normal">
+            {directoryStatusUnknown
+              ? "Catalog status unknown"
+              : `${availableDirectoryServices} of ${serviceDirectory.length} available`}
+          </Badge>
+        </div>
         <div className="grid border-y sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {serviceDirectory.map(({ label, href, icon: Icon }, index) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 border-b px-3 py-4 text-sm transition-colors hover:bg-muted/50 sm:border-r",
-                index >= serviceDirectory.length - 2 && "sm:border-b-0",
-                index % 2 === 1 && "sm:border-r-0",
-                index >= 3 ? "lg:border-b-0" : "lg:border-b",
-                index % 3 === 2 ? "lg:border-r-0" : "lg:border-r",
-                "xl:border-b-0 xl:border-r",
-                index === serviceDirectory.length - 1 && "xl:border-r-0",
-              )}
-            >
-              <Icon className="size-4 text-muted-foreground" />
-              <span className="font-medium">{label}</span>
-            </Link>
-          ))}
+          {serviceDirectory.map((service, index) => {
+            const Icon = serviceDirectoryIcons[service.id];
+            const className = cn(
+              "flex items-center gap-3 border-b px-3 py-4 text-sm transition-colors hover:bg-muted/50 sm:border-r",
+              index >= serviceDirectory.length - 2 && "sm:border-b-0",
+              index % 2 === 1 && "sm:border-r-0",
+              index >= 3 ? "lg:border-b-0" : "lg:border-b",
+              index % 3 === 2 ? "lg:border-r-0" : "lg:border-r",
+              "xl:border-b-0 xl:border-r",
+              index === serviceDirectory.length - 1 && "xl:border-r-0",
+              service.status === "unavailable" &&
+                "cursor-not-allowed bg-muted/20 text-muted-foreground hover:bg-muted/20",
+            );
+            const content = (
+              <>
+                <Icon className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {service.label}
+                </span>
+                {service.status === "available" ? (
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <Badge variant="outline" className="shrink-0 font-normal">
+                    {service.status === "unavailable"
+                      ? "Unavailable"
+                      : "Unknown"}
+                  </Badge>
+                )}
+              </>
+            );
+
+            return service.status === "unavailable" ? (
+              <div
+                key={service.id}
+                aria-disabled="true"
+                title={service.message}
+                className={className}
+              >
+                {content}
+              </div>
+            ) : (
+              <Link
+                key={service.id}
+                href={service.href}
+                title={service.message}
+                className={className}
+              >
+                {content}
+              </Link>
+            );
+          })}
         </div>
       </section>
     </div>
