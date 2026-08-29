@@ -1,6 +1,7 @@
 import { ObjectsClient } from './ObjectsClient';
 import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
 import { DataTableHeader } from '@/components/DataTable/Header';
+import { RecentResourceTracker } from '@/components/resources/RecentResourceTracker';
 import { listObjectsForRender } from '@/lib/s3/actions';
 import { getSession, normalizeProjectId } from '@/lib/session';
 
@@ -27,6 +28,7 @@ export default async function Page({ params, searchParams }: PageProps) {
 
   return (
     <>
+      <RecentResourceTracker kind="bucket" id={bucket} name={bucket} />
       <DataTableHeader resourceName="object" actions={undefined} />
       <ObjectsClient
         activeProjectId={activeProjectId}

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { DirectClient } from './DirectClient';
 import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
 import { DataTableHeader } from '@/components/DataTable/Header';
+import { RecentResourceTracker } from '@/components/resources/RecentResourceTracker';
 import { directObjectPath } from '@/lib/s3/direct-route';
 import { getActiveS3Credentials, getSession } from '@/lib/session';
 
@@ -29,6 +30,7 @@ export default async function Page({ params, searchParams }: PageProps) {
 
   return (
     <>
+      <RecentResourceTracker kind="bucket" id={bucket} name={bucket} />
       <DataTableHeader resourceName="object" actions={undefined} />
       <DirectClient bucket={bucket} />
     </>

@@ -9,6 +9,10 @@ import { loadOperationalFeed } from '@/lib/openstack/operational-feed';
 import { compileOperationalFeed } from '@/lib/openstack/operational';
 import { loadProjectOverview } from '@/lib/openstack/overview';
 import { buildServiceDirectory } from '@/lib/openstack/service-directory';
+import {
+  visibleResourcePreferences,
+  type ResourcePreference,
+} from '@/lib/resource-preferences';
 import { getSession, normalizeProjectId } from '@/lib/session';
 
 async function OverviewData({
@@ -16,11 +20,15 @@ async function OverviewData({
   regionId,
   projectId,
   credentialExpiration,
+  pinnedResources,
+  recentResources,
 }: {
   token?: string;
   regionId?: string;
   projectId?: string;
   credentialExpiration?: number;
+  pinnedResources: ResourcePreference[];
+  recentResources: ResourcePreference[];
 }) {
   const catalog = token ? await getServiceCatalog(token) : null;
   const [services, resourceFeed] = await Promise.all([
@@ -39,6 +47,8 @@ async function OverviewData({
       services={services}
       operationalFeed={operationalFeed}
       serviceDirectory={serviceDirectory}
+      pinnedResources={pinnedResources}
+      recentResources={recentResources}
     />
   );
 }
@@ -55,6 +65,14 @@ export default async function Page() {
     normalizeProjectId(session.projectId)
       ? session.s3Credentials?.expiration
       : undefined;
+  const personalResources = visibleResourcePreferences({
+    recent: prefs.recentResources ?? [],
+    pinned: prefs.pinnedResources ?? [],
+    context: {
+      projectId: session.projectId ?? '',
+      regionId: session.regionId ?? '',
+    },
+  });
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-9 px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
@@ -74,6 +92,8 @@ export default async function Page() {
           regionId={session.regionId}
           projectId={session.projectId}
           credentialExpiration={credentialExpiration}
+          pinnedResources={personalResources.pinned}
+          recentResources={personalResources.recent}
         />
       </Suspense>
     </div>

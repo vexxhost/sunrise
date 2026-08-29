@@ -6,6 +6,7 @@ import bytes from "bytes";
 import { imageQueryOptions } from "@/hooks/queries/useImages";
 import type { Image } from "@/types/openstack";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { Badge } from "@/components/ui/badge";
 import { imageOperatingSystem } from "@/lib/openstack/image-metadata";
 
@@ -78,6 +79,11 @@ export function ImageDetailClient({
 
   return (
     <div className="max-w-screen-xl space-y-4">
+      <RecentResourceTracker
+        kind="image"
+        id={image.id}
+        name={image.name || "Unnamed image"}
+      />
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">
           {image.name || "Unnamed image"}

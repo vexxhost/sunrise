@@ -20,6 +20,7 @@ import {
   Waypoints,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { PersonalResources } from "@/components/overview/PersonalResources";
 import { cn } from "@/lib/utils";
 import type {
   OperationalCategory,
@@ -32,6 +33,7 @@ import type {
   ServiceDirectoryId,
   ServiceDirectoryItem,
 } from "@/lib/openstack/service-directory";
+import type { ResourcePreference } from "@/lib/resource-preferences";
 
 const quickAccess = [
   { label: "Instances", href: "/compute/instances", icon: Server, tone: "sky" },
@@ -332,10 +334,14 @@ export function OverviewDashboard({
   services,
   operationalFeed,
   serviceDirectory,
+  pinnedResources,
+  recentResources,
 }: {
   services: OverviewService[];
   operationalFeed: OperationalFeed;
   serviceDirectory: ServiceDirectoryItem[];
+  pinnedResources: ResourcePreference[];
+  recentResources: ResourcePreference[];
 }) {
   const unavailable = services.filter(
     (service) => service.status !== "available",
@@ -374,6 +380,11 @@ export function OverviewDashboard({
           ))}
         </div>
       </section>
+
+      <PersonalResources
+        initialPinned={pinnedResources}
+        initialRecent={recentResources}
+      />
 
       <OperationalFeedSection feed={operationalFeed} />
 
