@@ -14,6 +14,8 @@ import { listBucketsForRender } from '@/lib/s3/actions';
 import { listRolesForRender } from '@/lib/s3/role-actions';
 import { RoleDetailsDialog } from './RoleDetailsDialog';
 
+export const dynamic = 'force-dynamic';
+
 export default async function ObjectStoragePage() {
   const [bucketResult, roleResult] = await Promise.all([
     listBucketsForRender(),
