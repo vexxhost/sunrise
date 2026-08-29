@@ -2,6 +2,7 @@
 
 import { MapPin } from "lucide-react";
 import { useCloudContext } from "@/components/cloud/CloudContext";
+import { selectActiveCloudItem } from "@/lib/cloud-selection";
 import { setRegion } from "@/lib/keystone/actions";
 import { useRouter } from "next/navigation";
 import { Selector } from "./Selector";
@@ -9,7 +10,7 @@ import { Selector } from "./Selector";
 export function RegionSelector() {
   const { regions, region: activeRegion } = useCloudContext();
   const router = useRouter();
-  const selectedRegion = regions.find((region) => region.id === activeRegion.id);
+  const selectedRegion = selectActiveCloudItem(regions, activeRegion.id);
 
   if (!selectedRegion) return null;
 

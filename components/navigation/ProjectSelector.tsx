@@ -2,6 +2,7 @@
 
 import { FolderKanban } from "lucide-react";
 import { useCloudContext } from "@/components/cloud/CloudContext";
+import { selectActiveCloudItem } from "@/lib/cloud-selection";
 import { setProject } from "@/lib/keystone/actions";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,9 +12,7 @@ export function ProjectSelector() {
   const { projects, project: activeProject } = useCloudContext();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const selectedProject = projects.find(
-    (project) => project.id === activeProject.id,
-  );
+  const selectedProject = selectActiveCloudItem(projects, activeProject.id);
 
   if (!selectedProject) return null;
 

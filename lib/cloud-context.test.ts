@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCloudContextSnapshot } from "@/lib/cloud-context-snapshot";
+import { selectActiveCloudItem } from "@/lib/cloud-selection";
 import type { OpenStackCatalogService } from "@/lib/openstack/catalog";
 import type { SunrisePrefs } from "@/lib/prefs";
 import type { ResourcePreference } from "@/lib/resource-preferences";
@@ -82,6 +83,14 @@ function build(
 }
 
 describe("cloud context snapshot", () => {
+  it("falls back to the first available selector item for stale context", () => {
+    expect(selectActiveCloudItem(projects, "removed-project")).toBe(
+      projects[0],
+    );
+    expect(selectActiveCloudItem(regions, "RemovedRegion")).toBe(regions[0]);
+    expect(selectActiveCloudItem([], "removed-project")).toBeUndefined();
+  });
+
   it("binds the active project to its own role and resources", () => {
     const snapshot = build(
       {
