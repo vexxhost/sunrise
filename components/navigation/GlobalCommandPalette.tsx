@@ -18,6 +18,7 @@ import {
   Server,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useCloudContext } from "@/components/cloud/CloudContext";
 import { Button } from "@/components/ui/button";
 import {
   CommandDialog,
@@ -38,12 +39,8 @@ import {
 import { loadGlobalSearchIndex } from "@/lib/global-search-actions";
 import type {
   ServiceDirectoryId,
-  ServiceDirectoryItem,
 } from "@/lib/openstack/service-directory";
-import type {
-  ResourceKind,
-  ResourcePreference,
-} from "@/lib/resource-preferences";
+import type { ResourceKind } from "@/lib/resource-preferences";
 
 const resourceIcons: Record<
   ResourceKind,
@@ -92,23 +89,22 @@ function ResourceItem({
   );
 }
 
-export function GlobalCommandPalette({
-  services,
-  pinnedResources,
-  recentResources,
-  regionId,
-  projectId,
-}: {
-  services: ServiceDirectoryItem[];
-  pinnedResources: ResourcePreference[];
-  recentResources: ResourcePreference[];
-  regionId?: string;
-  projectId?: string;
-}) {
+export function GlobalCommandPalette() {
+  const {
+    services,
+    personalResources: {
+      pinned: pinnedResources,
+      recent: recentResources,
+    },
+    region,
+    project,
+  } = useCloudContext();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const regionId = region.id ?? undefined;
+  const projectId = project.id ?? undefined;
   const hasContext = Boolean(regionId && projectId);
   const searchIndex = useQuery({
     queryKey: ["global-search-index", regionId, projectId],

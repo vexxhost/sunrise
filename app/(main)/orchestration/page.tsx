@@ -1,10 +1,16 @@
-export default function OrchestrationPage() {
+import { ServiceAvailabilityPage } from "@/components/service-landing/ServiceLanding";
+import { loadCloudContext } from "@/lib/cloud-context";
+
+export default async function OrchestrationPage() {
+  const { snapshot } = await loadCloudContext();
+
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6">Orchestration Overview</h1>
-      <p className="text-muted-foreground">
-        Template-based infrastructure deployment and management with OpenStack Heat.
-      </p>
-    </div>
+    <ServiceAvailabilityPage
+      title="Orchestration"
+      description="Deploy and manage template-based infrastructure with OpenStack Heat."
+      context={snapshot}
+      serviceId="orchestration"
+      resourceLabel="Heat"
+    />
   );
 }

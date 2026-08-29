@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMediaQuery } from "usehooks-ts";
+import { useCloudContext } from "@/components/cloud/CloudContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { openGlobalSearch } from "@/components/navigation/global-search-events";
@@ -130,7 +131,8 @@ function ServiceItem({
   );
 }
 
-export function ServicesMenu({ services }: { services: ServiceDirectoryItem[] }) {
+export function ServicesMenu() {
+  const { services } = useCloudContext();
   const pathname = usePathname();
   const [value, setValue] = useState("");
   const isMobile = useMediaQuery("(max-width: 767px)", {

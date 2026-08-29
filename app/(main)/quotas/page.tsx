@@ -4,9 +4,8 @@ import { OverviewRefreshButton } from '@/components/overview/OverviewRefreshButt
 import { ProjectContextHeader } from '@/components/overview/ProjectContextHeader';
 import { QuotaExplorer } from '@/components/quotas/QuotaExplorer';
 import { QuotaSkeleton } from '@/components/quotas/QuotaSkeleton';
+import { loadCloudContext } from '@/lib/cloud-context';
 import { loadProjectOverview } from '@/lib/openstack/overview';
-import { readPrefs } from '@/lib/prefs';
-import { getSession } from '@/lib/session';
 
 export const metadata: Metadata = {
   title: 'Quotas',
@@ -26,31 +25,26 @@ async function QuotaData({
 }
 
 export default async function QuotasPage() {
-  const [session, prefs] = await Promise.all([getSession(), readPrefs()]);
-  const projectName =
-    prefs.projectId === session.projectId && prefs.projectName
-      ? prefs.projectName
-      : session.projectId ?? 'No project selected';
-  const regionName = session.regionId ?? 'No region selected';
+  const cloud = await loadCloudContext();
+  const { snapshot } = cloud;
 
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-9 px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
       <ProjectContextHeader
         title="Quotas"
         description="Review the limits and effective resource consumption reported for this project."
-        projectName={projectName}
-        regionName={regionName}
+        context={snapshot}
         actions={<OverviewRefreshButton />}
       />
 
       <Suspense
-        key={`${session.projectId ?? 'none'}:${session.regionId ?? 'none'}`}
+        key={`${snapshot.project.id ?? 'none'}:${snapshot.region.id ?? 'none'}`}
         fallback={<QuotaSkeleton />}
       >
         <QuotaData
-          token={session.keystoneProjectToken}
-          regionId={session.regionId}
-          projectId={session.projectId}
+          token={cloud.keystoneToken}
+          regionId={snapshot.region.id ?? undefined}
+          projectId={snapshot.project.id ?? undefined}
         />
       </Suspense>
     </div>

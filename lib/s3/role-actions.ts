@@ -8,7 +8,8 @@ import {
   ListRolePoliciesCommand,
 } from '@aws-sdk/client-iam';
 import { S3AuthRequiredError } from '@/lib/s3/client';
-import { getActiveRoleIamContext, roleNameFromArn } from '@/lib/s3/iam';
+import { roleNameFromArn } from '@/lib/s3/arn';
+import { getActiveRoleIamContext } from '@/lib/s3/iam';
 
 export type IamRoleSummary = {
   name: string;

@@ -7,20 +7,24 @@ import {
   ServiceResourceGrid,
   type ServiceLandingMetric,
 } from "@/components/service-landing/ServiceLanding";
+import { loadCloudContext } from "@/lib/cloud-context";
 import { listBucketsForRender } from "@/lib/s3/actions";
 import { listRolesForRender } from "@/lib/s3/role-actions";
-import { loadServiceLandingContext } from "@/lib/service-landing";
 import { RoleDetailsDialog } from "./RoleDetailsDialog";
 
 export const dynamic = "force-dynamic";
 
 export default async function ObjectStoragePage() {
-  const [{ projectName, regionName, resources }, bucketResult, roleResult] =
-    await Promise.all([
-      loadServiceLandingContext(),
-      listBucketsForRender(),
-      listRolesForRender(),
-    ]);
+  const [cloud, bucketResult, roleResult] = await Promise.all([
+    loadCloudContext(),
+    listBucketsForRender(),
+    listRolesForRender(),
+  ]);
+  const { snapshot } = cloud;
+  const resources = [
+    ...snapshot.personalResources.pinned,
+    ...snapshot.personalResources.recent,
+  ];
 
   if (
     (!bucketResult.ok && bucketResult.needsAuth) ||
@@ -68,8 +72,8 @@ export default async function ObjectStoragePage() {
     <ServiceLandingPage
       title="Object Storage"
       description="Browse S3-compatible buckets and objects, and inspect the RGW role used by the active project."
-      projectName={projectName}
-      regionName={regionName}
+      context={snapshot}
+      serviceId="object-storage"
       actions={<RoleDetailsDialog />}
       metrics={metrics}
     >

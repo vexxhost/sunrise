@@ -1,23 +1,23 @@
-'use client';
+"use client";
 
 import { FolderKanban } from "lucide-react";
+import { useCloudContext } from "@/components/cloud/CloudContext";
+import { selectActiveCloudItem } from "@/lib/cloud-selection";
 import { setProject } from "@/lib/keystone/actions";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@/types/openstack";
 import { Selector } from "./Selector";
 
-interface ProjectSelectorProps {
-  projects: Project[];
-  selectedProject: Project;
-}
-
-export function ProjectSelector({ projects, selectedProject }: ProjectSelectorProps) {
+export function ProjectSelector() {
+  const { projects, project: activeProject } = useCloudContext();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const selectedProject = selectActiveCloudItem(projects, activeProject.id);
+
+  if (!selectedProject) return null;
 
   const handleSelect = async (projectId: string) => {
-    const project = projects.find(p => p.id === projectId);
+    const project = projects.find((item) => item.id === projectId);
     if (project) {
       await setProject(project);
       queryClient.clear();

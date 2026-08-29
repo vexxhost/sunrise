@@ -6,27 +6,27 @@ import {
   ServiceResourceGrid,
   type ServiceLandingMetric,
 } from "@/components/service-landing/ServiceLanding";
-import { getServiceCatalog } from "@/lib/openstack/catalog";
+import { loadCloudContext } from "@/lib/cloud-context";
 import { listClusterTemplatesAction } from "@/lib/openstack/magnum";
 import { loadProjectOverview } from "@/lib/openstack/overview";
 import { quotaPercentage } from "@/lib/openstack/quota";
-import { loadServiceLandingContext } from "@/lib/service-landing";
 
 export default async function KubernetesPage() {
-  const { session, projectName, regionName, resources } =
-    await loadServiceLandingContext();
-  const catalog = session.keystoneProjectToken
-    ? await getServiceCatalog(session.keystoneProjectToken)
-    : null;
+  const cloud = await loadCloudContext();
+  const { snapshot } = cloud;
+  const resources = [
+    ...snapshot.personalResources.pinned,
+    ...snapshot.personalResources.recent,
+  ];
   const [services, templates] = await Promise.all([
     loadProjectOverview({
-      token: session.keystoneProjectToken,
-      regionId: session.regionId,
-      projectId: session.projectId,
-      catalog,
+      token: cloud.keystoneToken,
+      regionId: snapshot.region.id ?? undefined,
+      projectId: snapshot.project.id ?? undefined,
+      catalog: cloud.catalog,
       serviceIds: ["container-infra"],
     }),
-    listClusterTemplatesAction({}, session.regionId),
+    listClusterTemplatesAction({}, snapshot.region.id ?? undefined),
   ]);
   const clusterService = services[0];
   const clusterMetric = clusterService?.metrics.find(
@@ -94,8 +94,8 @@ export default async function KubernetesPage() {
     <ServiceLandingPage
       title="Kubernetes"
       description="Deploy and operate Magnum-backed Kubernetes clusters, templates, node groups, networking, and storage."
-      projectName={projectName}
-      regionName={regionName}
+      context={snapshot}
+      serviceId="kubernetes"
       metrics={metrics}
     >
       <ServiceLandingSection

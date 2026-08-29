@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { Providers } from "../providers";
 import { NavigationMenu } from "@/components/navigation/NavigationMenu";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { CloudContextProvider } from "@/components/cloud/CloudContext";
+import { loadCloudContext } from "@/lib/cloud-context";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -24,6 +26,8 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const cloudContext = await loadCloudContext();
+
   return (
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body
@@ -39,8 +43,10 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <Providers>
-            <NavigationMenu />
-            <main>{children}</main>
+            <CloudContextProvider value={cloudContext.snapshot}>
+              <NavigationMenu />
+              <main>{children}</main>
+            </CloudContextProvider>
           </Providers>
         </ThemeProvider>
       </body>

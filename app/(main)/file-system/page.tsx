@@ -1,10 +1,16 @@
-export default function FileSystemPage() {
+import { ServiceAvailabilityPage } from "@/components/service-landing/ServiceLanding";
+import { loadCloudContext } from "@/lib/cloud-context";
+
+export default async function FileSystemPage() {
+  const { snapshot } = await loadCloudContext();
+
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-6">File System Overview</h1>
-      <p className="text-muted-foreground">
-        Shared file system storage and shares with OpenStack Manila.
-      </p>
-    </div>
+    <ServiceAvailabilityPage
+      title="File System"
+      description="Manage shared file system storage and shares with OpenStack Manila."
+      context={snapshot}
+      serviceId="file-system"
+      resourceLabel="Manila"
+    />
   );
 }
