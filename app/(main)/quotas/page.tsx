@@ -1,13 +1,18 @@
+import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { OverviewDashboard } from '@/components/overview/OverviewDashboard';
 import { OverviewRefreshButton } from '@/components/overview/OverviewRefreshButton';
-import { OverviewSkeleton } from '@/components/overview/OverviewSkeleton';
 import { ProjectContextHeader } from '@/components/overview/ProjectContextHeader';
+import { QuotaExplorer } from '@/components/quotas/QuotaExplorer';
+import { QuotaSkeleton } from '@/components/quotas/QuotaSkeleton';
+import { loadProjectOverview } from '@/lib/openstack/overview';
 import { readPrefs } from '@/lib/prefs';
 import { getSession } from '@/lib/session';
-import { loadProjectOverview } from '@/lib/openstack/overview';
 
-async function OverviewData({
+export const metadata: Metadata = {
+  title: 'Quotas',
+};
+
+async function QuotaData({
   token,
   regionId,
   projectId,
@@ -17,10 +22,10 @@ async function OverviewData({
   projectId?: string;
 }) {
   const services = await loadProjectOverview({ token, regionId, projectId });
-  return <OverviewDashboard services={services} />;
+  return <QuotaExplorer services={services} />;
 }
 
-export default async function Page() {
+export default async function QuotasPage() {
   const [session, prefs] = await Promise.all([getSession(), readPrefs()]);
   const projectName =
     prefs.projectId === session.projectId && prefs.projectName
@@ -31,7 +36,8 @@ export default async function Page() {
   return (
     <div className="mx-auto w-full max-w-[1600px] space-y-9 px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
       <ProjectContextHeader
-        title="Overview"
+        title="Quotas"
+        description="Review the limits and effective resource consumption reported for this project."
         projectName={projectName}
         regionName={regionName}
         actions={<OverviewRefreshButton />}
@@ -39,9 +45,9 @@ export default async function Page() {
 
       <Suspense
         key={`${session.projectId ?? 'none'}:${session.regionId ?? 'none'}`}
-        fallback={<OverviewSkeleton />}
+        fallback={<QuotaSkeleton />}
       >
-        <OverviewData
+        <QuotaData
           token={session.keystoneProjectToken}
           regionId={session.regionId}
           projectId={session.projectId}
