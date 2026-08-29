@@ -15,6 +15,8 @@ import { ThemeToggle } from "./ThemeToggle";
 import { getRegions, getProjects } from "@/lib/keystone/queries";
 import { getSession } from "@/lib/session";
 import { getUserInfo } from "@/lib/openstack/keystone-actions";
+import { getServiceCatalog } from "@/lib/openstack/catalog";
+import { buildServiceDirectory } from "@/lib/openstack/service-directory";
 
 export async function NavigationMenu() {
   // Get session to read selected region/project IDs
@@ -32,8 +34,20 @@ export async function NavigationMenu() {
     ? (projects.find(p => p.id === session.projectId) || projects[0])
     : null;
 
-  // Fetch user info from session token
-  const userInfo = await getUserInfo();
+  // Region/project discovery can initialize session defaults. Re-read the
+  // session before using its scoped token so the service switcher reflects the
+  // same active context as the selectors.
+  const activeSession = await getSession();
+  const [userInfo, catalog] = await Promise.all([
+    getUserInfo(),
+    activeSession.keystoneProjectToken
+      ? getServiceCatalog(activeSession.keystoneProjectToken)
+      : Promise.resolve(null),
+  ]);
+  const services = buildServiceDirectory(
+    catalog,
+    selectedRegion?.id ?? activeSession.regionId,
+  );
 
   return (
     <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -53,7 +67,7 @@ export async function NavigationMenu() {
 
           <div className="h-6 w-px bg-border" />
 
-          <ServicesMenu />
+          <ServicesMenu services={services} />
         </div>
 
         {/* Right side: Feedback + Region + Project + User */}

@@ -8,6 +8,7 @@ import { getServiceCatalog } from '@/lib/openstack/catalog';
 import { loadOperationalFeed } from '@/lib/openstack/operational-feed';
 import { compileOperationalFeed } from '@/lib/openstack/operational';
 import { loadProjectOverview } from '@/lib/openstack/overview';
+import { buildServiceDirectory } from '@/lib/openstack/service-directory';
 import { getSession, normalizeProjectId } from '@/lib/session';
 
 async function OverviewData({
@@ -31,9 +32,14 @@ async function OverviewData({
     resourceFeed,
     credentialExpiration,
   });
+  const serviceDirectory = buildServiceDirectory(catalog, regionId);
 
   return (
-    <OverviewDashboard services={services} operationalFeed={operationalFeed} />
+    <OverviewDashboard
+      services={services}
+      operationalFeed={operationalFeed}
+      serviceDirectory={serviceDirectory}
+    />
   );
 }
 
