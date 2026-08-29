@@ -80,6 +80,43 @@ describe('OpenStack quota parsing', () => {
     });
   });
 
+  it('includes reservations in Neutron saturation and severity', () => {
+    const metrics = parseNeutronLimits({
+      quota: {
+        network: { used: 79, limit: 100, reserved: 21 },
+      },
+    });
+    const network = metrics[0];
+
+    expect(network).toMatchObject({
+      used: 79,
+      reserved: 21,
+      level: 'critical',
+    });
+    expect(quotaPercentage(network)).toBe(100);
+  });
+
+  it('skips Neutron resources omitted by unsupported extensions', () => {
+    const metrics = parseNeutronLimits({
+      quota: {
+        network: { used: 1, limit: 100, reserved: 0 },
+        port: { used: 4, limit: 500, reserved: 0 },
+      },
+    });
+
+    expect(metrics.map((item) => item.id)).toEqual(['network', 'port']);
+  });
+
+  it('still rejects malformed Neutron resources when they are present', () => {
+    expect(() =>
+      parseNeutronLimits({
+        quota: {
+          network: { used: 1, limit: 100 },
+        },
+      })
+    ).toThrow('Missing numeric quota field: reserved');
+  });
+
   it('handles warning, critical, zero, and unlimited quotas', () => {
     expect(quotaLevel(8, 10)).toBe('warning');
     expect(quotaLevel(10, 10)).toBe('critical');

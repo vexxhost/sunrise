@@ -31,7 +31,8 @@ function numberValue(record: UnknownRecord, key: string): number {
 
 export function quotaPercentage(metric: QuotaMetric): number | null {
   if (metric.limit < 0 || metric.limit === 0) return null;
-  return Math.min(100, Math.max(0, (metric.used / metric.limit) * 100));
+  const consumed = metric.used + metric.reserved;
+  return Math.min(100, Math.max(0, (consumed / metric.limit) * 100));
 }
 
 export function quotaLevel(used: number, limit: number): QuotaLevel {
@@ -52,15 +53,17 @@ function metric(
   href: string,
   options: { reserved?: number; unit?: 'GiB' } = {}
 ): QuotaMetric {
+  const reserved = options.reserved ?? 0;
+
   return {
     id,
     label,
     used,
     limit,
-    reserved: options.reserved ?? 0,
+    reserved,
     unit: options.unit,
     href,
-    level: quotaLevel(used, limit),
+    level: quotaLevel(used + reserved, limit),
   };
 }
 
@@ -135,15 +138,19 @@ export function parseNeutronLimits(payload: unknown): QuotaMetric[] {
     ['security_group_rule', 'Security group rules', '/compute/networks'],
   ] as const;
 
-  return definitions.map(([id, label, href]) => {
+  return definitions.flatMap(([id, label, href]) => {
+    if (quota[id] === undefined || quota[id] === null) return [];
+
     const detail = asRecord(quota[id], `Neutron ${id}`);
-    return metric(
-      id,
-      label,
-      numberValue(detail, 'used'),
-      numberValue(detail, 'limit'),
-      href,
-      { reserved: numberValue(detail, 'reserved') }
-    );
+    return [
+      metric(
+        id,
+        label,
+        numberValue(detail, 'used'),
+        numberValue(detail, 'limit'),
+        href,
+        { reserved: numberValue(detail, 'reserved') }
+      ),
+    ];
   });
 }
