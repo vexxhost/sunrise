@@ -1,9 +1,7 @@
 'use client';
 import { Port } from "@/types/openstack";
-import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
-import { MoreHorizontal, Network } from "lucide-react";
-import { Button } from "../ui/button";
+import { ColumnDef } from "@tanstack/react-table"
+import { Network } from "lucide-react";
 import { DataTable } from "../DataTable";
 
 
@@ -53,45 +51,12 @@ export const columns: ColumnDef<Port>[] = [
         meta: {
           fieldType: "boolean"
         }
-    },
-      {
-        accessorKey: "actions",
-        header: "Actions",
-        meta: {
-          label: "Actions",
-          fieldType: "string"
-        },
-        enableHiding: false,
-        cell: ({ row }) => {
-          return (
-            <div className="relative flex justify-center items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="h-8 w-8 p-0">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>Edit SecurityGroup</DropdownMenuItem>
-                  <DropdownMenuItem>Edit Port</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          );
-        }
-      }
+    }
 
 ]
 
 export function Interfaces( {networkPorts}: {networkPorts :Port[]} ) {
 
-const table = useReactTable<Port>({
-    data: networkPorts,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  })
 return (
   <>
     <div>
@@ -102,5 +67,4 @@ return (
 )
     }
   
-
 

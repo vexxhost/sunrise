@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { MutationAlert } from "@/components/mutations/MutationAlert";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ import type {
 } from "@/types/openstack";
 
 interface InstanceActionsProps {
+  projectId?: string;
   regionId?: string;
   images: Image[];
   flavors: Flavor[];
@@ -64,6 +66,7 @@ const INITIAL_FORM: LaunchFormState = {
 };
 
 export function InstanceActions({
+  projectId,
   regionId,
   images,
   flavors,
@@ -143,7 +146,15 @@ export function InstanceActions({
       startTransition(async () => {
         setErrorMessage(null);
         try {
-          await createServerAction(
+          if (!projectId || !regionId) {
+            setErrorMessage(
+              "Select a project and region before launching an instance.",
+            );
+            return;
+          }
+
+          const result = await createServerAction(
+            { projectId, regionId },
             {
               name: form.name.trim(),
               flavorRef: form.flavorRef,
@@ -160,8 +171,12 @@ export function InstanceActions({
               user_data: encodedUserData(form.userData),
               config_drive: form.configDrive || undefined,
             },
-            regionId,
           );
+
+          if (!result.ok) {
+            setErrorMessage(result.error.message);
+            return;
+          }
 
           setIsOpen(false);
           resetForm();
@@ -173,7 +188,7 @@ export function InstanceActions({
         }
       });
     },
-    [encodedUserData, form, onAfterAction, regionId, resetForm],
+    [encodedUserData, form, onAfterAction, projectId, regionId, resetForm],
   );
 
   return (
@@ -184,6 +199,12 @@ export function InstanceActions({
           size="sm"
           className="gap-2 h-10"
           onClick={() => handleOpenChange(true)}
+          disabled={!projectId || !regionId}
+          title={
+            projectId && regionId
+              ? "Launch an instance"
+              : "Select a project and region first"
+          }
         >
           <Plus className="h-4 w-4" />
           Launch Instance
@@ -373,9 +394,7 @@ export function InstanceActions({
               </div>
 
               {errorMessage && (
-                <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {errorMessage}
-                </div>
+                <MutationAlert>{errorMessage}</MutationAlert>
               )}
             </div>
 

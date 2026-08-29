@@ -11,6 +11,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { Buffer } from 'node:buffer';
 import { bucketArn } from '@/lib/s3/arn';
+import { guardMutationContext } from '@/lib/mutation-context';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
 import { normalizeStorageClass } from '@/lib/s3/storage-class';
 
@@ -25,7 +26,7 @@ export type ListBucketsResult =
       buckets: Bucket[];
       owner: { id?: string; displayName?: string };
       accessDenied?: boolean;
-    }
+  }
   | { ok: false; needsAuth: true }
   | { ok: false; needsAuth: false; error: string };
 
@@ -47,11 +48,34 @@ function isAccessDenied(e: unknown): boolean {
   return name === 'AccessDenied' || name === 'AccessDeniedException' || status === 403;
 }
 
+function isNoSuchBucket(e: unknown): boolean {
+  const anyErr = e as any;
+  const name = anyErr?.name || anyErr?.Code;
+  const status = anyErr?.$metadata?.httpStatusCode;
+  return name === 'NoSuchBucket' || status === 404;
+}
+
 function isNoSuchBucketPolicy(e: unknown): boolean {
   const anyErr = e as any;
   const name = anyErr?.name || anyErr?.Code;
   const status = anyErr?.$metadata?.httpStatusCode;
   return name === 'NoSuchBucketPolicy' || status === 404;
+}
+
+async function s3MutationContextError(expectedProjectId: string) {
+  const guarded = await guardMutationContext(
+    { projectId: expectedProjectId },
+    { requireProjectToken: false, requireRegion: false }
+  );
+  if (guarded.ok) return null;
+
+  return guarded.result.error.code === 'authentication-required'
+    ? ({ ok: false, needsAuth: true } as const)
+    : ({
+        ok: false,
+        needsAuth: false,
+        error: guarded.result.error.message,
+      } as const);
 }
 
 function normalizeObjectKey(key: string): string {
@@ -131,9 +155,9 @@ export type ListObjectsResult =
       isTruncated: boolean;
       nextContinuationToken: string | null;
       accessDenied?: boolean;
-    }
+  }
   | { ok: false; needsAuth: true }
-  | { ok: false; needsAuth: false; error: string };
+  | { ok: false; needsAuth: false; error: string; notFound?: boolean };
 
 async function listObjectsWithCredentialRefresh(
   bucket: string,
@@ -190,6 +214,14 @@ async function listObjectsWithCredentialRefresh(
         isTruncated: false,
         nextContinuationToken: null,
         accessDenied: true,
+      };
+    }
+    if (isNoSuchBucket(e)) {
+      return {
+        ok: false,
+        needsAuth: false,
+        notFound: true,
+        error: 'Bucket could not be found or accessed.',
       };
     }
     const detail = describeAwsError(e);
@@ -331,10 +363,14 @@ export type CreateFolderResult =
   | { ok: false; needsAuth: false; error: string };
 
 export async function createFolder(
+  expectedProjectId: string,
   bucket: string,
   prefix: string,
   folderName: string
 ): Promise<CreateFolderResult> {
+  const contextError = await s3MutationContextError(expectedProjectId);
+  if (contextError) return contextError;
+
   const name = folderName.trim().replace(/^\/+|\/+$/g, '');
   if (!bucket) {
     return { ok: false, needsAuth: false, error: 'Missing bucket name' };
@@ -537,9 +573,13 @@ async function collectSelectionKeys(
 }
 
 export async function removeSelection(
+  expectedProjectId: string,
   bucket: string,
   entries: RemoveSelectionEntry[]
 ): Promise<RemoveSelectionResult> {
+  const contextError = await s3MutationContextError(expectedProjectId);
+  if (contextError) return contextError;
+
   if (!bucket) {
     return { ok: false, needsAuth: false, error: 'Missing bucket name' };
   }

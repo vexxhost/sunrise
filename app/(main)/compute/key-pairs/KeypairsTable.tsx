@@ -1,7 +1,7 @@
 'use client';
 
-import { DataTable, DataTableRowAction } from "@/components/DataTable";
-import { KeyRound, Trash2 } from "lucide-react";
+import { DataTable } from "@/components/DataTable";
+import { KeyRound } from "lucide-react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Keypair } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
@@ -76,15 +76,6 @@ interface KeypairsTableProps {
   projectId: string | undefined;
 }
 
-export const keypairRowActions: DataTableRowAction<Keypair>[] = [
-  {
-    label: 'Delete',
-    variant: 'destructive',
-    icon: Trash2,
-    onClick: (rows) => console.log('Delete key pairs:', rows),
-  },
-];
-
 export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
   const { data, isRefetching, refetch } = useSuspenseQuery(
     keypairsQueryOptions(regionId, projectId)
@@ -98,7 +89,6 @@ export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
       columns={keypairColumns}
       resourceName={RESOURCE_NAME}
       emptyIcon={KeyRound}
-      rowActions={keypairRowActions}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { ObjectsClient } from './ObjectsClient';
+import { BucketNotFound } from './BucketNotFound';
 import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
 import { DataTableHeader } from '@/components/DataTable/Header';
 import { RecentResourceTracker } from '@/components/resources/RecentResourceTracker';
@@ -21,6 +22,9 @@ export default async function Page({ params, searchParams }: PageProps) {
   const probe = await listObjectsForRender(bucket, prefix);
   if (!probe.ok && probe.needsAuth) {
     return <ObjectStorageAuthRedirect />;
+  }
+  if (!probe.ok && probe.notFound) {
+    return <BucketNotFound bucket={bucket} />;
   }
   if (!probe.ok) {
     throw new Error(probe.error);
