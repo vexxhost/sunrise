@@ -7,6 +7,7 @@ import {
   formatServerTaskState,
 } from "@/lib/openstack/server-state";
 import { normalizeOpenStackTimestamp } from "@/lib/openstack/time";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 export function InstanceInfo({ server }: { server: Server }) {
   const metadata = Object.entries(server.metadata ?? {});
@@ -20,7 +21,17 @@ export function InstanceInfo({ server }: { server: Server }) {
         <DetailField label="Availability Zone">
           {server["OS-EXT-AZ:availability_zone"]}
         </DetailField>
-        <DetailField label="Key pair">{server.key_name || "No key pair"}</DetailField>
+        <DetailField label="Key pair">
+          {server.key_name ? (
+            <ResourceLink
+              href={`/compute/key-pairs/${encodeURIComponent(server.key_name)}`}
+            >
+              {server.key_name}
+            </ResourceLink>
+          ) : (
+            "No key pair"
+          )}
+        </DetailField>
         <DetailField label="Created">{server.created}</DetailField>
         <DetailField label="Age">
           {formatDistanceToNow(parseISO(normalizeOpenStackTimestamp(server.created)))}

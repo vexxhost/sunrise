@@ -1,6 +1,5 @@
 'use client';
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueries, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
@@ -9,7 +8,7 @@ import {
   type InstanceMutationKind,
 } from "@/components/Instance/InstanceLifecycleDialog";
 import { Volume } from "@/types/openstack";
-import { Image, Server, Flavor } from "@/types/openstack";
+import { Image, Server } from "@/types/openstack";
 import {
   CircleStop,
   Play,
@@ -45,6 +44,8 @@ import {
   isServerTransitioning,
   mergeServerUpdates,
 } from "@/lib/openstack/server-lifecycle";
+import { resolveServerFlavor } from "@/lib/openstack/server-flavor";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
 
@@ -75,32 +76,6 @@ const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: strin
 interface InstancesClientProps {
   regionId?: string;
   projectId?: string;
-}
-
-function getFlavorName(server: Server, flavors: Record<string, string>) {
-  const flavor = server.flavor as Server["flavor"] & {
-    id?: string | number;
-    name?: string;
-    original_name?: string;
-  };
-
-  if (!flavor || typeof flavor !== "object") {
-    return "unavailable";
-  }
-
-  if (typeof flavor.original_name === "string" && flavor.original_name.trim()) {
-    return flavor.original_name;
-  }
-
-  if (flavor.id !== undefined && flavors[String(flavor.id)]) {
-    return flavors[String(flavor.id)];
-  }
-
-  if (typeof flavor.name === "string" && flavor.name.trim()) {
-    return flavor.name;
-  }
-
-  return "unavailable";
 }
 
 function getServerImageId(server: Server, volumeImageIds: Record<string, string>) {
@@ -259,15 +234,6 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
     return imagesMap;
   }, [imagesData]);
 
-  // Process flavors map
-  const flavors = useMemo(() => {
-    const flavorsMap: { [key: string]: string } = {};
-    flavorsData.forEach((flavor: Flavor) => {
-      flavorsMap[flavor.id] = flavor.name;
-    });
-    return flavorsMap;
-  }, [flavorsData]);
-
   const servers = useMemo<ServerTableRow[]>(() => {
     return serversData.map((server) => {
       const imageId = getServerImageId(server, volumeImageIds);
@@ -290,12 +256,11 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       accessorKey: "name",
       header: "Instance Name",
       cell: ({ row }) => (
-        <Link
+        <ResourceLink
           href={`/compute/instances/${encodeURIComponent(row.original.id)}`}
-          className="font-medium hover:underline"
         >
           {row.original.name || "Unnamed instance"}
-        </Link>
+        </ResourceLink>
       ),
       meta: {
         fieldType: "string",
@@ -336,12 +301,12 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
         );
 
         return row.original.imageId ? (
-          <Link
+          <ResourceLink
             href={`/compute/images/${encodeURIComponent(row.original.imageId)}`}
-            className="block w-fit max-w-full hover:underline"
+            className="block w-fit max-w-full"
           >
             {content}
-          </Link>
+          </ResourceLink>
         ) : (
           content
         );
@@ -364,7 +329,16 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       accessorKey: "flavor",
       header: "Flavor",
       cell: ({ row }) => {
-        return getFlavorName(row.original, flavors)
+        const flavor = resolveServerFlavor(row.original, flavorsData);
+        return flavor.id ? (
+          <ResourceLink
+            href={`/compute/instance-flavors/${encodeURIComponent(flavor.id)}`}
+          >
+            {flavor.name}
+          </ResourceLink>
+        ) : (
+          flavor.name
+        );
       },
       meta: {
         fieldType: "string",
@@ -447,7 +421,7 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
         visible: true
       }
     }
-  ], [flavors]);
+  ], [flavorsData]);
 
   return (
     <>

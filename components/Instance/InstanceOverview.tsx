@@ -1,5 +1,6 @@
 import { formatDistanceToNow, parseISO } from "date-fns";
 import bytes from "bytes";
+import type { ReactNode } from "react";
 import {
   CircleAlert,
   Cpu,
@@ -15,17 +16,20 @@ import { ServerIPAddresses } from "@/components/Instance/IpAddressList";
 import VolumeInfo from "@/components/Instance/VolumeInfo";
 import { normalizeOpenStackTimestamp } from "@/lib/openstack/time";
 import type { AddressItem, Server } from "@/types/openstack";
+import type { ResolvedServerFlavor } from "@/lib/openstack/server-flavor";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 interface InstanceOverviewProps {
   projectId?: string;
   regionId?: string;
   server: Server;
+  flavor: ResolvedServerFlavor;
 }
 
 interface SummaryItemProps {
   icon: LucideIcon;
   label: string;
-  value: string;
+  value: ReactNode;
   detail: string;
 }
 
@@ -36,9 +40,9 @@ function SummaryItem({ icon: Icon, label, value, detail }: SummaryItemProps) {
         <Icon className="size-4" />
         {label}
       </div>
-      <p className="mt-2 truncate text-base font-semibold" title={value}>
+      <div className="mt-2 truncate text-base font-semibold">
         {value}
-      </p>
+      </div>
       <p className="mt-1 truncate text-xs text-muted-foreground" title={detail}>
         {detail}
       </p>
@@ -104,12 +108,12 @@ export function InstanceOverview({
   projectId,
   regionId,
   server,
+  flavor: resolvedFlavor,
 }: InstanceOverviewProps) {
   const addresses = flattenAddresses(server);
   const address = primaryAddress(server);
   const volumeCount = server["os-extended-volumes:volumes_attached"].length;
   const flavor = server.flavor;
-  const flavorName = flavor.original_name || "Custom capacity";
   const bootSource = server.image
     ? "Image-backed"
     : volumeCount
@@ -128,7 +132,17 @@ export function InstanceOverview({
           <SummaryItem
             icon={Cpu}
             label="Compute"
-            value={flavorName}
+            value={
+              resolvedFlavor.id ? (
+                <ResourceLink
+                  href={`/compute/instance-flavors/${encodeURIComponent(resolvedFlavor.id)}`}
+                >
+                  {resolvedFlavor.name}
+                </ResourceLink>
+              ) : (
+                resolvedFlavor.name
+              )
+            }
             detail={`${flavor.vcpus} vCPU · ${bytes(flavor.ram * 1024 * 1024, { unitSeparator: " " })} RAM`}
           />
           <SummaryItem

@@ -5,6 +5,7 @@ import { IDCell } from "@/components/DataTable/IDCell";
 import type { Port } from "@/types/openstack";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Network } from "lucide-react";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 export const columns: ColumnDef<Port>[] = [
   {
@@ -12,7 +13,11 @@ export const columns: ColumnDef<Port>[] = [
     header: "Port ID",
     enableHiding: false,
     cell: ({ row }) => (
-      <IDCell value={row.original.id} isSelected={row.getIsSelected()} />
+      <IDCell
+        value={row.original.id}
+        isSelected={row.getIsSelected()}
+        linkPath="/compute/networks/ports"
+      />
     ),
     meta: {
       fieldType: "string",
@@ -24,7 +29,13 @@ export const columns: ColumnDef<Port>[] = [
     accessorKey: "name",
     header: "Name",
     cell: ({ row }) =>
-      row.original.name || (
+      row.original.name ? (
+        <ResourceLink
+          href={`/compute/networks/ports/${encodeURIComponent(row.original.id)}`}
+        >
+          {row.original.name}
+        </ResourceLink>
+      ) : (
         <span className="text-muted-foreground">Not named</span>
       ),
     meta: {
@@ -35,12 +46,14 @@ export const columns: ColumnDef<Port>[] = [
   {
     accessorKey: "network_name",
     header: "Network",
-    cell: ({ row }) =>
-      row.original.network_name || (
-        <span className="font-mono text-muted-foreground">
-          {row.original.network_id}
-        </span>
-      ),
+    cell: ({ row }) => (
+      <ResourceLink
+        href={`/compute/networks/resources/${encodeURIComponent(row.original.network_id)}`}
+        className={row.original.network_name ? undefined : "font-mono text-xs"}
+      >
+        {row.original.network_name || row.original.network_id}
+      </ResourceLink>
+    ),
     meta: {
       fieldType: "string",
       visible: true,

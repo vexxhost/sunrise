@@ -1,7 +1,7 @@
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import {
+  networksQueryOptions,
   portsQueryOptions,
-  projectNetworksQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
@@ -16,7 +16,7 @@ export default async function Page() {
       portsQueryOptions(session.regionId, session.projectId),
     ),
     queryClient.prefetchQuery(
-      projectNetworksQueryOptions(session.regionId, session.projectId),
+      networksQueryOptions(session.regionId, session.projectId),
     ),
   ]);
   return (

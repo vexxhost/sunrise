@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { GitBranch, Network as NetworkIcon } from "lucide-react";
 
@@ -14,6 +14,7 @@ import {
   routersQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { isRouterInterfacePort } from "@/lib/openstack/neutron-topology";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 interface NetworkDetailClientProps {
   id: string;
@@ -165,9 +166,18 @@ export function NetworkDetailClient({
                     {subnet.dns_nameservers.join(", ") || "Default"}
                   </span>
                   <span className="truncate">
-                    {connectedRouters
-                      .map((router) => router.name || router.id)
-                      .join(", ") || "Not attached"}
+                    {connectedRouters.length
+                      ? connectedRouters.map((router, index) => (
+                          <Fragment key={router.id}>
+                            {index > 0 ? ", " : null}
+                            <ResourceLink
+                              href={`/compute/networks/routers/${encodeURIComponent(router.id)}`}
+                            >
+                              {router.name || router.id}
+                            </ResourceLink>
+                          </Fragment>
+                        ))
+                      : "Not attached"}
                   </span>
                   <span>{subnet.enable_dhcp ? "Enabled" : "Disabled"}</span>
                   <div className="flex justify-end">

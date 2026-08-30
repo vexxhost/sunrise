@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
@@ -17,6 +16,7 @@ import {
   isSnapshotTransitioning,
 } from "@/lib/openstack/storage-lifecycle";
 import { formatSnapshotStatus } from "@/lib/openstack/storage-status";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 interface SnapshotDetailClientProps {
   projectId?: string;
@@ -97,12 +97,12 @@ export function SnapshotDetailClient({
           </DetailField>
           <DetailField label="Size">{snapshot.size} GB</DetailField>
           <DetailField label="Volume">
-            <Link
-              href={`/compute/volumes/${snapshot.volume_id}`}
-              className="font-mono text-xs underline decoration-dotted underline-offset-2"
+            <ResourceLink
+              href={`/compute/volumes/${encodeURIComponent(snapshot.volume_id)}`}
+              className="font-mono text-xs"
             >
               {snapshot.volume_id}
-            </Link>
+            </ResourceLink>
           </DetailField>
           <DetailField label="Created">{snapshot.created_at}</DetailField>
           <DetailField label="Updated">{snapshot.updated_at || "-"}</DetailField>

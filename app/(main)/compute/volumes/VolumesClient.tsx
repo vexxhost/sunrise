@@ -31,6 +31,7 @@ import {
 } from "@/lib/openstack/storage-lifecycle";
 import { formatVolumeStatus } from "@/lib/openstack/storage-status";
 import { collectTransitionUpdates } from "@/lib/openstack/transition-poll";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
 
@@ -48,7 +49,13 @@ const columns: ColumnDef<Volume>[] = [
   {
     accessorKey: "name",
     header: "Name",
-    cell: ({ row }: { row: { original: Volume } }) => row.original.name,
+    cell: ({ row }: { row: { original: Volume } }) => (
+      <ResourceLink
+        href={`/compute/volumes/${encodeURIComponent(row.original.id)}`}
+      >
+        {row.original.name || "Unnamed volume"}
+      </ResourceLink>
+    ),
     meta: {
       fieldType: "string",
       visible: true

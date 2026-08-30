@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { EthernetPort } from "lucide-react";
 
@@ -13,6 +12,7 @@ import {
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 interface PortDetailClientProps {
   id: string;
@@ -55,6 +55,19 @@ export function PortDetailClient({
   const server = servers.data.find(
     (candidate) => candidate.id === port.data.device_id,
   );
+  const routerOwned =
+    port.data.device_owner.startsWith("network:router") &&
+    Boolean(port.data.device_id);
+  const attachmentHref = server
+    ? `/compute/instances/${encodeURIComponent(server.id)}/interfaces`
+    : routerOwned
+      ? `/compute/networks/routers/${encodeURIComponent(port.data.device_id)}`
+      : undefined;
+  const attachmentLabel = server
+    ? server.name || server.id
+    : routerOwned
+      ? "Router"
+      : port.data.device_owner || "Unattached";
   const owned =
     port.data.project_id === projectId || port.data.tenant_id === projectId;
 
@@ -91,27 +104,42 @@ export function PortDetailClient({
           <DetailRow label="Status" value={port.data.status} />
           <DetailRow
             label="Network"
-            value={network.data.name || network.data.id}
+            value={
+              <ResourceLink
+                href={`/compute/networks/resources/${encodeURIComponent(network.data.id)}`}
+              >
+                {network.data.name || network.data.id}
+              </ResourceLink>
+            }
           />
           <DetailRow label="MAC address" value={port.data.mac_address} />
           <DetailRow
             label="Attachment"
             value={
-              server ? (
-                <Link
-                  className="font-medium hover:underline"
-                  href={`/compute/instances/${server.id}/interfaces`}
-                >
-                  {server.name || server.id}
-                </Link>
-              ) : port.data.device_owner ? (
-                port.data.device_owner
+              attachmentHref ? (
+                <ResourceLink href={attachmentHref}>
+                  {attachmentLabel}
+                </ResourceLink>
               ) : (
-                "Unattached"
+                attachmentLabel
               )
             }
           />
-          <DetailRow label="Device ID" value={port.data.device_id || "None"} />
+          <DetailRow
+            label="Device ID"
+            value={
+              attachmentHref ? (
+                <ResourceLink
+                  href={attachmentHref}
+                  className="font-mono text-xs"
+                >
+                  {port.data.device_id}
+                </ResourceLink>
+              ) : (
+                port.data.device_id || "None"
+              )
+            }
+          />
           <DetailRow
             label="Admin state"
             value={port.data.admin_state_up ? "Up" : "Down"}
@@ -156,7 +184,11 @@ export function PortDetailClient({
             {port.data.security_groups.length ? (
               port.data.security_groups.map((groupId) => (
                 <div key={groupId} className="px-3 py-2.5 text-sm">
-                  {groupById.get(groupId)?.name || groupId}
+                  <ResourceLink
+                    href={`/compute/networks/security-groups/${encodeURIComponent(groupId)}`}
+                  >
+                    {groupById.get(groupId)?.name || groupId}
+                  </ResourceLink>
                 </div>
               ))
             ) : (

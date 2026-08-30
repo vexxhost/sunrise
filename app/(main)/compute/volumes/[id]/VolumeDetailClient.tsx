@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
@@ -12,8 +11,8 @@ import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 import {
   VolumeMutationDialog,
   type VolumeMutationKind,
@@ -70,40 +69,18 @@ function volumeStatusVariant(status: string) {
   return "outline";
 }
 
-function DetailLink({
-  href,
-  children,
-  className,
-}: {
-  href: string;
-  children: string;
-  className?: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "underline decoration-dotted underline-offset-2 hover:text-foreground",
-        className,
-      )}
-    >
-      {children}
-    </Link>
-  );
-}
-
 function AttachmentValue({ attachment }: { attachment: Volume["attachments"][number] }) {
   return (
     <div className="space-y-1">
       <div>
         <span className="text-muted-foreground">Server: </span>
         {attachment.server_id ? (
-          <DetailLink
-            href={`/compute/instances/${attachment.server_id}`}
+          <ResourceLink
+            href={`/compute/instances/${encodeURIComponent(attachment.server_id)}`}
             className="font-mono text-xs"
           >
             {attachment.server_id}
-          </DetailLink>
+          </ResourceLink>
         ) : (
           "-"
         )}
@@ -302,25 +279,46 @@ export function VolumeDetailClient({
 
         <DetailSection title="Source">
           <DetailField label="Snapshot ID" className="font-mono text-xs">
-            {emptyToDash(volume.snapshot_id)}
+            {volume.snapshot_id ? (
+              <ResourceLink
+                href={`/compute/snapshots/${encodeURIComponent(volume.snapshot_id)}`}
+              >
+                {volume.snapshot_id}
+              </ResourceLink>
+            ) : (
+              "-"
+            )}
           </DetailField>
           <DetailField label="Source Volume ID" className="font-mono text-xs">
             {volume.source_volid ? (
-              <DetailLink href={`/compute/volumes/${volume.source_volid}`}>
+              <ResourceLink
+                href={`/compute/volumes/${encodeURIComponent(volume.source_volid)}`}
+              >
                 {volume.source_volid}
-              </DetailLink>
+              </ResourceLink>
             ) : (
               "-"
             )}
           </DetailField>
           <DetailField label="Image Name">
-            {emptyToDash(volume.volume_image_metadata?.image_name)}
+            {volume.volume_image_metadata?.image_id ? (
+              <ResourceLink
+                href={`/compute/images/${encodeURIComponent(volume.volume_image_metadata.image_id)}`}
+              >
+                {volume.volume_image_metadata.image_name ||
+                  volume.volume_image_metadata.image_id}
+              </ResourceLink>
+            ) : (
+              "-"
+            )}
           </DetailField>
           <DetailField label="Image ID" className="font-mono text-xs">
             {volume.volume_image_metadata?.image_id ? (
-              <DetailLink href={`/compute/images/${volume.volume_image_metadata.image_id}`}>
+              <ResourceLink
+                href={`/compute/images/${encodeURIComponent(volume.volume_image_metadata.image_id)}`}
+              >
                 {volume.volume_image_metadata.image_id}
-              </DetailLink>
+              </ResourceLink>
             ) : (
               "-"
             )}
