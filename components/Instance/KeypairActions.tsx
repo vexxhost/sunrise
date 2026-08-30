@@ -66,20 +66,23 @@ export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
         return;
       }
 
-      await queryClient.invalidateQueries({
-        queryKey: [regionId, projectId, "keypairs"],
-      });
       if (mode === "generate") {
         if (!result.data.private_key) {
           setError("Nova created the key pair but did not return private key material.");
           return;
         }
         setPrivateKey(result.data.private_key);
+        void queryClient.invalidateQueries({
+          queryKey: [regionId, projectId, "keypairs"],
+        });
         return;
       }
 
       setOpen(false);
       reset();
+      void queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "keypairs"],
+      });
     });
   };
 

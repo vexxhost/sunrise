@@ -26,11 +26,13 @@ import {
 import { volumesQueryOptions } from "@/hooks/queries/useVolumes";
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { Badge } from "@/components/ui/badge";
+import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { ColumnDef } from "@tanstack/react-table";
 import { formatDistanceToNow } from 'date-fns';
 import { OsIcon } from "@/components/icons/OsIcon";
 import { imageOperatingSystemMetadata } from "@/lib/openstack/image-metadata";
 import {
+  formatServerActivity,
   formatServerPowerState,
   formatServerStatus,
   formatServerTaskState,
@@ -383,14 +385,22 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       cell: ({ row }) => {
         const status = row.getValue("status");
         const taskState = row.original["OS-EXT-STS:task_state"];
+        const transitioning = isServerTransitioning(row.original);
         return (
           <div className="space-y-1">
-            <Badge className="text-xs" variant={serverStatusBadgeVariant(status)}>
-              <span className="font-bold">{formatServerStatus(status)}</span>
-            </Badge>
+            {transitioning ? (
+              <ProgressStatusBadge
+                label={formatServerActivity(status, taskState)}
+                title={`Nova status: ${formatServerStatus(status)}`}
+              />
+            ) : (
+              <Badge className="text-xs" variant={serverStatusBadgeVariant(status)}>
+                <span className="font-bold">{formatServerStatus(status)}</span>
+              </Badge>
+            )}
             <p className="whitespace-nowrap text-xs text-muted-foreground">
-              {taskState
-                ? formatServerTaskState(taskState)
+              {transitioning
+                ? `${formatServerStatus(status)} · ${formatServerPowerState(row.original["OS-EXT-STS:power_state"])}`
                 : formatServerPowerState(row.original["OS-EXT-STS:power_state"])}
             </p>
           </div>

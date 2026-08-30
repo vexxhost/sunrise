@@ -7,7 +7,7 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
-import { ImageIcon } from "lucide-react";
+import { ImageIcon, Pencil, Trash2 } from "lucide-react";
 import { imageQueryOptions, imagesQueryOptions } from "@/hooks/queries/useImages";
 import { Badge } from "@/components/ui/badge";
 import type { Image } from "@/types/openstack/glance";
@@ -16,6 +16,12 @@ import { titleCase } from "title-case";
 import bytes from 'bytes';
 import { OsIcon } from "@/components/icons/OsIcon";
 import { imageOperatingSystemMetadata } from "@/lib/openstack/image-metadata";
+import {
+  ImageMutationDialog,
+  type ImageMutationKind,
+} from "@/components/Image/ImageMutationDialog";
+import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
+import { canDeleteImage, canEditImage } from "@/lib/openstack/image-lifecycle";
 
 const ACTIVE_IMAGE_REFETCH_INTERVAL_MS = 5000;
 
@@ -42,63 +48,6 @@ function collectImageUpdates(results: readonly { data?: Image }[]) {
 
 function formatImageStatus(status: Image["status"]) {
   return titleCase(status.replace(/_/g, " "));
-}
-
-function StatusOrbit() {
-  return (
-    <svg
-      aria-hidden
-      className="pointer-events-none absolute inset-[-1px] z-10 h-[calc(100%+2px)] w-[calc(100%+2px)] overflow-visible text-sky-400"
-      preserveAspectRatio="none"
-      viewBox="0 0 100 24"
-    >
-      <rect
-        x="1"
-        y="1"
-        width="98"
-        height="22"
-        rx="11"
-        fill="none"
-        stroke="currentColor"
-        strokeOpacity="0.35"
-        strokeWidth="1.5"
-      />
-      <rect
-        x="1"
-        y="1"
-        width="98"
-        height="22"
-        rx="11"
-        fill="none"
-        pathLength="100"
-        stroke="currentColor"
-        strokeDasharray="22 78"
-        strokeLinecap="round"
-        strokeWidth="2.5"
-      >
-        <animate
-          attributeName="stroke-dashoffset"
-          dur="1.2s"
-          from="100"
-          repeatCount="indefinite"
-          to="0"
-        />
-      </rect>
-    </svg>
-  );
-}
-
-function ActiveStatusBadge({ label }: { label: string }) {
-  return (
-    <span
-      data-slot="badge"
-      className="relative isolate inline-flex w-fit shrink-0 items-center justify-center overflow-visible whitespace-nowrap rounded-full bg-transparent px-2 py-0.5 text-xs font-medium text-sky-700 shadow-[0_0_0_1px_rgba(14,165,233,0.32)] dark:text-sky-100 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.24)]"
-    >
-      <span className="absolute inset-[2px] z-0 rounded-full bg-sky-50 dark:bg-sky-500/10" />
-      <StatusOrbit />
-      <span className="relative z-20 px-0.5">{label}</span>
-    </span>
-  );
 }
 
 const columns: ColumnDef<Image>[] = [
@@ -173,7 +122,7 @@ const columns: ColumnDef<Image>[] = [
       }
 
       return active ? (
-        <ActiveStatusBadge label={status} />
+        <ProgressStatusBadge label={status} />
       ) : (
         <Badge variant={variant}>{status}</Badge>
       );
@@ -416,6 +365,8 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
     refetchOnWindowFocus: false,
   });
   const [visiblePageImages, setVisiblePageImages] = useState<Image[]>([]);
+  const [pendingAction, setPendingAction] = useState<ImageMutationKind | null>(null);
+  const [actionTargets, setActionTargets] = useState<Image[]>([]);
   const activeVisibleImages = useMemo(
     () =>
       visiblePageImages.filter((image) => isActiveImageStatus(image.status)),
@@ -434,6 +385,50 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
   const handlePageRowsChange = useCallback((images: Image[]) => {
     setVisiblePageImages(images);
   }, []);
+
+  const openAction = useCallback(
+    (action: ImageMutationKind, images: Image[]) => {
+      setPendingAction(action);
+      setActionTargets(images);
+    },
+    [],
+  );
+
+  const closeAction = useCallback(() => {
+    setPendingAction(null);
+    setActionTargets([]);
+  }, []);
+
+  const refreshAfterAction = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: imageListOptions.queryKey });
+    for (const image of actionTargets) {
+      await queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "image", image.id],
+      });
+    }
+  }, [actionTargets, imageListOptions.queryKey, projectId, queryClient, regionId]);
+
+  const rowActions = useMemo(
+    () => [
+      {
+        label: "Edit",
+        icon: Pencil,
+        onClick: (rows: Image[]) => openAction("edit", rows),
+        isDisabled: (rows: Image[]) =>
+          rows.length !== 1 || !canEditImage(rows[0], projectId),
+      },
+      {
+        label: "Delete",
+        icon: Trash2,
+        variant: "destructive" as const,
+        onClick: (rows: Image[]) => openAction("delete", rows),
+        isDisabled: (rows: Image[]) =>
+          rows.length === 0 ||
+          rows.some((image) => !canDeleteImage(image, projectId)),
+      },
+    ],
+    [openAction, projectId],
+  );
 
   useEffect(() => {
     if (activeVisibleImageUpdates.size === 0) {
@@ -465,14 +460,28 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
   ]);
 
   return (
-    <DataTable
-      data={data}
-      isRefetching={isRefetching}
-      refetch={refetch}
-      columns={columns}
-      resourceName="image"
-      emptyIcon={ImageIcon}
-      onPageRowsChange={handlePageRowsChange}
-    />
+    <>
+      <DataTable
+        data={data}
+        isRefetching={isRefetching}
+        refetch={refetch}
+        columns={columns}
+        resourceName="image"
+        emptyIcon={ImageIcon}
+        rowActions={rowActions}
+        onPageRowsChange={handlePageRowsChange}
+      />
+      {pendingAction ? (
+        <ImageMutationDialog
+          key={`${pendingAction}-${actionTargets.map(({ id }) => id).join("-")}`}
+          action={pendingAction}
+          images={actionTargets}
+          projectId={projectId}
+          regionId={regionId}
+          onComplete={refreshAfterAction}
+          onOpenChange={closeAction}
+        />
+      ) : null}
+    </>
   );
 }

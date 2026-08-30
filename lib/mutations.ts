@@ -58,6 +58,13 @@ export type MutationCapability = {
   message: string;
 };
 
+export function retainFailedTargets<T>(
+  targets: readonly T[],
+  results: readonly { ok: boolean }[],
+) {
+  return targets.filter((_, index) => !results[index]?.ok);
+}
+
 type CapabilityOptions = {
   serviceId: ServiceDirectoryId;
   permission?: MutationCapability["permission"];

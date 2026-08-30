@@ -39,7 +39,7 @@ export interface ListVolumesOptions {
   consumes_quota?: boolean;
 }
 
-interface Attachments {
+export interface VolumeAttachment {
   id: string;
   attachment_id: string;
   volume_id: string;
@@ -66,7 +66,7 @@ export interface VolumeImageMetadata {
 
 export type Volume = {
   migration_status?: string;
-  attachments: Attachments[];
+  attachments: VolumeAttachment[];
   links: [];
   availability_zone?: string;
   "os-vol-host-attr:host"?: string;
@@ -102,6 +102,20 @@ export type Volume = {
   cluster_name?: string;
   consumes_quota?: boolean;
   count?: number;
+};
+
+export type VolumeType = {
+  id: string;
+  name: string;
+  description?: string | null;
+  is_public?: boolean;
+};
+
+export type VolumeAvailabilityZone = {
+  zoneName: string;
+  zoneState: {
+    available: boolean;
+  };
 };
 
 export interface ListSnapshotsOptions {

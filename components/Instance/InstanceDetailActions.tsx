@@ -167,8 +167,8 @@ export function InstanceDetailActions({
         setError(result.error.message);
         return;
       }
-      await refresh();
       setMetadataOpen(false);
+      void refresh();
     });
   };
 
@@ -189,8 +189,8 @@ export function InstanceDetailActions({
         setError(result.error.message);
         return;
       }
-      await refresh();
       setRebuildOpen(false);
+      void refresh();
     });
   };
 

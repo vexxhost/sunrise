@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CloudContextSnapshot } from "@/lib/cloud-context-snapshot";
 import {
   mutationErrorForStatus,
+  retainFailedTargets,
   mutationScopeError,
   mutationSuccess,
   resolveMutationCapability,
@@ -138,5 +139,17 @@ describe("mutation outcomes", () => {
         issues: [{ resource: "locked.txt", message: "Access denied" }],
       }),
     ).toMatchObject({ ok: true, status: "partial" });
+  });
+
+  it("retains only failed targets for a partial batch retry", () => {
+    const targets = [{ id: "image-a" }, { id: "image-b" }, { id: "image-c" }];
+
+    expect(
+      retainFailedTargets(targets, [
+        { ok: true },
+        { ok: false },
+        { ok: true },
+      ]),
+    ).toEqual([{ id: "image-b" }]);
   });
 });

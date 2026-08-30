@@ -4,7 +4,12 @@
 
 import { queryOptions } from '@tanstack/react-query';
 import { openstack } from '@/lib/openstack/actions';
-import type { Volume, Snapshot } from '@/types/openstack';
+import type {
+  Snapshot,
+  Volume,
+  VolumeAvailabilityZone,
+  VolumeType,
+} from '@/types/openstack';
 
 /**
  * Query options for fetching list of volumes
@@ -113,5 +118,49 @@ export function snapshotQueryOptions(
       return data.snapshot;
     },
     enabled: !!id && !!regionId,
+  });
+}
+
+export function volumeTypesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'volume-types'],
+    queryFn: async () => {
+      const data = await openstack<{ volume_types: VolumeType[] }>({
+        regionId: regionId!,
+        serviceType: 'volumev3',
+        serviceName: 'cinder',
+        path: '/types',
+      });
+
+      return data?.volume_types ?? [];
+    },
+    enabled: !!regionId,
+  });
+}
+
+export function volumeAvailabilityZonesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, 'volume-availability-zones'],
+    queryFn: async () => {
+      const data = await openstack<{
+        availabilityZoneInfo: VolumeAvailabilityZone[];
+      }>({
+        regionId: regionId!,
+        serviceType: 'volumev3',
+        serviceName: 'cinder',
+        path: '/os-availability-zone',
+      });
+
+      return (data?.availabilityZoneInfo ?? []).filter(
+        ({ zoneState }) => zoneState.available,
+      );
+    },
+    enabled: !!regionId,
   });
 }

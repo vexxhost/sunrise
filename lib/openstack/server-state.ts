@@ -140,6 +140,12 @@ export function formatServerTaskState(value: unknown) {
   return TASK_STATE_LABELS[key] ?? humanizeState(taskState);
 }
 
+export function formatServerActivity(status: unknown, taskState: unknown) {
+  return normalizeState(taskState)
+    ? formatServerTaskState(taskState)
+    : formatServerStatus(status);
+}
+
 export function formatServerPowerState(value: unknown) {
   const powerState =
     typeof value === "number"

@@ -1,16 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { titleCase } from "title-case";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { Camera, Link2, Link2Off, Pencil, Trash2 } from "lucide-react";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import type { Volume } from "@/types/openstack";
 import { statuses as volumeStatusDescriptions } from "@/types/openstack/cinder";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
+import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  VolumeMutationDialog,
+  type VolumeMutationKind,
+} from "@/components/Volume/VolumeMutationDialog";
+import {
+  canAttachVolume,
+  canDeleteVolume,
+  canDetachVolume,
+  canEditVolume,
+  canSnapshotVolume,
+  isVolumeTransitioning,
+} from "@/lib/openstack/storage-lifecycle";
+import { formatVolumeStatus } from "@/lib/openstack/storage-status";
 
 interface VolumeDetailClientProps {
   volumeId: string;
@@ -20,10 +36,6 @@ interface VolumeDetailClientProps {
 
 function emptyToDash(value: unknown) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
-}
-
-function humanize(value: string) {
-  return titleCase(value.replace(/[-_]+/g, " "));
 }
 
 function formatBooleanLike(value: unknown) {
@@ -121,9 +133,33 @@ export function VolumeDetailClient({
   regionId,
   projectId,
 }: VolumeDetailClientProps) {
-  const { data: volume } = useSuspenseQuery(
-    volumeQueryOptions(regionId, projectId, volumeId),
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const query = useMemo(
+    () => volumeQueryOptions(regionId, projectId, volumeId),
+    [projectId, regionId, volumeId],
   );
+  const { data: volume } = useSuspenseQuery({
+    ...query,
+    refetchInterval: ({ state }) =>
+      state.data && isVolumeTransitioning(state.data)
+        ? 5_000
+        : false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
+  const [action, setAction] = useState<VolumeMutationKind | null>(null);
+  const refreshAfterAction = useCallback(async () => {
+    if (action !== "delete") {
+      await queryClient.invalidateQueries({ queryKey: query.queryKey });
+    }
+    await queryClient.invalidateQueries({
+      queryKey: [regionId, projectId, "volumes"],
+    });
+  }, [action, projectId, query.queryKey, queryClient, regionId]);
+  const navigateAfterDelete = useCallback(() => {
+    router.replace("/compute/volumes");
+  }, [router]);
 
   const metadata = useMemo(() => {
     return Object.entries(volume.metadata ?? {}).sort(([left], [right]) =>
@@ -146,11 +182,72 @@ export function VolumeDetailClient({
         id={volume.id}
         name={volume.name || "Unnamed volume"}
       />
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {volume.name || "Unnamed volume"}
-        </h1>
-        <p className="font-mono text-sm text-muted-foreground">{volume.id}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <h1 className="truncate text-2xl font-semibold tracking-tight">
+            {volume.name || "Unnamed volume"}
+          </h1>
+          <p className="truncate font-mono text-sm text-muted-foreground">{volume.id}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-10 sm:w-auto sm:px-4"
+            aria-label="Attach volume"
+            title="Attach volume"
+            disabled={!canAttachVolume(volume)}
+            onClick={() => setAction("attach")}
+          >
+            <Link2 className="size-4" />
+            <span className="hidden sm:inline">Attach</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-10 sm:w-auto sm:px-4"
+            aria-label="Create snapshot"
+            title="Create snapshot"
+            disabled={!canSnapshotVolume(volume)}
+            onClick={() => setAction("snapshot")}
+          >
+            <Camera className="size-4" />
+            <span className="hidden sm:inline">Snapshot</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-10"
+            aria-label="Edit volume"
+            title="Edit volume"
+            disabled={!canEditVolume(volume)}
+            onClick={() => setAction("edit")}
+          >
+            <Pencil className="size-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-10"
+            aria-label="Detach volume"
+            title="Detach volume"
+            disabled={!canDetachVolume(volume)}
+            onClick={() => setAction("detach")}
+          >
+            <Link2Off className="size-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-10 text-destructive hover:text-destructive"
+            aria-label="Delete volume"
+            title="Delete volume"
+            disabled={!canDeleteVolume(volume)}
+            onClick={() => setAction("delete")}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-6 rounded-md border bg-card p-4 text-card-foreground">
@@ -162,9 +259,13 @@ export function VolumeDetailClient({
           <DetailField label="Description">{emptyToDash(volume.description)}</DetailField>
           <DetailField label="Status">
             <div className="flex min-w-0 flex-col gap-1">
-              <Badge className="w-fit" variant={volumeStatusVariant(volume.status)}>
-                {humanize(volume.status)}
-              </Badge>
+              {isVolumeTransitioning(volume) ? (
+                <ProgressStatusBadge label={formatVolumeStatus(volume.status)} />
+              ) : (
+                <Badge className="w-fit" variant={volumeStatusVariant(volume.status)}>
+                  {formatVolumeStatus(volume.status)}
+                </Badge>
+              )}
               {statusDescription ? (
                 <span className="text-xs text-muted-foreground">
                   {statusDescription}
@@ -300,6 +401,18 @@ export function VolumeDetailClient({
           )}
         </DetailSection>
       </div>
+      {action ? (
+        <VolumeMutationDialog
+          key={`${action}-${volume.id}`}
+          action={action}
+          volumes={[volume]}
+          projectId={projectId}
+          regionId={regionId}
+          onComplete={refreshAfterAction}
+          onDeleteSuccess={navigateAfterDelete}
+          onOpenChange={() => setAction(null)}
+        />
+      ) : null}
     </div>
   );
 }
