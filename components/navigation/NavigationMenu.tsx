@@ -1,6 +1,6 @@
 import Link from "next/link";
-import Image from "next/image";
 import { MessageSquare } from "lucide-react";
+import { SunriseBrand } from "@/components/Brand/SunriseBrand";
 import { Button } from "@/components/ui/button";
 import {
   NavigationMenu as _NavigationMenu,
@@ -19,15 +19,12 @@ export function NavigationMenu() {
       <div className="flex h-14 w-full items-center justify-between gap-2 px-3 sm:px-6">
         {/* Left side: Logo + Services Menu */}
         <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
-          <Link href="/" className="flex items-center hover:opacity-80 transition-opacity">
-            <Image
-              src="/openstack-logo.svg"
-              alt="OpenStack"
-              width={37}
-              height={32}
-              className="h-8 w-auto"
-              priority
-            />
+          <Link
+            href="/"
+            aria-label="Sunrise overview"
+            className="flex items-center transition-opacity hover:opacity-80"
+          >
+            <SunriseBrand compact />
           </Link>
 
           <div className="h-6 w-px bg-border" />

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { parseIdentityProviders } from '@/lib/auth-providers';
 import { getSession } from '@/lib/session';
 import {
   buildAuthorizeUrl,
@@ -6,8 +7,9 @@ import {
   generateState,
 } from '@/lib/oidc/sunrise';
 
-const idProvidersEnv = process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS;
-const idProviders = idProvidersEnv ? idProvidersEnv.split(',') : [];
+const idProviders = parseIdentityProviders(
+  process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS
+);
 
 export async function GET(request: Request) {
   const url = new URL(request.url);

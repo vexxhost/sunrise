@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
+import { parseIdentityProviders } from "@/lib/auth-providers";
 
-const idProviders: string[] | undefined =
-  process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS?.split(",");
+const idProviders = parseIdentityProviders(
+  process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS,
+);
 
-if (!idProviders || (idProviders.length == 1 && idProviders[0] == "")) {
+if (idProviders.length === 0) {
   throw new Error("No Identity Providers configured");
 }
 
@@ -25,8 +27,8 @@ export type LoginFormState =
 
 export const redirectToIdentityProvider = (idProvider: string) => {
   redirect(
-    (process.env.DASHBOARD_URL ?? '') +
-      '/auth/oidc/login?idp=' +
+    (process.env.DASHBOARD_URL ?? "") +
+      "/auth/oidc/login?idp=" +
       encodeURIComponent(idProvider),
   );
 };

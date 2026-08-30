@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useTransition } from 'react';
 import { Check, Monitor, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ const themeOptions = [
 export function ThemeToggle() {
   const { theme, setTheme, resolvedTheme, systemTheme } = useTheme();
   const isHydrated = useIsHydrated();
+  const [, startTransition] = useTransition();
 
   const activeTheme = isHydrated ? theme ?? 'system' : 'system';
   const appearance = isHydrated ? resolvedTheme ?? systemTheme ?? 'light' : 'light';
@@ -49,6 +50,21 @@ export function ThemeToggle() {
 
     return `Appearance: ${activeTheme}`;
   }, [activeTheme, isHydrated, systemLabel]);
+
+  const selectTheme = (appearance: (typeof themeOptions)[number]['value']) => {
+    setTheme(appearance);
+    startTransition(async () => {
+      try {
+        await fetch('/api/preferences/appearance', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appearance }),
+        });
+      } catch {
+        // next-themes still preserves the local preference if cookie sync fails.
+      }
+    });
+  };
 
   return (
     <DropdownMenu>
@@ -75,7 +91,7 @@ export function ThemeToggle() {
           return (
             <DropdownMenuItem
               key={option.value}
-              onClick={() => setTheme(option.value)}
+              onClick={() => selectTheme(option.value)}
               className="justify-between"
             >
               <span className="flex items-center gap-2">

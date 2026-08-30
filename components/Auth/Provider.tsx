@@ -1,28 +1,34 @@
 import Login from "@/components/Auth/Login";
+import { AuthScene } from "@/components/Auth/AuthScene";
 import { getKeystoneSessionState } from "@/lib/keystone/session";
 import { getSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 
 function SessionUnavailable({ reason }: { reason: string }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6">
-      <div className="w-full max-w-md rounded-md border bg-card p-6 text-card-foreground shadow-sm">
-        <h1 className="text-xl font-semibold">Session unavailable</h1>
-        <p className="mt-3 text-sm text-muted-foreground">
+    <AuthScene>
+      <div className="max-w-sm">
+        <p className="text-sm font-medium text-amber-700 dark:text-amber-200">
+          Connection interrupted
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold text-foreground">
+          Session unavailable
+        </h1>
+        <p className="mt-4 text-sm leading-6 text-muted-foreground">
           Sunrise could not validate the Keystone session. Sign in again to
           continue.
         </p>
-        <p className="mt-3 break-words text-xs text-muted-foreground">
+        <p className="mt-4 break-words rounded-md border border-border bg-muted/60 p-3 text-xs leading-5 text-muted-foreground">
           {reason}
         </p>
         <a
-          className="mt-5 inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90"
           href="/auth/logout"
         >
           Sign in again
         </a>
       </div>
-    </main>
+    </AuthScene>
   );
 }
 
