@@ -111,6 +111,27 @@ export function subnetsQueryOptions(
   });
 }
 
+/** Subnets visible to the active project, including shared/RBAC networks. */
+export function visibleSubnetsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "visible-subnets"],
+    queryFn: async () => {
+      const data = await openstack<{ subnets: Subnet[] }>({
+        regionId: regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: "/v2.0/subnets",
+      });
+
+      return data?.subnets ?? [];
+    },
+    enabled: !!regionId && !!projectId,
+  });
+}
+
 export function networkSubnetsQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,

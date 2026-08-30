@@ -298,9 +298,11 @@ export function PortDetailActions({
                 <Checkbox
                   checked={portSecurityEnabled}
                   disabled={pending}
-                  onCheckedChange={(value) =>
-                    setPortSecurityEnabled(value === true)
-                  }
+                  onCheckedChange={(value) => {
+                    const checked = value === true;
+                    setPortSecurityEnabled(checked);
+                    if (!checked) setSecurityGroupIds([]);
+                  }}
                 />
                 <span>
                   <span className="block text-sm font-medium">

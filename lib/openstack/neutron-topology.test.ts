@@ -26,7 +26,11 @@ function network(id: string, options: Partial<Network> = {}): Network {
   } as Network;
 }
 
-function subnet(id: string, networkId: string): Subnet {
+function subnet(
+  id: string,
+  networkId: string,
+  options: Partial<Subnet> = {},
+): Subnet {
   return {
     id,
     name: id,
@@ -35,6 +39,7 @@ function subnet(id: string, networkId: string): Subnet {
     network_id: networkId,
     cidr: "10.0.0.0/24",
     enable_dhcp: true,
+    ...options,
   } as Subnet;
 }
 
@@ -102,6 +107,67 @@ function floatingIp(id: string): FloatingIp {
 }
 
 describe("network topology", () => {
+  it("includes shared network context used by project ports", () => {
+    const sharedNetwork = network("shared-network", {
+      project_id: "service-project",
+      tenant_id: "service-project",
+      shared: true,
+      subnets: ["shared-subnet"],
+    });
+    const topology = buildNetworkTopology({
+      projectId,
+      networks: [
+        sharedNetwork,
+        network("unused-shared-network", {
+          project_id: "service-project",
+          tenant_id: "service-project",
+          shared: true,
+        }),
+      ],
+      externalNetworks: [],
+      subnets: [
+        subnet("shared-subnet", "shared-network", {
+          project_id: "service-project",
+          tenant_id: "service-project",
+        }),
+      ],
+      routers: [],
+      ports: [
+        port("shared-port", {
+          network_id: "shared-network",
+          fixed_ips: [{ subnet_id: "shared-subnet", ip_address: "10.0.0.10" }],
+        }),
+      ],
+      floatingIps: [],
+      servers: [],
+    });
+
+    expect(
+      topology.nodes.find((node) => node.id === "network:shared-network")?.data
+        .owned,
+    ).toBe(false);
+    expect(
+      topology.nodes.some((node) => node.id === "subnet:shared-subnet"),
+    ).toBe(true);
+    expect(
+      topology.nodes.some(
+        (node) => node.id === "network:unused-shared-network",
+      ),
+    ).toBe(false);
+    expect(topology.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "network:shared-network",
+          target: "subnet:shared-subnet",
+        }),
+        expect.objectContaining({
+          source: "subnet:shared-subnet",
+          target: "port:shared-port",
+        }),
+      ]),
+    );
+  });
+
   it("keeps only connected external networks as read-only context", () => {
     const topology = buildNetworkTopology({
       projectId,
@@ -134,6 +200,15 @@ describe("network topology", () => {
         (node) => node.id === "external-network:external-unused",
       ),
     ).toBe(false);
+    expect(topology.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "external-network:external-used",
+          target: "router:router-a",
+          label: "Gateway",
+        }),
+      ]),
+    );
   });
 
   it("turns router interfaces into relationships instead of duplicate nodes", () => {

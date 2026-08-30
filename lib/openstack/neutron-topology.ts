@@ -244,13 +244,32 @@ export function buildNetworkTopology(input: NetworkTopologyInput) {
     nodes.push(node);
   };
 
+  const referencedNetworkIds = new Set(
+    input.ports.map((port) => port.network_id),
+  );
+  for (const subnet of input.subnets) {
+    if (isOwned(subnet, input.projectId)) {
+      referencedNetworkIds.add(subnet.network_id);
+    }
+  }
+
+  const projectContextNetworks = input.networks.filter(
+    (network) =>
+      !network["router:external"] &&
+      (isOwned(network, input.projectId) ||
+        referencedNetworkIds.has(network.id)),
+  );
   const networks = [
-    ...input.networks,
+    ...projectContextNetworks,
     ...relevantExternalNetworks(input).filter(
       (external) =>
-        !input.networks.some((network) => network.id === external.id),
+        !projectContextNetworks.some((network) => network.id === external.id),
     ),
   ];
+  const contextNetworkIds = new Set(networks.map((network) => network.id));
+  const subnets = input.subnets.filter((subnet) =>
+    contextNetworkIds.has(subnet.network_id),
+  );
 
   for (const network of networks) {
     const kind = network["router:external"] ? "external-network" : "network";
@@ -270,7 +289,7 @@ export function buildNetworkTopology(input: NetworkTopologyInput) {
     );
   }
 
-  for (const subnet of input.subnets) {
+  for (const subnet of subnets) {
     pushNode(
       createNode(
         "subnet",
@@ -318,7 +337,7 @@ export function buildNetworkTopology(input: NetworkTopologyInput) {
         createEdge(
           nodeId("external-network", gatewayNetworkId),
           nodeId("router", router.id),
-          "gateway",
+          "Gateway",
         ),
       );
     }

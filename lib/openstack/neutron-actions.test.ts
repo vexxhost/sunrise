@@ -10,6 +10,7 @@ import {
   addRouterInterfaceAction,
   addRouterRouteAction,
   createNetworkAction,
+  createPortAction,
   createSecurityGroupRuleAction,
   createSubnetAction,
   deleteFloatingIpAction,
@@ -23,6 +24,7 @@ import {
   replaceRouterRouteAction,
   replaceSecurityGroupRuleAction,
   setRouterGatewayAction,
+  updatePortAction,
   updateSubnetAction,
 } from "@/lib/openstack/neutron-actions";
 
@@ -60,6 +62,43 @@ describe("Neutron mutation actions", () => {
             admin_state_up: true,
             port_security_enabled: true,
           },
+        },
+      }),
+    );
+  });
+
+  it("clears security groups when port security is disabled", async () => {
+    const port = {
+      name: "application-port",
+      description: "Application interface",
+      adminStateUp: true,
+      portSecurityEnabled: false,
+      securityGroupIds: ["security-group-a"],
+    };
+
+    await createPortAction(scope, {
+      ...port,
+      networkId: "network-a",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            port_security_enabled: false,
+            security_groups: [],
+          }),
+        },
+      }),
+    );
+
+    await updatePortAction(scope, "port-a", port);
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            port_security_enabled: false,
+            security_groups: [],
+          }),
         },
       }),
     );

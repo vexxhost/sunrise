@@ -48,10 +48,10 @@ import { useIsHydrated } from "@/hooks/useIsHydrated";
 import {
   externalNetworksQueryOptions,
   floatingIpsQueryOptions,
+  networksQueryOptions,
   portsQueryOptions,
-  projectNetworksQueryOptions,
   routersQueryOptions,
-  subnetsQueryOptions,
+  visibleSubnetsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import {
@@ -480,13 +480,13 @@ export function NetworkTopologyClient({
     "(prefers-reduced-motion: reduce)",
     { initializeWithValue: false },
   );
-  const networks = useSuspenseQuery(
-    projectNetworksQueryOptions(regionId, projectId),
-  );
+  const networks = useSuspenseQuery(networksQueryOptions(regionId, projectId));
   const externalNetworks = useSuspenseQuery(
     externalNetworksQueryOptions(regionId, projectId),
   );
-  const subnets = useSuspenseQuery(subnetsQueryOptions(regionId, projectId));
+  const subnets = useSuspenseQuery(
+    visibleSubnetsQueryOptions(regionId, projectId),
+  );
   const routers = useSuspenseQuery(routersQueryOptions(regionId, projectId));
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
   const floatingIps = useSuspenseQuery(
@@ -543,6 +543,10 @@ export function NetworkTopologyClient({
       subnets.data,
     ],
   );
+  const topologyNetworkCount = topology.nodes.filter(
+    (node) =>
+      node.data.kind === "network" || node.data.kind === "external-network",
+  ).length;
 
   const layoutNodes = useMemo(
     () =>
@@ -823,7 +827,7 @@ export function NetworkTopologyClient({
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <span>{resourceCount(networks.data.length, "network")}</span>
+          <span>{resourceCount(topologyNetworkCount, "network")}</span>
           <span aria-hidden="true">·</span>
           <span>{resourceCount(routers.data.length, "router")}</span>
           <span aria-hidden="true">·</span>
@@ -946,7 +950,7 @@ export function NetworkTopologyClient({
               const label = edgeLabelPosition(source, target);
               const showLabel =
                 (Boolean(hoveredNodeId) && connectedToHover) ||
-                edge.label === "gateway" ||
+                edge.label === "Gateway" ||
                 edge.label === "NAT";
 
               return (

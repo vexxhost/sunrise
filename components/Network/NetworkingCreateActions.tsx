@@ -34,8 +34,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   externalNetworksQueryOptions,
+  networksQueryOptions,
   portsQueryOptions,
-  projectNetworksQueryOptions,
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
@@ -326,7 +326,7 @@ export function CreatePortAction({ projectId, regionId }: ScopeProps) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const networks = useQuery({
-    ...projectNetworksQueryOptions(regionId, projectId),
+    ...networksQueryOptions(regionId, projectId),
     enabled: open,
   });
   const groups = useQuery({
@@ -440,7 +440,10 @@ export function CreatePortAction({ projectId, regionId }: ScopeProps) {
                 description="Enable anti-spoofing and security groups."
                 checked={portSecurityEnabled}
                 disabled={pending}
-                onCheckedChange={setPortSecurityEnabled}
+                onCheckedChange={(checked) => {
+                  setPortSecurityEnabled(checked);
+                  if (!checked) setSecurityGroupIds([]);
+                }}
               />
               {portSecurityEnabled ? (
                 <div className="space-y-2 sm:col-span-2">

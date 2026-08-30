@@ -662,7 +662,9 @@ export async function createPortAction(
         network_id: value.networkId,
         admin_state_up: value.adminStateUp,
         port_security_enabled: value.portSecurityEnabled,
-        security_groups: value.securityGroupIds,
+        security_groups: value.portSecurityEnabled
+          ? value.securityGroupIds
+          : [],
       },
     },
     invalidates: networkingInvalidates,
@@ -693,7 +695,9 @@ export async function updatePortAction(
         description: value.description,
         admin_state_up: value.adminStateUp,
         port_security_enabled: value.portSecurityEnabled,
-        security_groups: value.securityGroupIds,
+        security_groups: value.portSecurityEnabled
+          ? value.securityGroupIds
+          : [],
       },
     },
     invalidates: networkingInvalidates,

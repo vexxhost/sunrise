@@ -3,10 +3,10 @@ import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import {
   externalNetworksQueryOptions,
   floatingIpsQueryOptions,
+  networksQueryOptions,
   portsQueryOptions,
-  projectNetworksQueryOptions,
   routersQueryOptions,
-  subnetsQueryOptions,
+  visibleSubnetsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import { makeQueryClient } from "@/lib/query-client";
@@ -21,11 +21,11 @@ export default async function Page() {
 
   const queryClient = makeQueryClient();
   await Promise.all([
-    queryClient.prefetchQuery(projectNetworksQueryOptions(regionId, projectId)),
+    queryClient.prefetchQuery(networksQueryOptions(regionId, projectId)),
     queryClient.prefetchQuery(
       externalNetworksQueryOptions(regionId, projectId),
     ),
-    queryClient.prefetchQuery(subnetsQueryOptions(regionId, projectId)),
+    queryClient.prefetchQuery(visibleSubnetsQueryOptions(regionId, projectId)),
     queryClient.prefetchQuery(routersQueryOptions(regionId, projectId)),
     queryClient.prefetchQuery(portsQueryOptions(regionId, projectId)),
     queryClient.prefetchQuery(floatingIpsQueryOptions(regionId, projectId)),
