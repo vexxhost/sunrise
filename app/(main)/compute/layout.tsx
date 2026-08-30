@@ -26,7 +26,7 @@ const computeSidebarSections = [
   {
     title: "Network & Security",
     items: [
-      { name: "Networks", href: "/compute/networks", icon: "Network" },
+      { name: "Networking", href: "/compute/networks", icon: "Network" },
       { name: "Key Pairs", href: "/compute/key-pairs", icon: "Key" },
     ],
   },

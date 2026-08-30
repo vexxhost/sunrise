@@ -1,12 +1,17 @@
-'use server';
+"use server";
 
-import { openstack } from '@/lib/openstack/actions';
-import { executeOpenStackMutation } from '@/lib/openstack/mutations';
-import { getSession } from '@/lib/session';
-import { mutationFailure, type MutationResult, type MutationScope } from '@/lib/mutations';
-import { z } from 'zod';
+import { openstack } from "@/lib/openstack/actions";
+import { executeOpenStackMutation } from "@/lib/openstack/mutations";
+import { getSession } from "@/lib/session";
+import {
+  mutationFailure,
+  type MutationResult,
+  type MutationScope,
+} from "@/lib/mutations";
+import { z } from "zod";
 import type {
   CreateServerImageRequest,
+  InterfaceAttachment,
   Keypair,
   LiveMigrateServerRequest,
   MigrateServerRequest,
@@ -15,18 +20,18 @@ import type {
   Server,
   ServerConsole,
   VncConsoleType,
-} from '@/types/openstack';
+} from "@/types/openstack";
 
-const SERVICE_TYPE = 'compute';
-const SERVICE_NAME = 'nova';
-const API_VERSION = 'compute 2.79';
+const SERVICE_TYPE = "compute";
+const SERVICE_NAME = "nova";
+const API_VERSION = "compute 2.79";
 
 const resourceIdSchema = z.string().trim().min(1).max(255);
 const serverNameSchema = z.string().trim().min(1).max(255);
 const metadataSchema = z
   .record(z.string().trim().min(1).max(255), z.string().max(255))
   .refine((value) => Object.keys(value).length <= 128, {
-    message: 'Metadata cannot contain more than 128 entries.',
+    message: "Metadata cannot contain more than 128 entries.",
   });
 
 const launchServerSchema = z.object({
@@ -35,7 +40,10 @@ const launchServerSchema = z.object({
   flavorRef: resourceIdSchema,
   keyName: z.string().trim().max(255).optional(),
   networkIds: z.array(resourceIdSchema).max(32).default([]),
-  securityGroupNames: z.array(z.string().trim().min(1).max(255)).max(32).default([]),
+  securityGroupNames: z
+    .array(z.string().trim().min(1).max(255))
+    .max(32)
+    .default([]),
   availabilityZone: z.string().trim().max(255).optional(),
   metadata: metadataSchema.default({}),
   userData: z.string().max(65_535).optional(),
@@ -56,19 +64,29 @@ const keypairSchema = z.object({
     .trim()
     .min(1)
     .max(255)
-    .regex(/^[A-Za-z0-9._-]+$/, 'Use letters, numbers, periods, underscores, or hyphens.'),
+    .regex(
+      /^[A-Za-z0-9._-]+$/,
+      "Use letters, numbers, periods, underscores, or hyphens.",
+    ),
   publicKey: z.string().trim().min(16).max(16_384).optional(),
+});
+
+const attachPortSchema = z.object({
+  portId: resourceIdSchema,
+  serverId: resourceIdSchema,
 });
 
 export type LaunchServerInput = z.input<typeof launchServerSchema>;
 export type RebuildServerInput = z.input<typeof rebuildServerSchema>;
 export type KeypairInput = z.input<typeof keypairSchema>;
-export type ServerLifecycleAction = 'start' | 'stop' | 'soft-reboot' | 'hard-reboot';
+export type AttachPortInput = z.input<typeof attachPortSchema>;
+export type ServerLifecycleAction =
+  "start" | "stop" | "soft-reboot" | "hard-reboot";
 
 function validationFailure(scope: MutationScope, message: string) {
   return mutationFailure(
     {
-      code: 'validation-failed',
+      code: "validation-failed",
       message,
       retryable: false,
     },
@@ -80,14 +98,16 @@ function parseInput<T>(
   schema: z.ZodType<T>,
   value: unknown,
   scope: MutationScope,
-): { ok: true; value: T } | { ok: false; result: ReturnType<typeof validationFailure> } {
+):
+  | { ok: true; value: T }
+  | { ok: false; result: ReturnType<typeof validationFailure> } {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
     return {
       ok: false,
       result: validationFailure(
         scope,
-        parsed.error.issues[0]?.message ?? 'Review the values and try again.',
+        parsed.error.issues[0]?.message ?? "Review the values and try again.",
       ),
     };
   }
@@ -96,7 +116,7 @@ function parseInput<T>(
 }
 
 function encodeUserData(value?: string | null) {
-  return value ? Buffer.from(value, 'utf8').toString('base64') : value;
+  return value ? Buffer.from(value, "utf8").toString("base64") : value;
 }
 
 async function resolveRegionId(regionId?: string): Promise<string> {
@@ -107,7 +127,7 @@ async function resolveRegionId(regionId?: string): Promise<string> {
   const session = await getSession();
 
   if (!session.regionId) {
-    throw new Error('No region available for Nova request');
+    throw new Error("No region available for Nova request");
   }
 
   return session.regionId;
@@ -134,7 +154,7 @@ async function performInstanceAction(
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: `/servers/${id}/action`,
-    method: 'POST',
+    method: "POST",
     apiVersion,
     body: actionBody,
   });
@@ -149,12 +169,12 @@ export async function createServerAction(
 
   const payload = parsed.value;
   return executeOpenStackMutation<Server>({
-    actionLabel: 'launch an instance',
+    actionLabel: "launch an instance",
     scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
-    path: '/servers',
-    method: 'POST',
+    path: "/servers",
+    method: "POST",
     apiVersion: API_VERSION,
     body: {
       server: {
@@ -169,22 +189,24 @@ export async function createServerAction(
           ? payload.securityGroupNames.map((name) => ({ name }))
           : undefined,
         availability_zone: payload.availabilityZone || undefined,
-        metadata: Object.keys(payload.metadata).length ? payload.metadata : undefined,
+        metadata: Object.keys(payload.metadata).length
+          ? payload.metadata
+          : undefined,
         user_data: encodeUserData(payload.userData),
         config_drive: payload.configDrive || undefined,
       },
     },
-    invalidates: ['/compute', '/compute/instances'],
+    invalidates: ["/compute", "/compute/instances"],
     successMessage: `Instance ${payload.name} is being created.`,
     transform: (responsePayload) => {
       if (
         !responsePayload ||
-        typeof responsePayload !== 'object' ||
-        !('server' in responsePayload) ||
+        typeof responsePayload !== "object" ||
+        !("server" in responsePayload) ||
         !responsePayload.server ||
-        typeof responsePayload.server !== 'object'
+        typeof responsePayload.server !== "object"
       ) {
-        throw new Error('Nova did not return the created server');
+        throw new Error("Nova did not return the created server");
       }
 
       return responsePayload.server as Server;
@@ -200,19 +222,88 @@ export async function deleteServerAction(
   if (!parsedId.ok) return parsedId.result;
 
   return executeOpenStackMutation({
-    actionLabel: 'delete this instance',
+    actionLabel: "delete this instance",
     scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: `/servers/${encodeURIComponent(parsedId.value)}`,
-    method: 'DELETE',
+    method: "DELETE",
     apiVersion: API_VERSION,
     invalidates: [
-      '/compute',
-      '/compute/instances',
+      "/compute",
+      "/compute/instances",
       `/compute/instances/${parsedId.value}`,
     ],
-    successMessage: 'Instance deletion requested.',
+    successMessage: "Instance deletion requested.",
+  });
+}
+
+export async function attachPortAction(
+  scope: MutationScope,
+  input: AttachPortInput,
+): Promise<MutationResult<InterfaceAttachment>> {
+  const parsed = parseInput(attachPortSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+
+  const { portId, serverId } = parsed.value;
+  return executeOpenStackMutation<InterfaceAttachment>({
+    actionLabel: "attach this port to the instance",
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(serverId)}/os-interface`,
+    method: "POST",
+    apiVersion: API_VERSION,
+    body: { interfaceAttachment: { port_id: portId } },
+    invalidates: [
+      "/compute",
+      "/compute/instances",
+      `/compute/instances/${serverId}`,
+      "/compute/networks",
+      "/compute/networks/ports",
+      `/compute/networks/ports/${portId}`,
+    ],
+    successMessage: "Port attachment requested.",
+    transform: (responsePayload) => {
+      if (
+        !responsePayload ||
+        typeof responsePayload !== "object" ||
+        !("interfaceAttachment" in responsePayload) ||
+        !responsePayload.interfaceAttachment ||
+        typeof responsePayload.interfaceAttachment !== "object"
+      ) {
+        throw new Error("Nova did not return the attached interface");
+      }
+      return responsePayload.interfaceAttachment as InterfaceAttachment;
+    },
+  });
+}
+
+export async function detachPortAction(
+  scope: MutationScope,
+  input: AttachPortInput,
+): Promise<MutationResult<null>> {
+  const parsed = parseInput(attachPortSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+
+  const { portId, serverId } = parsed.value;
+  return executeOpenStackMutation({
+    actionLabel: "detach this port from the instance",
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(serverId)}/os-interface/${encodeURIComponent(portId)}`,
+    method: "DELETE",
+    apiVersion: API_VERSION,
+    invalidates: [
+      "/compute",
+      "/compute/instances",
+      `/compute/instances/${serverId}`,
+      "/compute/networks",
+      "/compute/networks/ports",
+      `/compute/networks/ports/${portId}`,
+    ],
+    successMessage: "Port detachment requested.",
   });
 }
 
@@ -226,31 +317,32 @@ export async function runServerLifecycleAction(
 
   const actionConfig = {
     start: {
-      actionLabel: 'start this instance',
-      body: { 'os-start': null },
-      message: 'Instance start requested.',
+      actionLabel: "start this instance",
+      body: { "os-start": null },
+      message: "Instance start requested.",
     },
     stop: {
-      actionLabel: 'stop this instance',
-      body: { 'os-stop': null },
-      message: 'Instance stop requested.',
+      actionLabel: "stop this instance",
+      body: { "os-stop": null },
+      message: "Instance stop requested.",
     },
-    'soft-reboot': {
-      actionLabel: 'reboot this instance',
-      body: { reboot: { type: 'SOFT' } },
-      message: 'Graceful reboot requested.',
+    "soft-reboot": {
+      actionLabel: "reboot this instance",
+      body: { reboot: { type: "SOFT" } },
+      message: "Graceful reboot requested.",
     },
-    'hard-reboot': {
-      actionLabel: 'force reboot this instance',
-      body: { reboot: { type: 'HARD' } },
-      message: 'Forced reboot requested.',
+    "hard-reboot": {
+      actionLabel: "force reboot this instance",
+      body: { reboot: { type: "HARD" } },
+      message: "Forced reboot requested.",
     },
   } satisfies Record<
     ServerLifecycleAction,
     { actionLabel: string; body: Record<string, unknown>; message: string }
   >;
   const config = actionConfig[action];
-  if (!config) return validationFailure(scope, 'Choose a supported instance action.');
+  if (!config)
+    return validationFailure(scope, "Choose a supported instance action.");
 
   return executeOpenStackMutation({
     actionLabel: config.actionLabel,
@@ -258,39 +350,57 @@ export async function runServerLifecycleAction(
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: `/servers/${encodeURIComponent(parsedId.value)}/action`,
-    method: 'POST',
+    method: "POST",
     apiVersion: API_VERSION,
     body: config.body,
     invalidates: [
-      '/compute',
-      '/compute/instances',
+      "/compute",
+      "/compute/instances",
       `/compute/instances/${parsedId.value}`,
     ],
     successMessage: config.message,
   });
 }
 
-export async function pauseServerAction(id: string, regionId?: string): Promise<void> {
+export async function pauseServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { pause: null }, regionId);
 }
 
-export async function unpauseServerAction(id: string, regionId?: string): Promise<void> {
+export async function unpauseServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { unpause: null }, regionId);
 }
 
-export async function suspendServerAction(id: string, regionId?: string): Promise<void> {
+export async function suspendServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { suspend: null }, regionId);
 }
 
-export async function resumeServerAction(id: string, regionId?: string): Promise<void> {
+export async function resumeServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { resume: null }, regionId);
 }
 
-export async function shelveServerAction(id: string, regionId?: string): Promise<void> {
+export async function shelveServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { shelve: null }, regionId);
 }
 
-export async function shelveOffloadServerAction(id: string, regionId?: string): Promise<void> {
+export async function shelveOffloadServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { shelveOffload: null }, regionId);
 }
 
@@ -306,11 +416,17 @@ export async function unshelveServerAction(
   await performInstanceAction(id, body, regionId);
 }
 
-export async function lockServerAction(id: string, regionId?: string): Promise<void> {
+export async function lockServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { lock: null }, regionId);
 }
 
-export async function unlockServerAction(id: string, regionId?: string): Promise<void> {
+export async function unlockServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { unlock: null }, regionId);
 }
 
@@ -326,12 +442,12 @@ export async function rebuildServerAction(
   const payload = parsed.value;
 
   return executeOpenStackMutation<Server>({
-    actionLabel: 'rebuild this instance',
+    actionLabel: "rebuild this instance",
     scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: `/servers/${encodeURIComponent(parsedId.value)}/action`,
-    method: 'POST',
+    method: "POST",
     apiVersion: API_VERSION,
     body: {
       rebuild: {
@@ -343,20 +459,20 @@ export async function rebuildServerAction(
       },
     },
     invalidates: [
-      '/compute',
-      '/compute/instances',
+      "/compute",
+      "/compute/instances",
       `/compute/instances/${parsedId.value}`,
     ],
-    successMessage: 'Instance rebuild requested.',
+    successMessage: "Instance rebuild requested.",
     transform: (responsePayload) => {
       if (
         !responsePayload ||
-        typeof responsePayload !== 'object' ||
-        !('server' in responsePayload) ||
+        typeof responsePayload !== "object" ||
+        !("server" in responsePayload) ||
         !responsePayload.server ||
-        typeof responsePayload.server !== 'object'
+        typeof responsePayload.server !== "object"
       ) {
-        throw new Error('Nova did not return the rebuilt server');
+        throw new Error("Nova did not return the rebuilt server");
       }
       return responsePayload.server as Server;
     },
@@ -374,28 +490,25 @@ export async function replaceServerMetadataAction(
   if (!parsedMetadata.ok) return parsedMetadata.result;
 
   return executeOpenStackMutation<Record<string, string>>({
-    actionLabel: 'update instance metadata',
+    actionLabel: "update instance metadata",
     scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: `/servers/${encodeURIComponent(parsedId.value)}/metadata`,
-    method: 'PUT',
+    method: "PUT",
     apiVersion: API_VERSION,
     body: { metadata: parsedMetadata.value },
-    invalidates: [
-      '/compute/instances',
-      `/compute/instances/${parsedId.value}`,
-    ],
-    successMessage: 'Instance metadata updated.',
+    invalidates: ["/compute/instances", `/compute/instances/${parsedId.value}`],
+    successMessage: "Instance metadata updated.",
     transform: (responsePayload) => {
       if (
         !responsePayload ||
-        typeof responsePayload !== 'object' ||
-        !('metadata' in responsePayload) ||
+        typeof responsePayload !== "object" ||
+        !("metadata" in responsePayload) ||
         !responsePayload.metadata ||
-        typeof responsePayload.metadata !== 'object'
+        typeof responsePayload.metadata !== "object"
       ) {
-        throw new Error('Nova did not return the updated metadata');
+        throw new Error("Nova did not return the updated metadata");
       }
       return responsePayload.metadata as Record<string, string>;
     },
@@ -410,33 +523,35 @@ export async function createKeypairAction(
   if (!parsed.ok) return parsed.result;
 
   return executeOpenStackMutation<Keypair>({
-    actionLabel: parsed.value.publicKey ? 'import this key pair' : 'create this key pair',
+    actionLabel: parsed.value.publicKey
+      ? "import this key pair"
+      : "create this key pair",
     scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
-    path: '/os-keypairs',
-    method: 'POST',
+    path: "/os-keypairs",
+    method: "POST",
     apiVersion: API_VERSION,
     body: {
       keypair: {
         name: parsed.value.name,
-        type: 'ssh',
+        type: "ssh",
         public_key: parsed.value.publicKey,
       },
     },
-    invalidates: ['/compute', '/compute/key-pairs'],
+    invalidates: ["/compute", "/compute/key-pairs"],
     successMessage: parsed.value.publicKey
       ? `Key pair ${parsed.value.name} imported.`
       : `Key pair ${parsed.value.name} created.`,
     transform: (responsePayload) => {
       if (
         !responsePayload ||
-        typeof responsePayload !== 'object' ||
-        !('keypair' in responsePayload) ||
+        typeof responsePayload !== "object" ||
+        !("keypair" in responsePayload) ||
         !responsePayload.keypair ||
-        typeof responsePayload.keypair !== 'object'
+        typeof responsePayload.keypair !== "object"
       ) {
-        throw new Error('Nova did not return the created key pair');
+        throw new Error("Nova did not return the created key pair");
       }
       return responsePayload.keypair as Keypair;
     },
@@ -451,14 +566,14 @@ export async function deleteKeypairAction(
   if (!parsed.ok) return parsed.result;
 
   return executeOpenStackMutation({
-    actionLabel: 'delete this key pair',
+    actionLabel: "delete this key pair",
     scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: `/os-keypairs/${encodeURIComponent(parsed.value)}`,
-    method: 'DELETE',
+    method: "DELETE",
     apiVersion: API_VERSION,
-    invalidates: ['/compute', '/compute/key-pairs'],
+    invalidates: ["/compute", "/compute/key-pairs"],
     successMessage: `Key pair ${parsed.value} deleted.`,
   });
 }
@@ -471,11 +586,17 @@ export async function resizeServerAction(
   await performInstanceAction(id, { resize: payload }, regionId);
 }
 
-export async function confirmResizeServerAction(id: string, regionId?: string): Promise<void> {
+export async function confirmResizeServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { confirmResize: null }, regionId);
 }
 
-export async function revertResizeServerAction(id: string, regionId?: string): Promise<void> {
+export async function revertResizeServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { revertResize: null }, regionId);
 }
 
@@ -484,7 +605,8 @@ export async function migrateServerAction(
   payload: MigrateServerRequest = {},
   regionId?: string,
 ): Promise<void> {
-  const body = Object.keys(payload).length > 0 ? { migrate: payload } : { migrate: null };
+  const body =
+    Object.keys(payload).length > 0 ? { migrate: payload } : { migrate: null };
   await performInstanceAction(id, body, regionId);
 }
 
@@ -493,7 +615,7 @@ export async function liveMigrateServerAction(
   payload: LiveMigrateServerRequest,
   regionId?: string,
 ): Promise<void> {
-  await performInstanceAction(id, { 'os-migrateLive': payload }, regionId);
+  await performInstanceAction(id, { "os-migrateLive": payload }, regionId);
 }
 
 export async function rescueServerAction(
@@ -508,7 +630,7 @@ export async function rescueServerAction(
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: `/servers/${id}/action`,
-    method: 'POST',
+    method: "POST",
     apiVersion: API_VERSION,
     body: { rescue: payload },
   });
@@ -516,7 +638,10 @@ export async function rescueServerAction(
   return data?.adminPass;
 }
 
-export async function unrescueServerAction(id: string, regionId?: string): Promise<void> {
+export async function unrescueServerAction(
+  id: string,
+  regionId?: string,
+): Promise<void> {
   await performInstanceAction(id, { unrescue: null }, regionId);
 }
 
@@ -530,7 +655,7 @@ export async function createServerImageAction(
 
 export async function getVncConsoleAction(
   id: string,
-  type: VncConsoleType = 'novnc',
+  type: VncConsoleType = "novnc",
   regionId?: string,
 ): Promise<ServerConsole> {
   const resolvedRegion = await resolveRegionId(regionId);
@@ -540,10 +665,13 @@ export async function getVncConsoleAction(
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path: `/servers/${id}/action`,
-    method: 'POST',
+    method: "POST",
     apiVersion: API_VERSION,
-    body: { 'os-getVNCConsole': { type } },
+    body: { "os-getVNCConsole": { type } },
   });
 
-  return ensureResponse(data, `Failed to fetch ${type} console for instance ${id}`).console;
+  return ensureResponse(
+    data,
+    `Failed to fetch ${type} console for instance ${id}`,
+  ).console;
 }

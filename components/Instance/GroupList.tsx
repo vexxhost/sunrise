@@ -1,24 +1,19 @@
-'use client';
+"use client";
 
 import { useSuspenseQuery } from "@tanstack/react-query";
-import {
-  SecurityGroup,
-  SecurityGroupRule,
-  Server,
-} from "@/types/openstack";
+import { SecurityGroup, SecurityGroupRule, Server } from "@/types/openstack";
 import { securityGroupsQueryOptions } from "@/hooks/queries/useNetworks";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 
-
 export function getGroupNameFromId(
-  id: string,
+  id: string | null,
   securityGroups: SecurityGroup[],
 ) {
+  if (!id) return undefined;
   const foundSecGroup = securityGroups.find((secGroup) => secGroup.id === id);
 
   return foundSecGroup ? foundSecGroup.name : undefined;
 }
-
 
 export default function SecurityGroupListByNames({
   server,
@@ -56,12 +51,17 @@ export default function SecurityGroupListByNames({
                     <li key={rule.id}>
                       ALLOW {rule.ethertype}
                       {rule.protocol && ` ${rule.protocol}`}
-                      {(rule.port_range_min !== null || rule.port_range_max !== null) &&
+                      {(rule.port_range_min !== null ||
+                        rule.port_range_max !== null) &&
                         ` ${rule.port_range_min}-${rule.port_range_max}`}
-                      {` ${rule.remote_group_id ? "from" : "to"} ${getGroupNameFromId(rule.remote_group_id, securityGroups) ??
+                      {` ${rule.remote_group_id ? "from" : "to"} ${
+                        getGroupNameFromId(
+                          rule.remote_group_id,
+                          securityGroups,
+                        ) ??
                         (rule.remote_ip_prefix ||
                           (rule.ethertype === "IPv6" ? "::/0" : "0.0.0.0/0"))
-                        }`}
+                      }`}
                     </li>
                   ),
                 )}
@@ -73,6 +73,5 @@ export default function SecurityGroupListByNames({
         <DetailField label="Security Groups" />
       )}
     </DetailSection>
-  )
-  
+  );
 }

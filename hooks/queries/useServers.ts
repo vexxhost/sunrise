@@ -2,26 +2,37 @@
  * TanStack Query options for Nova (Compute) API
  */
 
-import { queryOptions } from '@tanstack/react-query';
-import { openstack } from '@/lib/openstack/actions';
-import type { ServerListResponse, ServerResponse, FlavorListResponse, FlavorResponse, KeypairListResponse, KeypairResponse, InterfaceAttachment, ServerActionsListResponse, ServerActionResponse, ServerConsoleOutputResponse } from '@/types/openstack';
+import { queryOptions } from "@tanstack/react-query";
+import { openstack } from "@/lib/openstack/actions";
+import type {
+  ServerListResponse,
+  ServerResponse,
+  FlavorListResponse,
+  FlavorResponse,
+  KeypairListResponse,
+  KeypairResponse,
+  InterfaceAttachment,
+  ServerActionsListResponse,
+  ServerActionResponse,
+  ServerConsoleOutputResponse,
+} from "@/types/openstack";
 
 /**
  * Query options for fetching list of servers
  */
 export function serversQueryOptions(
   regionId: string | undefined,
-  projectId: string | undefined
+  projectId: string | undefined,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'servers'],
+    queryKey: [regionId, projectId, "servers"],
     queryFn: async () => {
       const data = await openstack<ServerListResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
-        path: '/servers/detail',
-        apiVersion: 'compute 2.79',
+        serviceType: "compute",
+        serviceName: "nova",
+        path: "/servers/detail",
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
@@ -30,7 +41,7 @@ export function serversQueryOptions(
 
       return data.servers;
     },
-    enabled: !!regionId,
+    enabled: !!regionId && !!projectId,
   });
 }
 
@@ -40,26 +51,26 @@ export function serversQueryOptions(
 export function serverQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
-  id: string
+  id: string,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'server', id],
+    queryKey: [regionId, projectId, "server", id],
     queryFn: async () => {
       const data = await openstack<ServerResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
-        path: `/servers/${id}`,
-        apiVersion: 'compute 2.79',
+        serviceType: "compute",
+        serviceName: "nova",
+        path: `/servers/${encodeURIComponent(id)}`,
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
-        throw new Error('Server not found');
+        throw new Error("Server not found");
       }
 
       return data.server;
     },
-    enabled: !!id && !!regionId,
+    enabled: !!id && !!regionId && !!projectId,
   });
 }
 
@@ -68,17 +79,17 @@ export function serverQueryOptions(
  */
 export function flavorsQueryOptions(
   regionId: string | undefined,
-  projectId: string | undefined
+  projectId: string | undefined,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'flavors'],
+    queryKey: [regionId, projectId, "flavors"],
     queryFn: async () => {
       const data = await openstack<FlavorListResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
-        path: '/flavors/detail',
-        apiVersion: 'compute 2.79',
+        serviceType: "compute",
+        serviceName: "nova",
+        path: "/flavors/detail",
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
@@ -97,21 +108,21 @@ export function flavorsQueryOptions(
 export function flavorQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
-  id: string
+  id: string,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'flavor', id],
+    queryKey: [regionId, projectId, "flavor", id],
     queryFn: async () => {
       const data = await openstack<FlavorResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
+        serviceType: "compute",
+        serviceName: "nova",
         path: `/flavors/${id}`,
-        apiVersion: 'compute 2.79',
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
-        throw new Error('Flavor not found');
+        throw new Error("Flavor not found");
       }
 
       return data.flavor;
@@ -126,17 +137,19 @@ export function flavorQueryOptions(
 export function serverInterfacesQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
-  serverId: string
+  serverId: string,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'server-interfaces', serverId],
+    queryKey: [regionId, projectId, "server-interfaces", serverId],
     queryFn: async () => {
-      const data = await openstack<{ interfaceAttachments: InterfaceAttachment[] }>({
+      const data = await openstack<{
+        interfaceAttachments: InterfaceAttachment[];
+      }>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
-        path: `/servers/${serverId}/os-interface`,
-        apiVersion: 'compute 2.79',
+        serviceType: "compute",
+        serviceName: "nova",
+        path: `/servers/${encodeURIComponent(serverId)}/os-interface`,
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
@@ -145,7 +158,7 @@ export function serverInterfacesQueryOptions(
 
       return data.interfaceAttachments;
     },
-    enabled: !!serverId && !!regionId,
+    enabled: !!serverId && !!regionId && !!projectId,
   });
 }
 
@@ -154,24 +167,24 @@ export function serverInterfacesQueryOptions(
  */
 export function keypairsQueryOptions(
   regionId: string | undefined,
-  projectId: string | undefined
+  projectId: string | undefined,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'keypairs'],
+    queryKey: [regionId, projectId, "keypairs"],
     queryFn: async () => {
       const data = await openstack<KeypairListResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
-        path: '/os-keypairs',
-        apiVersion: 'compute 2.79',
+        serviceType: "compute",
+        serviceName: "nova",
+        path: "/os-keypairs",
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
         return [];
       }
 
-      return data.keypairs.map(item => item.keypair);
+      return data.keypairs.map((item) => item.keypair);
     },
     enabled: !!regionId,
   });
@@ -183,21 +196,21 @@ export function keypairsQueryOptions(
 export function keypairQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
-  name: string
+  name: string,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'keypair', name],
+    queryKey: [regionId, projectId, "keypair", name],
     queryFn: async () => {
       const data = await openstack<KeypairResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
+        serviceType: "compute",
+        serviceName: "nova",
         path: `/os-keypairs/${name}`,
-        apiVersion: 'compute 2.79',
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
-        throw new Error('Keypair not found');
+        throw new Error("Keypair not found");
       }
 
       return data.keypair;
@@ -212,17 +225,17 @@ export function keypairQueryOptions(
 export function serverActionsQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
-  serverId: string
+  serverId: string,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'server-actions', serverId],
+    queryKey: [regionId, projectId, "server-actions", serverId],
     queryFn: async () => {
       const data = await openstack<ServerActionsListResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
+        serviceType: "compute",
+        serviceName: "nova",
         path: `/servers/${serverId}/os-instance-actions`,
-        apiVersion: 'compute 2.79',
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
@@ -242,21 +255,21 @@ export function serverActionQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
   serverId: string,
-  requestId: string
+  requestId: string,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'server-action', serverId, requestId],
+    queryKey: [regionId, projectId, "server-action", serverId, requestId],
     queryFn: async () => {
       const data = await openstack<ServerActionResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
+        serviceType: "compute",
+        serviceName: "nova",
         path: `/servers/${serverId}/os-instance-actions/${requestId}`,
-        apiVersion: 'compute 2.79',
+        apiVersion: "compute 2.79",
       });
 
       if (!data) {
-        throw new Error('Server action not found');
+        throw new Error("Server action not found");
       }
 
       return data.instanceAction;
@@ -272,30 +285,36 @@ export function serverConsoleOutputQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
   serverId: string,
-  length: number | null
+  length: number | null,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'server-console-output', serverId, length ?? 'full'],
+    queryKey: [
+      regionId,
+      projectId,
+      "server-console-output",
+      serverId,
+      length ?? "full",
+    ],
     queryFn: async () => {
       const body =
         length === null
-          ? { 'os-getConsoleOutput': {} }
-          : { 'os-getConsoleOutput': { length } };
+          ? { "os-getConsoleOutput": {} }
+          : { "os-getConsoleOutput": { length } };
       const data = await openstack<ServerConsoleOutputResponse>({
         regionId: regionId!,
-        serviceType: 'compute',
-        serviceName: 'nova',
+        serviceType: "compute",
+        serviceName: "nova",
         path: `/servers/${serverId}/action`,
-        method: 'POST',
-        apiVersion: 'compute 2.79',
+        method: "POST",
+        apiVersion: "compute 2.79",
         body,
       });
 
       if (!data) {
-        throw new Error('Failed to fetch console log');
+        throw new Error("Failed to fetch console log");
       }
 
-      return data.output ?? '';
+      return data.output ?? "";
     },
     enabled: !!serverId && !!regionId,
   });
