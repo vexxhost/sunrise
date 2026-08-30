@@ -7,6 +7,7 @@ import {
   isServerTransitioning,
   mergeServerUpdates,
 } from "@/lib/openstack/server-lifecycle";
+import { formatServerActivity } from "@/lib/openstack/server-state";
 import type { Server } from "@/types/openstack";
 
 function server(
@@ -93,5 +94,12 @@ describe("server polling updates", () => {
     );
 
     expect(result).toBe(existing);
+  });
+});
+
+describe("server activity labels", () => {
+  it("prefers Nova task detail while an instance is transitioning", () => {
+    expect(formatServerActivity("ACTIVE", "powering_off")).toBe("Stopping");
+    expect(formatServerActivity("REBUILD", undefined)).toBe("Rebuild");
   });
 });

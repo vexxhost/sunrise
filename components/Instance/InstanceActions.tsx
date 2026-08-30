@@ -234,11 +234,11 @@ export function InstanceActions({ projectId, regionId }: InstanceActionsProps) {
         return;
       }
 
-      await queryClient.invalidateQueries({
-        queryKey: [regionId, projectId, "servers"],
-      });
       setIsOpen(false);
       setForm(INITIAL_FORM);
+      void queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "servers"],
+      });
     });
   };
 

@@ -91,25 +91,27 @@ export function InstanceLifecycleDialog({
 
     startTransition(async () => {
       setError(null);
-      const failures: string[] = [];
+      const results = await Promise.all(
+        instances.map(async (instance) => {
+          const result =
+            action === "delete"
+              ? await deleteServerAction({ projectId, regionId }, instance.id)
+              : await runServerLifecycleAction(
+                  { projectId, regionId },
+                  instance.id,
+                  action,
+                );
+          return { instance, result };
+        }),
+      );
+      const failures = results.flatMap(({ instance, result }) =>
+        result.ok
+          ? []
+          : [`${instance.name || instance.id}: ${result.error.message}`],
+      );
 
-      for (const instance of instances) {
-        const result =
-          action === "delete"
-            ? await deleteServerAction({ projectId, regionId }, instance.id)
-            : await runServerLifecycleAction(
-                { projectId, regionId },
-                instance.id,
-                action,
-              );
-
-        if (!result.ok) {
-          failures.push(`${instance.name || instance.id}: ${result.error.message}`);
-        }
-      }
-
-      await onComplete();
       if (failures.length) {
+        void onComplete();
         setError(
           failures.length === instances.length
             ? failures[0]
@@ -119,6 +121,7 @@ export function InstanceLifecycleDialog({
       }
 
       onOpenChange(false);
+      void onComplete();
     });
   };
 

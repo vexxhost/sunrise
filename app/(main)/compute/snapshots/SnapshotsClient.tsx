@@ -1,13 +1,24 @@
 'use client';
 
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueries, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
-import { Camera } from "lucide-react";
-import { snapshotsQueryOptions } from "@/hooks/queries/useVolumes";
+import { Camera, Trash2 } from "lucide-react";
+import { snapshotQueryOptions, snapshotsQueryOptions } from "@/hooks/queries/useVolumes";
 import { Badge } from "@/components/ui/badge";
+import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Snapshot } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
-import { titleCase } from "title-case";
+import { SnapshotDeleteDialog } from "@/components/Volume/SnapshotDeleteDialog";
+import {
+  canDeleteSnapshot,
+  isSnapshotTransitioning,
+  mergeSnapshotUpdates,
+} from "@/lib/openstack/storage-lifecycle";
+import { formatSnapshotStatus } from "@/lib/openstack/storage-status";
+import { collectTransitionUpdates } from "@/lib/openstack/transition-poll";
+
+const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
 
 const columns: ColumnDef<Snapshot>[] = [
   {
@@ -59,7 +70,8 @@ const columns: ColumnDef<Snapshot>[] = [
     accessorKey: "status",
     header: "Status",
     cell: ({ row }: { row: { original: Snapshot } }) => {
-      const status = titleCase(row.original.status);
+      const status = formatSnapshotStatus(row.original.status);
+      const transitioning = isSnapshotTransitioning(row.original);
       let variant: "default" | "secondary" | "destructive" | "outline";
 
       // Determine the badge variant based on the status value
@@ -79,7 +91,9 @@ const columns: ColumnDef<Snapshot>[] = [
           break;
       }
 
-      return (
+      return transitioning ? (
+        <ProgressStatusBadge label={status} />
+      ) : (
         <Badge variant={variant}>
           {status}
         </Badge>
@@ -110,16 +124,80 @@ interface SnapshotsClientProps {
 }
 
 export function SnapshotsClient({ regionId, projectId }: SnapshotsClientProps) {
-  const { data, isRefetching, refetch } = useSuspenseQuery(snapshotsQueryOptions(regionId, projectId));
+  const queryClient = useQueryClient();
+  const listOptions = useMemo(
+    () => snapshotsQueryOptions(regionId, projectId),
+    [projectId, regionId],
+  );
+  const { data, isRefetching, refetch } = useSuspenseQuery(listOptions);
+  const [visibleSnapshots, setVisibleSnapshots] = useState<Snapshot[]>([]);
+  const [deleteTargets, setDeleteTargets] = useState<Snapshot[]>([]);
+  const transitioningSnapshots = useMemo(
+    () => visibleSnapshots.filter(isSnapshotTransitioning),
+    [visibleSnapshots],
+  );
+  const transitionUpdates = useQueries({
+    queries: transitioningSnapshots.map((snapshot) => ({
+      ...snapshotQueryOptions(regionId, projectId, snapshot.id),
+      refetchInterval: TRANSITION_REFETCH_INTERVAL_MS,
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+    })),
+    combine: collectTransitionUpdates<Snapshot>,
+  });
+
+  useEffect(() => {
+    if (transitionUpdates.hasErrors) {
+      void queryClient.invalidateQueries({ queryKey: listOptions.queryKey });
+    }
+    if (transitionUpdates.updates.size) {
+      queryClient.setQueryData<Snapshot[]>(listOptions.queryKey, (current) =>
+        current
+          ? mergeSnapshotUpdates(current, transitionUpdates.updates)
+          : current,
+      );
+    }
+  }, [listOptions.queryKey, queryClient, transitionUpdates]);
+
+  const refreshAfterDelete = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: listOptions.queryKey });
+  }, [listOptions.queryKey, queryClient]);
+
+  const rowActions = useMemo(
+    () => [
+      {
+        label: "Delete",
+        icon: Trash2,
+        variant: "destructive" as const,
+        onClick: setDeleteTargets,
+        isDisabled: (rows: Snapshot[]) =>
+          rows.length === 0 || rows.some((snapshot) => !canDeleteSnapshot(snapshot)),
+      },
+    ],
+    [],
+  );
 
   return (
-    <DataTable
-      data={data}
-      isRefetching={isRefetching}
-      refetch={refetch}
-      columns={columns}
-      resourceName="snapshot"
-      emptyIcon={Camera}
-    />
+    <>
+      <DataTable
+        data={data}
+        isRefetching={isRefetching}
+        refetch={refetch}
+        columns={columns}
+        resourceName="snapshot"
+        emptyIcon={Camera}
+        rowActions={rowActions}
+        onPageRowsChange={setVisibleSnapshots}
+      />
+      {deleteTargets.length ? (
+        <SnapshotDeleteDialog
+          snapshots={deleteTargets}
+          projectId={projectId}
+          regionId={regionId}
+          onComplete={refreshAfterDelete}
+          onOpenChange={() => setDeleteTargets([])}
+        />
+      ) : null}
+    </>
   );
 }

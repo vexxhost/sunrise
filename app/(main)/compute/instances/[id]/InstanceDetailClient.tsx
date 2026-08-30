@@ -14,10 +14,11 @@ import { portQueryOptions, networkQueryOptions } from "@/hooks/queries/useNetwor
 import { useEffect, useMemo, useState } from "react";
 import { isInstanceDetailTab, type InstanceDetailTab } from "./tabs";
 import { Badge } from "@/components/ui/badge";
+import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import {
+  formatServerActivity,
   formatServerPowerState,
   formatServerStatus,
-  formatServerTaskState,
   serverStatusBadgeVariant,
 } from "@/lib/openstack/server-state";
 import { isServerTransitioning } from "@/lib/openstack/server-lifecycle";
@@ -125,6 +126,9 @@ export function InstanceDetailClient({
     }
   };
 
+  const transitioning = isServerTransitioning(server);
+  const taskState = server["OS-EXT-STS:task_state"];
+
   return (
     <div className="max-w-screen-xl space-y-4">
       <RecentResourceTracker
@@ -136,18 +140,23 @@ export function InstanceDetailClient({
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-2xl font-semibold">{server.name}</h1>
-            <Badge variant={serverStatusBadgeVariant(server.status)}>
-              {formatServerStatus(server.status)}
-            </Badge>
+            {transitioning ? (
+              <ProgressStatusBadge
+                className="text-sm"
+                label={formatServerActivity(server.status, taskState)}
+                title={`Nova status: ${formatServerStatus(server.status)}`}
+              />
+            ) : (
+              <Badge variant={serverStatusBadgeVariant(server.status)}>
+                {formatServerStatus(server.status)}
+              </Badge>
+            )}
             <Badge variant="secondary">
               {formatServerPowerState(server["OS-EXT-STS:power_state"])}
             </Badge>
-            {server["OS-EXT-STS:task_state"] ? (
+            {transitioning && Number.isFinite(server.progress) && server.progress > 0 ? (
               <Badge variant="outline">
-                {formatServerTaskState(server["OS-EXT-STS:task_state"])}
-                {Number.isFinite(server.progress) && server.progress > 0
-                  ? ` · ${server.progress}%`
-                  : ""}
+                {server.progress}%
               </Badge>
             ) : null}
           </div>

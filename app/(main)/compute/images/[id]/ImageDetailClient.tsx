@@ -1,14 +1,27 @@
 "use client";
 
-import { useMemo } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { Pencil, Trash2 } from "lucide-react";
 import bytes from "bytes";
 import { imageQueryOptions } from "@/hooks/queries/useImages";
 import type { Image } from "@/types/openstack";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
+import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { imageOperatingSystem } from "@/lib/openstack/image-metadata";
+import { Button } from "@/components/ui/button";
+import {
+  ImageMutationDialog,
+  type ImageMutationKind,
+} from "@/components/Image/ImageMutationDialog";
+import {
+  canDeleteImage,
+  canEditImage,
+  isImageTransitioning,
+} from "@/lib/openstack/image-lifecycle";
 
 interface ImageDetailClientProps {
   imageId: string;
@@ -67,9 +80,31 @@ export function ImageDetailClient({
   regionId,
   projectId,
 }: ImageDetailClientProps) {
-  const { data: image } = useSuspenseQuery(
-    imageQueryOptions(regionId, projectId, imageId),
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const query = useMemo(
+    () => imageQueryOptions(regionId, projectId, imageId),
+    [imageId, projectId, regionId],
   );
+  const { data: image } = useSuspenseQuery({
+    ...query,
+    refetchInterval: ({ state }) =>
+      state.data && isImageTransitioning(state.data) ? 5_000 : false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
+  const [action, setAction] = useState<ImageMutationKind | null>(null);
+  const refreshAfterAction = useCallback(async () => {
+    if (action !== "delete") {
+      await queryClient.invalidateQueries({ queryKey: query.queryKey });
+    }
+    await queryClient.invalidateQueries({
+      queryKey: [regionId, projectId, "images"],
+    });
+  }, [action, projectId, query.queryKey, queryClient, regionId]);
+  const navigateAfterDelete = useCallback(() => {
+    router.replace("/compute/images");
+  }, [router]);
 
   const customProperties = useMemo(() => {
     return Object.entries(image)
@@ -84,11 +119,35 @@ export function ImageDetailClient({
         id={image.id}
         name={image.name || "Unnamed image"}
       />
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {image.name || "Unnamed image"}
-        </h1>
-        <p className="font-mono text-sm text-muted-foreground">{image.id}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <h1 className="truncate text-2xl font-semibold tracking-tight">
+            {image.name || "Unnamed image"}
+          </h1>
+          <p className="truncate font-mono text-sm text-muted-foreground">{image.id}</p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="h-10 gap-2"
+            disabled={!canEditImage(image, projectId)}
+            onClick={() => setAction("edit")}
+          >
+            <Pencil className="size-4" />
+            Edit
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-10 text-destructive hover:text-destructive"
+            aria-label="Delete image"
+            title="Delete image"
+            disabled={!canDeleteImage(image, projectId)}
+            onClick={() => setAction("delete")}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-6 rounded-md border bg-card p-4 text-card-foreground">
@@ -98,9 +157,13 @@ export function ImageDetailClient({
             {image.id}
           </DetailField>
           <DetailField label="Status">
-            <Badge variant={image.status === "active" ? "default" : "secondary"}>
-              {image.status}
-            </Badge>
+            {isImageTransitioning(image) ? (
+              <ProgressStatusBadge label={image.status.replace(/_/g, " ")} />
+            ) : (
+              <Badge variant={image.status === "active" ? "default" : "secondary"}>
+                {image.status}
+              </Badge>
+            )}
           </DetailField>
           <DetailField label="Visibility">{image.visibility}</DetailField>
           <DetailField label="Operating System">{imageOperatingSystem(image)}</DetailField>
@@ -161,6 +224,18 @@ export function ImageDetailClient({
           )}
         </DetailSection>
       </div>
+      {action ? (
+        <ImageMutationDialog
+          key={`${action}-${image.id}`}
+          action={action}
+          images={[image]}
+          projectId={projectId}
+          regionId={regionId}
+          onComplete={refreshAfterAction}
+          onDeleteSuccess={navigateAfterDelete}
+          onOpenChange={() => setAction(null)}
+        />
+      ) : null}
     </div>
   );
 }
