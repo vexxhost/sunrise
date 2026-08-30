@@ -6,6 +6,7 @@ import { Server } from "@/types/openstack";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import { imageQueryOptions } from "@/hooks/queries/useImages";
 import { useMemo } from "react";
+import Link from "next/link";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 
 interface VolumeInfoProps {
@@ -66,23 +67,43 @@ export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoPr
 
     return (
         <>
-          <DetailSection title="Metadata">
-            <DetailField label="Key Name">{server.key_name}</DetailField>
-            <DetailField label="Image ID" className="font-mono text-xs">
-              {imageId}
+          <DetailSection title="Storage and boot">
+            <DetailField label="Boot source">
+              {imageId ? (
+                <div className="min-w-0">
+                  <Link
+                    href={`/compute/images/${encodeURIComponent(imageId)}`}
+                    className="font-medium hover:underline"
+                  >
+                    {imageName || "Image"}
+                  </Link>
+                  <p
+                    className="mt-0.5 truncate font-mono text-xs text-muted-foreground"
+                    title={imageId}
+                  >
+                    {imageId}
+                  </p>
+                </div>
+              ) : (
+                "Unknown"
+              )}
             </DetailField>
-            <DetailField label="Image Name">{imageName}</DetailField>
-          </DetailSection>
-          <DetailSection title="Volumes Attached">
-          {serverVolumeKeys.length > 0 ? (
-            volumes?.map((key, index) => (
-                <DetailField key={key.id ?? index} label="Attached to">
-                  {key.name} on {key.attachments[0].device}
+            {serverVolumeKeys.length > 0 ? (
+              volumes?.map((volume, index) => (
+                <DetailField key={volume.id ?? index} label="Attached volume">
+                  <span className="font-medium">{volume.name || volume.id}</span>
+                  {volume.attachments[0]?.device ? (
+                    <span className="text-muted-foreground">
+                      {` on ${volume.attachments[0].device}`}
+                    </span>
+                  ) : null}
                 </DetailField>
-            ))
-          ) : (
-            <DetailField label="Volumes">No volumes attached</DetailField>
-          )}
+              ))
+            ) : (
+              <DetailField label="Root disk">
+                {server.flavor.disk} GB instance disk · no persistent volumes attached
+              </DetailField>
+            )}
           </DetailSection>
         </>
     )

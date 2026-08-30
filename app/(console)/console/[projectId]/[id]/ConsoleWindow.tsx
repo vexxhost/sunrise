@@ -89,12 +89,11 @@ export function ConsoleWindow({
   // CAVEATS:
   // - For this to work, sunrise.html MUST be served from the same origin as
   //   the Nova noVNC proxy and MUST allow our dashboard origin in its
-  //   `data-parents` (or `SUNRISE_ALLOWED_PARENTS`) list. Otherwise
-  //   sunrise.html's listener will silently drop our messages.
+  //   `parentOrigin` query value. The server derives it from DASHBOARD_URL.
   // - We always send with a strict targetOrigin (the proxy origin) — never '*'
   //   — so a hijacked iframe location can't receive Ctrl+Alt+Del.
-  // - If a strict CSP on the noVNC proxy blocks the inline module script in
-  //   sunrise.html, no `sunrise:ready` arrives and the button stays disabled.
+  // - The overlay uses same-origin external CSS and JS. If those assets are
+  //   absent or blocked, no `sunrise:ready` arrives and the button stays disabled.
   useEffect(() => {
     if (!proxyOrigin) return;
 

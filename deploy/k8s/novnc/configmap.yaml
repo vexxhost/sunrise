@@ -13,3 +13,11 @@ data:
     <!-- regenerate with: kubectl -n openstack create configmap sunrise-novnc \
                            --from-file=sunrise.html=./sunrise.html \
                            --dry-run=client -o yaml -->
+  sunrise.css: |
+    <!-- regenerate with: kubectl -n openstack create configmap sunrise-novnc \
+                           --from-file=sunrise.css=./sunrise.css \
+                           --dry-run=client -o yaml -->
+  sunrise.js: |
+    <!-- regenerate with: kubectl -n openstack create configmap sunrise-novnc \
+                           --from-file=sunrise.js=./sunrise.js \
+                           --dry-run=client -o yaml -->

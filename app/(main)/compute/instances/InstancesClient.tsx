@@ -1,13 +1,28 @@
 'use client';
 
 import Link from "next/link";
-import { useMemo } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueries, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
+import {
+  InstanceLifecycleDialog,
+  type InstanceMutationKind,
+} from "@/components/Instance/InstanceLifecycleDialog";
 import { Volume } from "@/types/openstack";
 import { Image, Server, Flavor } from "@/types/openstack";
-import { Server as ServerIcon } from "lucide-react";
-import { serversQueryOptions, flavorsQueryOptions } from "@/hooks/queries/useServers";
+import {
+  CircleStop,
+  Play,
+  RotateCw,
+  Server as ServerIcon,
+  Trash2,
+  Zap,
+} from "lucide-react";
+import {
+  serverQueryOptions,
+  serversQueryOptions,
+  flavorsQueryOptions,
+} from "@/hooks/queries/useServers";
 import { volumesQueryOptions } from "@/hooks/queries/useVolumes";
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +37,23 @@ import {
   serverStatusBadgeVariant,
 } from "@/lib/openstack/server-state";
 import { cn } from "@/lib/utils";
+import {
+  canDeleteServer,
+  canRunServerLifecycleAction,
+  isServerTransitioning,
+  mergeServerUpdates,
+} from "@/lib/openstack/server-lifecycle";
+
+const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
+
+function collectServerUpdates(results: readonly { data?: Server }[]) {
+  return new Map(
+    results
+      .map((result) => result.data)
+      .filter((server): server is Server => Boolean(server))
+      .map((server) => [server.id, server]),
+  );
+}
 
 const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string }[] } }) => {
   return Object.keys(addresses).map((key: string) => {
@@ -134,10 +166,65 @@ function FadedTableText({
 }
 
 export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
+  const queryClient = useQueryClient();
+  const listOptions = useMemo(
+    () => serversQueryOptions(regionId, projectId),
+    [projectId, regionId],
+  );
   // Fetch servers
   const { data: serversData, isRefetching: isRefetchingServers, refetch: refetchServers } = useSuspenseQuery(
-    serversQueryOptions(regionId, projectId)
+    listOptions,
   );
+  const [visiblePageServers, setVisiblePageServers] = useState<Server[]>([]);
+  const [pendingAction, setPendingAction] = useState<InstanceMutationKind | null>(null);
+  const [actionTargets, setActionTargets] = useState<Server[]>([]);
+
+  const transitioningVisibleServers = useMemo(
+    () => visiblePageServers.filter(isServerTransitioning),
+    [visiblePageServers],
+  );
+  const transitioningUpdates = useQueries({
+    queries: transitioningVisibleServers.map((server) => ({
+      ...serverQueryOptions(regionId, projectId, server.id),
+      refetchInterval: TRANSITION_REFETCH_INTERVAL_MS,
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+    })),
+    combine: collectServerUpdates,
+  });
+
+  useEffect(() => {
+    if (!transitioningUpdates.size) return;
+    queryClient.setQueryData<Server[]>(listOptions.queryKey, (current) =>
+      current ? mergeServerUpdates(current, transitioningUpdates) : current,
+    );
+  }, [listOptions.queryKey, queryClient, transitioningUpdates]);
+
+  const handlePageRowsChange = useCallback((rows: ServerTableRow[]) => {
+    setVisiblePageServers(rows);
+  }, []);
+
+  const openAction = useCallback(
+    (action: InstanceMutationKind, instances: Server[]) => {
+      setActionTargets(instances);
+      setPendingAction(action);
+    },
+    [],
+  );
+
+  const closeAction = useCallback(() => {
+    setPendingAction(null);
+    setActionTargets([]);
+  }, []);
+
+  const refreshAfterAction = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: listOptions.queryKey });
+    for (const server of actionTargets) {
+      await queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "server", server.id],
+      });
+    }
+  }, [actionTargets, listOptions.queryKey, projectId, queryClient, regionId]);
 
   // Fetch volumes
   const { data: volumesData } = useSuspenseQuery(volumesQueryOptions(regionId, projectId));
@@ -200,6 +287,14 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
     {
       accessorKey: "name",
       header: "Instance Name",
+      cell: ({ row }) => (
+        <Link
+          href={`/compute/instances/${encodeURIComponent(row.original.id)}`}
+          className="font-medium hover:underline"
+        >
+          {row.original.name || "Unnamed instance"}
+        </Link>
+      ),
       meta: {
         fieldType: "string",
         visible: true
@@ -279,7 +374,7 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       header: "Key Pair",
       meta: {
         fieldType: "string",
-        visible: true
+        visible: false
       }
     },
     {
@@ -287,21 +382,20 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       header: "Status",
       cell: ({ row }) => {
         const status = row.getValue("status");
+        const taskState = row.original["OS-EXT-STS:task_state"];
         return (
-          <Badge className="text-xs" variant={serverStatusBadgeVariant(status)}>
-            <span className="font-bold">{formatServerStatus(status)}</span>
-          </Badge>
+          <div className="space-y-1">
+            <Badge className="text-xs" variant={serverStatusBadgeVariant(status)}>
+              <span className="font-bold">{formatServerStatus(status)}</span>
+            </Badge>
+            <p className="whitespace-nowrap text-xs text-muted-foreground">
+              {taskState
+                ? formatServerTaskState(taskState)
+                : formatServerPowerState(row.original["OS-EXT-STS:power_state"])}
+            </p>
+          </div>
         )
       },
-      meta: {
-        fieldType: "string",
-        visible: true
-      }
-    },
-    {
-      accessorKey: "alert",
-      header: "Alert",
-      cell: ({ row }) => "N/A",
       meta: {
         fieldType: "string",
         visible: true
@@ -312,7 +406,7 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       header: "Availability Zone",
       meta: {
         fieldType: "string",
-        visible: true
+        visible: false
       }
     },
     {
@@ -322,7 +416,7 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       cell: ({ row }) => formatServerTaskState(row.original["OS-EXT-STS:task_state"]),
       meta: {
         fieldType: "string",
-        visible: true
+        visible: false
       }
     },
     {
@@ -331,7 +425,7 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       cell: ({ row }) => formatServerPowerState(row.getValue("OS-EXT-STS:power_state")),
       meta: {
         fieldType: "number",
-        visible: true
+        visible: false
       }
     },
     {
@@ -346,13 +440,67 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
   ], [flavors]);
 
   return (
-    <DataTable
-      data={servers}
-      isRefetching={isRefetchingServers}
-      refetch={refetchServers}
-      columns={columns}
-      resourceName="instance"
-      emptyIcon={ServerIcon}
-    />
+    <>
+      <DataTable
+        data={servers}
+        isRefetching={isRefetchingServers}
+        refetch={refetchServers}
+        columns={columns}
+        resourceName="instance"
+        emptyIcon={ServerIcon}
+        onPageRowsChange={handlePageRowsChange}
+        rowActions={[
+          {
+            label: "Start",
+            icon: Play,
+            onClick: (rows) => openAction("start", rows),
+            isDisabled: (rows) =>
+              rows.some((server) => !canRunServerLifecycleAction(server, "start")),
+          },
+          {
+            label: "Stop",
+            icon: CircleStop,
+            onClick: (rows) => openAction("stop", rows),
+            isDisabled: (rows) =>
+              rows.some((server) => !canRunServerLifecycleAction(server, "stop")),
+          },
+          {
+            label: "Reboot",
+            icon: RotateCw,
+            onClick: (rows) => openAction("soft-reboot", rows),
+            isDisabled: (rows) =>
+              rows.some(
+                (server) => !canRunServerLifecycleAction(server, "soft-reboot"),
+              ),
+          },
+          {
+            label: "Force reboot",
+            icon: Zap,
+            onClick: (rows) => openAction("hard-reboot", rows),
+            isDisabled: (rows) =>
+              rows.some(
+                (server) => !canRunServerLifecycleAction(server, "hard-reboot"),
+              ),
+          },
+          {
+            label: "Delete",
+            icon: Trash2,
+            variant: "destructive",
+            onClick: (rows) => openAction("delete", rows),
+            isDisabled: (rows) => rows.some((server) => !canDeleteServer(server)),
+          },
+        ]}
+      />
+      <InstanceLifecycleDialog
+        action={pendingAction}
+        instances={actionTargets}
+        onComplete={refreshAfterAction}
+        onOpenChange={(open) => {
+          if (!open) closeAction();
+        }}
+        projectId={projectId}
+        regionId={regionId}
+      />
+    </>
   );
 }

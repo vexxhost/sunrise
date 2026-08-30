@@ -23,9 +23,8 @@ export async function DataTableHydrationBoundary({
   const queryClient = makeQueryClient();
   await Promise.all(queries.map((query) => queryClient.prefetchQuery(query)));
 
-  return <>
+  return <HydrationBoundary state={dehydrate(queryClient)}>
     <DataTableHeader resourceName={resourceName} actions={actions} />
-    <HydrationBoundary state={dehydrate(queryClient)}>
       <Suspense fallback={
         <>
           <DataTableToolbar
@@ -39,6 +38,5 @@ export async function DataTableHydrationBoundary({
       }>
         {children}
       </Suspense>
-    </HydrationBoundary>
-  </>;
+    </HydrationBoundary>;
 }

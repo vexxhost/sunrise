@@ -89,13 +89,16 @@ export function DataTableToolbar<TData>({
             <DropdownMenuContent align="end">
               {rowActions.map((action, index) => {
                 const Icon = action.icon;
+                const selectedRows = hasTable
+                  ? table.getFilteredSelectedRowModel().rows.map((row) => row.original)
+                  : [];
                 return (
                   <DropdownMenuItem
                     key={index}
                     variant={action.variant === 'destructive' ? 'destructive' : 'default'}
+                    disabled={action.isDisabled?.(selectedRows) ?? false}
                     onClick={() => {
                       if (hasTable) {
-                        const selectedRows = table.getFilteredSelectedRowModel().rows.map(row => row.original);
                         action.onClick(selectedRows);
                       }
                     }}

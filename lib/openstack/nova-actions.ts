@@ -3,24 +3,101 @@
 import { openstack } from '@/lib/openstack/actions';
 import { executeOpenStackMutation } from '@/lib/openstack/mutations';
 import { getSession } from '@/lib/session';
-import type { MutationResult, MutationScope } from '@/lib/mutations';
+import { mutationFailure, type MutationResult, type MutationScope } from '@/lib/mutations';
+import { z } from 'zod';
 import type {
   CreateServerImageRequest,
-  CreateServerRequest,
+  Keypair,
   LiveMigrateServerRequest,
   MigrateServerRequest,
-  RebuildServerRequest,
   RescueServerRequest,
   ResizeServerRequest,
   Server,
   ServerConsole,
-  ServerResponse,
   VncConsoleType,
 } from '@/types/openstack';
 
 const SERVICE_TYPE = 'compute';
 const SERVICE_NAME = 'nova';
 const API_VERSION = 'compute 2.79';
+
+const resourceIdSchema = z.string().trim().min(1).max(255);
+const serverNameSchema = z.string().trim().min(1).max(255);
+const metadataSchema = z
+  .record(z.string().trim().min(1).max(255), z.string().max(255))
+  .refine((value) => Object.keys(value).length <= 128, {
+    message: 'Metadata cannot contain more than 128 entries.',
+  });
+
+const launchServerSchema = z.object({
+  name: serverNameSchema,
+  imageRef: resourceIdSchema,
+  flavorRef: resourceIdSchema,
+  keyName: z.string().trim().max(255).optional(),
+  networkIds: z.array(resourceIdSchema).max(32).default([]),
+  securityGroupNames: z.array(z.string().trim().min(1).max(255)).max(32).default([]),
+  availabilityZone: z.string().trim().max(255).optional(),
+  metadata: metadataSchema.default({}),
+  userData: z.string().max(65_535).optional(),
+  configDrive: z.boolean().default(false),
+});
+
+const rebuildServerSchema = z.object({
+  imageRef: resourceIdSchema,
+  keyName: z.string().trim().max(255).nullable().optional(),
+  metadata: metadataSchema.optional(),
+  preserveEphemeral: z.boolean().default(false),
+  userData: z.string().max(65_535).nullable().optional(),
+});
+
+const keypairSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .regex(/^[A-Za-z0-9._-]+$/, 'Use letters, numbers, periods, underscores, or hyphens.'),
+  publicKey: z.string().trim().min(16).max(16_384).optional(),
+});
+
+export type LaunchServerInput = z.input<typeof launchServerSchema>;
+export type RebuildServerInput = z.input<typeof rebuildServerSchema>;
+export type KeypairInput = z.input<typeof keypairSchema>;
+export type ServerLifecycleAction = 'start' | 'stop' | 'soft-reboot' | 'hard-reboot';
+
+function validationFailure(scope: MutationScope, message: string) {
+  return mutationFailure(
+    {
+      code: 'validation-failed',
+      message,
+      retryable: false,
+    },
+    scope,
+  );
+}
+
+function parseInput<T>(
+  schema: z.ZodType<T>,
+  value: unknown,
+  scope: MutationScope,
+): { ok: true; value: T } | { ok: false; result: ReturnType<typeof validationFailure> } {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      result: validationFailure(
+        scope,
+        parsed.error.issues[0]?.message ?? 'Review the values and try again.',
+      ),
+    };
+  }
+
+  return { ok: true, value: parsed.data };
+}
+
+function encodeUserData(value?: string | null) {
+  return value ? Buffer.from(value, 'utf8').toString('base64') : value;
+}
 
 async function resolveRegionId(regionId?: string): Promise<string> {
   if (regionId) {
@@ -65,8 +142,12 @@ async function performInstanceAction(
 
 export async function createServerAction(
   scope: MutationScope,
-  payload: CreateServerRequest,
+  input: LaunchServerInput,
 ): Promise<MutationResult<Server>> {
+  const parsed = parseInput(launchServerSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+
+  const payload = parsed.value;
   return executeOpenStackMutation<Server>({
     actionLabel: 'launch an instance',
     scope,
@@ -75,7 +156,24 @@ export async function createServerAction(
     path: '/servers',
     method: 'POST',
     apiVersion: API_VERSION,
-    body: { server: payload },
+    body: {
+      server: {
+        name: payload.name,
+        flavorRef: payload.flavorRef,
+        imageRef: payload.imageRef,
+        key_name: payload.keyName || undefined,
+        networks: payload.networkIds.length
+          ? payload.networkIds.map((uuid) => ({ uuid }))
+          : undefined,
+        security_groups: payload.securityGroupNames.length
+          ? payload.securityGroupNames.map((name) => ({ name }))
+          : undefined,
+        availability_zone: payload.availabilityZone || undefined,
+        metadata: Object.keys(payload.metadata).length ? payload.metadata : undefined,
+        user_data: encodeUserData(payload.userData),
+        config_drive: payload.configDrive || undefined,
+      },
+    },
     invalidates: ['/compute', '/compute/instances'],
     successMessage: `Instance ${payload.name} is being created.`,
     transform: (responsePayload) => {
@@ -95,41 +193,81 @@ export async function createServerAction(
 }
 
 export async function deleteServerAction(
+  scope: MutationScope,
   id: string,
-  { force = false }: { force?: boolean } = {},
-  regionId?: string,
-): Promise<void> {
-  const resolvedRegion = await resolveRegionId(regionId);
+): Promise<MutationResult<null>> {
+  const parsedId = parseInput(resourceIdSchema, id, scope);
+  if (!parsedId.ok) return parsedId.result;
 
-  if (force) {
-    await performInstanceAction(id, { forceDelete: null }, resolvedRegion);
-    return;
-  }
-
-  await openstack({
-    regionId: resolvedRegion,
+  return executeOpenStackMutation({
+    actionLabel: 'delete this instance',
+    scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
-    path: `/servers/${id}`,
+    path: `/servers/${encodeURIComponent(parsedId.value)}`,
     method: 'DELETE',
     apiVersion: API_VERSION,
+    invalidates: [
+      '/compute',
+      '/compute/instances',
+      `/compute/instances/${parsedId.value}`,
+    ],
+    successMessage: 'Instance deletion requested.',
   });
 }
 
-export async function rebootServerAction(
+export async function runServerLifecycleAction(
+  scope: MutationScope,
   id: string,
-  type: 'SOFT' | 'HARD',
-  regionId?: string,
-): Promise<void> {
-  await performInstanceAction(id, { reboot: { type } }, regionId);
-}
+  action: ServerLifecycleAction,
+): Promise<MutationResult<null>> {
+  const parsedId = parseInput(resourceIdSchema, id, scope);
+  if (!parsedId.ok) return parsedId.result;
 
-export async function startServerAction(id: string, regionId?: string): Promise<void> {
-  await performInstanceAction(id, { 'os-start': null }, regionId);
-}
+  const actionConfig = {
+    start: {
+      actionLabel: 'start this instance',
+      body: { 'os-start': null },
+      message: 'Instance start requested.',
+    },
+    stop: {
+      actionLabel: 'stop this instance',
+      body: { 'os-stop': null },
+      message: 'Instance stop requested.',
+    },
+    'soft-reboot': {
+      actionLabel: 'reboot this instance',
+      body: { reboot: { type: 'SOFT' } },
+      message: 'Graceful reboot requested.',
+    },
+    'hard-reboot': {
+      actionLabel: 'force reboot this instance',
+      body: { reboot: { type: 'HARD' } },
+      message: 'Forced reboot requested.',
+    },
+  } satisfies Record<
+    ServerLifecycleAction,
+    { actionLabel: string; body: Record<string, unknown>; message: string }
+  >;
+  const config = actionConfig[action];
+  if (!config) return validationFailure(scope, 'Choose a supported instance action.');
 
-export async function stopServerAction(id: string, regionId?: string): Promise<void> {
-  await performInstanceAction(id, { 'os-stop': null }, regionId);
+  return executeOpenStackMutation({
+    actionLabel: config.actionLabel,
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(parsedId.value)}/action`,
+    method: 'POST',
+    apiVersion: API_VERSION,
+    body: config.body,
+    invalidates: [
+      '/compute',
+      '/compute/instances',
+      `/compute/instances/${parsedId.value}`,
+    ],
+    successMessage: config.message,
+  });
 }
 
 export async function pauseServerAction(id: string, regionId?: string): Promise<void> {
@@ -177,23 +315,152 @@ export async function unlockServerAction(id: string, regionId?: string): Promise
 }
 
 export async function rebuildServerAction(
+  scope: MutationScope,
   id: string,
-  payload: RebuildServerRequest,
-  regionId?: string,
-): Promise<Server> {
-  const resolvedRegion = await resolveRegionId(regionId);
+  input: RebuildServerInput,
+): Promise<MutationResult<Server>> {
+  const parsedId = parseInput(resourceIdSchema, id, scope);
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parseInput(rebuildServerSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+  const payload = parsed.value;
 
-  const data = await openstack<ServerResponse>({
-    regionId: resolvedRegion,
+  return executeOpenStackMutation<Server>({
+    actionLabel: 'rebuild this instance',
+    scope,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
-    path: `/servers/${id}/action`,
+    path: `/servers/${encodeURIComponent(parsedId.value)}/action`,
     method: 'POST',
     apiVersion: API_VERSION,
-    body: { rebuild: payload },
+    body: {
+      rebuild: {
+        imageRef: payload.imageRef,
+        key_name: payload.keyName,
+        metadata: payload.metadata,
+        preserve_ephemeral: payload.preserveEphemeral,
+        user_data: encodeUserData(payload.userData),
+      },
+    },
+    invalidates: [
+      '/compute',
+      '/compute/instances',
+      `/compute/instances/${parsedId.value}`,
+    ],
+    successMessage: 'Instance rebuild requested.',
+    transform: (responsePayload) => {
+      if (
+        !responsePayload ||
+        typeof responsePayload !== 'object' ||
+        !('server' in responsePayload) ||
+        !responsePayload.server ||
+        typeof responsePayload.server !== 'object'
+      ) {
+        throw new Error('Nova did not return the rebuilt server');
+      }
+      return responsePayload.server as Server;
+    },
   });
+}
 
-  return ensureResponse(data, `Failed to rebuild instance ${id}`).server;
+export async function replaceServerMetadataAction(
+  scope: MutationScope,
+  id: string,
+  metadata: Record<string, string>,
+): Promise<MutationResult<Record<string, string>>> {
+  const parsedId = parseInput(resourceIdSchema, id, scope);
+  if (!parsedId.ok) return parsedId.result;
+  const parsedMetadata = parseInput(metadataSchema, metadata, scope);
+  if (!parsedMetadata.ok) return parsedMetadata.result;
+
+  return executeOpenStackMutation<Record<string, string>>({
+    actionLabel: 'update instance metadata',
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(parsedId.value)}/metadata`,
+    method: 'PUT',
+    apiVersion: API_VERSION,
+    body: { metadata: parsedMetadata.value },
+    invalidates: [
+      '/compute/instances',
+      `/compute/instances/${parsedId.value}`,
+    ],
+    successMessage: 'Instance metadata updated.',
+    transform: (responsePayload) => {
+      if (
+        !responsePayload ||
+        typeof responsePayload !== 'object' ||
+        !('metadata' in responsePayload) ||
+        !responsePayload.metadata ||
+        typeof responsePayload.metadata !== 'object'
+      ) {
+        throw new Error('Nova did not return the updated metadata');
+      }
+      return responsePayload.metadata as Record<string, string>;
+    },
+  });
+}
+
+export async function createKeypairAction(
+  scope: MutationScope,
+  input: KeypairInput,
+): Promise<MutationResult<Keypair>> {
+  const parsed = parseInput(keypairSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+
+  return executeOpenStackMutation<Keypair>({
+    actionLabel: parsed.value.publicKey ? 'import this key pair' : 'create this key pair',
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: '/os-keypairs',
+    method: 'POST',
+    apiVersion: API_VERSION,
+    body: {
+      keypair: {
+        name: parsed.value.name,
+        type: 'ssh',
+        public_key: parsed.value.publicKey,
+      },
+    },
+    invalidates: ['/compute', '/compute/key-pairs'],
+    successMessage: parsed.value.publicKey
+      ? `Key pair ${parsed.value.name} imported.`
+      : `Key pair ${parsed.value.name} created.`,
+    transform: (responsePayload) => {
+      if (
+        !responsePayload ||
+        typeof responsePayload !== 'object' ||
+        !('keypair' in responsePayload) ||
+        !responsePayload.keypair ||
+        typeof responsePayload.keypair !== 'object'
+      ) {
+        throw new Error('Nova did not return the created key pair');
+      }
+      return responsePayload.keypair as Keypair;
+    },
+  });
+}
+
+export async function deleteKeypairAction(
+  scope: MutationScope,
+  name: string,
+): Promise<MutationResult<null>> {
+  const parsed = parseInput(keypairSchema.shape.name, name, scope);
+  if (!parsed.ok) return parsed.result;
+
+  return executeOpenStackMutation({
+    actionLabel: 'delete this key pair',
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/os-keypairs/${encodeURIComponent(parsed.value)}`,
+    method: 'DELETE',
+    apiVersion: API_VERSION,
+    invalidates: ['/compute', '/compute/key-pairs'],
+    successMessage: `Key pair ${parsed.value} deleted.`,
+  });
 }
 
 export async function resizeServerAction(

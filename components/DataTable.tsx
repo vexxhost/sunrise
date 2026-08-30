@@ -28,6 +28,7 @@ import { IDCell } from "@/components/DataTable/IDCell"
 import { useColumnVisibility } from "@/hooks/useColumnVisibility"
 import { useColumnOrder } from "@/hooks/useColumnOrder"
 import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter"
+import { ensureRequiredDataTableColumn } from "@/lib/data-table-columns"
 import { DataTableToolbar } from "./DataTable/Toolbar"
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
@@ -43,6 +44,7 @@ export interface DataTableRowAction<TData> {
   variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
   onClick: (rows: TData[]) => void
   icon?: React.ComponentType<{ className?: string }>
+  isDisabled?: (rows: TData[]) => boolean
 }
 
 interface DataTableProps<TData, TValue> {
@@ -54,14 +56,6 @@ interface DataTableProps<TData, TValue> {
   emptyIcon: React.ComponentType<{ className?: string }>
   rowActions?: DataTableRowAction<TData>[]
   onPageRowsChange?: (rows: TData[]) => void
-}
-
-function isIDColumn<TData, TValue>(column: ColumnDef<TData, TValue>) {
-  return (
-    ('accessorKey' in column && column.accessorKey === 'id') ||
-    column.id === 'id' ||
-    column.header === 'ID'
-  );
 }
 
 export function DataTable<TData, TValue>({
@@ -109,13 +103,7 @@ export function DataTable<TData, TValue>({
       } as ColumnDef<TData, TValue>);
     }
 
-    cols.push(
-      ...columns.map((column) =>
-        isIDColumn(column)
-          ? { ...column, enableHiding: false }
-          : column,
-      ),
-    );
+    cols.push(...ensureRequiredDataTableColumn(columns));
     return cols;
   }, [columns, rowActions.length]);
   const { columnVisibility, setColumnVisibility } = useColumnVisibility(tableColumns, resourceName)

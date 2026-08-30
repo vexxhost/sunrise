@@ -8,6 +8,7 @@ import {
   serverActionsQueryOptions,
   serverActionQueryOptions,
 } from '@/hooks/queries/useServers';
+import { normalizeOpenStackTimestamp } from '@/lib/openstack/time';
 import {
   Table,
   TableBody,
@@ -27,7 +28,7 @@ interface ActionLogProps {
 function formatTime(value: string | null | undefined) {
   if (!value) return '—';
   try {
-    return `${value} (${formatDistanceToNow(parseISO(value), { addSuffix: true })})`;
+    return `${value} (${formatDistanceToNow(parseISO(normalizeOpenStackTimestamp(value)), { addSuffix: true })})`;
   } catch {
     return value;
   }
