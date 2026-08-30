@@ -11,9 +11,11 @@ vi.mock("@/lib/openstack/actions", () => ({ openstack: vi.fn() }));
 vi.mock("@/lib/session", () => ({ getSession: vi.fn() }));
 
 import {
+  attachPortAction,
   createKeypairAction,
   createServerAction,
   deleteKeypairAction,
+  detachPortAction,
   replaceServerMetadataAction,
   runServerLifecycleAction,
 } from "@/lib/openstack/nova-actions";
@@ -91,6 +93,42 @@ describe("Nova mutation actions", () => {
         successMessage: "Forced reboot requested.",
       }),
     );
+  });
+
+  it("attaches and detaches existing Neutron ports through Nova", async () => {
+    await attachPortAction(scope, { portId: "port-a", serverId: "server-a" });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        apiVersion: "compute 2.79",
+        method: "POST",
+        path: "/servers/server-a/os-interface",
+        body: { interfaceAttachment: { port_id: "port-a" } },
+      }),
+    );
+
+    await detachPortAction(scope, { portId: "port-a", serverId: "server-a" });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        apiVersion: "compute 2.79",
+        method: "DELETE",
+        path: "/servers/server-a/os-interface/port-a",
+      }),
+    );
+  });
+
+  it("rejects an empty interface attachment before contacting Nova", async () => {
+    const result = await attachPortAction(scope, {
+      portId: "",
+      serverId: "server-a",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("omits public key material when asking Nova to generate a key pair", async () => {
