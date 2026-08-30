@@ -18,6 +18,7 @@ export default async function Page({ params, searchParams }: PageProps) {
   const prefix = rawPrefix ?? '';
   const session = await getSession();
   const activeProjectId = normalizeProjectId(session.projectId);
+  const activeRegionId = session.regionId ?? '';
 
   const probe = await listObjectsForRender(bucket, prefix);
   if (!probe.ok && probe.needsAuth) {
@@ -36,6 +37,7 @@ export default async function Page({ params, searchParams }: PageProps) {
       <DataTableHeader resourceName="object" actions={undefined} />
       <ObjectsClient
         activeProjectId={activeProjectId}
+        activeRegionId={activeRegionId}
         bucket={bucket}
         initialPrefix={prefix}
         initialData={probe}

@@ -14,13 +14,13 @@ import {
   FileText,
   Folder,
   Home,
-  ShieldCheck,
   Trash2,
   Upload,
 } from 'lucide-react';
 import bytes from 'bytes';
 import { DataTable } from '@/components/DataTable';
 import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
+import { BucketSettingsDialog } from '@/components/object-storage/BucketSettingsDialog';
 import {
   ObjectMetadataDetails,
   type ObjectMetadataDetailsData,
@@ -37,7 +37,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { makeBrowserS3Client } from '@/lib/s3/browser-client';
 import { getStsCredentialsForBrowser } from '@/lib/s3/browser-creds';
 import { directObjectPath } from '@/lib/s3/direct-route';
@@ -48,7 +47,6 @@ import {
   createBrowserFolder,
   describeBrowserS3Error,
   findBrowserUploadConflicts,
-  getBrowserBucketPolicy,
   getBrowserDownloadUrl,
   isBrowserAccessDenied,
   listBrowserObjects,
@@ -62,14 +60,10 @@ import { useMutationRefresh } from '@/hooks/useMutationRefresh';
 
 interface DirectClientProps {
   activeProjectId: string;
+  activeRegionId: string;
   bucket: string;
   objectKey?: string;
 }
-
-type PolicyState =
-  | { status: 'idle' | 'loading' }
-  | { status: 'loaded'; bucketArn: string; policy: string | null }
-  | { status: 'error'; error: string; accessDenied: boolean };
 
 type SizeState = BrowserSizeResult & { label: string };
 
@@ -103,6 +97,7 @@ function triggerNativeDownload(url: string) {
 
 export function DirectClient({
   activeProjectId,
+  activeRegionId,
   bucket,
   objectKey = '',
 }: DirectClientProps) {
@@ -142,10 +137,6 @@ export function DirectClient({
   const [startedDownloads, setStartedDownloads] = useState<Set<string>>(
     () => new Set()
   );
-  const [policyOpen, setPolicyOpen] = useState(false);
-  const [policyState, setPolicyState] = useState<PolicyState>({
-    status: 'idle',
-  });
   const activeBrowserSession =
     browserSession?.projectId === activeProjectId ? browserSession : null;
   const s3 = activeBrowserSession?.client ?? null;
@@ -427,22 +418,6 @@ export function DirectClient({
       setDownloadError(describeBrowserS3Error(error));
     } finally {
       setDownloadBusy(false);
-    }
-  };
-
-  const openPolicy = async () => {
-    if (!s3) return;
-    setPolicyOpen(true);
-    setPolicyState({ status: 'loading' });
-    try {
-      const result = await getBrowserBucketPolicy(s3, bucket);
-      setPolicyState({ status: 'loaded', ...result });
-    } catch (error) {
-      setPolicyState({
-        status: 'error',
-        error: describeBrowserS3Error(error),
-        accessDenied: isBrowserAccessDenied(error),
-      });
     }
   };
 
@@ -762,15 +737,10 @@ export function DirectClient({
 
         <div className="h-6 w-px bg-border" />
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void openPolicy()}
-        >
-          <ShieldCheck className="h-4 w-4" />
-          Bucket policy
-        </Button>
+        <BucketSettingsDialog
+          bucket={bucket}
+          scope={{ projectId: activeProjectId, regionId: activeRegionId }}
+        />
       </div>
 
       {(uploadMessage ||
@@ -1015,49 +985,6 @@ export function DirectClient({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={policyOpen} onOpenChange={setPolicyOpen}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Bucket policy</DialogTitle>
-            <DialogDescription>{bucket}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1">
-            <div className="text-sm font-medium">Bucket ARN</div>
-            <div className="break-all font-mono text-sm text-muted-foreground">
-              {policyState.status === 'loading'
-                ? 'Loading ARN'
-                : policyState.status === 'loaded'
-                  ? policyState.bucketArn
-                  : 'Unavailable'}
-            </div>
-          </div>
-          {policyState.status === 'loading' && (
-            <div className="text-sm text-muted-foreground">Loading policy</div>
-          )}
-          {policyState.status === 'loaded' &&
-            (policyState.policy ? (
-              <Textarea
-                readOnly
-                value={policyState.policy}
-                className="h-[420px] font-mono text-xs"
-              />
-            ) : (
-              <div className="rounded-md border p-3 text-sm text-muted-foreground">
-                No bucket policy is configured.
-              </div>
-            ))}
-          {policyState.status === 'error' && (
-            <div className="rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm">
-              <div className="font-medium">
-                {policyState.accessDenied ? 'Access denied' : 'Policy check failed'}
-              </div>
-              <div className="mt-1 break-all font-mono text-xs">
-                {policyState.error}
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
