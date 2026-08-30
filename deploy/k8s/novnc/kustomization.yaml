@@ -3,6 +3,11 @@ kind: Kustomization
 
 namespace: openstack
 
+# The Deployment is patched separately, so Kustomize cannot rewrite its
+# ConfigMap reference to a generated hash-suffixed name.
+generatorOptions:
+  disableNameSuffixHash: true
+
 configMapGenerator:
   - name: sunrise-novnc
     files:

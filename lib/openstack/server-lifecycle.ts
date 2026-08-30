@@ -68,3 +68,21 @@ export function canRebuildServer(
 
   return ["ACTIVE", "ERROR", "SHUTOFF"].includes(normalizedStatus(server));
 }
+
+export function mergeServerUpdates<T extends { id: string }>(
+  existing: T[],
+  updates: ReadonlyMap<string, T>,
+) {
+  let changed = false;
+  const nextServers = existing.map((server) => {
+    const updated = updates.get(server.id);
+    if (!updated || updated === server) {
+      return server;
+    }
+
+    changed = true;
+    return updated;
+  });
+
+  return changed ? nextServers : existing;
+}

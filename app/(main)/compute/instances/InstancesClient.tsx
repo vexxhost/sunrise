@@ -41,9 +41,19 @@ import {
   canDeleteServer,
   canRunServerLifecycleAction,
   isServerTransitioning,
+  mergeServerUpdates,
 } from "@/lib/openstack/server-lifecycle";
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
+
+function collectServerUpdates(results: readonly { data?: Server }[]) {
+  return new Map(
+    results
+      .map((result) => result.data)
+      .filter((server): server is Server => Boolean(server))
+      .map((server) => [server.id, server]),
+  );
+}
 
 const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string }[] } }) => {
   return Object.keys(addresses).map((key: string) => {
@@ -180,19 +190,13 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       refetchOnReconnect: false,
       refetchOnWindowFocus: false,
     })),
-    combine: (results) =>
-      new Map(
-        results
-          .map((result) => result.data)
-          .filter((server): server is Server => Boolean(server))
-          .map((server) => [server.id, server]),
-      ),
+    combine: collectServerUpdates,
   });
 
   useEffect(() => {
     if (!transitioningUpdates.size) return;
     queryClient.setQueryData<Server[]>(listOptions.queryKey, (current) =>
-      current?.map((server) => transitioningUpdates.get(server.id) ?? server),
+      current ? mergeServerUpdates(current, transitioningUpdates) : current,
     );
   }, [listOptions.queryKey, queryClient, transitioningUpdates]);
 

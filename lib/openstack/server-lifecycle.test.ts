@@ -5,6 +5,7 @@ import {
   canRebuildServer,
   canRunServerLifecycleAction,
   isServerTransitioning,
+  mergeServerUpdates,
 } from "@/lib/openstack/server-lifecycle";
 import type { Server } from "@/types/openstack";
 
@@ -60,5 +61,37 @@ describe("server lifecycle availability", () => {
     expect(canRebuildServer(server("SHUTOFF"))).toBe(true);
     expect(canRebuildServer(server("ERROR"))).toBe(true);
     expect(canRebuildServer(server("BUILD"))).toBe(false);
+  });
+});
+
+describe("server polling updates", () => {
+  const first = { id: "server-a", status: "ACTIVE" };
+  const second = { id: "server-b", status: "ACTIVE" };
+
+  it("preserves the list reference when poll data is unchanged", () => {
+    const existing = [first, second];
+    const result = mergeServerUpdates(existing, new Map([[first.id, first]]));
+
+    expect(result).toBe(existing);
+  });
+
+  it("returns a new list only when a polled server changes", () => {
+    const existing = [first, second];
+    const updated = { ...first, status: "REBOOT" };
+    const result = mergeServerUpdates(existing, new Map([[updated.id, updated]]));
+
+    expect(result).not.toBe(existing);
+    expect(result).toEqual([updated, second]);
+    expect(result[1]).toBe(second);
+  });
+
+  it("ignores updates for servers outside the current list", () => {
+    const existing = [first, second];
+    const result = mergeServerUpdates(
+      existing,
+      new Map([["server-c", { id: "server-c", status: "BUILD" }]]),
+    );
+
+    expect(result).toBe(existing);
   });
 });
