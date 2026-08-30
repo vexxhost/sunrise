@@ -1,62 +1,80 @@
 "use client";
-import React, { useActionState } from "react";
-import { useFormStatus } from "react-dom";
-import { login } from "@/app/(main)/auth/login/action";
-import Image from "next/image";
 
-export default function Login() {
-  const [state, action] = useActionState(login, undefined);
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
+import { LoaderCircle, LogIn } from "lucide-react";
+import { login } from "@/app/(main)/auth/login/action";
+import { AuthScene } from "@/components/Auth/AuthScene";
+
+function SubmitButton() {
   const { pending } = useFormStatus();
 
   return (
-    <>
-      <div className="flex min-h-full flex-1 flex-col justify-center px-6 py-12 lg:px-8">
-        <div className="bg-gray-900 max-w-lg mx-auto py-4 pl-4 rounded-t-lg">
-          <Image
-            src="/img/logo.png"
-            alt="Sunrise"
-            width={1225}
-            height={189}
-            priority
-          />
-        </div>
-        <div className="sm:mx-auto sm:w-full sm:max-w-lg">
-          <div className="bg-white px-6 py-12 shadow sm:rounded-b-lg sm:px-12">
-            <form className="" action={action}>
-              <div className="relative -space-y-px rounded-md shadow-sm mb-6">
-                <div className="pointer-events-none absolute inset-0 z-10 rounded-md ring-1 ring-inset ring-gray-300" />
-                <div>
-                  <label htmlFor="id_provider" className="sr-only">
-                    Identity Provider ID
-                  </label>
-                  <input
-                    id="id_provider"
-                    name="id_provider"
-                    type="text"
-                    required
-                    className="text-sm text-center relative block w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-100 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-gray-600 sm:text-2xl sm:leading-6"
-                    placeholder="Identity Provider ID"
-                  />
-                </div>
-                {state?.errors?.idProvider && (
-                  <p className="p-2 text-center bg-gray-100 text-red-500">
-                    {state.errors.idProvider}
-                  </p>
-                )}
-              </div>
-              <div>
-                <button
-                  aria-disabled={pending}
-                  type="submit"
-                  className="flex w-full justify-center rounded-md bg-gray-900 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-gray-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600"
-                >
-                  {pending ? "Signing in..." : "Sign In"}
-                </button>
-              </div>
-            </form>
+    <button
+      disabled={pending}
+      type="submit"
+      className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-foreground px-4 text-sm font-semibold text-background shadow-sm transition-colors hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-70"
+    >
+      {pending ? (
+        <LoaderCircle className="size-4 animate-spin" />
+      ) : (
+        <LogIn className="size-4" />
+      )}
+      {pending ? "Connecting..." : "Continue"}
+    </button>
+  );
+}
+
+export default function Login() {
+  const [state, action] = useActionState(login, undefined);
+
+  return (
+    <AuthScene>
+      <div>
+        <p className="text-center text-sm font-medium text-sky-700 dark:text-cyan-200">
+          Cloud console
+        </p>
+        <h1 className="mt-3 text-center text-3xl font-semibold text-foreground sm:text-4xl">
+          Welcome back
+        </h1>
+        <p className="mt-4 text-center text-sm leading-6 text-muted-foreground">
+          Sign in to continue.
+        </p>
+
+        <form action={action} className="mt-9 space-y-5">
+          <div>
+            <label
+              htmlFor="id_provider"
+              className="mb-2 block text-sm font-medium text-foreground"
+            >
+              Identity provider
+            </label>
+            <input
+              id="id_provider"
+              name="id_provider"
+              type="text"
+              required
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              className="h-11 w-full rounded-md border border-input bg-background/70 px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 dark:bg-white/5 dark:focus:border-cyan-300 dark:focus:ring-cyan-300/25"
+              placeholder="Enter your provider ID"
+            />
+
+            {state?.errors?.idProvider && (
+              <p className="mt-2 text-sm text-rose-700 dark:text-rose-300" role="alert">
+                {state.errors.idProvider.join(" ")}
+              </p>
+            )}
           </div>
-        </div>
+
+          <SubmitButton />
+        </form>
+
+        <p className="mt-6 text-xs leading-5 text-muted-foreground">
+          You will be redirected to your identity provider to complete sign-in.
+        </p>
       </div>
-    </>
+    </AuthScene>
   );
 }

@@ -13,10 +13,12 @@ import {
 import { getUserInfo } from "@/lib/openstack/keystone-actions";
 import { readPrefs } from "@/lib/prefs";
 import { getSession } from "@/lib/session";
+import type { SunriseAppearance } from "@/lib/theme-preference";
 
 export type CloudContext = {
   keystoneToken?: string;
   catalog: OpenStackCatalogService[] | null;
+  appearance: SunriseAppearance;
   snapshot: CloudContextSnapshot;
 };
 
@@ -37,6 +39,7 @@ export const loadCloudContext = cache(async (): Promise<CloudContext> => {
   return {
     keystoneToken: session.keystoneProjectToken,
     catalog,
+    appearance: prefs.appearance ?? "system",
     snapshot: buildCloudContextSnapshot({
       session,
       prefs,

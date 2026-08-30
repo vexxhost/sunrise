@@ -6,12 +6,17 @@ import {
   serializeResourcePreferences,
   type ResourcePreference,
 } from '@/lib/resource-preferences';
+import {
+  parseSunriseAppearance,
+  type SunriseAppearance,
+} from '@/lib/theme-preference';
 
 const PREFS_COOKIE = 'sunrise_prefs';
 const PREFS_MAX_AGE_DAYS = 365;
 const PREFS_COOKIE_SAFE_LENGTH = 3800;
 
 export type SunrisePrefs = {
+  appearance?: SunriseAppearance;
   regionId?: string;
   projectId?: string;
   projectName?: string;
@@ -27,6 +32,7 @@ export async function readPrefs(): Promise<SunrisePrefs> {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object') {
       return {
+        appearance: parseSunriseAppearance(parsed.appearance),
         regionId:
           typeof parsed.regionId === 'string' ? parsed.regionId : undefined,
         projectId:

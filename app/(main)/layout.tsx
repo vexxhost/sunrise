@@ -27,9 +27,15 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const cloudContext = await loadCloudContext();
+  const appearanceClass =
+    cloudContext.appearance === "system" ? undefined : cloudContext.appearance;
 
   return (
-    <html lang="en" className="h-full" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={cn("h-full", appearanceClass)}
+      suppressHydrationWarning
+    >
       <body
         className={cn(
           "min-h-screen bg-background font-sans antialiased h-full",
@@ -38,7 +44,7 @@ export default async function RootLayout({
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme={cloudContext.appearance}
           enableSystem
           disableTransitionOnChange
         >

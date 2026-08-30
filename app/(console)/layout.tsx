@@ -4,6 +4,7 @@ import { Inter as FontSans } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Providers } from "../providers";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { readPrefs } from "@/lib/prefs";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -17,20 +18,33 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ConsoleRootLayout({
+export default async function ConsoleRootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const prefs = await readPrefs();
+  const appearance = prefs.appearance ?? "system";
+  const appearanceClass = appearance === "system" ? undefined : appearance;
+
   return (
-    <html lang="en" className="h-full" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={cn("h-full", appearanceClass)}
+      suppressHydrationWarning
+    >
       <body
         className={cn(
           "min-h-screen bg-background font-sans antialiased h-full overflow-hidden",
           fontSans.variable,
         )}
       >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme={appearance}
+          enableSystem
+          disableTransitionOnChange
+        >
           <Providers>{children}</Providers>
         </ThemeProvider>
       </body>

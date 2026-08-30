@@ -118,3 +118,86 @@
     @apply bg-background text-foreground;
   }
 }
+
+.sunrise-auth-scene {
+  --sunrise-auth-sky: #eef5f8;
+  --sunrise-auth-sun: #f43f5e;
+  --sunrise-auth-horizon: #f59e0b;
+  --sunrise-auth-accent: #0284c7;
+  --sunrise-auth-cloud-back: #d8e7ed;
+  --sunrise-auth-cloud-mid: #c3d9e2;
+  --sunrise-auth-cloud-front: #abc8d5;
+  --sunrise-auth-overlay: rgb(255 255 255 / 12%);
+}
+
+.dark .sunrise-auth-scene {
+  --sunrise-auth-sky: #07111b;
+  --sunrise-auth-sun: #fb7185;
+  --sunrise-auth-horizon: #fdba74;
+  --sunrise-auth-accent: #38bdf8;
+  --sunrise-auth-cloud-back: #173144;
+  --sunrise-auth-cloud-mid: #102738;
+  --sunrise-auth-cloud-front: #0a1b28;
+  --sunrise-auth-overlay: rgb(7 17 27 / 28%);
+}
+
+@keyframes sunrise-parallax-slow {
+  from {
+    transform: translate3d(-1.5%, 0, 0);
+  }
+  to {
+    transform: translate3d(1.5%, 0, 0);
+  }
+}
+
+@keyframes sunrise-parallax-medium {
+  from {
+    transform: translate3d(1.75%, 0, 0);
+  }
+  to {
+    transform: translate3d(-1.75%, 0, 0);
+  }
+}
+
+@keyframes sunrise-parallax-fast {
+  from {
+    transform: translate3d(-2%, 0, 0);
+  }
+  to {
+    transform: translate3d(2%, 0, 0);
+  }
+}
+
+@keyframes sunrise-parallax-rise {
+  from {
+    transform: translate3d(0, 0.75%, 0);
+  }
+  to {
+    transform: translate3d(0, -0.75%, 0);
+  }
+}
+
+.sunrise-parallax-sun {
+  animation: sunrise-parallax-rise 18s ease-in-out infinite alternate;
+}
+
+.sunrise-parallax-back {
+  animation: sunrise-parallax-slow 28s ease-in-out infinite alternate;
+}
+
+.sunrise-parallax-mid {
+  animation: sunrise-parallax-medium 22s ease-in-out infinite alternate;
+}
+
+.sunrise-parallax-front {
+  animation: sunrise-parallax-fast 17s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sunrise-parallax-sun,
+  .sunrise-parallax-back,
+  .sunrise-parallax-mid,
+  .sunrise-parallax-front {
+    animation: none;
+  }
+}
