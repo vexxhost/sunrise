@@ -116,12 +116,13 @@ export interface AddressItem {
 }
 
 export interface Server {
-  id: number;
+  id: string;
   name: string;
+  description?: string | null;
   status: string;
   tenant_id: string;
   user_id: string;
-  metadata: {};
+  metadata: Record<string, string>;
   hostId: string;
   image: { id: string } | "";
   flavor: {
@@ -152,6 +153,12 @@ export interface Server {
   "os-extended-volumes:volumes_attached": { id: string }[];
   security_groups: SecurityGroup[];
   locked: boolean;
+  fault?: {
+    code?: number;
+    created?: string;
+    details?: string;
+    message?: string;
+  };
 }
 
 /**
@@ -309,7 +316,7 @@ export interface Keypair {
  */
 export interface KeypairCreateRequest {
   name: string; // Required
-  public_key: string; // Required (v2.92+)
+  public_key?: string; // Omit to let Nova generate a private key
   type?: KeypairType; // Optional, defaults to "ssh"
   user_id?: string; // Optional, admin only (v2.10+)
 }

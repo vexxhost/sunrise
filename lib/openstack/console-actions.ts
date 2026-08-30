@@ -2,6 +2,7 @@
 
 import { openstack } from '@/lib/openstack/actions';
 import { getSession } from '@/lib/session';
+import { rewriteNoVncUrl } from '@/lib/openstack/console-url';
 
 export type ConsoleProtocol = 'vnc' | 'serial';
 export type ConsoleType = 'novnc' | 'xvpvnc' | 'serial';
@@ -21,12 +22,9 @@ const DEFAULTS: Record<ConsoleProtocol, ConsoleType> = {
 };
 
 /**
- * Rewrite Nova-issued noVNC URLs to point at our patched `sunrise.html` page
- * deployed alongside the noVNC assets in the nova-novncproxy pod (mounted via
- * ConfigMap with `subPath`, so upstream `vnc.html` / `vnc_lite.html` stay intact).
- *
- * Only the path is rewritten; the `?path=...token=...` query is preserved
- * verbatim so websockify auth still works.
+ * Nova-issued noVNC URLs are rewritten to the small Sunrise page deployed
+ * alongside the upstream assets. The token query remains intact, and the
+ * configured dashboard origin is included for the postMessage bridge.
  *
  * CAVEATS:
  * - The proxy must serve `sunrise.html` at the same origin as the websocket
@@ -34,23 +32,7 @@ const DEFAULTS: Record<ConsoleProtocol, ConsoleType> = {
  * - The proxy origin must allow framing from the dashboard origin
  *   (no `X-Frame-Options: DENY`, permissive `Content-Security-Policy:
  *   frame-ancestors`).
- * - sunrise.html itself loads Inter from fonts.googleapis.com; if the proxy
- *   has a strict CSP we either relax `font-src`/`style-src` or self-host the
- *   font in the same ConfigMap.
  */
-function rewriteToSunrise(originalUrl: string): string {
-  try {
-    const u = new URL(originalUrl);
-    if (u.pathname.endsWith('/vnc_lite.html') || u.pathname.endsWith('/vnc.html')) {
-      u.pathname = u.pathname.replace(/(vnc_lite|vnc)\.html$/, 'sunrise.html');
-      return u.toString();
-    }
-    return originalUrl;
-  } catch {
-    return originalUrl;
-  }
-}
-
 export async function getRemoteConsoleAction(
   serverId: string,
   protocol: ConsoleProtocol = 'vnc',
@@ -85,6 +67,8 @@ export async function getRemoteConsoleAction(
 
   const remote = data.remote_console;
   const rawUrl = remote.url;
-  const url = protocol === 'vnc' ? rewriteToSunrise(rawUrl) : rawUrl;
+  const url = protocol === 'vnc'
+    ? rewriteNoVncUrl(rawUrl, process.env.DASHBOARD_URL)
+    : rawUrl;
   return { ...remote, url, rawUrl };
 }

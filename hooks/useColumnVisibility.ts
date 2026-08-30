@@ -1,24 +1,12 @@
 import { ColumnDef } from '@tanstack/react-table';
 import { useLocalStorage } from 'usehooks-ts';
 import { useEffect, useMemo } from 'react';
+import {
+  getDataTableColumnId,
+  isRequiredDataTableColumn,
+} from '@/lib/data-table-columns';
 
 const LOCAL_STORAGE_OPTIONS = { initializeWithValue: false };
-
-function getColumnId<TData, TValue>(column: ColumnDef<TData, TValue>): string | undefined {
-  if ('accessorKey' in column && typeof column.accessorKey === 'string') {
-    return column.accessorKey;
-  }
-
-  return column.id;
-}
-
-function isRequiredColumn<TData, TValue>(column: ColumnDef<TData, TValue>) {
-  return (
-    column.enableHiding === false ||
-    getColumnId(column) === 'id' ||
-    column.header === 'ID'
-  );
-}
 
 function recordsEqual(left: Record<string, boolean>, right: Record<string, boolean>) {
   const leftKeys = Object.keys(left);
@@ -42,9 +30,11 @@ export function useColumnVisibility<TData, TValue>(
     const visibility: Record<string, boolean> = {};
 
     columns.forEach((column) => {
-      const id = getColumnId(column);
+      const id = getDataTableColumnId(column);
       if (id) {
-        visibility[id] = isRequiredColumn(column) ? true : column.meta?.visible ?? true;
+        visibility[id] = isRequiredDataTableColumn(column)
+          ? true
+          : column.meta?.visible ?? true;
       }
     });
 
@@ -54,8 +44,8 @@ export function useColumnVisibility<TData, TValue>(
     const visibility: Record<string, boolean> = {};
 
     columns.forEach((column) => {
-      const id = getColumnId(column);
-      if (id && isRequiredColumn(column)) {
+      const id = getDataTableColumnId(column);
+      if (id && isRequiredDataTableColumn(column)) {
         visibility[id] = true;
       }
     });

@@ -41,26 +41,32 @@ export default function SecurityGroupListByNames({
     .filter((group): group is SecurityGroup => group !== undefined);
 
   return (
-    <DetailSection title="Security Groups">
+    <DetailSection title="Security access">
       {secGroups.length > 0 ? (
         secGroups.map((secGroup) => (
           <DetailField key={secGroup.id} label={secGroup.name}>
-            <ol className="space-y-1">
-              {secGroup.security_group_rules.map(
-                (rule: SecurityGroupRule) => (
-                  <li key={rule.id}>
-                    ALLOW {rule.ethertype}
-                    {rule.protocol && ` ${rule.protocol}`}
-                    {(rule.port_range_min !== null || rule.port_range_max !== null) &&
-                      ` ${rule.port_range_min}-${rule.port_range_max}`}
-                    {` ${rule.remote_group_id ? "from" : "to"} ${getGroupNameFromId(rule.remote_group_id, securityGroups) ??
-                      (rule.remote_ip_prefix ||
-                        (rule.ethertype === "IPv6" ? "::/0" : "0.0.0.0/0"))
-                      }`}
-                  </li>
-                ),
-              )}
-            </ol>
+            <details>
+              <summary className="cursor-pointer text-sm font-medium">
+                {secGroup.security_group_rules.length}{" "}
+                {secGroup.security_group_rules.length === 1 ? "rule" : "rules"}
+              </summary>
+              <ol className="mt-2 space-y-1 border-l pl-3 text-xs text-muted-foreground">
+                {secGroup.security_group_rules.map(
+                  (rule: SecurityGroupRule) => (
+                    <li key={rule.id}>
+                      ALLOW {rule.ethertype}
+                      {rule.protocol && ` ${rule.protocol}`}
+                      {(rule.port_range_min !== null || rule.port_range_max !== null) &&
+                        ` ${rule.port_range_min}-${rule.port_range_max}`}
+                      {` ${rule.remote_group_id ? "from" : "to"} ${getGroupNameFromId(rule.remote_group_id, securityGroups) ??
+                        (rule.remote_ip_prefix ||
+                          (rule.ethertype === "IPv6" ? "::/0" : "0.0.0.0/0"))
+                        }`}
+                    </li>
+                  ),
+                )}
+              </ol>
+            </details>
           </DetailField>
         ))
       ) : (

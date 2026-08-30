@@ -9,10 +9,8 @@
 # files baked into the image (`/usr/share/novnc/`) into
 # `/tmp/usr/share/novnc/` (the EmptyDir, mounted rw there).
 #
-# So to ship our overlay to the served filesystem we mount the two
-# ConfigMaps into THAT init container at the in-image paths:
-#   - /usr/share/novnc/sunrise.html  (subPath, single file)
-#   - /usr/share/novnc/fonts/        (directory mount)
+# So to ship our overlay to the served filesystem we mount the three small
+# assets from one ConfigMap into THAT init container at their in-image paths.
 # The init-assets script then copies them across with the rest of noVNC,
 # and the main container serves them out of the EmptyDir.
 #
@@ -35,11 +33,13 @@ spec:
               mountPath: /usr/share/novnc/sunrise.html
               subPath: sunrise.html
               readOnly: true
-            # `/usr/share/novnc/fonts` does not exist in the upstream image,
-            # so a plain directory mount is safe and avoids per-file subPath
-            # entries for each woff2.
-            - name: sunrise-novnc-fonts
-              mountPath: /usr/share/novnc/fonts
+            - name: sunrise-novnc
+              mountPath: /usr/share/novnc/sunrise.css
+              subPath: sunrise.css
+              readOnly: true
+            - name: sunrise-novnc
+              mountPath: /usr/share/novnc/sunrise.js
+              subPath: sunrise.js
               readOnly: true
       volumes:
         - name: sunrise-novnc
@@ -48,6 +48,7 @@ spec:
             items:
               - key: sunrise.html
                 path: sunrise.html
-        - name: sunrise-novnc-fonts
-          configMap:
-            name: sunrise-novnc-fonts
+              - key: sunrise.css
+                path: sunrise.css
+              - key: sunrise.js
+                path: sunrise.js
