@@ -1,4 +1,5 @@
 "use client";
+import type { ReactNode } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Globe2 } from "lucide-react";
 import { FloatingIpDetailActions } from "@/components/Network/FloatingIpDetailActions";
@@ -7,6 +8,7 @@ import {
   floatingIpQueryOptions,
   portsQueryOptions,
 } from "@/hooks/queries/useNetworks";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 export function FloatingIpDetailClient({
   id,
@@ -27,14 +29,59 @@ export function FloatingIpDetailClient({
   const owned =
     floatingIp.data.project_id === projectId ||
     floatingIp.data.tenant_id === projectId;
-  const rows = [
+  const rows: Array<[string, ReactNode]> = [
     ["ID", floatingIp.data.id],
     ["Status", floatingIp.data.status],
     ["Description", floatingIp.data.description || "None"],
     ["Fixed IP", floatingIp.data.fixed_ip_address || "Not associated"],
-    ["Port", associatedPort?.name || associatedPort?.id || "None"],
-    ["Router ID", floatingIp.data.router_id || "None"],
-    ["External network ID", floatingIp.data.floating_network_id],
+    [
+      "Port",
+      associatedPort ? (
+        <ResourceLink
+          href={`/compute/networks/ports/${encodeURIComponent(associatedPort.id)}`}
+        >
+          {associatedPort.name || associatedPort.id}
+        </ResourceLink>
+      ) : (
+        "None"
+      ),
+    ],
+    [
+      "Port ID",
+      floatingIp.data.port_id ? (
+        <ResourceLink
+          href={`/compute/networks/ports/${encodeURIComponent(floatingIp.data.port_id)}`}
+          className="font-mono text-xs"
+        >
+          {floatingIp.data.port_id}
+        </ResourceLink>
+      ) : (
+        "None"
+      ),
+    ],
+    [
+      "Router ID",
+      floatingIp.data.router_id ? (
+        <ResourceLink
+          href={`/compute/networks/routers/${encodeURIComponent(floatingIp.data.router_id)}`}
+          className="font-mono text-xs"
+        >
+          {floatingIp.data.router_id}
+        </ResourceLink>
+      ) : (
+        "None"
+      ),
+    ],
+    [
+      "External network ID",
+      <ResourceLink
+        key="external-network"
+        href={`/compute/networks/resources/${encodeURIComponent(floatingIp.data.floating_network_id)}`}
+        className="font-mono text-xs"
+      >
+        {floatingIp.data.floating_network_id}
+      </ResourceLink>,
+    ],
   ];
   return (
     <div className="space-y-6">

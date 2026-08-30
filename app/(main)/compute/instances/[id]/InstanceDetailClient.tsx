@@ -9,7 +9,11 @@ import { Console } from "@/components/Instance/Console";
 import { ConsoleLog } from "@/components/Instance/ConsoleLog";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { InstanceDetailActions } from "@/components/Instance/InstanceDetailActions";
-import { serverQueryOptions, serverInterfacesQueryOptions } from "@/hooks/queries/useServers";
+import {
+  flavorsQueryOptions,
+  serverQueryOptions,
+  serverInterfacesQueryOptions,
+} from "@/hooks/queries/useServers";
 import { portQueryOptions, networkQueryOptions } from "@/hooks/queries/useNetworks";
 import { useEffect, useMemo, useState } from "react";
 import { isInstanceDetailTab, type InstanceDetailTab } from "./tabs";
@@ -22,6 +26,7 @@ import {
   serverStatusBadgeVariant,
 } from "@/lib/openstack/server-state";
 import { isServerTransitioning } from "@/lib/openstack/server-lifecycle";
+import { resolveServerFlavor } from "@/lib/openstack/server-flavor";
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
 
@@ -53,6 +58,10 @@ export function InstanceDetailClient({
   const { data: interfaceAttachments } = useSuspenseQuery(
     serverInterfacesQueryOptions(regionId, projectId, serverId)
   );
+  const { data: flavors } = useSuspenseQuery(
+    flavorsQueryOptions(regionId, projectId),
+  );
+  const resolvedFlavor = resolveServerFlavor(server, flavors);
 
   const portIds = useMemo(() => {
     return interfaceAttachments.map(attachment => attachment.port_id);
@@ -191,6 +200,7 @@ export function InstanceDetailClient({
             server={server}
             regionId={regionId}
             projectId={projectId}
+            flavor={resolvedFlavor}
           />
         </TabsContent>
         <TabsContent value="interfaces" className={`${tabContentClass} rounded-md border`}>

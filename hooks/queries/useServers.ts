@@ -205,7 +205,7 @@ export function keypairQueryOptions(
         regionId: regionId!,
         serviceType: "compute",
         serviceName: "nova",
-        path: `/os-keypairs/${name}`,
+        path: `/os-keypairs/${encodeURIComponent(name)}`,
         apiVersion: "compute 2.79",
       });
 

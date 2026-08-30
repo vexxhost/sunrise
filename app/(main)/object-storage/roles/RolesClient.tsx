@@ -53,9 +53,21 @@ const columns: ColumnDef<IamRoleSummary>[] = [
     accessorKey: 'arn',
     header: 'ARN',
     cell: ({ row }) => (
-      <FadedText
-        value={row.original.arn}
-        className="max-w-96 font-mono text-sm"
+      <RoleDetailsDialog
+        roleName={row.original.name}
+        roleArn={row.original.arn}
+        trigger={
+          <button
+            type="button"
+            className="block max-w-96 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            title={`Open ${row.original.arn}`}
+          >
+            <FadedText
+              value={row.original.arn}
+              className="max-w-96 font-mono text-sm"
+            />
+          </button>
+        }
       />
     ),
     meta: { fieldType: 'string', visible: true, monospace: true },

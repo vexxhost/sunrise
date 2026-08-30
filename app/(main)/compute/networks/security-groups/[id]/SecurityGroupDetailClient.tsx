@@ -10,6 +10,7 @@ import {
   securityGroupQueryOptions,
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 function ports(rule: {
   port_range_min: number | null;
@@ -94,12 +95,16 @@ export function SecurityGroupDetailClient({
                 <span className="uppercase">{rule.protocol || "Any"}</span>
                 <span>{ports(rule)}</span>
                 <span className="truncate font-mono text-xs">
-                  {rule.remote_ip_prefix ||
-                    (rule.remote_group_id
-                      ? groupById.get(rule.remote_group_id)?.name
-                      : null) ||
-                    rule.remote_group_id ||
-                    "Any"}
+                  {rule.remote_group_id ? (
+                    <ResourceLink
+                      href={`/compute/networks/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
+                    >
+                      {groupById.get(rule.remote_group_id)?.name ||
+                        rule.remote_group_id}
+                    </ResourceLink>
+                  ) : (
+                    rule.remote_ip_prefix || "Any"
+                  )}
                 </span>
                 <span className="truncate text-muted-foreground">
                   {rule.description || "-"}

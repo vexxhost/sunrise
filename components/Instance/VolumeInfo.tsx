@@ -6,8 +6,8 @@ import { Server } from "@/types/openstack";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import { imageQueryOptions } from "@/hooks/queries/useImages";
 import { useMemo } from "react";
-import Link from "next/link";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 interface VolumeInfoProps {
     server: Server;
@@ -71,17 +71,21 @@ export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoPr
             <DetailField label="Boot source">
               {imageId ? (
                 <div className="min-w-0">
-                  <Link
+                  <ResourceLink
                     href={`/compute/images/${encodeURIComponent(imageId)}`}
-                    className="font-medium hover:underline"
                   >
                     {imageName || "Image"}
-                  </Link>
+                  </ResourceLink>
                   <p
                     className="mt-0.5 truncate font-mono text-xs text-muted-foreground"
                     title={imageId}
                   >
-                    {imageId}
+                    <ResourceLink
+                      href={`/compute/images/${encodeURIComponent(imageId)}`}
+                      className="font-mono text-xs"
+                    >
+                      {imageId}
+                    </ResourceLink>
                   </p>
                 </div>
               ) : (
@@ -91,7 +95,11 @@ export default function VolumeInfo({ server, regionId, projectId }: VolumeInfoPr
             {serverVolumeKeys.length > 0 ? (
               volumes?.map((volume, index) => (
                 <DetailField key={volume.id ?? index} label="Attached volume">
-                  <span className="font-medium">{volume.name || volume.id}</span>
+                  <ResourceLink
+                    href={`/compute/volumes/${encodeURIComponent(volume.id)}`}
+                  >
+                    {volume.name || volume.id}
+                  </ResourceLink>
                   {volume.attachments[0]?.device ? (
                     <span className="text-muted-foreground">
                       {` on ${volume.attachments[0].device}`}

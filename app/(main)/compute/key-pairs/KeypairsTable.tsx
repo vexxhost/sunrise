@@ -10,12 +10,19 @@ import { RESOURCE_NAME } from "./constants";
 import { useState, useTransition } from "react";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { deleteKeypairAction } from "@/lib/openstack/nova-actions";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 export const keypairColumns: ColumnDef<Keypair>[] = [
   {
     accessorKey: "name",
     header: "Name",
-    cell: ({ row }: { row: { original: Keypair } }) => row.original.name,
+    cell: ({ row }: { row: { original: Keypair } }) => (
+      <ResourceLink
+        href={`/compute/key-pairs/${encodeURIComponent(row.original.name)}`}
+      >
+        {row.original.name}
+      </ResourceLink>
+    ),
     meta: {
       fieldType: "string",
       visible: true

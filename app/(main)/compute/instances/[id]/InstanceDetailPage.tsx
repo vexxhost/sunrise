@@ -6,6 +6,7 @@ import {
   serverInterfacesQueryOptions,
   serverActionsQueryOptions,
   serverConsoleOutputQueryOptions,
+  flavorsQueryOptions,
 } from '@/hooks/queries/useServers';
 import {
   networkQueryOptions,
@@ -51,6 +52,7 @@ export async function InstanceDetailPage({ id, activeTab }: InstanceDetailPagePr
     serverQuery,
     interfacesQuery,
     securityGroupsQueryOptions(regionId, projectId),
+    flavorsQueryOptions(regionId, projectId),
     serverActionsQueryOptions(regionId, projectId, id) as any,
     ...portIds.map((portId) => portQueryOptions(regionId, projectId, portId)),
     ...networkIds.map((networkId) =>

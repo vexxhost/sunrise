@@ -22,6 +22,7 @@ import {
 } from "@/components/Image/ImageMutationDialog";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { canDeleteImage, canEditImage } from "@/lib/openstack/image-lifecycle";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 const ACTIVE_IMAGE_REFETCH_INTERVAL_MS = 5000;
 
@@ -61,20 +62,25 @@ const columns: ColumnDef<Image>[] = [
       const osText = imageOs?.known ? imageOs.version : imageOs?.label;
 
       return (
-        <div
-          className="flex min-w-0 flex-col gap-0.5"
-          title={`${row.original.name || "-"}\n${osLabel}`}
+        <ResourceLink
+          href={`/compute/images/${encodeURIComponent(row.original.id)}`}
+          className="block w-fit max-w-full"
         >
-          <span className="block min-w-0 truncate">
-            {row.original.name || "-"}
-          </span>
-          <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <OsIcon className="size-3.5" decorative slug={osSlug} />
-            {osText ? (
-              <span className="block min-w-0 truncate">{osText}</span>
-            ) : null}
-          </span>
-        </div>
+          <div
+            className="flex min-w-0 flex-col gap-0.5"
+            title={`${row.original.name || "-"}\n${osLabel}`}
+          >
+            <span className="block min-w-0 truncate">
+              {row.original.name || "Unnamed image"}
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <OsIcon className="size-3.5" decorative slug={osSlug} />
+              {osText ? (
+                <span className="block min-w-0 truncate">{osText}</span>
+              ) : null}
+            </span>
+          </div>
+        </ResourceLink>
       );
     },
     meta: {

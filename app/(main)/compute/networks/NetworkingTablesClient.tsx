@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -24,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   externalNetworksQueryOptions,
   floatingIpsQueryOptions,
+  networksQueryOptions,
   portsQueryOptions,
   projectNetworksQueryOptions,
   routersQueryOptions,
@@ -38,6 +38,7 @@ import type {
   SecurityGroup,
   Subnet,
 } from "@/types/openstack";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 interface NetworkingTableProps {
   projectId: string;
@@ -54,9 +55,9 @@ function NameLink({
   id: string;
 }) {
   return (
-    <Link className="font-medium hover:underline" href={href}>
+    <ResourceLink href={href}>
       {name.trim() || id}
-    </Link>
+    </ResourceLink>
   );
 }
 
@@ -252,8 +253,13 @@ export function RoutersTableClient({
           const gateway = row.original.external_gateway_info;
           if (!gateway)
             return <span className="text-muted-foreground">Not connected</span>;
+          const gatewayNetwork = externalById.get(gateway.network_id);
           return (
-            externalById.get(gateway.network_id)?.name || gateway.network_id
+            <ResourceLink
+              href={`/compute/networks/resources/${encodeURIComponent(gateway.network_id)}`}
+            >
+              {gatewayNetwork?.name || gateway.network_id}
+            </ResourceLink>
           );
         },
         meta: { fieldType: "string", visible: true },
@@ -312,9 +318,7 @@ export function PortsTableClient({
   regionId,
 }: NetworkingTableProps) {
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
-  const networks = useSuspenseQuery(
-    projectNetworksQueryOptions(regionId, projectId),
-  );
+  const networks = useSuspenseQuery(networksQueryOptions(regionId, projectId));
   const networkById = useMemo(
     () => new Map(networks.data.map((network) => [network.id, network])),
     [networks.data],
@@ -343,6 +347,13 @@ export function PortsTableClient({
         accessorFn: (port) =>
           networkById.get(port.network_id)?.name ?? port.network_id,
         header: "Network",
+        cell: ({ row }) => (
+          <ResourceLink
+            href={`/compute/networks/resources/${encodeURIComponent(row.original.network_id)}`}
+          >
+            {networkById.get(row.original.network_id)?.name || row.original.network_id}
+          </ResourceLink>
+        ),
         meta: { fieldType: "string", visible: true },
       },
       {
@@ -448,7 +459,14 @@ export function FloatingIpsTableClient({
         accessorKey: "fixed_ip_address",
         header: "Fixed IP",
         cell: ({ row }) =>
-          row.original.fixed_ip_address || (
+          row.original.fixed_ip_address && row.original.port_id ? (
+            <ResourceLink
+              href={`/compute/networks/ports/${encodeURIComponent(row.original.port_id)}`}
+              className="font-mono text-xs"
+            >
+              {row.original.fixed_ip_address}
+            </ResourceLink>
+          ) : (
             <span className="text-muted-foreground">Not associated</span>
           ),
         meta: { fieldType: "string", visible: true, monospace: true },
@@ -456,6 +474,17 @@ export function FloatingIpsTableClient({
       {
         accessorKey: "port_id",
         header: "Port ID",
+        cell: ({ row }) =>
+          row.original.port_id ? (
+            <ResourceLink
+              href={`/compute/networks/ports/${encodeURIComponent(row.original.port_id)}`}
+              className="font-mono text-xs"
+            >
+              {row.original.port_id}
+            </ResourceLink>
+          ) : (
+            <span className="text-muted-foreground">None</span>
+          ),
         meta: { fieldType: "string", visible: true },
       },
       {

@@ -4,6 +4,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { SecurityGroup, SecurityGroupRule, Server } from "@/types/openstack";
 import { securityGroupsQueryOptions } from "@/hooks/queries/useNetworks";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 export function getGroupNameFromId(
   id: string | null,
@@ -39,7 +40,12 @@ export default function SecurityGroupListByNames({
     <DetailSection title="Security access">
       {secGroups.length > 0 ? (
         secGroups.map((secGroup) => (
-          <DetailField key={secGroup.id} label={secGroup.name}>
+          <DetailField key={secGroup.id} label="Security group">
+            <ResourceLink
+              href={`/compute/networks/security-groups/${encodeURIComponent(secGroup.id)}`}
+            >
+              {secGroup.name}
+            </ResourceLink>
             <details>
               <summary className="cursor-pointer text-sm font-medium">
                 {secGroup.security_group_rules.length}{" "}
@@ -54,14 +60,20 @@ export default function SecurityGroupListByNames({
                       {(rule.port_range_min !== null ||
                         rule.port_range_max !== null) &&
                         ` ${rule.port_range_min}-${rule.port_range_max}`}
-                      {` ${rule.remote_group_id ? "from" : "to"} ${
-                        getGroupNameFromId(
-                          rule.remote_group_id,
-                          securityGroups,
-                        ) ??
-                        (rule.remote_ip_prefix ||
-                          (rule.ethertype === "IPv6" ? "::/0" : "0.0.0.0/0"))
-                      }`}
+                      {` ${rule.remote_group_id ? "from" : "to"} `}
+                      {rule.remote_group_id ? (
+                        <ResourceLink
+                          href={`/compute/networks/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
+                        >
+                          {getGroupNameFromId(
+                            rule.remote_group_id,
+                            securityGroups,
+                          ) ?? rule.remote_group_id}
+                        </ResourceLink>
+                      ) : (
+                        rule.remote_ip_prefix ||
+                        (rule.ethertype === "IPv6" ? "::/0" : "0.0.0.0/0")
+                      )}
                     </li>
                   ),
                 )}

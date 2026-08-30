@@ -20,6 +20,7 @@ import {
   subnetsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { isRouterInterfacePort } from "@/lib/openstack/neutron-topology";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 interface Props {
   id: string;
@@ -92,7 +93,15 @@ export function RouterDetailClient({ id, projectId, regionId }: Props) {
           <div className="rounded-md border p-3">
             <p className="text-xs text-muted-foreground">External gateway</p>
             <p className="mt-2 truncate text-sm font-medium">
-              {gatewayNetwork?.name || gatewayNetwork?.id || "Not connected"}
+              {gatewayNetwork ? (
+                <ResourceLink
+                  href={`/compute/networks/resources/${encodeURIComponent(gatewayNetwork.id)}`}
+                >
+                  {gatewayNetwork.name || gatewayNetwork.id}
+                </ResourceLink>
+              ) : (
+                "Not connected"
+              )}
             </p>
           </div>
           <div className="rounded-md border p-3">
@@ -191,7 +200,13 @@ export function RouterDetailClient({ id, projectId, regionId }: Props) {
                   <span className="font-mono text-xs">
                     {fixedIp.ip_address}
                   </span>
-                  <span className="truncate font-mono text-xs">{port.id}</span>
+                  <span className="truncate font-mono text-xs">
+                    <ResourceLink
+                      href={`/compute/networks/ports/${encodeURIComponent(port.id)}`}
+                    >
+                      {port.id}
+                    </ResourceLink>
+                  </span>
                   <span>
                     {owned && subnet ? (
                       <DisconnectRouterInterfaceAction

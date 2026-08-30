@@ -7,12 +7,19 @@ import { flavorsQueryOptions } from "@/hooks/queries/useServers";
 import { Badge } from "@/components/ui/badge";
 import { Flavor } from "@/types/openstack";
 import { ColumnDef } from "@tanstack/react-table";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 
 const columns: ColumnDef<Flavor>[] = [
   {
     accessorKey: "name",
     header: "Name",
-    cell: ({ row }: { row: { original: Flavor } }) => row.original.name,
+    cell: ({ row }: { row: { original: Flavor } }) => (
+      <ResourceLink
+        href={`/compute/instance-flavors/${encodeURIComponent(row.original.id)}`}
+      >
+        {row.original.name}
+      </ResourceLink>
+    ),
     meta: {
       fieldType: "string",
       visible: true
