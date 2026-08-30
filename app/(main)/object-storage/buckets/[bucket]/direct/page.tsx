@@ -28,6 +28,7 @@ export default async function Page({ params, searchParams }: PageProps) {
   const session = await getSession();
   const creds = getActiveS3Credentials(session);
   const activeProjectId = normalizeProjectId(session.projectId);
+  const activeRegionId = session.regionId ?? '';
 
   if (!creds) {
     return <ObjectStorageAuthRedirect />;
@@ -37,7 +38,11 @@ export default async function Page({ params, searchParams }: PageProps) {
     <>
       <RecentResourceTracker kind="bucket" id={bucket} name={bucket} />
       <DataTableHeader resourceName="object" actions={undefined} />
-      <DirectClient activeProjectId={activeProjectId} bucket={bucket} />
+      <DirectClient
+        activeProjectId={activeProjectId}
+        activeRegionId={activeRegionId}
+        bucket={bucket}
+      />
     </>
   );
 }

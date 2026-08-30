@@ -13,13 +13,13 @@ import {
   FileText,
   Folder,
   Home,
-  ShieldCheck,
   Trash2,
   Upload,
 } from 'lucide-react';
 import bytes from 'bytes';
 import { DataTable } from '@/components/DataTable';
 import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
+import { BucketSettingsDialog } from '@/components/object-storage/BucketSettingsDialog';
 import { UploadQueueMenu } from '@/components/UploadQueueMenu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,13 +32,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { objectsQueryOptions } from '@/hooks/queries/useObjects';
 import { useMutationRefresh } from '@/hooks/useMutationRefresh';
 import {
   calculateSelectionSize,
   createFolder,
-  getBucketPolicy,
   type ListObjectsResult,
   removeSelection,
   type CalculateSelectionSizeResult,
@@ -62,11 +60,6 @@ type Row =
 type SizeState = Extract<CalculateSelectionSizeResult, { ok: true }> & {
   label: string;
 };
-
-type PolicyState =
-  | { status: 'idle' | 'loading' }
-  | { status: 'loaded'; bucketArn: string | null; policy: string | null }
-  | { status: 'error'; error: string; accessDenied: boolean };
 
 type UploadResult =
   | { ok: true; uploaded: number; errors: { key: string; error: string }[] }
@@ -140,6 +133,7 @@ function downloadSelection(bucket: string, rows: Row[]) {
 
 interface ObjectsClientProps {
   activeProjectId: string;
+  activeRegionId: string;
   bucket: string;
   initialPrefix: string;
   initialData: Extract<ListObjectsResult, { ok: true }>;
@@ -147,6 +141,7 @@ interface ObjectsClientProps {
 
 export function ObjectsClient({
   activeProjectId,
+  activeRegionId,
   bucket,
   initialPrefix,
   initialData,
@@ -188,10 +183,6 @@ export function ObjectsClient({
   const [sizeBusy, setSizeBusy] = useState(false);
   const [sizeResult, setSizeResult] = useState<SizeState | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
-  const [policyOpen, setPolicyOpen] = useState(false);
-  const [policyState, setPolicyState] = useState<PolicyState>({
-    status: 'idle',
-  });
 
   const rows: Row[] = useMemo(
     () => [
@@ -421,29 +412,6 @@ export function ObjectsClient({
         selectedRows.length === 1
           ? selectedRows[0].name
           : `${selectedRows.length} selected items`,
-    });
-  };
-
-  const openPolicy = async () => {
-    setPolicyOpen(true);
-    setPolicyState({ status: 'loading' });
-    const result = await getBucketPolicy(bucket);
-    if (!result.ok) {
-      if (result.needsAuth) {
-        window.location.href = '/object-storage/auth/login';
-        return;
-      }
-      setPolicyState({
-        status: 'error',
-        error: result.error,
-        accessDenied: result.accessDenied ?? false,
-      });
-      return;
-    }
-    setPolicyState({
-      status: 'loaded',
-      bucketArn: result.bucketArn,
-      policy: result.policy,
     });
   };
 
@@ -692,17 +660,10 @@ export function ObjectsClient({
 
         <div className="h-6 w-px bg-border" />
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            void openPolicy();
-          }}
-        >
-          <ShieldCheck className="h-4 w-4" />
-          Bucket policy
-        </Button>
+        <BucketSettingsDialog
+          bucket={bucket}
+          scope={{ projectId: activeProjectId, regionId: activeRegionId }}
+        />
       </div>
 
       {(uploadMessage ||
@@ -885,49 +846,6 @@ export function ObjectsClient({
         </div>
       </MutationConfirmationDialog>
 
-      <Dialog open={policyOpen} onOpenChange={setPolicyOpen}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Bucket policy</DialogTitle>
-            <DialogDescription>{bucket}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1">
-            <div className="text-sm font-medium">Bucket ARN</div>
-            <div className="break-all font-mono text-sm text-muted-foreground">
-              {policyState.status === 'loading'
-                ? 'Loading ARN'
-                : policyState.status === 'loaded'
-                  ? policyState.bucketArn ?? 'Unavailable'
-                  : 'Unavailable'}
-            </div>
-          </div>
-          {policyState.status === 'loading' && (
-            <div className="text-sm text-muted-foreground">Loading policy</div>
-          )}
-          {policyState.status === 'loaded' &&
-            (policyState.policy ? (
-              <Textarea
-                readOnly
-                value={policyState.policy}
-                className="h-[420px] font-mono text-xs"
-              />
-            ) : (
-              <div className="rounded-md border p-3 text-sm text-muted-foreground">
-                No bucket policy is configured.
-              </div>
-            ))}
-          {policyState.status === 'error' && (
-            <div className="rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm">
-              <div className="font-medium">
-                {policyState.accessDenied ? 'Access denied' : 'Policy check failed'}
-              </div>
-              <div className="font-mono text-xs break-all mt-1">
-                {policyState.error}
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
