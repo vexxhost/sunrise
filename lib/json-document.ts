@@ -100,6 +100,9 @@ const lifecycleRuleSchema = z
 
 const bucketLifecycleSchema = z
   .object({
+    TransitionDefaultMinimumObjectSize: z
+      .enum(['all_storage_classes_128K', 'varies_by_storage_class'])
+      .optional(),
     Rules: z.array(lifecycleRuleSchema).min(1).max(1000),
   })
   .passthrough();
@@ -143,13 +146,17 @@ function validateJson<T>(
 export function validateBucketPolicyJson(
   document: string,
 ): JsonDocumentValidation<z.infer<typeof bucketPolicySchema>> {
-  if (new TextEncoder().encode(document).byteLength > 20 * 1024) {
+  const result = validateJson(document, bucketPolicySchema, 'Bucket policy');
+  if (!result.ok) return result;
+
+  const compactPolicy = JSON.stringify(result.value);
+  if (new TextEncoder().encode(compactPolicy).byteLength > 20 * 1024) {
     return {
       ok: false,
       errors: ['Bucket policies cannot exceed 20 KiB.'],
     };
   }
-  return validateJson(document, bucketPolicySchema, 'Bucket policy');
+  return result;
 }
 
 export function validateBucketLifecycleJson(

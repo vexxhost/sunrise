@@ -176,6 +176,7 @@ describe('S3 bucket lifecycle actions', () => {
       scope,
       'project-artifacts',
       JSON.stringify({
+        TransitionDefaultMinimumObjectSize: 'varies_by_storage_class',
         Rules: [
           {
             ID: 'expire-temp',
@@ -198,6 +199,7 @@ describe('S3 bucket lifecycle actions', () => {
     expect(command).toBeInstanceOf(PutBucketLifecycleConfigurationCommand);
     expect(command.input).toEqual({
       Bucket: 'project-artifacts',
+      TransitionDefaultMinimumObjectSize: 'varies_by_storage_class',
       LifecycleConfiguration: {
         Rules: [
           {
@@ -214,6 +216,53 @@ describe('S3 bucket lifecycle actions', () => {
           },
         ],
       },
+    });
+  });
+
+  it('preserves top-level lifecycle settings when loading the editor', async () => {
+    mocks.send.mockImplementation((command) => {
+      if (command instanceof GetBucketLocationCommand) {
+        return Promise.resolve({});
+      }
+      if (command instanceof GetBucketVersioningCommand) {
+        return Promise.resolve({});
+      }
+      if (command instanceof GetBucketPolicyCommand) {
+        return Promise.reject(s3Error('NoSuchBucketPolicy', 404));
+      }
+      if (command instanceof GetBucketCorsCommand) {
+        return Promise.reject(s3Error('NoSuchCORSConfiguration', 404));
+      }
+      if (command instanceof GetBucketLifecycleConfigurationCommand) {
+        return Promise.resolve({
+          TransitionDefaultMinimumObjectSize: 'all_storage_classes_128K',
+          Rules: [
+            {
+              ID: 'expire-temp',
+              Status: 'Enabled',
+              Expiration: { Days: 30 },
+            },
+          ],
+        });
+      }
+      throw new Error('Unexpected command');
+    });
+
+    const result = await getBucketSettings(scope, 'project-artifacts');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.lifecycle.status !== 'loaded') {
+      throw new Error('Expected loaded lifecycle configuration');
+    }
+    expect(JSON.parse(result.lifecycle.value)).toEqual({
+      TransitionDefaultMinimumObjectSize: 'all_storage_classes_128K',
+      Rules: [
+        {
+          ID: 'expire-temp',
+          Status: 'Enabled',
+          Expiration: { Days: 30 },
+        },
+      ],
     });
   });
 

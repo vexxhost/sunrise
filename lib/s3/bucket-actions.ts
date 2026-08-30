@@ -17,6 +17,7 @@ import {
   PutBucketVersioningCommand,
   type BucketLifecycleConfiguration,
   type S3Client,
+  type TransitionDefaultMinimumObjectSize,
 } from '@aws-sdk/client-s3';
 import { revalidatePath } from 'next/cache';
 import {
@@ -242,7 +243,19 @@ export async function getBucketSettings(
             Bucket: normalizedBucket,
           }),
         );
-        return JSON.stringify({ Rules: result.Rules ?? [] }, null, 2);
+        return JSON.stringify(
+          {
+            ...(result.TransitionDefaultMinimumObjectSize
+              ? {
+                  TransitionDefaultMinimumObjectSize:
+                    result.TransitionDefaultMinimumObjectSize,
+                }
+              : {}),
+            Rules: result.Rules ?? [],
+          },
+          null,
+          2,
+        );
       },
       'the lifecycle configuration',
       ['NoSuchLifecycleConfiguration'],
@@ -513,7 +526,13 @@ function lifecycleDate(value: unknown) {
 }
 
 function parseLifecycleConfiguration(configuration: string):
-  | { ok: true; value: BucketLifecycleConfiguration }
+  | {
+      ok: true;
+      value: {
+        LifecycleConfiguration: BucketLifecycleConfiguration;
+        TransitionDefaultMinimumObjectSize?: TransitionDefaultMinimumObjectSize;
+      };
+    }
   | { ok: false; message: string } {
   const validated = validateBucketLifecycleJson(configuration);
   if (!validated.ok) {
@@ -562,7 +581,17 @@ function parseLifecycleConfiguration(configuration: string):
 
   return {
     ok: true,
-    value: { Rules: normalizedRules } as BucketLifecycleConfiguration,
+    value: {
+      LifecycleConfiguration: {
+        Rules: normalizedRules,
+      } as BucketLifecycleConfiguration,
+      ...(validated.value.TransitionDefaultMinimumObjectSize
+        ? {
+            TransitionDefaultMinimumObjectSize:
+              validated.value.TransitionDefaultMinimumObjectSize,
+          }
+        : {}),
+    },
   };
 }
 
@@ -590,7 +619,7 @@ export async function saveBucketLifecycle(
     await prepared.client.send(
       new PutBucketLifecycleConfigurationCommand({
         Bucket: bucket,
-        LifecycleConfiguration: parsed.value,
+        ...parsed.value,
       }),
     );
   } catch (error) {
