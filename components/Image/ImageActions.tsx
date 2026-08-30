@@ -91,7 +91,7 @@ function uploadImageData({
     request.open("POST", `/compute/images/${encodeURIComponent(imageId)}/upload`);
     request.setRequestHeader("X-Sunrise-Project-Id", projectId);
     request.setRequestHeader("X-Sunrise-Region-Id", regionId);
-    request.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    request.setRequestHeader("Content-Type", "application/octet-stream");
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) {
         onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));

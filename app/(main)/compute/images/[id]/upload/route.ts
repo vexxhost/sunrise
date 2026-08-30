@@ -106,7 +106,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       method: "PUT",
       headers: {
         ...headers,
-        "Content-Type": request.headers.get("content-type") || "application/octet-stream",
+        "Content-Type": "application/octet-stream",
         "Content-Length": contentLength,
         "X-Openstack-Image-Size": contentLength,
       },

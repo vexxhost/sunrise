@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { deleteImageAction, updateImageAction } from "@/lib/openstack/glance-actions";
+import { retainFailedTargets } from "@/lib/mutations";
 import type { Image, ImageVisibility } from "@/types/openstack";
 
 export type ImageMutationKind = "delete" | "edit";
@@ -63,6 +64,7 @@ export function ImageMutationDialog({
   const [tags, setTags] = useState((image?.tags ?? []).join(", "));
   const [isProtected, setIsProtected] = useState(image?.protected ?? false);
   const [isHidden, setIsHidden] = useState(image?.os_hidden ?? false);
+  const [deleteTargets, setDeleteTargets] = useState(images);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -76,16 +78,23 @@ export function ImageMutationDialog({
     if (!projectId || !regionId) return;
     startTransition(async () => {
       const results = await Promise.all(
-        images.map((selected) =>
+        deleteTargets.map((selected) =>
           deleteImageAction({ projectId, regionId }, selected.id),
         ),
       );
+      const failedTargets = retainFailedTargets(deleteTargets, results);
       const failures = results.flatMap((result) =>
         result.ok ? [] : [result.error.message],
       );
       if (failures.length) {
+        const deletedCount = deleteTargets.length - failedTargets.length;
+        setDeleteTargets(failedTargets);
         void onComplete();
-        setError(failures[0]);
+        setError(
+          deletedCount > 0
+            ? `${deletedCount} ${deletedCount === 1 ? "image was" : "images were"} deleted. ${failures[0]} Retry to delete only the remaining ${failedTargets.length}.`
+            : failures[0],
+        );
         return;
       }
       close();
@@ -109,7 +118,7 @@ export function ImageMutationDialog({
         onConfirm={runDelete}
       >
         <div className="max-h-36 overflow-y-auto rounded-md border px-3 py-2 text-sm">
-          {images.map((selected) => (
+          {deleteTargets.map((selected) => (
             <div key={selected.id} className="truncate py-1">
               {selected.name || selected.id}
             </div>

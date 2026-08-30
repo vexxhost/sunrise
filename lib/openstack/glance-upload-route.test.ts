@@ -21,12 +21,12 @@ import { POST } from "@/app/(main)/compute/images/[id]/upload/route";
 
 const scope = { projectId: "project-a", regionId: "RegionOne" };
 
-function uploadRequest() {
+function uploadRequest(contentType = "application/octet-stream") {
   return new Request("http://localhost/compute/images/image-a/upload", {
     method: "POST",
     headers: {
       "Content-Length": "4",
-      "Content-Type": "application/octet-stream",
+      "Content-Type": contentType,
       "X-Sunrise-Project-Id": scope.projectId,
       "X-Sunrise-Region-Id": scope.regionId,
     },
@@ -91,6 +91,27 @@ describe("Glance streaming upload route", () => {
       method: "PUT",
       body,
       duplex: "half",
+      headers: expect.objectContaining({
+        "Content-Type": "application/octet-stream",
+      }),
+    });
+  });
+
+  it("always forwards browser-recognized files as octet-stream", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ id: "image-a", owner: "projecta" }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    const response = await POST(uploadRequest("application/x-iso9660-image"), {
+      params: Promise.resolve({ id: "image-a" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      headers: expect.objectContaining({
+        "Content-Type": "application/octet-stream",
+      }),
     });
   });
 
