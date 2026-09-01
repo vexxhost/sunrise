@@ -86,6 +86,28 @@ export function mergeServerUpdates<T extends { id: string }>(
   return changed ? nextServers : existing;
 }
 
+export function selectServerPollingTargets<T extends Server>(
+  allServers: T[],
+  visibleServers: T[],
+  pendingDeletionIds: ReadonlySet<string>,
+) {
+  const targets = new Map<string, T>();
+
+  for (const server of visibleServers) {
+    if (isServerTransitioning(server)) {
+      targets.set(server.id, server);
+    }
+  }
+
+  for (const server of allServers) {
+    if (pendingDeletionIds.has(server.id)) {
+      targets.set(server.id, server);
+    }
+  }
+
+  return [...targets.values()];
+}
+
 export function markServersDeleting<T extends Server>(
   existing: T[],
   serverIds: ReadonlySet<string>,

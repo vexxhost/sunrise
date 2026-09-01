@@ -7,6 +7,7 @@ import {
   isServerTransitioning,
   markServersDeleting,
   mergeServerUpdates,
+  selectServerPollingTargets,
 } from "@/lib/openstack/server-lifecycle";
 import { formatServerActivity } from "@/lib/openstack/server-state";
 import type { Server } from "@/types/openstack";
@@ -118,6 +119,41 @@ describe("server polling updates", () => {
       "OS-EXT-STS:task_state": "deleting",
     });
     expect(result[1]).toBe(secondServer);
+  });
+
+  it("polls pending deletions even when they are outside the visible page", () => {
+    const hiddenDeleting = {
+      ...second,
+      "OS-EXT-STS:task_state": undefined,
+    } as Server;
+    const visibleStable = {
+      ...first,
+      "OS-EXT-STS:task_state": undefined,
+    } as Server;
+
+    expect(
+      selectServerPollingTargets(
+        [visibleStable, hiddenDeleting],
+        [visibleStable],
+        new Set([hiddenDeleting.id]),
+      ),
+    ).toEqual([hiddenDeleting]);
+  });
+
+  it("deduplicates visible transitions that are also pending deletion", () => {
+    const deleting = {
+      ...first,
+      status: "DELETING",
+      "OS-EXT-STS:task_state": "deleting",
+    } as Server;
+
+    expect(
+      selectServerPollingTargets(
+        [deleting, second as Server],
+        [deleting],
+        new Set([deleting.id]),
+      ),
+    ).toEqual([deleting]);
   });
 });
 

@@ -47,6 +47,7 @@ import {
   isServerTransitioning,
   markServersDeleting,
   mergeServerUpdates,
+  selectServerPollingTargets,
 } from "@/lib/openstack/server-lifecycle";
 import { collectTransitionUpdates } from "@/lib/openstack/transition-poll";
 import { resolveServerFlavor } from "@/lib/openstack/server-flavor";
@@ -175,12 +176,17 @@ export function InstancesClient({
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }, [hasPendingServers]);
 
-  const transitioningVisibleServers = useMemo(
-    () => visiblePageServers.filter(isServerTransitioning),
-    [visiblePageServers],
+  const pollingTargets = useMemo(
+    () =>
+      selectServerPollingTargets(
+        serversData,
+        visiblePageServers,
+        pendingDeletionIds,
+      ),
+    [pendingDeletionIds, serversData, visiblePageServers],
   );
   const transitioningUpdates = useQueries({
-    queries: transitioningVisibleServers.map((server) => ({
+    queries: pollingTargets.map((server) => ({
       ...serverQueryOptions(regionId, projectId, server.id),
       refetchInterval: TRANSITION_REFETCH_INTERVAL_MS,
       refetchOnReconnect: false,
