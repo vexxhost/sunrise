@@ -1,4 +1,11 @@
-import { Boxes, CircleHelp, Gauge, Network, Settings } from "lucide-react";
+import {
+  Activity,
+  Boxes,
+  Gauge,
+  GitCommit,
+  Network,
+  Settings,
+} from "lucide-react";
 import {
   ServiceLandingPage,
   ServiceLandingSection,
@@ -7,18 +14,18 @@ import {
   type ServiceLandingMetric,
 } from "@/components/service-landing/ServiceLanding";
 import { loadCloudContext } from "@/lib/cloud-context";
-import { listClusterTemplatesAction } from "@/lib/openstack/magnum";
+import {
+  listClustersAction,
+  listClusterTemplatesAction,
+} from "@/lib/openstack/magnum";
 import { loadProjectOverview } from "@/lib/openstack/overview";
 import { quotaPercentage } from "@/lib/openstack/quota";
+import { filterResourcePreferencesByLiveIds } from "@/lib/resource-preferences";
 
 export default async function KubernetesPage() {
   const cloud = await loadCloudContext();
   const { snapshot } = cloud;
-  const resources = [
-    ...snapshot.personalResources.pinned,
-    ...snapshot.personalResources.recent,
-  ];
-  const [services, templates] = await Promise.all([
+  const [services, templates, clusters] = await Promise.all([
     loadProjectOverview({
       token: cloud.keystoneToken,
       regionId: snapshot.region.id ?? undefined,
@@ -27,7 +34,21 @@ export default async function KubernetesPage() {
       serviceIds: ["container-infra"],
     }),
     listClusterTemplatesAction({}, snapshot.region.id ?? undefined),
+    listClustersAction(
+      {},
+      snapshot.region.id ?? undefined,
+      snapshot.project.id ?? undefined,
+    ),
   ]);
+  const liveClusterIds = clusters.map(({ uuid }) => uuid);
+  const resources = filterResourcePreferencesByLiveIds(
+    [
+      ...snapshot.personalResources.pinned,
+      ...snapshot.personalResources.recent,
+    ],
+    "cluster",
+    liveClusterIds,
+  );
   const clusterService = services[0];
   const clusterMetric = clusterService?.metrics.find(
     ({ id }) => id === "clusters",
@@ -51,6 +72,42 @@ export default async function KubernetesPage() {
   const clusterPercentage = clusterMetric
     ? quotaPercentage(clusterMetric)
     : null;
+  const healthCounts = clusters.reduce(
+    (counts, cluster) => {
+      const failed = cluster.status.toUpperCase().endsWith("_FAILED");
+      const health = cluster.health_status?.toUpperCase();
+
+      if (failed || (health && health !== "HEALTHY")) {
+        counts.attention += 1;
+      } else if (health === "HEALTHY") {
+        counts.healthy += 1;
+      } else {
+        counts.pending += 1;
+      }
+      return counts;
+    },
+    { attention: 0, healthy: 0, pending: 0 },
+  );
+  const healthValue =
+    clusters.length === 0
+      ? "No clusters"
+      : healthCounts.attention > 0
+        ? `${healthCounts.attention} ${healthCounts.attention === 1 ? "needs" : "need"} attention`
+        : healthCounts.pending > 0
+          ? `${healthCounts.pending} pending`
+          : "Healthy";
+  const healthDetail =
+    clusters.length === 0
+      ? "No cluster health reports"
+      : [
+          `${healthCounts.healthy} healthy`,
+          healthCounts.pending > 0 ? `${healthCounts.pending} pending` : null,
+          healthCounts.attention > 0
+            ? `${healthCounts.attention} unhealthy or failed`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
   const metrics: ServiceLandingMetric[] = [
     {
       icon: Boxes,
@@ -83,10 +140,10 @@ export default async function KubernetesPage() {
       detail: "Kubernetes cluster templates",
     },
     {
-      icon: CircleHelp,
+      icon: Activity,
       label: "Cluster health",
-      value: "Unavailable",
-      detail: "Magnum does not expose project-scoped health listing",
+      value: healthValue,
+      detail: healthDetail,
     },
   ];
 
@@ -113,7 +170,7 @@ export default async function KubernetesPage() {
               meta:
                 clusterCount === "-"
                   ? clusterDetail
-                  : `${clusterCount} current`,
+                  : `${clusterCount} in this project`,
             },
             {
               name: "Cluster templates",
@@ -139,6 +196,19 @@ export default async function KubernetesPage() {
         kinds={["cluster"]}
         emptyMessage="No pinned or recently viewed Kubernetes clusters in this project."
       />
+
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-3 text-xs text-muted-foreground">
+        <GitCommit aria-hidden="true" className="size-3.5 shrink-0" />
+        <span>Driver baseline: VEXXHOST magnum-cluster-api 0.38.2</span>
+        <a
+          className="font-mono hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline"
+          href="https://github.com/vexxhost/magnum-cluster-api/commit/74e85108717104bfe754c7295173d3cf8f128190"
+          rel="noreferrer"
+          target="_blank"
+        >
+          74e85108717104bfe754c7295173d3cf8f128190
+        </a>
+      </div>
     </ServiceLandingPage>
   );
 }

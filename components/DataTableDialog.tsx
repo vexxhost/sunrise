@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import { ArrowDown, ArrowUp, GripVertical } from "lucide-react"
+import { ArrowDown, ArrowUp, GripVertical } from "lucide-react";
 import {
   closestCenter,
   DndContext,
@@ -9,17 +9,17 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-} from "@dnd-kit/core"
+} from "@dnd-kit/core";
 import {
   arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
-} from "@dnd-kit/sortable"
-import { CSS } from "@dnd-kit/utilities"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -27,16 +27,16 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Table, type Column } from "@tanstack/react-table"
-import pluralize from "pluralize"
-import { useState } from "react"
-import { titleCase } from "title-case"
-import { DataTableDialogButton } from "./DataTable/Dialog"
-import { cn } from "@/lib/utils"
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Table, type Column } from "@tanstack/react-table";
+import pluralize from "pluralize";
+import { useState } from "react";
+import { titleCase } from "title-case";
+import { DataTableDialogButton } from "./DataTable/Dialog";
+import { cn } from "@/lib/utils";
 
 // Helper function to extract label from column definition
 function getColumnLabel<TData, TValue>(column: any): string {
@@ -46,13 +46,13 @@ function getColumnLabel<TData, TValue>(column: any): string {
   }
 
   // If header is a string, use that
-  if (typeof column.columnDef.header === 'string') {
+  if (typeof column.columnDef.header === "string") {
     return column.columnDef.header;
   }
 
   // Try to extract text from header function by rendering it
   // This works for simple button headers with text content
-  if (typeof column.columnDef.header === 'function') {
+  if (typeof column.columnDef.header === "function") {
     try {
       // Try to render the header and extract text
       const headerElement = column.columnDef.header({ column: column });
@@ -60,9 +60,11 @@ function getColumnLabel<TData, TValue>(column: any): string {
         // Extract text from children (handles Button components with text)
         const children = headerElement.props.children;
         if (Array.isArray(children)) {
-          const textChild = children.find((child: any) => typeof child === 'string');
+          const textChild = children.find(
+            (child: any) => typeof child === "string",
+          );
           if (textChild) return textChild;
-        } else if (typeof children === 'string') {
+        } else if (typeof children === "string") {
           return children;
         }
       }
@@ -72,21 +74,21 @@ function getColumnLabel<TData, TValue>(column: any): string {
   }
 
   // Otherwise fall back to column id (formatted)
-  return titleCase(column.id.replace(/[_-]/g, ' '));
+  return titleCase(column.id.replace(/[_-]/g, " "));
 }
 
 interface DataTableDialogProps<TData> {
-  table: Table<TData>
-  resourceName?: string
+  table: Table<TData>;
+  resourceName?: string;
 }
 
 interface SortableColumnItemProps<TData> {
-  column: Column<TData, unknown>
-  label: string
-  isRequired: boolean
-  isFirst: boolean
-  isLast: boolean
-  moveColumn: (columnId: string, direction: -1 | 1) => void
+  column: Column<TData, unknown>;
+  label: string;
+  isRequired: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  moveColumn: (columnId: string, direction: -1 | 1) => void;
 }
 
 function SortableColumnItem<TData>({
@@ -131,6 +133,7 @@ function SortableColumnItem<TData>({
       </button>
       <Checkbox
         id={`dialog-${column.id}`}
+        aria-label={isRequired ? `${label} is always shown` : undefined}
         checked={column.getIsVisible()}
         disabled={isRequired}
         onCheckedChange={(checked) => column.toggleVisibility(!!checked)}
@@ -140,11 +143,6 @@ function SortableColumnItem<TData>({
         className="min-w-0 flex-1 text-sm font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
       >
         {label}
-        {isRequired && (
-          <span className="ml-2 text-xs text-muted-foreground">
-            Required
-          </span>
-        )}
       </label>
       <Button
         type="button"
@@ -176,10 +174,12 @@ export function DataTableDialog<TData>({
   table,
   resourceName,
 }: DataTableDialogProps<TData>) {
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [columnSearch, setColumnSearch] = useState("")
-  const columns = table.getAllLeafColumns().filter((column) => column.id !== "select")
-  const allColumnIds = columns.map((column) => column.id)
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [columnSearch, setColumnSearch] = useState("");
+  const columns = table
+    .getAllLeafColumns()
+    .filter((column) => column.id !== "select" && column.id !== "actions");
+  const allColumnIds = columns.map((column) => column.id);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -189,7 +189,7 @@ export function DataTableDialog<TData>({
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
-  )
+  );
 
   const getCurrentColumnOrder = () => {
     const order = table.getState().columnOrder;
@@ -205,7 +205,7 @@ export function DataTableDialog<TData>({
     const missing = allColumnIds.filter((id) => !seen.has(id));
 
     return [...ordered, ...missing];
-  }
+  };
 
   const moveColumn = (columnId: string, direction: -1 | 1) => {
     const order = getCurrentColumnOrder();
@@ -222,7 +222,7 @@ export function DataTableDialog<TData>({
       nextOrder[currentIndex],
     ];
     table.setColumnOrder(nextOrder);
-  }
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -234,15 +234,15 @@ export function DataTableDialog<TData>({
     if (oldIndex === -1 || newIndex === -1) return;
 
     table.setColumnOrder(arrayMove(order, oldIndex, newIndex));
-  }
+  };
 
   const handleOpenChange = (open: boolean) => {
-    setDialogOpen(open)
+    setDialogOpen(open);
 
     if (!open) {
-      setColumnSearch("")
+      setColumnSearch("");
     }
-  }
+  };
 
   const columnsById = new Map(columns.map((column) => [column.id, column]));
   const orderedColumns = getCurrentColumnOrder()
@@ -250,9 +250,11 @@ export function DataTableDialog<TData>({
     .filter((column): column is (typeof columns)[number] => Boolean(column));
   const filteredColumns = orderedColumns.filter((column) => {
     const label = getColumnLabel(column);
-    return columnSearch === "" ||
+    return (
+      columnSearch === "" ||
       label.toLowerCase().includes(columnSearch.toLowerCase()) ||
       column.id.toLowerCase().includes(columnSearch.toLowerCase())
+    );
   });
 
   return (
@@ -269,7 +271,9 @@ export function DataTableDialog<TData>({
         </DialogHeader>
         <div className="flex gap-8 py-6">
           <div className="flex-shrink-0 w-48">
-            <Label className="text-base font-semibold block mb-4">Page size</Label>
+            <Label className="text-base font-semibold block mb-4">
+              Page size
+            </Label>
             <RadioGroup
               value={String(table.getState().pagination.pageSize)}
               onValueChange={(value) => table.setPageSize(Number(value))}
@@ -278,8 +282,13 @@ export function DataTableDialog<TData>({
               {[10, 25, 50].map((size) => (
                 <div key={size} className="flex items-center space-x-2">
                   <RadioGroupItem value={String(size)} id={`r${size}`} />
-                  <Label htmlFor={`r${size}`} className="font-normal cursor-pointer">
-                    {resourceName ? `${size} ${pluralize(resourceName)}` : String(size)}
+                  <Label
+                    htmlFor={`r${size}`}
+                    className="font-normal cursor-pointer"
+                  >
+                    {resourceName
+                      ? `${size} ${pluralize(resourceName)}`
+                      : String(size)}
                   </Label>
                 </div>
               ))}
@@ -287,7 +296,9 @@ export function DataTableDialog<TData>({
           </div>
 
           <div className="flex-1 min-w-0">
-            <Label className="text-base font-semibold block mb-4">Columns</Label>
+            <Label className="text-base font-semibold block mb-4">
+              Columns
+            </Label>
             <Input
               placeholder="Search columns..."
               value={columnSearch}
@@ -304,25 +315,26 @@ export function DataTableDialog<TData>({
                   items={filteredColumns.map((column) => column.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {filteredColumns
-                    .map((column) => {
-                      const label = getColumnLabel(column);
-                      const currentOrder = getCurrentColumnOrder();
-                      const orderIndex = currentOrder.indexOf(column.id);
-                      const isRequired = !column.getCanHide();
-                      return (
-                        <SortableColumnItem
-                          key={column.id}
-                          column={column}
-                          label={label}
-                          isRequired={isRequired}
-                          isFirst={orderIndex <= 0}
-                          isLast={orderIndex === -1 || orderIndex >= currentOrder.length - 1}
-                          moveColumn={moveColumn}
-                        />
-                      );
-                    })
-                  }
+                  {filteredColumns.map((column) => {
+                    const label = getColumnLabel(column);
+                    const currentOrder = getCurrentColumnOrder();
+                    const orderIndex = currentOrder.indexOf(column.id);
+                    const isRequired = !column.getCanHide();
+                    return (
+                      <SortableColumnItem
+                        key={column.id}
+                        column={column}
+                        label={label}
+                        isRequired={isRequired}
+                        isFirst={orderIndex <= 0}
+                        isLast={
+                          orderIndex === -1 ||
+                          orderIndex >= currentOrder.length - 1
+                        }
+                        moveColumn={moveColumn}
+                      />
+                    );
+                  })}
                 </SortableContext>
               </DndContext>
             </div>
@@ -330,5 +342,5 @@ export function DataTableDialog<TData>({
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

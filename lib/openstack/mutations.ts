@@ -50,6 +50,32 @@ async function responsePayload(response: Response): Promise<unknown> {
   }
 }
 
+function validationMessage(payload: unknown) {
+  if (!payload || typeof payload !== "object") return undefined;
+
+  const record = payload as Record<string, unknown>;
+  const firstError = Array.isArray(record.errors)
+    ? record.errors.find(
+        (entry): entry is Record<string, unknown> =>
+          Boolean(entry) && typeof entry === "object",
+      )
+    : undefined;
+  const candidates = [
+    firstError?.detail,
+    firstError?.message,
+    record.faultstring,
+    record.message,
+    record.error_message,
+  ];
+  const message = candidates.find(
+    (candidate): candidate is string =>
+      typeof candidate === "string" && Boolean(candidate.trim()),
+  );
+
+  if (!message) return undefined;
+  return message.replace(/\s+/g, " ").trim().slice(0, 1_000);
+}
+
 export async function executeOpenStackMutation<T = null>({
   actionLabel,
   apiVersion,
@@ -139,6 +165,14 @@ export async function executeOpenStackMutation<T = null>({
   const payload = await responsePayload(response);
 
   if (!response.ok) {
+    const error = mutationErrorForStatus(
+      response.status,
+      actionLabel,
+      requestId,
+    );
+    if ([400, 409, 422].includes(response.status)) {
+      error.message = validationMessage(payload) ?? error.message;
+    }
     console.error("[mutation] OpenStack action rejected", {
       actionLabel,
       method,
@@ -149,10 +183,7 @@ export async function executeOpenStackMutation<T = null>({
       serviceName,
       status: response.status,
     });
-    return mutationFailure(
-      mutationErrorForStatus(response.status, actionLabel, requestId),
-      activeScope,
-    );
+    return mutationFailure(error, activeScope);
   }
 
   let data: T;

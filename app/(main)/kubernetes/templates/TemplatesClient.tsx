@@ -1,14 +1,23 @@
 "use client";
 
-import type { ComponentType } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import { useMemo, useState, useTransition, type ComponentType } from "react";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Cloud, Network, Settings } from "lucide-react";
+import { Cloud, Network, Pencil, Settings, Trash2 } from "lucide-react";
+import { ClusterTemplateMutationSheet } from "@/components/Kubernetes/ClusterTemplateMutationSheet";
+import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/DataTable";
+import { IDCell } from "@/components/DataTable/IDCell";
+import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { clusterTemplatesQueryOptions } from "@/hooks/queries/useMagnum";
+import { flavorsQueryOptions } from "@/hooks/queries/useServers";
+import { deleteClusterTemplateAction } from "@/lib/openstack/magnum-actions";
+import { magnumImageDistribution } from "@/lib/openstack/magnum-domain";
 import { cn } from "@/lib/utils";
-import type { MagnumClusterTemplate } from "@/types/openstack";
+import type { Flavor, Image, MagnumClusterTemplate } from "@/types/openstack";
 
 interface TemplatesClientProps {
   regionId?: string;
@@ -83,112 +92,227 @@ function FadedTableText({
   );
 }
 
-const columns: ColumnDef<MagnumClusterTemplate>[] = [
-  {
-    accessorKey: "name",
-    header: "Name",
-    cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (
-      <FadedTableText
-        value={row.original.name || row.original.uuid}
-        className="w-64"
-      />
-    ),
-    meta: {
-      fieldType: "string",
-      visible: true,
-    },
-  },
-  {
-    accessorKey: "uuid",
-    header: "UUID",
-    cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (
-      <FadedTableText value={row.original.uuid} className="w-56 font-mono" />
-    ),
-    meta: {
-      fieldType: "string",
-      visible: true,
-    },
-  },
-  {
-    accessorKey: "image_id",
-    header: "Image",
-    cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (
-      <FadedTableText
-        value={row.original.image_id || "-"}
-        className="w-72 font-mono"
-      />
-    ),
-    meta: {
-      fieldType: "string",
-      visible: true,
-    },
-  },
-  {
-    accessorKey: "flavor_id",
-    header: "Worker Node Flavor",
-    cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
-      row.original.flavor_id || "-",
-    meta: {
-      fieldType: "string",
-      visible: true,
-    },
-  },
-  {
-    accessorKey: "master_flavor_id",
-    header: "Control Node Flavor",
-    cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
-      row.original.master_flavor_id || "-",
-    meta: {
-      fieldType: "string",
-      visible: false,
-    },
-  },
-  {
-    accessorKey: "network_driver",
-    header: "Network Driver",
-    cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
-      row.original.network_driver || "-",
-    meta: {
-      fieldType: "string",
-      visible: true,
-    },
-  },
-  {
-    accessorKey: "public",
-    header: "Visibility",
-    cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (
-      <Badge variant={row.original.public ? "default" : "secondary"}>
-        {row.original.public ? "Public" : "Private"}
-      </Badge>
-    ),
-    meta: {
-      fieldType: "boolean",
-      visible: true,
-    },
-  },
-  {
-    accessorKey: "floating_ip_enabled",
-    header: "Floating IP",
-    cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
-      row.original.floating_ip_enabled ? "Enabled" : "Disabled",
-    meta: {
-      fieldType: "boolean",
-      visible: true,
-    },
-  },
-  {
-    accessorKey: "created_at",
-    header: "Created At",
-    meta: {
-      fieldType: "date",
-      visible: false,
-    },
-  },
-];
-
 export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
   const { data, isRefetching, refetch } = useSuspenseQuery(
     clusterTemplatesQueryOptions(regionId, projectId),
+  );
+  const { data: images = [] } = useQuery(
+    imagesQueryOptions(regionId, projectId),
+  );
+  const { data: flavors = [] } = useQuery(
+    flavorsQueryOptions(regionId, projectId),
+  );
+  const [editingTemplate, setEditingTemplate] =
+    useState<MagnumClusterTemplate | null>(null);
+  const [deletingTemplate, setDeletingTemplate] =
+    useState<MagnumClusterTemplate | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, startDeleteTransition] = useTransition();
+
+  const deleteTemplate = () => {
+    if (!deletingTemplate || !projectId || !regionId) return;
+    startDeleteTransition(async () => {
+      setDeleteError(null);
+      const result = await deleteClusterTemplateAction(
+        { projectId, regionId },
+        deletingTemplate.uuid,
+      );
+      if (!result.ok) {
+        setDeleteError(result.error.message);
+        return;
+      }
+      setDeletingTemplate(null);
+      await refetch();
+    });
+  };
+  const imagesByReference = useMemo(() => {
+    const references = new Map<string, Image>();
+    for (const image of images) {
+      references.set(image.id, image);
+      if (image.name) references.set(image.name, image);
+    }
+    return references;
+  }, [images]);
+  const flavorsByReference = useMemo(() => {
+    const references = new Map<string, Flavor>();
+    for (const flavor of flavors) {
+      references.set(flavor.id, flavor);
+      if (flavor.name) references.set(flavor.name, flavor);
+    }
+    return references;
+  }, [flavors]);
+  const columns = useMemo<ColumnDef<MagnumClusterTemplate>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Name",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (
+          <Link
+            className="block min-w-0 hover:underline focus-visible:underline"
+            href={`/kubernetes/templates/${row.original.uuid}`}
+          >
+            <FadedTableText
+              value={row.original.name || row.original.uuid}
+              className="w-64"
+            />
+          </Link>
+        ),
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "uuid",
+        header: "UUID",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <IDCell
+            isSelected={row.getIsSelected()}
+            linkPath="/kubernetes/templates"
+            value={row.original.uuid}
+          />
+        ),
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "image_id",
+        header: "Image",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => {
+          const reference = row.original.image_id || "-";
+          const image = imagesByReference.get(reference);
+          const content = (
+            <FadedTableText
+              value={image?.name || reference}
+              className="w-72"
+            />
+          );
+          return image ? (
+            <Link
+              className="block min-w-0 hover:underline focus-visible:underline"
+              href={`/compute/images/${image.id}`}
+            >
+              {content}
+            </Link>
+          ) : (
+            content
+          );
+        },
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        id: "os_distro",
+        accessorFn: (template) =>
+          magnumImageDistribution(
+            imagesByReference.get(template.image_id || ""),
+          ) || "-",
+        header: "Distribution",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
+          magnumImageDistribution(
+            imagesByReference.get(row.original.image_id || ""),
+          ) || "-",
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "flavor_id",
+        header: "Worker Node Flavor",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => {
+          const reference = row.original.flavor_id || "";
+          const flavor = flavorsByReference.get(reference);
+          const label = flavor?.name || reference || "-";
+          return flavor ? (
+            <Link
+              className="hover:underline focus-visible:underline"
+              href={`/compute/instance-flavors/${flavor.id}`}
+            >
+              {label}
+            </Link>
+          ) : (
+            label
+          );
+        },
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "master_flavor_id",
+        header: "Control Node Flavor",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => {
+          const reference = row.original.master_flavor_id || "";
+          const flavor = flavorsByReference.get(reference);
+          const label = flavor?.name || reference || "-";
+          return flavor ? (
+            <Link
+              className="hover:underline focus-visible:underline"
+              href={`/compute/instance-flavors/${flavor.id}`}
+            >
+              {label}
+            </Link>
+          ) : (
+            label
+          );
+        },
+        meta: { fieldType: "string", visible: false },
+      },
+      {
+        accessorKey: "network_driver",
+        header: "Network Driver",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
+          row.original.network_driver || "-",
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "public",
+        header: "Visibility",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (
+          <Badge variant={row.original.public ? "default" : "secondary"}>
+            {row.original.public ? "Public" : "Private"}
+          </Badge>
+        ),
+        meta: { fieldType: "boolean", visible: true },
+      },
+      {
+        accessorKey: "floating_ip_enabled",
+        header: "Floating IP",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
+          row.original.floating_ip_enabled ? "Enabled" : "Disabled",
+        meta: { fieldType: "boolean", visible: true },
+      },
+      {
+        accessorKey: "created_at",
+        header: "Age",
+        meta: { fieldType: "date", dateDisplay: "age", visible: false },
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
+          row.original.project_id === projectId ? (
+            <div className="flex items-center justify-end gap-1">
+              <Button
+                aria-label={`Edit ${row.original.name}`}
+                onClick={() => setEditingTemplate(row.original)}
+                size="icon"
+                variant="ghost"
+              >
+                <Pencil className="size-4" />
+              </Button>
+              <Button
+                aria-label={`Delete ${row.original.name}`}
+                className="text-destructive hover:text-destructive"
+                onClick={() => {
+                  setDeleteError(null);
+                  setDeletingTemplate(row.original);
+                }}
+                size="icon"
+                variant="ghost"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
+          ) : null,
+        meta: { visible: true },
+      },
+    ],
+    [flavorsByReference, imagesByReference, projectId],
   );
   const publicTemplates = data.filter((template) => template.public).length;
   const privateTemplates = data.length - publicTemplates;
@@ -231,6 +355,39 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
         resourceName="cluster template"
         emptyIcon={Settings}
       />
+      {editingTemplate ? (
+        <ClusterTemplateMutationSheet
+          key={editingTemplate.uuid}
+          open
+          projectId={projectId}
+          regionId={regionId}
+          template={editingTemplate}
+          onOpenChange={(open) => !open && setEditingTemplate(null)}
+          onComplete={async () => {
+            setEditingTemplate(null);
+            await refetch();
+          }}
+        />
+      ) : null}
+      {deletingTemplate ? (
+        <MutationConfirmationDialog
+          confirmLabel="Delete template"
+          description="This permanently removes the reusable template. Existing clusters are not changed."
+          error={deleteError}
+          onConfirm={deleteTemplate}
+          onOpenChange={(open) => {
+            if (!open) {
+              setDeleteError(null);
+              setDeletingTemplate(null);
+            }
+          }}
+          open
+          pending={isDeleting}
+          pendingLabel="Deleting"
+          title={`Delete ${deletingTemplate.name || "cluster template"}?`}
+          variant="destructive"
+        />
+      ) : null}
     </div>
   );
 }

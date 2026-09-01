@@ -7,11 +7,14 @@ import {
   visibleResourcePreferences,
 } from "@/lib/resource-preferences";
 import { getSession } from "@/lib/session";
+import { isSameOriginRequest } from "@/lib/request-origin";
 
 export async function POST(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) {
-    return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
+  if (!isSameOriginRequest(request.headers, request.nextUrl.origin)) {
+    return NextResponse.json(
+      { error: "Invalid request origin" },
+      { status: 403 },
+    );
   }
 
   const session = await getSession();
@@ -20,7 +23,10 @@ export async function POST(request: NextRequest) {
     !session.projectId ||
     !session.regionId
   ) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Authentication required" },
+      { status: 401 },
+    );
   }
 
   let body: unknown;

@@ -124,38 +124,38 @@ const payloads: Record<string, unknown> = {
         },
       ],
     },
-  "https://magnum.example.test/v1/clusters?project_id=project-id&limit=20&sort_key=uuid&sort_dir=asc": {
-    clusters: [
-      { uuid: "failed-cluster" },
-      { uuid: "unhealthy-cluster" },
-      { uuid: "foreign-cluster" },
-    ],
-  },
-  "https://magnum.example.test/v1/clusters/failed-cluster": {
-    uuid: "failed-cluster",
-    name: "failed-k8s",
-    project_id: "project-id",
-    status: "CREATE_FAILED",
-    status_reason: "Stack creation failed.",
-    updated_at: "2026-08-29T11:00:00Z",
-  },
-  "https://magnum.example.test/v1/clusters/unhealthy-cluster": {
-    cluster: {
-      uuid: "unhealthy-cluster",
-      name: "unhealthy-k8s",
-      project_id: "project-id",
-      status: "UPDATE_COMPLETE",
-      health_status: "UNHEALTHY",
-      health_status_reason: { node: "A worker is not ready." },
-      updated_at: "2026-08-29T10:00:00Z",
+  "https://magnum.example.test/v1/clusters/detail?limit=20&sort_key=uuid&sort_dir=asc":
+    {
+      clusters: [
+        {
+          uuid: "failed-cluster",
+          name: "failed-k8s",
+          project_id: "project-id",
+          status: "CREATE_FAILED",
+          status_reason: "Stack creation failed.",
+          updated_at: "2026-08-29T11:00:00Z",
+        },
+        {
+          uuid: "unhealthy-cluster",
+          name: "unhealthy-k8s",
+          project_id: "project-id",
+          status: "UPDATE_COMPLETE",
+          health_status: "UNHEALTHY",
+          health_status_reason: {
+            "control-plane-a.Ready": "True",
+            "worker-b.Ready": "False",
+            api: "ok",
+          },
+          updated_at: "2026-08-29T10:00:00Z",
+        },
+        {
+          uuid: "foreign-cluster",
+          name: "not-ours",
+          project_id: "another-project",
+          status: "CREATE_FAILED",
+        },
+      ],
     },
-  },
-  "https://magnum.example.test/v1/clusters/foreign-cluster": {
-    uuid: "foreign-cluster",
-    name: "not-ours",
-    project_id: "another-project",
-    status: "CREATE_FAILED",
-  },
 };
 
 describe("operational feed loading", () => {
@@ -236,13 +236,33 @@ describe("operational feed loading", () => {
     ]);
   });
 
-  it("does not scan unscoped Magnum clusters when project filtering is unsupported", async () => {
+  it("filters detailed Magnum clusters to the active project", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
         const url = String(input);
-        if (url.includes("magnum.example.test")) {
-          return new Response(null, { status: 400, statusText: "Bad Request" });
+        if (
+          url ===
+          "https://magnum.example.test/v1/clusters/detail?limit=20&sort_key=uuid&sort_dir=asc"
+        ) {
+          return Response.json({
+            clusters: [
+              {
+                uuid: "ours",
+                name: "ours",
+                project_id: "project-id",
+                status: "CREATE_COMPLETE",
+                health_status: "UNHEALTHY",
+                health_status_reason: { "worker-a.Ready": "False" },
+              },
+              {
+                uuid: "foreign",
+                name: "foreign",
+                project_id: "another-project",
+                status: "CREATE_FAILED",
+              },
+            ],
+          });
         }
         if (url.includes("nova.example.test")) {
           return Response.json({ servers: [] });
@@ -262,17 +282,23 @@ describe("operational feed loading", () => {
       now,
     });
 
-    expect(result.sources.find((source) => source.id === "kubernetes"))
-      .toMatchObject({
-        status: "unavailable",
-        message: "Project-scoped resource health is not supported",
-      });
-    expect(result.signals).toEqual([]);
+    expect(
+      result.sources.find((source) => source.id === "kubernetes"),
+    ).toMatchObject({ status: "available" });
+    expect(result.signals).toEqual([
+      expect.objectContaining({
+        id: "kubernetes:ours",
+        detail: "worker-a is not ready.",
+      }),
+    ]);
   });
 
   it("paginates Magnum clusters before declaring the health check complete", async () => {
     const firstPage = Array.from({ length: 20 }, (_, index) => ({
       uuid: `cluster-${String(index + 1).padStart(2, "0")}`,
+      project_id: "project-id",
+      status: "CREATE_COMPLETE",
+      health_status: "HEALTHY",
     }));
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
@@ -287,31 +313,23 @@ describe("operational feed loading", () => {
       }
       if (
         url ===
-        "https://magnum.example.test/v1/clusters?project_id=project-id&limit=20&sort_key=uuid&sort_dir=asc"
+        "https://magnum.example.test/v1/clusters/detail?limit=20&sort_key=uuid&sort_dir=asc"
       ) {
         return Response.json({ clusters: firstPage });
       }
       if (
         url ===
-        "https://magnum.example.test/v1/clusters?project_id=project-id&limit=20&sort_key=uuid&sort_dir=asc&marker=cluster-20"
+        "https://magnum.example.test/v1/clusters/detail?limit=20&sort_key=uuid&sort_dir=asc&marker=cluster-20"
       ) {
-        return Response.json({ clusters: [{ uuid: "cluster-21" }] });
-      }
-      if (url.endsWith("/clusters/cluster-21")) {
         return Response.json({
-          uuid: "cluster-21",
-          name: "last-cluster",
-          project_id: "project-id",
-          status: "UPDATE_FAILED",
-        });
-      }
-      if (url.includes("/clusters/cluster-")) {
-        const id = url.split("/").at(-1);
-        return Response.json({
-          uuid: id,
-          project_id: "project-id",
-          status: "CREATE_COMPLETE",
-          health_status: "HEALTHY",
+          clusters: [
+            {
+              uuid: "cluster-21",
+              name: "last-cluster",
+              project_id: "project-id",
+              status: "UPDATE_FAILED",
+            },
+          ],
         });
       }
       throw new Error(`Unexpected URL: ${url}`);
@@ -326,18 +344,19 @@ describe("operational feed loading", () => {
       now,
     });
 
-    expect(result.sources.find((source) => source.id === "kubernetes"))
-      .toMatchObject({ status: "available" });
+    expect(
+      result.sources.find((source) => source.id === "kubernetes"),
+    ).toMatchObject({ status: "available" });
     expect(result.signals).toEqual([
       expect.objectContaining({ id: "kubernetes:cluster-21" }),
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://magnum.example.test/v1/clusters?project_id=project-id&limit=20&sort_key=uuid&sort_dir=asc&marker=cluster-20",
+      "https://magnum.example.test/v1/clusters/detail?limit=20&sort_key=uuid&sort_dir=asc&marker=cluster-20",
       expect.objectContaining({ cache: "no-store" }),
     );
   });
 
-  it("redirects when a Magnum detail request reports an expired token", async () => {
+  it("redirects when the Magnum detail collection reports an expired token", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
@@ -351,13 +370,13 @@ describe("operational feed loading", () => {
         if (url.includes("glance.example.test")) {
           return Response.json({ images: [] });
         }
-        if (url.includes("/clusters/expired-cluster")) {
+        if (url.includes("/clusters/detail")) {
           return new Response(null, {
             status: 401,
             statusText: "Unauthorized",
           });
         }
-        return Response.json({ clusters: [{ uuid: "expired-cluster" }] });
+        return Response.json({ clusters: [] });
       }),
     );
 
@@ -370,16 +389,15 @@ describe("operational feed loading", () => {
         now,
       }),
     ).rejects.toThrow("redirect:/auth/logout?reason=expired");
-    expect(mocks.redirect).toHaveBeenCalledWith(
-      "/auth/logout?reason=expired",
-    );
+    expect(mocks.redirect).toHaveBeenCalledWith("/auth/logout?reason=expired");
   });
 
   it("redirects when a resource check reports an expired token", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(null, { status: 401, statusText: "Unauthorized" }),
+      vi.fn(
+        async () =>
+          new Response(null, { status: 401, statusText: "Unauthorized" }),
       ),
     );
 
@@ -392,8 +410,6 @@ describe("operational feed loading", () => {
         now,
       }),
     ).rejects.toThrow("redirect:/auth/logout?reason=expired");
-    expect(mocks.redirect).toHaveBeenCalledWith(
-      "/auth/logout?reason=expired",
-    );
+    expect(mocks.redirect).toHaveBeenCalledWith("/auth/logout?reason=expired");
   });
 });

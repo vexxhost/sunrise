@@ -29,7 +29,7 @@ export default function SecurityGroupListByNames({
     securityGroupsQueryOptions(regionId, projectId),
   );
 
-  const secGroupNames = server["security_groups"].map(
+  const secGroupNames = (server["security_groups"] ?? []).map(
     (secGroup: { name: string }) => secGroup.name,
   );
   const secGroups = secGroupNames

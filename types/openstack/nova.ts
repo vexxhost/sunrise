@@ -89,6 +89,18 @@ export interface FlavorListResponse {
   flavors_links?: Link[]; // Pagination links
 }
 
+export interface ComputeAvailabilityZone {
+  hosts: null;
+  zoneName: string;
+  zoneState: {
+    available: boolean;
+  };
+}
+
+export interface ComputeAvailabilityZoneListResponse {
+  availabilityZoneInfo: ComputeAvailabilityZone[];
+}
+
 // ============================================================================
 // Server Types
 // ============================================================================
@@ -151,7 +163,7 @@ export interface Server {
   "OS-EXT-STS:vm_state"?: string;
   "OS-EXT-STS:power_state": number;
   "os-extended-volumes:volumes_attached": { id: string }[];
-  security_groups: SecurityGroup[];
+  security_groups?: SecurityGroup[];
   locked: boolean;
   fault?: {
     code?: number;
@@ -382,6 +394,7 @@ export interface ServerBlockDeviceMapping {
 
 export interface CreateServerRequest {
   name: string;
+  description?: string;
   flavorRef: string;
   imageRef?: string;
   key_name?: string;

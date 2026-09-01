@@ -1,7 +1,11 @@
-'use client';
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQueries, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import {
   Camera,
@@ -11,7 +15,10 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { volumeQueryOptions, volumesQueryOptions } from "@/hooks/queries/useVolumes";
+import {
+  volumeQueryOptions,
+  volumesQueryOptions,
+} from "@/hooks/queries/useVolumes";
 import { Badge } from "@/components/ui/badge";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Volume } from "@/types/openstack";
@@ -58,16 +65,16 @@ const columns: ColumnDef<Volume>[] = [
     ),
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "id",
     header: "ID",
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "description",
@@ -75,8 +82,8 @@ const columns: ColumnDef<Volume>[] = [
     cell: ({ row }: { row: { original: Volume } }) => row.original.description,
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "size",
@@ -84,8 +91,8 @@ const columns: ColumnDef<Volume>[] = [
     cell: ({ row }: { row: { original: Volume } }) => row.original.size + " GB",
     meta: {
       fieldType: "number",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "status",
@@ -114,24 +121,23 @@ const columns: ColumnDef<Volume>[] = [
       return transitioning ? (
         <ProgressStatusBadge label={status} />
       ) : (
-        <Badge variant={variant}>
-          {status}
-        </Badge>
+        <Badge variant={variant}>{status}</Badge>
       );
     },
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "group",
     header: "Group",
-    cell: ({ row }: { row: { original: Volume } }) => row.original.group_id ? row.original.group_id : "-",
+    cell: ({ row }: { row: { original: Volume } }) =>
+      row.original.group_id ? row.original.group_id : "-",
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "type",
@@ -139,46 +145,50 @@ const columns: ColumnDef<Volume>[] = [
     cell: ({ row }: { row: { original: Volume } }) => row.original.volume_type,
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "availability_zone",
     header: "Availability Zone",
-    cell: ({ row }: { row: { original: Volume } }) => row.original.availability_zone,
+    cell: ({ row }: { row: { original: Volume } }) =>
+      row.original.availability_zone,
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "bootable",
     header: "Bootable",
-    cell: ({ row }: { row: { original: Volume } }) => formatBooleanLike(row.original.bootable),
+    cell: ({ row }: { row: { original: Volume } }) =>
+      formatBooleanLike(row.original.bootable),
     meta: {
       fieldType: "boolean",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "encrypted",
     header: "Encrypted",
-    cell: ({ row }: { row: { original: Volume } }) => formatBooleanLike(row.original.encrypted),
+    cell: ({ row }: { row: { original: Volume } }) =>
+      formatBooleanLike(row.original.encrypted),
     meta: {
       fieldType: "boolean",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "multiattach",
     header: "Multi-Attached",
-    cell: ({ row }: { row: { original: Volume } }) => formatBooleanLike(row.original.multiattach),
+    cell: ({ row }: { row: { original: Volume } }) =>
+      formatBooleanLike(row.original.multiattach),
     meta: {
       fieldType: "boolean",
-      visible: true
-    }
-  }
-]
+      visible: true,
+    },
+  },
+];
 
 interface VolumesClientProps {
   regionId?: string;
@@ -215,7 +225,9 @@ export function VolumesClient({ regionId, projectId }: VolumesClientProps) {
     }
     if (transitionUpdates.updates.size) {
       queryClient.setQueryData<Volume[]>(listOptions.queryKey, (current) =>
-        current ? mergeVolumeUpdates(current, transitionUpdates.updates) : current,
+        current
+          ? mergeVolumeUpdates(current, transitionUpdates.updates)
+          : current,
       );
     }
   }, [listOptions.queryKey, queryClient, transitionUpdates]);
@@ -292,6 +304,7 @@ export function VolumesClient({ regionId, projectId }: VolumesClientProps) {
         resourceName="volume"
         emptyIcon={HardDrive}
         rowActions={rowActions}
+        getRowId={(volume) => volume.id}
         onPageRowsChange={setVisibleVolumes}
       />
       {action ? (

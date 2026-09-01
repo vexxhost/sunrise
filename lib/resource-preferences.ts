@@ -130,10 +130,14 @@ export function parseResourcePreferences(value: unknown): ResourcePreference[] {
     const resource = createResourcePreference(
       candidate,
       {
-        projectId: typeof candidate.projectId === "string" ? candidate.projectId : "",
-        regionId: typeof candidate.regionId === "string" ? candidate.regionId : "",
+        projectId:
+          typeof candidate.projectId === "string" ? candidate.projectId : "",
+        regionId:
+          typeof candidate.regionId === "string" ? candidate.regionId : "",
       },
-      typeof candidate.updatedAt === "number" ? candidate.updatedAt : Number.NaN,
+      typeof candidate.updatedAt === "number"
+        ? candidate.updatedAt
+        : Number.NaN,
     );
 
     if (!resource) continue;
@@ -215,7 +219,8 @@ export function resourcesForContext(
   const projectId = normalizeResourceProjectId(context.projectId);
   return parseResourcePreferences(current).filter(
     (resource) =>
-      resource.projectId === projectId && resource.regionId === context.regionId,
+      resource.projectId === projectId &&
+      resource.regionId === context.regionId,
   );
 }
 
@@ -235,6 +240,20 @@ export function visibleResourcePreferences({
   );
 
   return { pinned: visiblePinned, recent: visibleRecent };
+}
+
+export function filterResourcePreferencesByLiveIds(
+  resources: ResourcePreference[],
+  kind: ResourceKind,
+  liveIds: Iterable<string>,
+) {
+  const normalizedIds = new Set(
+    Array.from(liveIds, (id) => id.trim()).filter(Boolean),
+  );
+
+  return resources.filter(
+    (resource) => resource.kind !== kind || normalizedIds.has(resource.id),
+  );
 }
 
 export function resourcePreferenceHref(

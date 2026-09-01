@@ -85,9 +85,8 @@ const columns: ColumnDef<IamRoleSummary>[] = [
   },
   {
     accessorKey: 'createdAt',
-    header: 'Created At',
-    cell: ({ row }) => row.original.createdAt ?? '-',
-    meta: { fieldType: 'date', visible: true },
+    header: 'Age',
+    meta: { fieldType: 'date', dateDisplay: 'age', visible: true },
   },
   {
     accessorKey: 'maxSessionDuration',

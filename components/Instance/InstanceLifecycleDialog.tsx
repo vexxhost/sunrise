@@ -63,7 +63,10 @@ const ACTION_COPY: Record<
 interface InstanceLifecycleDialogProps {
   action: InstanceMutationKind | null;
   instances: Server[];
-  onComplete: () => Promise<void> | void;
+  onComplete: (
+    action: InstanceMutationKind,
+    completedInstances: Server[],
+  ) => Promise<void> | void;
   onOpenChange: (open: boolean) => void;
   projectId?: string;
   regionId?: string;
@@ -109,9 +112,12 @@ export function InstanceLifecycleDialog({
           ? []
           : [`${instance.name || instance.id}: ${result.error.message}`],
       );
+      const completedInstances = results.flatMap(({ instance, result }) =>
+        result.ok ? [instance] : [],
+      );
 
       if (failures.length) {
-        void onComplete();
+        void onComplete(action, completedInstances);
         setError(
           failures.length === instances.length
             ? failures[0]
@@ -121,7 +127,7 @@ export function InstanceLifecycleDialog({
       }
 
       onOpenChange(false);
-      void onComplete();
+      void onComplete(action, completedInstances);
     });
   };
 

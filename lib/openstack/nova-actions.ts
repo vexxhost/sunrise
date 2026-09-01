@@ -36,6 +36,8 @@ const metadataSchema = z
 
 const launchServerSchema = z.object({
   name: serverNameSchema,
+  description: z.string().trim().max(255).optional(),
+  count: z.number().int().min(1).default(1),
   imageRef: resourceIdSchema,
   flavorRef: resourceIdSchema,
   keyName: z.string().trim().max(255).optional(),
@@ -179,6 +181,7 @@ export async function createServerAction(
     body: {
       server: {
         name: payload.name,
+        description: payload.description || undefined,
         flavorRef: payload.flavorRef,
         imageRef: payload.imageRef,
         key_name: payload.keyName || undefined,
@@ -194,10 +197,15 @@ export async function createServerAction(
           : undefined,
         user_data: encodeUserData(payload.userData),
         config_drive: payload.configDrive || undefined,
+        min_count: payload.count,
+        max_count: payload.count,
       },
     },
     invalidates: ["/compute", "/compute/instances"],
-    successMessage: `Instance ${payload.name} is being created.`,
+    successMessage:
+      payload.count === 1
+        ? `Instance ${payload.name} is being created.`
+        : `${payload.count} instances are being created.`,
     transform: (responsePayload) => {
       if (
         !responsePayload ||

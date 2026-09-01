@@ -1,10 +1,10 @@
 export const KUBERNETES_CLUSTER_DETAIL_TABS = [
   "overview",
   "node-groups",
-  "components",
   "networking",
-  "authority",
-  "template",
+  "storage",
+  "security",
+  "add-ons",
   "labels",
 ] as const;
 

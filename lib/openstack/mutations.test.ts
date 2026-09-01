@@ -26,9 +26,7 @@ describe("OpenStack mutation executor", () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     mocks.getServiceCatalog.mockResolvedValue([]);
-    mocks.resolveServiceEndpoint.mockReturnValue(
-      "https://nova.example/v2.1",
-    );
+    mocks.resolveServiceEndpoint.mockReturnValue("https://nova.example/v2.1");
     mocks.guardMutationContext.mockResolvedValue({
       ok: true,
       context: { projectToken: "token", scope },
@@ -63,6 +61,41 @@ describe("OpenStack mutation executor", () => {
       },
     });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("returns public OpenStack validation details for rejected input", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json(
+        {
+          errors: [
+            {
+              detail:
+                "Invalid input for field/attribute node_count. Value: -1.",
+            },
+          ],
+        },
+        { status: 400 },
+      ),
+    );
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "create a node group",
+      body: { node_count: -1 },
+      method: "POST",
+      path: "/clusters/cluster-a/nodegroups",
+      scope,
+      serviceName: "magnum",
+      serviceType: "container-infra",
+      successMessage: "Node group creation requested.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: "Invalid input for field/attribute node_count. Value: -1.",
+      },
+    });
   });
 
   it("returns transformed data and invalidates affected routes on success", async () => {

@@ -168,8 +168,7 @@ async function loadCinderSignals(
 
     const resourceType = stringValue(message, "resource_type")?.toUpperCase();
     const resourceId = stringValue(message, "resource_uuid");
-    const resourceLabel =
-      resourceType === "SNAPSHOT" ? "Snapshot" : "Volume";
+    const resourceLabel = resourceType === "SNAPSHOT" ? "Snapshot" : "Volume";
     return [
       {
         id: `block-storage:${id}`,
@@ -232,8 +231,7 @@ async function loadGlanceSignals(
         detail: "The image entered the killed state and cannot be used.",
         href: `/compute/images/${id}`,
         timestamp:
-          stringValue(image, "updated_at") ||
-          stringValue(image, "created_at"),
+          stringValue(image, "updated_at") || stringValue(image, "created_at"),
         timestampKind: "occurred",
       } satisfies OperationalSignal,
     ];
@@ -250,9 +248,28 @@ function magnumReason(cluster: Record<string, unknown>) {
   if (!reasons || typeof reasons !== "object" || Array.isArray(reasons)) {
     return undefined;
   }
-  return Object.values(reasons).find(
-    (value): value is string => typeof value === "string" && value !== "",
+  const entries = Object.entries(reasons).filter(
+    (entry): entry is [string, string] =>
+      typeof entry[1] === "string" && entry[1] !== "",
   );
+  const failing = entries.find(([, value]) =>
+    ["false", "nok", "unhealthy", "notready"].includes(
+      value.replace(/\s+/g, "").toLowerCase(),
+    ),
+  );
+
+  if (failing) {
+    const [key] = failing;
+    return key.toLowerCase() === "api"
+      ? "The Kubernetes API is not ready."
+      : `${key.replace(/\.Ready$/i, "")} is not ready.`;
+  }
+
+  return entries.find(
+    ([key, value]) =>
+      key.toLowerCase() !== "api" &&
+      !["true", "ready", "ok", "healthy"].includes(value.toLowerCase()),
+  )?.[1];
 }
 
 function magnumSignal(
@@ -288,8 +305,7 @@ function magnumSignal(
     ),
     href: `/kubernetes/clusters/${id}/overview`,
     timestamp:
-      stringValue(cluster, "updated_at") ||
-      stringValue(cluster, "created_at"),
+      stringValue(cluster, "updated_at") || stringValue(cluster, "created_at"),
     timestampKind: "occurred",
   };
 }
@@ -301,58 +317,25 @@ async function loadMagnumSignals(
 ): Promise<SourceLoadResult> {
   const signals: OperationalSignal[] = [];
   const seenMarkers = new Set<string>();
-  let failedDetails = 0;
   let marker: string | undefined;
 
   while (true) {
-    const query = new URLSearchParams({
-      project_id: projectId,
-      limit: String(RESOURCE_LIMIT),
-      sort_key: "uuid",
-      sort_dir: "asc",
-    });
+    const query = new URLSearchParams();
+    query.set("limit", String(RESOURCE_LIMIT));
+    query.set("sort_key", "uuid");
+    query.set("sort_dir", "asc");
     if (marker) query.set("marker", marker);
 
-    const clusters = recordList(
-      await requestJson(serviceUrl(endpoint, `/clusters?${query}`), headers),
-      "clusters",
-      "Magnum clusters",
+    const payload = await requestJson(
+      serviceUrl(endpoint, `/clusters/detail?${query}`),
+      headers,
     );
+
+    const clusters = recordList(payload, "clusters", "Magnum clusters");
     if (clusters.length === 0) break;
 
-    const details = await Promise.allSettled(
-      clusters.map(async (cluster) => {
-        const id = stringValue(cluster, "uuid");
-        if (!id) {
-          throw new OpenStackPayloadError("Invalid Magnum cluster identifier");
-        }
-        const payload = await requestJson(
-          serviceUrl(endpoint, `/clusters/${id}`),
-          headers,
-        );
-        const root = asRecord(payload, "Magnum cluster detail");
-        return root.cluster
-          ? asRecord(root.cluster, "Magnum cluster")
-          : root;
-      }),
-    );
-
-    const authenticationFailure = details.find(
-      (result) =>
-        result.status === "rejected" &&
-        result.reason instanceof OpenStackRequestError &&
-        result.reason.status === 401,
-    );
-    if (authenticationFailure?.status === "rejected") {
-      throw authenticationFailure.reason;
-    }
-
-    for (const result of details) {
-      if (result.status === "rejected") {
-        failedDetails += 1;
-        continue;
-      }
-      const signal = magnumSignal(result.value, projectId);
+    for (const cluster of clusters) {
+      const signal = magnumSignal(cluster, projectId);
       if (signal) signals.push(signal);
     }
 
@@ -366,13 +349,7 @@ async function loadMagnumSignals(
     marker = nextMarker;
   }
 
-  return {
-    signals,
-    partialMessage:
-      failedDetails > 0
-        ? `${failedDetails} cluster health ${failedDetails === 1 ? "check" : "checks"} could not be completed.`
-        : undefined,
-  };
+  return { signals };
 }
 
 const sourceDefinitions: SourceDefinition[] = [

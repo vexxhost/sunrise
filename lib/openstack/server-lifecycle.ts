@@ -1,10 +1,7 @@
 import type { Server } from "@/types/openstack";
 
 export type ServerLifecycleAction =
-  | "start"
-  | "stop"
-  | "soft-reboot"
-  | "hard-reboot";
+  "start" | "stop" | "soft-reboot" | "hard-reboot";
 
 const TRANSITIONAL_STATUSES = new Set([
   "BUILD",
@@ -27,8 +24,10 @@ function normalizedStatus(server: Pick<Server, "status">) {
 export function isServerTransitioning(
   server: Pick<Server, "status" | "OS-EXT-STS:task_state">,
 ) {
-  return Boolean(server["OS-EXT-STS:task_state"]) ||
-    TRANSITIONAL_STATUSES.has(normalizedStatus(server));
+  return (
+    Boolean(server["OS-EXT-STS:task_state"]) ||
+    TRANSITIONAL_STATUSES.has(normalizedStatus(server))
+  );
 }
 
 export function canRunServerLifecycleAction(
@@ -82,6 +81,49 @@ export function mergeServerUpdates<T extends { id: string }>(
 
     changed = true;
     return updated;
+  });
+
+  return changed ? nextServers : existing;
+}
+
+export function selectServerPollingTargets<T extends Server>(
+  allServers: T[],
+  visibleServers: T[],
+  pendingDeletionIds: ReadonlySet<string>,
+) {
+  const targets = new Map<string, T>();
+
+  for (const server of visibleServers) {
+    if (isServerTransitioning(server)) {
+      targets.set(server.id, server);
+    }
+  }
+
+  for (const server of allServers) {
+    if (pendingDeletionIds.has(server.id)) {
+      targets.set(server.id, server);
+    }
+  }
+
+  return [...targets.values()];
+}
+
+export function markServersDeleting<T extends Server>(
+  existing: T[],
+  serverIds: ReadonlySet<string>,
+) {
+  let changed = false;
+  const nextServers = existing.map((server) => {
+    if (!serverIds.has(server.id) || normalizedStatus(server) === "DELETING") {
+      return server;
+    }
+
+    changed = true;
+    return {
+      ...server,
+      status: "DELETING",
+      "OS-EXT-STS:task_state": "deleting",
+    };
   });
 
   return changed ? nextServers : existing;

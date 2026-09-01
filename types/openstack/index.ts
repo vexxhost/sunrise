@@ -27,6 +27,9 @@ export * from "./keystone";
 // Magnum (Container Infrastructure)
 export * from "./magnum";
 
+// Manila (Shared File System)
+export * from "./manila";
+
 // Neutron (Network)
 export * from "./neutron";
 

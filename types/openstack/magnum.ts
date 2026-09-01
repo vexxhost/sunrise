@@ -34,8 +34,10 @@ export type MagnumServerType = "vm" | "bm" | string;
 
 type MagnumSortDirection = "asc" | "desc";
 
-export interface MagnumClusterTemplateListOptions
-  extends Record<string, unknown> {
+export interface MagnumClusterTemplateListOptions extends Record<
+  string,
+  unknown
+> {
   limit?: number;
   marker?: string;
   sort_key?: string;
@@ -106,6 +108,80 @@ export interface MagnumClusterTemplateResponse {
   uuid?: string;
 }
 
+export type MagnumKubernetesNetworkDriver = "cilium" | "calico";
+
+export interface MagnumClusterTemplateMutationInput {
+  name: string;
+  imageId: string;
+  kubernetesVersion: string;
+  workerFlavorId: string;
+  controlPlaneFlavorId: string;
+  networkDriver: MagnumKubernetesNetworkDriver;
+  externalNetworkId?: string;
+  dnsNameserver?: string;
+  fixedNetwork?: string;
+  fixedSubnet?: string;
+  public: boolean;
+  masterLoadBalancerEnabled: boolean;
+  apiFloatingIpEnabled: boolean;
+  autoHealingEnabled: boolean;
+  autoScalingEnabled: boolean;
+  cniVersion?: string;
+  ciliumHubbleUiEnabled: boolean;
+  podCidr: string;
+  serviceCidr: string;
+  clusterDomain: string;
+  fixedSubnetCidr?: string;
+  apiServerFloatingIp?: string;
+  apiServerCertSans?: string;
+  apiServerTlsCipherSuites?: string;
+  kubeletTlsCipherSuites?: string;
+  admissionControlList?: string;
+  availabilityZone?: string;
+  controlPlaneAvailabilityZones?: string;
+  differentFailureDomain: boolean;
+  serverGroupPolicies?: string;
+  octaviaProvider?: string;
+  octaviaLbAlgorithm?: string;
+  octaviaLbHealthcheck: boolean;
+  apiServerLbFlavor?: string;
+  apiServerLbAvailabilityZone?: string;
+  bootVolumeSize?: number;
+  bootVolumeType?: string;
+  bootVolumeAvailabilityZone?: string;
+  dockerVolumeType?: string;
+  etcdVolumeSize?: number;
+  etcdVolumeType?: string;
+  cinderCsiEnabled: boolean;
+  cinderCsiPluginTag?: string;
+  manilaCsiEnabled: boolean;
+  manilaCsiPluginTag?: string;
+  manilaCsiShareNetworkId?: string;
+  csiAttacherTag?: string;
+  csiLivenessProbeTag?: string;
+  csiNodeDriverRegistrarTag?: string;
+  csiProvisionerTag?: string;
+  csiResizerTag?: string;
+  csiSnapshotterTag?: string;
+  cloudProviderTag?: string;
+  containerInfraPrefix?: string;
+  keystoneAuthEnabled: boolean;
+  auditLogEnabled: boolean;
+  auditLogMaxAge?: number;
+  auditLogMaxBackup?: number;
+  auditLogMaxSize?: number;
+  oidcIssuerUrl?: string;
+  oidcClientId?: string;
+  oidcUsernameClaim?: string;
+  oidcUsernamePrefix?: string;
+  oidcGroupsClaim?: string;
+  oidcGroupsPrefix?: string;
+  httpProxy?: string;
+  httpsProxy?: string;
+  noProxy?: string;
+  customLabels?: Record<string, string>;
+}
+
 export interface MagnumClusterNodeGroup {
   uuid: string;
   name: string;
@@ -117,12 +193,95 @@ export interface MagnumClusterNodeGroup {
   status_reason?: string | null;
   node_addresses?: string[];
   node_count: number;
+  min_node_count?: number;
+  max_node_count?: number | null;
+  is_default?: boolean;
+  stack_id?: string;
+  merge_labels?: boolean;
   docker_volume_size?: number;
   labels?: Record<string, string>;
+  labels_overridden?: Record<string, string>;
+  labels_added?: Record<string, string>;
+  labels_skipped?: Record<string, string>;
+  node_labels?: Record<string, string>;
+  node_taints?: MagnumNodeTaint[];
   image_id?: string;
   flavor_id?: string;
   created_at?: string;
   updated_at?: string | null;
+}
+
+export type MagnumNodeTaintEffect =
+  "NoSchedule" | "PreferNoSchedule" | "NoExecute";
+
+export interface MagnumNodeTaint {
+  key: string;
+  effect: MagnumNodeTaintEffect;
+  value?: string;
+}
+
+export interface MagnumClusterMutationInput {
+  name: string;
+  clusterTemplateId: string;
+  networkDriver: MagnumKubernetesNetworkDriver;
+  controlPlaneCount: number;
+  workerCount: number;
+  createTimeout: number;
+  keypair?: string;
+  controlPlaneFlavorId?: string;
+  workerFlavorId?: string;
+  fixedNetwork?: string;
+  fixedSubnet?: string;
+  masterLoadBalancerEnabled?: boolean;
+  apiFloatingIpEnabled?: boolean;
+  podCidr?: string;
+  serviceCidr?: string;
+  fixedSubnetCidr?: string;
+  apiServerFloatingIp?: string;
+  apiServerCertSans?: string;
+  availabilityZone?: string;
+  controlPlaneAvailabilityZones?: string;
+  apiServerLbAvailabilityZone?: string;
+  bootVolumeType?: string;
+  bootVolumeAvailabilityZone?: string;
+  manilaCsiEnabled?: boolean;
+  manilaCsiShareNetworkId?: string;
+  oidcIssuerUrl?: string;
+  oidcClientId?: string;
+  oidcUsernameClaim?: string;
+  oidcUsernamePrefix?: string;
+  oidcGroupsClaim?: string;
+  oidcGroupsPrefix?: string;
+}
+
+export interface MagnumClusterResizeInput {
+  nodeGroup: string;
+  nodeCount: number;
+  role?: string;
+  minNodeCount?: number;
+  maxNodeCount?: number | null;
+}
+
+export interface MagnumClusterUpgradeInput {
+  clusterTemplateId: string;
+  maxBatchSize?: number;
+}
+
+export interface MagnumNodeGroupMutationInput {
+  name: string;
+  role: string;
+  nodeCount: number;
+  minNodeCount: number;
+  maxNodeCount: number;
+  flavorId?: string;
+  availabilityZone?: string;
+  serverGroupPolicies?: string;
+}
+
+export interface MagnumNodeGroupUpdateInput {
+  autoScalingEnabled?: boolean;
+  minNodeCount: number;
+  maxNodeCount: number;
 }
 
 export interface MagnumClusterNodeGroupListResponse {
@@ -155,6 +314,9 @@ export interface MagnumCluster {
   discovery_url?: string | null;
   cluster_template?: MagnumClusterTemplate;
   labels?: Record<string, string>;
+  flavor_id?: string;
+  master_flavor_id?: string;
+  docker_volume_size?: number;
   fixed_network?: string;
   fixed_subnet?: string;
   floating_ip_enabled?: boolean;
@@ -166,12 +328,32 @@ export interface MagnumCluster {
   stack_updated_at?: string | null;
   health_status?: string | null;
   health_status_reason?: Record<string, string>;
+  labels_overridden?: Record<string, string>;
+  labels_added?: Record<string, string>;
+  labels_skipped?: Record<string, string>;
+  merge_labels?: boolean;
+  master_lb_enabled?: boolean;
   nodegroups?: MagnumClusterNodeGroup[];
 }
 
 export interface MagnumClusterResponse {
   cluster?: MagnumCluster;
   uuid?: string;
+}
+
+export interface MagnumCertificate {
+  cluster_uuid: string;
+  csr?: string;
+  pem: string;
+  ca_cert_type?: string;
+}
+
+export interface MagnumCertificateResponse {
+  certificate?: MagnumCertificate;
+  cluster_uuid?: string;
+  csr?: string;
+  pem?: string;
+  ca_cert_type?: string;
 }
 
 export interface MagnumClusterListResponse {

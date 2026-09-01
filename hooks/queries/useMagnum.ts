@@ -47,7 +47,7 @@ export function clustersQueryOptions(
 ) {
   return queryOptions({
     queryKey: [regionId, projectId, "magnum", "clusters", options],
-    queryFn: () => listClustersAction(options, regionId),
+    queryFn: () => listClustersAction(options, regionId, projectId),
     enabled: !!regionId,
   });
 }
@@ -78,7 +78,7 @@ export function clusterNodeGroupsQueryOptions(
       clusterId,
       "nodegroups",
     ],
-    queryFn: () => listClusterNodeGroupsAction(clusterId, regionId),
+    queryFn: () => listClusterNodeGroupsAction(clusterId, regionId, true),
     enabled: !!regionId && !!clusterId,
   });
 }

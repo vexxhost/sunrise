@@ -37,6 +37,8 @@ describe("Nova mutation actions", () => {
   it("encodes launch user data on the server and narrows the Nova body", async () => {
     await createServerAction(scope, {
       name: "web-1",
+      description: "Frontend workload",
+      count: 3,
       flavorRef: "m1.small",
       imageRef: "image-a",
       networkIds: ["network-a"],
@@ -52,6 +54,7 @@ describe("Nova mutation actions", () => {
         body: {
           server: expect.objectContaining({
             name: "web-1",
+            description: "Frontend workload",
             flavorRef: "m1.small",
             imageRef: "image-a",
             networks: [{ uuid: "network-a" }],
@@ -62,6 +65,8 @@ describe("Nova mutation actions", () => {
               "utf8",
             ).toString("base64"),
             config_drive: true,
+            min_count: 3,
+            max_count: 3,
           }),
         },
       }),
@@ -69,6 +74,26 @@ describe("Nova mutation actions", () => {
     expect(
       mocks.executeOpenStackMutation.mock.calls[0][0].body.server.unexpected,
     ).toBeUndefined();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        successMessage: "3 instances are being created.",
+      }),
+    );
+  });
+
+  it("rejects a launch count below one before contacting Nova", async () => {
+    const result = await createServerAction(scope, {
+      name: "web-1",
+      count: 0,
+      flavorRef: "m1.small",
+      imageRef: "image-a",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("rejects invalid metadata before contacting Nova", async () => {

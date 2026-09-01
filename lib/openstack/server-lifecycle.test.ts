@@ -5,7 +5,9 @@ import {
   canRebuildServer,
   canRunServerLifecycleAction,
   isServerTransitioning,
+  markServersDeleting,
   mergeServerUpdates,
+  selectServerPollingTargets,
 } from "@/lib/openstack/server-lifecycle";
 import { formatServerActivity } from "@/lib/openstack/server-state";
 import type { Server } from "@/types/openstack";
@@ -31,8 +33,12 @@ describe("server lifecycle availability", () => {
   });
 
   it("offers reboot only for stable running instances", () => {
-    expect(canRunServerLifecycleAction(server("ACTIVE"), "soft-reboot")).toBe(true);
-    expect(canRunServerLifecycleAction(server("ACTIVE"), "hard-reboot")).toBe(true);
+    expect(canRunServerLifecycleAction(server("ACTIVE"), "soft-reboot")).toBe(
+      true,
+    );
+    expect(canRunServerLifecycleAction(server("ACTIVE"), "hard-reboot")).toBe(
+      true,
+    );
     expect(
       canRunServerLifecycleAction(
         server("ACTIVE", { "OS-EXT-STS:task_state": "image_uploading" }),
@@ -79,7 +85,10 @@ describe("server polling updates", () => {
   it("returns a new list only when a polled server changes", () => {
     const existing = [first, second];
     const updated = { ...first, status: "REBOOT" };
-    const result = mergeServerUpdates(existing, new Map([[updated.id, updated]]));
+    const result = mergeServerUpdates(
+      existing,
+      new Map([[updated.id, updated]]),
+    );
 
     expect(result).not.toBe(existing);
     expect(result).toEqual([updated, second]);
@@ -94,6 +103,57 @@ describe("server polling updates", () => {
     );
 
     expect(result).toBe(existing);
+  });
+
+  it("marks successful delete targets for transition polling", () => {
+    const firstServer = { ...first, "OS-EXT-STS:task_state": undefined };
+    const secondServer = { ...second, "OS-EXT-STS:task_state": undefined };
+    const result = markServersDeleting(
+      [firstServer, secondServer] as Server[],
+      new Set([first.id]),
+    );
+
+    expect(result[0]).toMatchObject({
+      id: first.id,
+      status: "DELETING",
+      "OS-EXT-STS:task_state": "deleting",
+    });
+    expect(result[1]).toBe(secondServer);
+  });
+
+  it("polls pending deletions even when they are outside the visible page", () => {
+    const hiddenDeleting = {
+      ...second,
+      "OS-EXT-STS:task_state": undefined,
+    } as Server;
+    const visibleStable = {
+      ...first,
+      "OS-EXT-STS:task_state": undefined,
+    } as Server;
+
+    expect(
+      selectServerPollingTargets(
+        [visibleStable, hiddenDeleting],
+        [visibleStable],
+        new Set([hiddenDeleting.id]),
+      ),
+    ).toEqual([hiddenDeleting]);
+  });
+
+  it("deduplicates visible transitions that are also pending deletion", () => {
+    const deleting = {
+      ...first,
+      status: "DELETING",
+      "OS-EXT-STS:task_state": "deleting",
+    } as Server;
+
+    expect(
+      selectServerPollingTargets(
+        [deleting, second as Server],
+        [deleting],
+        new Set([deleting.id]),
+      ),
+    ).toEqual([deleting]);
   });
 });
 

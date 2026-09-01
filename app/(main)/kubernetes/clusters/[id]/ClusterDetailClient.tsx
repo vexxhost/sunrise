@@ -1,35 +1,52 @@
 "use client";
 
 import Link from "next/link";
-import type { ComponentType } from "react";
-import { useEffect, useMemo, useState } from "react";
-import { FadedText } from "@/components/FadedText";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import {
-  Activity,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ComponentType,
+} from "react";
+import {
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
+import {
+  Box,
   Boxes,
+  Check,
   CheckCircle2,
-  Cloud,
-  Database,
+  CircleHelp,
+  Copy,
   Gauge,
   Globe2,
-  HardDrive,
-  KeyRound,
-  Layers,
   LockKeyhole,
-  Network,
+  Pencil,
+  Plus,
   RefreshCw,
-  Route,
-  ScrollText,
-  Server,
-  Shield,
-  ShieldCheck,
-  Wrench,
+  Scaling,
+  Trash2,
+  TriangleAlert,
 } from "lucide-react";
+
+import { DataTable } from "@/components/DataTable";
+import { IDCell } from "@/components/DataTable/IDCell";
+import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { DriverConfigurationTable } from "@/components/Kubernetes/DriverConfigurationTable";
+import { ClusterLifecycleActions } from "@/components/Kubernetes/ClusterLifecycleActions";
+import { NodeGroupMutationSheet } from "@/components/Kubernetes/NodeGroupMutationSheet";
+import { NodeGroupResizeDialog } from "@/components/Kubernetes/NodeGroupResizeDialog";
+import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
-import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -39,12 +56,25 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import {
   clusterNodeGroupsQueryOptions,
   clusterQueryOptions,
   clusterTemplatesQueryOptions,
 } from "@/hooks/queries/useMagnum";
+import {
+  networksQueryOptions,
+  visibleSubnetsQueryOptions,
+} from "@/hooks/queries/useNetworks";
+import { flavorsQueryOptions } from "@/hooks/queries/useServers";
+import {
+  clusterKubernetesVersion,
+  getKubernetesHealthDiagnostics,
+} from "@/lib/openstack/magnum-domain";
+import { deleteClusterNodeGroupAction } from "@/lib/openstack/magnum-actions";
 import type {
+  Flavor,
+  Image,
   MagnumCluster,
   MagnumClusterNodeGroup,
   MagnumClusterTemplate,
@@ -61,331 +91,6 @@ interface ClusterDetailClientProps {
   activeTab: KubernetesClusterDetailTab;
 }
 
-interface NodePoolView {
-  id: string;
-  name: string;
-  role: string;
-  status?: string;
-  statusReason?: string | null;
-  nodeCount: number;
-  kubernetesVersion?: string;
-  flavor?: string;
-  image?: string;
-  volumeSize?: number;
-  synthetic?: boolean;
-}
-
-interface EndpointParts {
-  href: string;
-  protocol: string;
-  host: string;
-  port: string;
-  display: string;
-}
-
-interface ComponentSignal {
-  area: string;
-  component: string;
-  value: string;
-  detail: string;
-  source: string;
-}
-
-interface DriverLabelSpec {
-  category: string;
-  label: string;
-  key: string;
-  defaultValue: string;
-  description: string;
-}
-
-const DRIVER_LABELS: DriverLabelSpec[] = [
-  {
-    category: "Volumes",
-    label: "Boot volume size",
-    key: "boot_volume_size",
-    defaultValue: "Unset",
-    description: "Enables boot-from-volume and controls root disk size.",
-  },
-  {
-    category: "Volumes",
-    label: "Boot volume type",
-    key: "boot_volume_type",
-    defaultValue: "Default volume",
-    description: "Cinder volume type used for node boot volumes.",
-  },
-  {
-    category: "Volumes",
-    label: "Boot volume AZ",
-    key: "boot_volume_availability_zone",
-    defaultValue: "availability_zone",
-    description: "Cinder AZ for node boot volumes.",
-  },
-  {
-    category: "Volumes",
-    label: "etcd volume size",
-    key: "etcd_volume_size",
-    defaultValue: "Unset",
-    description: "Dedicated etcd volume size in GB.",
-  },
-  {
-    category: "Volumes",
-    label: "etcd volume type",
-    key: "etcd_volume_type",
-    defaultValue: "None",
-    description: "Cinder volume type used by the etcd data volume.",
-  },
-  {
-    category: "Images",
-    label: "Container registry prefix",
-    key: "container_infra_prefix",
-    defaultValue: "Upstream registries",
-    description: "Overrides image registry prefix for cluster components.",
-  },
-  {
-    category: "Network",
-    label: "Calico IPv4 pool",
-    key: "calico_ipv4pool",
-    defaultValue: "10.100.0.0/16",
-    description: "Pod CIDR allocated by Calico.",
-  },
-  {
-    category: "Network",
-    label: "Service CIDR",
-    key: "service_cluster_ip_range",
-    defaultValue: "10.254.0.0/16",
-    description: "Kubernetes service IP range.",
-  },
-  {
-    category: "Auditing",
-    label: "Audit logs",
-    key: "audit_log_enabled",
-    defaultValue: "false",
-    description: "Enables Kubernetes API audit logs on control-plane nodes.",
-  },
-  {
-    category: "Auditing",
-    label: "Audit retention",
-    key: "audit_log_maxage",
-    defaultValue: "30",
-    description: "Number of days to retain audit logs.",
-  },
-  {
-    category: "Auditing",
-    label: "Audit backups",
-    key: "audit_log_maxbackup",
-    defaultValue: "10",
-    description: "Number of rotated audit files to retain.",
-  },
-  {
-    category: "Auditing",
-    label: "Audit max size",
-    key: "audit_log_maxsize",
-    defaultValue: "100",
-    description: "Audit log file size in MB before rotation.",
-  },
-  {
-    category: "Cloud Controller",
-    label: "Cloud provider image",
-    key: "cloud_provider_tag",
-    defaultValue: "Detected from kube_tag",
-    description: "OpenStack cloud-controller-manager image tag.",
-  },
-  {
-    category: "Cloud Controller",
-    label: "Octavia provider",
-    key: "octavia_provider",
-    defaultValue: "Octavia default",
-    description: "Provider for Kubernetes LoadBalancer services.",
-  },
-  {
-    category: "Cloud Controller",
-    label: "Octavia algorithm",
-    key: "octavia_lb_algorithm",
-    defaultValue: "Provider default",
-    description: "Load-balancing algorithm for Octavia services.",
-  },
-  {
-    category: "Cloud Controller",
-    label: "Octavia healthcheck",
-    key: "octavia_lb_healthcheck",
-    defaultValue: "true",
-    description: "Enables Octavia health monitors for load balancers.",
-  },
-  {
-    category: "CNI",
-    label: "Calico image",
-    key: "calico_tag",
-    defaultValue: "v3.31.3",
-    description: "Calico image tag used for cluster networking.",
-  },
-  {
-    category: "CNI",
-    label: "Cilium Hubble UI",
-    key: "cilium_hubble_ui_enabled",
-    defaultValue: "false",
-    description: "Deploys Cilium Hubble relay and UI when enabled.",
-  },
-  {
-    category: "CSI",
-    label: "Cinder CSI image",
-    key: "cinder_csi_plugin_tag",
-    defaultValue: "Detected from kube_tag",
-    description: "Cinder CSI plugin image tag.",
-  },
-  {
-    category: "CSI",
-    label: "Manila CSI image",
-    key: "manila_csi_plugin_tag",
-    defaultValue: "Detected from kube_tag",
-    description: "Manila CSI plugin image tag.",
-  },
-  {
-    category: "CSI",
-    label: "Manila share network",
-    key: "manila_csi_share_network_id",
-    defaultValue: "None",
-    description: "Manila share network ID used by Manila CSI.",
-  },
-  {
-    category: "Kubernetes",
-    label: "Kubernetes version",
-    key: "kube_tag",
-    defaultValue: "v1.25.3",
-    description: "Kubernetes version used by the cluster.",
-  },
-  {
-    category: "Kubernetes",
-    label: "API cert SANs",
-    key: "api_server_cert_sans",
-    defaultValue: "Unset",
-    description: "Extra Kubernetes API server certificate SANs.",
-  },
-  {
-    category: "Kubernetes",
-    label: "API TLS ciphers",
-    key: "api_server_tls_cipher_suites",
-    defaultValue: "Mozilla modern default",
-    description: "TLS cipher suites for Kubernetes API server.",
-  },
-  {
-    category: "Kubernetes",
-    label: "Kubelet TLS ciphers",
-    key: "kubelet_tls_cipher_suites",
-    defaultValue: "Driver default",
-    description: "TLS cipher suites for kubelet communication.",
-  },
-  {
-    category: "Kubernetes",
-    label: "Auto healing",
-    key: "auto_healing_enabled",
-    defaultValue: "true",
-    description: "Replaces failed nodes after unhealthy timeout.",
-  },
-  {
-    category: "Kubernetes",
-    label: "Auto scaling",
-    key: "auto_scaling_enabled",
-    defaultValue: "false",
-    description: "Enables Kubernetes Cluster Autoscaler integration.",
-  },
-  {
-    category: "Kubernetes",
-    label: "Master LB floating IP",
-    key: "master_lb_floating_ip_enabled",
-    defaultValue: "true",
-    description: "Attaches a floating IP to the Kubernetes API load balancer.",
-  },
-  {
-    category: "OIDC",
-    label: "Issuer URL",
-    key: "oidc_issuer_url",
-    defaultValue: "Unset",
-    description: "OIDC issuer used by the Kubernetes API server.",
-  },
-  {
-    category: "OIDC",
-    label: "Client ID",
-    key: "oidc_client_id",
-    defaultValue: "Unset",
-    description: "OIDC client ID.",
-  },
-  {
-    category: "OIDC",
-    label: "Username claim",
-    key: "oidc_username_claim",
-    defaultValue: "sub",
-    description: "OIDC claim used as Kubernetes username.",
-  },
-  {
-    category: "OIDC",
-    label: "Username prefix",
-    key: "oidc_username_prefix",
-    defaultValue: "-",
-    description: "Prefix applied to OIDC usernames.",
-  },
-  {
-    category: "OIDC",
-    label: "Groups claim",
-    key: "oidc_groups_claim",
-    defaultValue: "Unset",
-    description: "OIDC claim used for Kubernetes groups.",
-  },
-  {
-    category: "OIDC",
-    label: "Groups prefix",
-    key: "oidc_groups_prefix",
-    defaultValue: "Unset",
-    description: "Prefix applied to OIDC groups.",
-  },
-  {
-    category: "OpenStack",
-    label: "Fixed subnet CIDR",
-    key: "fixed_subnet_cidr",
-    defaultValue: "10.0.0.0/24",
-    description: "Neutron fixed subnet CIDR for the cluster.",
-  },
-  {
-    category: "OpenStack",
-    label: "Different failure domains",
-    key: "different_failure_domain",
-    defaultValue: "false",
-    description: "Spreads nodes across different OpenStack failure domains.",
-  },
-  {
-    category: "OpenStack",
-    label: "Server group policies",
-    key: "server_group_policies",
-    defaultValue: "soft-anti-affinity",
-    description: "Nova server group policies per node group.",
-  },
-  {
-    category: "OpenStack",
-    label: "Availability zone",
-    key: "availability_zone",
-    defaultValue: "Unset",
-    description: "OpenStack AZ for cluster nodes.",
-  },
-  {
-    category: "OpenStack",
-    label: "DNS cluster domain",
-    key: "dns_cluster_domain",
-    defaultValue: "Unset",
-    description: "Kubernetes cluster DNS domain.",
-  },
-];
-
-function emptyToDash(value: unknown) {
-  return value === null || value === undefined || value === ""
-    ? "-"
-    : String(value);
-}
-
-function enabledText(value: unknown, fallback = "-") {
-  const rendered = renderBoolean(value);
-  return rendered === "-" ? fallback : rendered;
-}
-
 function displayStatus(status: string) {
   return status
     .replace(/_/g, " ")
@@ -400,429 +105,57 @@ function statusVariant(status: string) {
   return "outline" as const;
 }
 
-function renderBoolean(value: unknown) {
-  if (value === null || value === undefined || value === "") return "-";
-  if (typeof value === "boolean") return value ? "Enabled" : "Disabled";
-
-  const normalized = String(value).toLowerCase();
-  if (["true", "yes", "1"].includes(normalized)) return "Enabled";
-  if (["false", "no", "0"].includes(normalized)) return "Disabled";
-
-  return String(value);
+function isTransitioning(status: string | undefined) {
+  return Boolean(status?.endsWith("_IN_PROGRESS"));
 }
 
-function renderTls(value: unknown) {
-  if (value === null || value === undefined || value === "") return "-";
-  return value ? "Disabled" : "Enabled";
-}
-
-function renderDriver(value: unknown, fallback = "Default") {
+function emptyToDash(value: unknown) {
   return value === null || value === undefined || value === ""
-    ? fallback
+    ? "-"
     : String(value);
 }
 
-function normalizeLabelValue(value: unknown) {
-  if (value === null || value === undefined || value === "") return undefined;
-  return String(value);
+function yesNo(value: boolean | null | undefined) {
+  return value ? "Enabled" : "Disabled";
 }
 
-function getLabel(
-  labels: Record<string, string>,
-  keys: string[],
-): string | undefined {
-  for (const key of keys) {
-    const value = normalizeLabelValue(labels[key]);
-    if (value) return value;
-  }
-
-  return undefined;
+function labelBoolean(value: string | undefined, fallback: boolean) {
+  if (value === undefined) return fallback;
+  return value.toLowerCase() === "true";
 }
 
-function combinedLabels(
-  cluster: MagnumCluster,
-  template: MagnumClusterTemplate | undefined,
-) {
-  return {
-    ...(template?.labels ?? {}),
-    ...(cluster.labels ?? {}),
-  };
-}
-
-function getKubernetesMinor(version: string | undefined) {
-  const match = version?.match(/^v?(\d+)\.(\d+)/);
-  return match ? `${match[1]}.${match[2]}` : "-";
-}
-
-function parseEndpoint(value: string | null | undefined): EndpointParts | null {
+function parseEndpoint(value: string | null | undefined) {
   if (!value) return null;
-
   try {
-    const endpoint = new URL(value);
+    const parsed = new URL(value);
     return {
-      href: value,
-      protocol: endpoint.protocol.replace(":", "").toUpperCase(),
-      host: endpoint.hostname,
-      port: endpoint.port || "-",
-      display: `${endpoint.hostname}${endpoint.port ? `:${endpoint.port}` : ""}`,
+      href: parsed.href,
+      display: `${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`,
+      protocol: parsed.protocol.replace(":", "").toUpperCase(),
     };
   } catch {
-    return {
-      href: value,
-      protocol: "-",
-      host: value,
-      port: "-",
-      display: value,
-    };
+    return { href: value, display: value, protocol: "Kubernetes API" };
   }
-}
-
-function joinOrDash(values: Array<string | undefined>) {
-  const present = values.filter((value): value is string => Boolean(value));
-  return present.length ? present.join(", ") : "-";
-}
-
-function uniqueValues(values: Array<string | undefined>) {
-  return Array.from(
-    new Set(values.filter((value): value is string => Boolean(value))),
-  );
-}
-
-function getNodeGroupRole(nodegroup: MagnumClusterNodeGroup) {
-  if (nodegroup.roles?.length) return nodegroup.roles.join(", ");
-  return nodegroup.role || "-";
-}
-
-function buildNodePools(
-  cluster: MagnumCluster,
-  template: MagnumClusterTemplate | undefined,
-  nodegroups: MagnumClusterNodeGroup[],
-): NodePoolView[] {
-  if (nodegroups.length > 0) {
-    return nodegroups.map((nodegroup) => ({
-      id: nodegroup.uuid,
-      name: nodegroup.name,
-      role: getNodeGroupRole(nodegroup),
-      status: nodegroup.status,
-      statusReason: nodegroup.status_reason,
-      nodeCount: nodegroup.node_count ?? 0,
-      kubernetesVersion:
-        nodegroup.labels?.kube_tag?.replace(/^v/, "") ??
-        cluster.coe_version?.replace(/^v/, ""),
-      flavor: nodegroup.flavor_id,
-      image: nodegroup.image_id,
-      volumeSize: nodegroup.docker_volume_size,
-    }));
-  }
-
-  return [
-    {
-      id: "default-master",
-      name: "default-master",
-      role: "master",
-      status: cluster.status,
-      nodeCount: cluster.master_count ?? 0,
-      kubernetesVersion: cluster.coe_version?.replace(/^v/, ""),
-      flavor: template?.master_flavor_id,
-      image: template?.image_id,
-      volumeSize: template?.docker_volume_size,
-      synthetic: true,
-    },
-    {
-      id: "default-worker",
-      name: "default-worker",
-      role: "worker",
-      status: cluster.status,
-      nodeCount: cluster.node_count ?? 0,
-      kubernetesVersion: cluster.coe_version?.replace(/^v/, ""),
-      flavor: template?.flavor_id,
-      image: template?.image_id,
-      volumeSize: template?.docker_volume_size,
-      synthetic: true,
-    },
-  ];
-}
-
-function buildComponentSignals(
-  cluster: MagnumCluster,
-  template: MagnumClusterTemplate | undefined,
-): ComponentSignal[] {
-  const labels = combinedLabels(cluster, template);
-  const cniTag = getLabel(labels, [
-    "cilium_tag",
-    "calico_tag",
-    "flannel_tag",
-    "flannel_version",
-  ]);
-  const cloudProviderTag = getLabel(labels, [
-    "cloud_provider_tag",
-    "openstack_cloud_provider_tag",
-  ]);
-  const kubeTag = getLabel(labels, ["kube_tag", "kube_version"]);
-  const cinderCsiTag = getLabel(labels, [
-    "cinder_csi_plugin_tag",
-    "cinder_csi_attacher_tag",
-  ]);
-  const keystoneTag = getLabel(labels, [
-    "k8s_keystone_auth_tag",
-    "keystone_auth_tag",
-  ]);
-  const octaviaTag = getLabel(labels, [
-    "octavia_ingress_controller_tag",
-    "octavia_provider",
-  ]);
-  const autoHealing = getLabel(labels, [
-    "auto_healing_enabled",
-    "auto_healing_controller",
-  ]);
-  const autoScaling = getLabel(labels, ["auto_scaling_enabled"]);
-  const auditLogs = getLabel(labels, ["audit_log_enabled"]);
-  const serviceCidr = getLabel(labels, ["service_cluster_ip_range"]);
-  const podCidr = getLabel(labels, ["calico_ipv4pool"]);
-  const oidcIssuer = getLabel(labels, ["oidc_issuer_url"]);
-  const failureDomains = getLabel(labels, [
-    "different_failure_domain",
-    "server_group_policies",
-  ]);
-
-  return [
-    {
-      area: "Control plane",
-      component: "Kubernetes API",
-      value: cluster.coe_version || kubeTag || "-",
-      detail: `minor ${getKubernetesMinor(cluster.coe_version || kubeTag)}`,
-      source: cluster.coe_version ? "cluster.coe_version" : "labels.kube_tag",
-    },
-    {
-      area: "Networking",
-      component: "Pod networking",
-      value: renderDriver(template?.network_driver),
-      detail: joinOrDash([cniTag, podCidr]),
-      source: "template.network_driver",
-    },
-    {
-      area: "Networking",
-      component: "Service network",
-      value: serviceCidr || "10.254.0.0/16",
-      detail: serviceCidr ? "configured label" : "driver default",
-      source: "labels.service_cluster_ip_range",
-    },
-    {
-      area: "Networking",
-      component: "Cloud provider",
-      value: enabledText(getLabel(labels, ["cloud_provider_enabled"])),
-      detail: cloudProviderTag || "-",
-      source: "template labels",
-    },
-    {
-      area: "Load balancing",
-      component: "API load balancer",
-      value: enabledText(template?.master_lb_enabled),
-      detail: `floating IP ${renderBoolean(cluster.floating_ip_enabled).toLowerCase()}`,
-      source: "template.master_lb_enabled",
-    },
-    {
-      area: "Load balancing",
-      component: "Ingress controller",
-      value: octaviaTag ? "Configured" : "-",
-      detail: octaviaTag || "-",
-      source: "template labels",
-    },
-    {
-      area: "Storage",
-      component: "Volume integration",
-      value: renderDriver(template?.volume_driver, "No volume driver"),
-      detail:
-        joinOrDash([
-          cinderCsiTag,
-          getLabel(labels, ["manila_csi_plugin_tag"]),
-        ]) || "template volume driver",
-      source: "template.volume_driver",
-    },
-    {
-      area: "Storage",
-      component: "Node image volume",
-      value: template?.docker_volume_size
-        ? `${template.docker_volume_size} GB`
-        : "Local image storage",
-      detail: template?.docker_storage_driver || "-",
-      source: "template.docker_volume_size",
-    },
-    {
-      area: "Authority",
-      component: "TLS",
-      value: renderTls(template?.tls_disabled),
-      detail: template?.insecure_registry
-        ? `insecure registry ${template.insecure_registry}`
-        : "API TLS setting",
-      source: "template.tls_disabled",
-    },
-    {
-      area: "Authority",
-      component: "Keystone authentication",
-      value: keystoneTag ? "Configured" : "-",
-      detail: keystoneTag || "-",
-      source: "template labels",
-    },
-    {
-      area: "Authority",
-      component: "OIDC",
-      value: oidcIssuer ? "Configured" : "-",
-      detail: oidcIssuer || "-",
-      source: "labels.oidc_issuer_url",
-    },
-    {
-      area: "Security",
-      component: "API auditing",
-      value: enabledText(auditLogs, "Disabled"),
-      detail: joinOrDash([
-        getLabel(labels, ["audit_log_maxage"]),
-        getLabel(labels, ["audit_log_maxsize"]),
-      ]),
-      source: "labels.audit_log_enabled",
-    },
-    {
-      area: "Operations",
-      component: "Auto healing",
-      value: enabledText(autoHealing),
-      detail:
-        getLabel(labels, ["auto_healing_controller", "auto_scaling_enabled"]) ||
-        "-",
-      source: "template labels",
-    },
-    {
-      area: "Operations",
-      component: "Auto scaling",
-      value: enabledText(autoScaling, "Disabled"),
-      detail: "Kubernetes Cluster Autoscaler",
-      source: "labels.auto_scaling_enabled",
-    },
-    {
-      area: "Placement",
-      component: "Failure domains",
-      value: enabledText(failureDomains, "Default scheduling"),
-      detail: getLabel(labels, ["availability_zone"]) || "-",
-      source: "labels.different_failure_domain",
-    },
-  ];
-}
-
-function TemplateLink({
-  template,
-  templateId,
-}: {
-  template?: MagnumClusterTemplate;
-  templateId: string;
-}) {
-  if (!template) {
-    return <span className="font-mono text-xs">{templateId}</span>;
-  }
-
-  return (
-    <span>
-      {template.name}{" "}
-      <span className="font-mono text-xs text-muted-foreground">
-        ({template.uuid})
-      </span>
-    </span>
-  );
-}
-
-function LabelsList({
-  labels,
-  emptyLabel = "Labels",
-}: {
-  labels?: Record<string, string>;
-  emptyLabel?: string;
-}) {
-  const entries = Object.entries(labels ?? {}).sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-
-  if (entries.length === 0) {
-    return <DetailField label={emptyLabel}>-</DetailField>;
-  }
-
-  return entries.map(([key, value]) => (
-    <DetailField key={key} label={key} className="font-mono text-xs">
-      {value}
-    </DetailField>
-  ));
-}
-
-function NodeGroupLabelsList({
-  nodegroups,
-}: {
-  nodegroups: MagnumClusterNodeGroup[];
-}) {
-  const entries = nodegroups.flatMap((nodegroup) =>
-    Object.entries(nodegroup.labels ?? {}).map(([key, value]) => ({
-      key: `${nodegroup.uuid}-${key}`,
-      label: `${nodegroup.name}.${key}`,
-      value,
-    })),
-  );
-
-  if (entries.length === 0) {
-    return <DetailField label="Node Group Labels">-</DetailField>;
-  }
-
-  return entries.map((entry) => (
-    <DetailField
-      key={entry.key}
-      label={entry.label}
-      className="font-mono text-xs"
-    >
-      {entry.value}
-    </DetailField>
-  ));
 }
 
 function SummaryTile({
+  detail,
   icon: Icon,
   label,
   value,
-  detail,
 }: {
+  detail: React.ReactNode;
   icon: ComponentType<{ className?: string }>;
   label: string;
-  value: string;
-  detail?: string;
+  value: React.ReactNode;
 }) {
   return (
     <div className="min-w-0 rounded-md border bg-card p-3 text-card-foreground">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <Icon className="h-4 w-4" />
-        <span className="min-w-0 truncate">{label}</span>
+        <Icon className="size-4" />
+        {label}
       </div>
-      <div className="mt-3 min-w-0 truncate text-lg font-semibold">{value}</div>
-      {detail ? (
-        <div className="mt-1 min-w-0 truncate text-xs text-muted-foreground">
-          {detail}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function CapabilityTile({
-  icon: Icon,
-  title,
-  value,
-  detail,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-md border p-3">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <span className="min-w-0 truncate">{title}</span>
-      </div>
-      <div className="mt-2 min-w-0 truncate text-sm">{value}</div>
+      <div className="mt-2 min-w-0 truncate text-lg font-semibold">{value}</div>
       <div className="mt-1 min-w-0 truncate text-xs text-muted-foreground">
         {detail}
       </div>
@@ -830,155 +163,612 @@ function CapabilityTile({
   );
 }
 
-function NodePoolsTable({ nodePools }: { nodePools: NodePoolView[] }) {
+function ApiEndpointTile({
+  endpoint,
+  isPublic,
+}: {
+  endpoint: ReturnType<typeof parseEndpoint>;
+  isPublic: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const Icon = isPublic ? Globe2 : LockKeyhole;
+  const displayEndpoint = endpoint
+    ? `${endpoint.protocol.toLowerCase()}://${endpoint.display}`
+    : "No endpoint reported";
+
+  const handleCopy = async () => {
+    if (!endpoint) return;
+    await navigator.clipboard.writeText(endpoint.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2_000);
+  };
+
   return (
-    <div className="overflow-hidden rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Node group</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Nodes</TableHead>
-            <TableHead>Kubernetes Version</TableHead>
-            <TableHead>Image ID</TableHead>
-            <TableHead>Flavor</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {nodePools.map((pool) => (
-            <TableRow key={pool.id}>
-              <TableCell className="whitespace-normal">
-                <div className="min-w-0">
-                  <div className="font-medium">{pool.name}</div>
-                  <div className="font-mono text-xs text-muted-foreground">
-                    {pool.synthetic ? "derived from cluster counts" : pool.id}
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>{pool.role}</TableCell>
-              <TableCell>
-                {pool.status ? (
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <Badge
-                      className="w-fit"
-                      variant={statusVariant(pool.status)}
-                    >
-                      {displayStatus(pool.status)}
-                    </Badge>
-                    {pool.statusReason ? (
-                      <span className="max-w-56 truncate text-xs text-muted-foreground">
-                        {pool.statusReason}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : (
-                  "-"
-                )}
-              </TableCell>
-              <TableCell>{pool.nodeCount}</TableCell>
-              <TableCell>{emptyToDash(pool.kubernetesVersion)}</TableCell>
-              <TableCell className="max-w-72 whitespace-normal font-mono text-xs [overflow-wrap:anywhere]">
-                {emptyToDash(pool.image)}
-              </TableCell>
-              <TableCell>{emptyToDash(pool.flavor)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="min-w-0 rounded-md border bg-card p-3 text-card-foreground">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Icon className="size-4" />
+        Kubernetes API
+      </div>
+      <div className="mt-2 truncate text-lg font-semibold">
+        {endpoint
+          ? isPublic
+            ? "Public endpoint"
+            : "Private endpoint"
+          : "Not available"}
+      </div>
+      <div className="mt-1 flex min-w-0 items-center gap-1">
+        <span
+          className="min-w-0 truncate font-mono text-xs text-muted-foreground"
+          title={displayEndpoint}
+        >
+          {displayEndpoint}
+        </span>
+        {endpoint ? (
+          <Button
+            aria-label="Copy Kubernetes API endpoint"
+            className="size-6 shrink-0"
+            onClick={handleCopy}
+            size="icon"
+            title={copied ? "Endpoint copied" : "Copy endpoint"}
+            type="button"
+            variant="ghost"
+          >
+            {copied ? (
+              <Check className="size-3.5 text-emerald-500" />
+            ) : (
+              <Copy className="size-3.5" />
+            )}
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function ComponentSignalsTable({ signals }: { signals: ComponentSignal[] }) {
+function HealthPanel({ cluster }: { cluster: MagnumCluster }) {
+  const diagnostics = getKubernetesHealthDiagnostics(cluster);
+  const available =
+    Boolean(cluster.health_status) || Object.keys(diagnostics.raw).length > 0;
+  const unhealthy =
+    diagnostics.issues.length > 0 ||
+    (Boolean(cluster.health_status) &&
+      cluster.health_status?.toUpperCase() !== "HEALTHY");
+
   return (
-    <div className="overflow-hidden rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Area</TableHead>
-            <TableHead>Component</TableHead>
-            <TableHead>Value</TableHead>
-            <TableHead>Detail</TableHead>
-            <TableHead>Source</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {signals.map((signal) => (
-            <TableRow key={`${signal.area}-${signal.component}`}>
-              <TableCell>{signal.area}</TableCell>
-              <TableCell>{signal.component}</TableCell>
-              <TableCell className="whitespace-normal">
-                {signal.value}
-              </TableCell>
-              <TableCell className="max-w-80 whitespace-normal text-muted-foreground [overflow-wrap:anywhere]">
-                {signal.detail}
-              </TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">
-                {signal.source}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <section
+      className={
+        !available
+          ? "overflow-hidden rounded-md border bg-muted/20"
+          : unhealthy
+            ? "overflow-hidden rounded-md border border-destructive/40 bg-destructive/5"
+            : "overflow-hidden rounded-md border border-emerald-500/30 bg-emerald-500/5"
+      }
+    >
+      <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-2.5">
+          {!available ? (
+            <CircleHelp className="mt-0.5 size-5 text-muted-foreground" />
+          ) : unhealthy ? (
+            <TriangleAlert className="mt-0.5 size-5 text-destructive" />
+          ) : (
+            <CheckCircle2 className="mt-0.5 size-5 text-emerald-600 dark:text-emerald-400" />
+          )}
+          <div>
+            <h2 className="text-sm font-semibold">
+              {!available
+                ? "Health checks unavailable"
+                : unhealthy
+                  ? "Health issues"
+                  : "Cluster checks are healthy"}
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {!available
+                ? "Magnum has not reported API or machine readiness yet."
+                : diagnostics.machineCount > 0
+                  ? `${diagnostics.readyMachineCount} of ${diagnostics.machineCount} Cluster API machines are ready.`
+                  : "Magnum has not reported machine-level readiness checks."}
+            </p>
+          </div>
+        </div>
+        {diagnostics.apiReady !== null ? (
+          <Badge variant={diagnostics.apiReady ? "default" : "destructive"}>
+            API {diagnostics.apiReady ? "ready" : "not ready"}
+          </Badge>
+        ) : null}
+      </div>
+
+      {available && unhealthy ? (
+        diagnostics.issues.length > 0 ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Issue</TableHead>
+                  <TableHead>Affected resource</TableHead>
+                  <TableHead>State</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {diagnostics.issues.map((issue) => (
+                  <TableRow key={issue.id}>
+                    <TableCell>
+                      <div className="font-medium">{issue.summary}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {issue.resourceType}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {issue.resource}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="destructive">{issue.state}</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <p className="px-4 py-3 text-sm text-muted-foreground">
+            Magnum reports {displayStatus(cluster.health_status || "unknown")},
+            but did not return a machine-level reason. Refresh after the next
+            health check for more detail.
+          </p>
+        )
+      ) : null}
+
+      {Object.keys(diagnostics.raw).length > 0 ? (
+        <details className="border-t px-4 py-3 text-sm">
+          <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
+            Health Status Reason
+          </summary>
+          <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-muted p-3 font-mono text-xs">
+            {JSON.stringify(diagnostics.raw, null, 2)}
+          </pre>
+        </details>
+      ) : null}
+      <details
+        className="border-t px-4 py-3 text-sm"
+        open={
+          isTransitioning(cluster.status) || cluster.status.endsWith("_FAILED")
+            ? true
+            : undefined
+        }
+      >
+        <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
+          Status Reason
+        </summary>
+        <p className="mt-3 whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-xs text-muted-foreground">
+          {cluster.status_reason || "No status details reported."}
+        </p>
+      </details>
+    </section>
   );
 }
 
-function DriverLabelsTable({ labels }: { labels: Record<string, string> }) {
-  return (
-    <div className="overflow-hidden rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Category</TableHead>
-            <TableHead>Label</TableHead>
-            <TableHead>Current</TableHead>
-            <TableHead>Default</TableHead>
-            <TableHead>Meaning</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {DRIVER_LABELS.map((spec) => {
-            const value = labels[spec.key];
+function ResourceLink({
+  children,
+  href,
+}: {
+  children: React.ReactNode;
+  href?: string;
+}) {
+  return href ? (
+    <Link
+      className="underline-offset-2 hover:underline focus-visible:underline"
+      href={href}
+    >
+      {children}
+    </Link>
+  ) : (
+    children
+  );
+}
 
-            return (
-              <TableRow key={spec.key}>
-                <TableCell>{spec.category}</TableCell>
-                <TableCell>
-                  <FadedText
-                    value={spec.key}
-                    className="w-56 font-mono text-xs"
-                  />
-                </TableCell>
-                <TableCell className="whitespace-normal [overflow-wrap:anywhere]">
-                  {value ? (
-                    <span>{value}</span>
-                  ) : (
-                    <span className="text-muted-foreground">Not set</span>
-                  )}
-                </TableCell>
-                <TableCell className="whitespace-normal text-muted-foreground [overflow-wrap:anywhere]">
-                  {spec.defaultValue}
-                </TableCell>
-                <TableCell className="max-w-96 whitespace-normal text-muted-foreground">
-                  {spec.description}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+function NodeGroupsTable({
+  autoScalingEnabled,
+  cluster,
+  flavors,
+  images,
+  isRefetching,
+  nodeGroups,
+  projectId,
+  refetch,
+  regionId,
+}: {
+  autoScalingEnabled: boolean;
+  cluster: MagnumCluster;
+  flavors: Flavor[];
+  images: Image[];
+  isRefetching: boolean;
+  nodeGroups: MagnumClusterNodeGroup[];
+  projectId?: string;
+  refetch: () => void;
+  regionId?: string;
+}) {
+  type NodeGroupRow = MagnumClusterNodeGroup & {
+    availabilityZone: string;
+    flavor?: Flavor;
+    flavorName: string;
+    image?: Image;
+    imageName: string;
+    scalingDetail: string;
+    scalingPolicy: string;
+    detailHref?: string;
+  };
+
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<MagnumClusterNodeGroup | null>(null);
+  const [resizing, setResizing] = useState<MagnumClusterNodeGroup | null>(null);
+  const [deleting, setDeleting] = useState<MagnumClusterNodeGroup | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, startDeleteTransition] = useTransition();
+  const queryClient = useQueryClient();
+
+  const rows = useMemo<NodeGroupRow[]>(() => {
+    const sourceRows: MagnumClusterNodeGroup[] =
+      nodeGroups.length > 0
+        ? nodeGroups
+        : [
+            {
+              uuid: `${cluster.uuid}-control-plane`,
+              name: "default-master",
+              role: "master",
+              node_count: cluster.master_count ?? 0,
+              flavor_id: cluster.master_flavor_id,
+              image_id: cluster.cluster_template?.image_id,
+              status: cluster.status,
+              is_default: true,
+            },
+            {
+              uuid: `${cluster.uuid}-workers`,
+              name: "default-worker",
+              role: "worker",
+              node_count: cluster.node_count ?? 0,
+              flavor_id: cluster.flavor_id,
+              image_id: cluster.cluster_template?.image_id,
+              status: cluster.status,
+              is_default: true,
+            },
+          ];
+
+    return sourceRows.map((nodeGroup) => {
+      const flavor = flavors.find(
+        (candidate) =>
+          candidate.id === nodeGroup.flavor_id ||
+          candidate.name === nodeGroup.flavor_id,
+      );
+      const image = images.find(
+        (candidate) =>
+          candidate.id === nodeGroup.image_id ||
+          candidate.name === nodeGroup.image_id,
+      );
+      const isControlPlane = nodeGroup.role === "master";
+      const minimum = nodeGroup.min_node_count ?? nodeGroup.node_count;
+      const configuredMaximum =
+        nodeGroup.max_node_count ??
+        (nodeGroup.labels?.max_node_count
+          ? Number(nodeGroup.labels.max_node_count)
+          : undefined);
+      const maximum = configuredMaximum ?? minimum + 1;
+
+      return {
+        ...nodeGroup,
+        detailHref:
+          nodeGroups.length > 0
+            ? `/kubernetes/clusters/${cluster.uuid}/node-groups/${nodeGroup.uuid}`
+            : undefined,
+        availabilityZone: nodeGroup.labels?.availability_zone || "Inherited",
+        flavor,
+        flavorName: flavor?.name || nodeGroup.flavor_id || "-",
+        image,
+        imageName: image?.name || nodeGroup.image_id || "-",
+        scalingDetail:
+          autoScalingEnabled && !isControlPlane
+            ? "Autoscaler bounds"
+            : "Manual capacity",
+        scalingPolicy:
+          !autoScalingEnabled || isControlPlane
+            ? `Fixed at ${nodeGroup.node_count}`
+            : `${minimum} - ${maximum}`,
+      };
+    });
+  }, [autoScalingEnabled, cluster, flavors, images, nodeGroups]);
+
+  const columns = useMemo<ColumnDef<NodeGroupRow>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Name",
+        cell: ({ row }) => (
+          <div
+            className="max-w-44 truncate font-medium"
+            title={row.original.name}
+          >
+            <ResourceLink href={row.original.detailHref}>
+              {row.original.name}
+            </ResourceLink>
+          </div>
+        ),
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "uuid",
+        header: "UUID",
+        enableHiding: false,
+        cell: ({ row }) => (
+          <IDCell
+            isSelected={row.getIsSelected()}
+            linkPath={
+              row.original.detailHref
+                ? `/kubernetes/clusters/${cluster.uuid}/node-groups`
+                : undefined
+            }
+            value={row.original.uuid}
+          />
+        ),
+        meta: {
+          fieldType: "string",
+          monospace: true,
+          visible: true,
+        },
+      },
+      {
+        accessorKey: "role",
+        header: "Role",
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) =>
+          row.original.status ? (
+            isTransitioning(row.original.status) ? (
+              <ProgressStatusBadge label={displayStatus(row.original.status)} />
+            ) : (
+              <Badge variant={statusVariant(row.original.status)}>
+                {displayStatus(row.original.status)}
+              </Badge>
+            )
+          ) : (
+            "-"
+          ),
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "node_count",
+        header: "Nodes",
+        meta: { fieldType: "number", visible: true },
+      },
+      {
+        accessorKey: "flavorName",
+        header: "Flavor",
+        cell: ({ row }) => (
+          <ResourceLink
+            href={
+              row.original.flavor
+                ? `/compute/instance-flavors/${row.original.flavor.id}`
+                : undefined
+            }
+          >
+            {row.original.flavorName}
+          </ResourceLink>
+        ),
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "scalingPolicy",
+        header: "Scaling",
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap">
+            <div className="font-medium">{row.original.scalingPolicy}</div>
+            <div className="text-xs text-muted-foreground">
+              {row.original.scalingDetail}
+            </div>
+          </div>
+        ),
+        meta: { fieldType: "string", visible: true },
+      },
+      {
+        accessorKey: "imageName",
+        header: "Image",
+        cell: ({ row }) => (
+          <div className="max-w-64 truncate" title={row.original.imageName}>
+            <ResourceLink
+              href={
+                row.original.image
+                  ? `/compute/images/${row.original.image.id}`
+                  : undefined
+              }
+            >
+              {row.original.imageName}
+            </ResourceLink>
+          </div>
+        ),
+        meta: { fieldType: "string", visible: false },
+      },
+      {
+        accessorKey: "availabilityZone",
+        header: "Availability Zone",
+        meta: { fieldType: "string", visible: false },
+      },
+    ],
+    [cluster.uuid],
+  );
+
+  const rowActions = useMemo(
+    () => [
+      {
+        label: "Scale",
+        icon: Scaling,
+        onClick: (selected: NodeGroupRow[]) => setResizing(selected[0] ?? null),
+        isDisabled: (selected: NodeGroupRow[]) =>
+          selected.length !== 1 || isTransitioning(selected[0]?.status),
+      },
+      {
+        label: "Edit settings",
+        icon: Pencil,
+        onClick: (selected: NodeGroupRow[]) => setEditing(selected[0] ?? null),
+        isDisabled: (selected: NodeGroupRow[]) =>
+          selected.length !== 1 ||
+          selected[0]?.role === "master" ||
+          isTransitioning(selected[0]?.status),
+      },
+      {
+        label: "Delete",
+        icon: Trash2,
+        variant: "destructive" as const,
+        onClick: (selected: NodeGroupRow[]) => {
+          setDeleteError(null);
+          setDeleteConfirmation("");
+          setDeleting(selected[0] ?? null);
+        },
+        isDisabled: (selected: NodeGroupRow[]) =>
+          selected.length !== 1 ||
+          Boolean(selected[0]?.is_default) ||
+          selected[0]?.role === "master" ||
+          isTransitioning(selected[0]?.status),
+      },
+    ],
+    [],
+  );
+
+  const deleteNodeGroup = () => {
+    if (!deleting || !projectId || !regionId) return;
+    if (deleteConfirmation !== deleting.name) {
+      setDeleteError(`Enter ${deleting.name} to confirm deletion.`);
+      return;
+    }
+    startDeleteTransition(async () => {
+      setDeleteError(null);
+      const result = await deleteClusterNodeGroupAction(
+        { projectId, regionId },
+        cluster.uuid,
+        deleting,
+      );
+      if (!result.ok) {
+        setDeleteError(result.error.message);
+        return;
+      }
+      queryClient.setQueryData<MagnumClusterNodeGroup[]>(
+        clusterNodeGroupsQueryOptions(regionId, projectId, cluster.uuid)
+          .queryKey,
+        (current) =>
+          current?.map((nodeGroup) =>
+            nodeGroup.uuid === deleting.uuid
+              ? { ...nodeGroup, status: "DELETE_IN_PROGRESS" }
+              : nodeGroup,
+          ),
+      );
+      setDeleting(null);
+      setDeleteConfirmation("");
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button
+          disabled={!projectId || !regionId || isTransitioning(cluster.status)}
+          onClick={() => setCreating(true)}
+          size="sm"
+          type="button"
+        >
+          <Plus className="size-4" />
+          Add node group
+        </Button>
+      </div>
+      <DataTable
+        columns={columns}
+        data={rows}
+        emptyIcon={Boxes}
+        getRowId={(row) => row.uuid}
+        isRefetching={isRefetching}
+        refetch={refetch}
+        resourceName="node group"
+        rowActions={rowActions}
+      />
+      {creating ? (
+        <NodeGroupMutationSheet
+          cluster={cluster}
+          flavors={flavors}
+          onComplete={refetch}
+          onOpenChange={setCreating}
+          open
+          projectId={projectId}
+          regionId={regionId}
+        />
+      ) : null}
+      {editing ? (
+        <NodeGroupMutationSheet
+          cluster={cluster}
+          flavors={flavors}
+          nodeGroup={editing}
+          onComplete={refetch}
+          onOpenChange={(open) => !open && setEditing(null)}
+          open
+          projectId={projectId}
+          regionId={regionId}
+        />
+      ) : null}
+      {resizing ? (
+        <NodeGroupResizeDialog
+          autoScalingEnabled={autoScalingEnabled}
+          cluster={cluster}
+          nodeGroup={resizing}
+          onOpenChange={(open) => !open && setResizing(null)}
+          open
+          projectId={projectId}
+          regionId={regionId}
+        />
+      ) : null}
+      <MutationConfirmationDialog
+        confirmLabel="Delete node group"
+        confirmDisabled={deleteConfirmation !== deleting?.name}
+        description="Magnum will remove this worker group and its machines. Workloads must be able to reschedule elsewhere."
+        error={deleteError}
+        onConfirm={deleteNodeGroup}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleting(null);
+            setDeleteConfirmation("");
+          }
+        }}
+        open={Boolean(deleting)}
+        pending={isDeleting}
+        pendingLabel="Starting deletion"
+        title={`Delete ${deleting?.name ?? "node group"}?`}
+        variant="destructive"
+      >
+        <div className="space-y-2">
+          <Label htmlFor="node-group-delete-confirmation">
+            Enter <span className="font-mono">{deleting?.name}</span> to confirm
+          </Label>
+          <Input
+            autoComplete="off"
+            id="node-group-delete-confirmation"
+            value={deleteConfirmation}
+            onChange={(event) => setDeleteConfirmation(event.target.value)}
+          />
+          {deleteConfirmation && deleteConfirmation !== deleting?.name ? (
+            <p className="text-xs text-destructive">
+              Node-group name does not match.
+            </p>
+          ) : null}
+        </div>
+      </MutationConfirmationDialog>
     </div>
   );
 }
 
 export function ClusterDetailClient({
-  clusterId,
-  regionId,
-  projectId,
   activeTab,
+  clusterId,
+  projectId,
+  regionId,
 }: ClusterDetailClientProps) {
+  const router = useRouter();
   const clusterQuery = clusterQueryOptions(regionId, projectId, clusterId);
   const nodeGroupsQuery = clusterNodeGroupsQueryOptions(
     regionId,
@@ -990,60 +780,96 @@ export function ClusterDetailClient({
     data: cluster,
     isRefetching: isClusterRefetching,
     refetch: refetchCluster,
-  } = useSuspenseQuery(clusterQuery);
+  } = useSuspenseQuery({
+    ...clusterQuery,
+    refetchInterval: ({ state }) => {
+      if (!state.data) return false;
+      if (isTransitioning(state.data.status)) return 5_000;
+      return state.data.health_status &&
+        state.data.health_status.toUpperCase() !== "HEALTHY"
+        ? 15_000
+        : false;
+    },
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
   const {
-    data: nodegroups,
+    data: nodeGroupData,
     isRefetching: isNodeGroupsRefetching,
     refetch: refetchNodeGroups,
-  } = useSuspenseQuery(nodeGroupsQuery);
+  } = useSuspenseQuery({
+    ...nodeGroupsQuery,
+    refetchInterval: ({ state }) =>
+      Array.isArray(state.data) &&
+      state.data.some((nodeGroup) => isTransitioning(nodeGroup.status))
+        ? 5_000
+        : false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
   const {
     data: templates,
     isRefetching: isTemplatesRefetching,
     refetch: refetchTemplates,
   } = useSuspenseQuery(templatesQuery);
-
-  const template = useMemo(() => {
-    return (
+  const { data: networks = [] } = useQuery(
+    networksQueryOptions(regionId, projectId),
+  );
+  const { data: subnets = [] } = useQuery(
+    visibleSubnetsQueryOptions(regionId, projectId),
+  );
+  const { data: images = [] } = useQuery(
+    imagesQueryOptions(regionId, projectId),
+  );
+  const { data: flavors = [] } = useQuery(
+    flavorsQueryOptions(regionId, projectId),
+  );
+  const nodeGroups = Array.isArray(nodeGroupData) ? nodeGroupData : [];
+  const template = useMemo(
+    () =>
       cluster.cluster_template ??
       templates.find(
         (candidate: MagnumClusterTemplate) =>
           candidate.uuid === cluster.cluster_template_id,
-      )
-    );
-  }, [cluster.cluster_template, cluster.cluster_template_id, templates]);
-
-  const nodePools = useMemo(
-    () => buildNodePools(cluster, template, nodegroups),
-    [cluster, nodegroups, template],
+      ),
+    [cluster.cluster_template, cluster.cluster_template_id, templates],
   );
-  const totalNodes = nodePools.reduce((sum, pool) => sum + pool.nodeCount, 0);
-  const workerNodes =
-    nodePools
-      .filter((pool) => pool.role.toLowerCase().includes("worker"))
-      .reduce((sum, pool) => sum + pool.nodeCount, 0) ||
-    cluster.node_count ||
-    0;
-  const controlNodes =
-    nodePools
-      .filter((pool) => pool.role.toLowerCase().includes("master"))
-      .reduce((sum, pool) => sum + pool.nodeCount, 0) ||
-    cluster.master_count ||
-    0;
-  const labels = combinedLabels(cluster, template);
-  const componentSignals = useMemo(
-    () => buildComponentSignals(cluster, template),
+  const clusterWithTemplate = useMemo(
+    () => ({ ...cluster, cluster_template: template }),
     [cluster, template],
   );
-  const apiEndpoint = parseEndpoint(cluster.api_address);
-  const kubernetesMinor = getKubernetesMinor(cluster.coe_version);
-  const nodePoolFlavors = uniqueValues(nodePools.map((pool) => pool.flavor));
-  const authorityProjectId = cluster.project_id ?? template?.project_id;
-  const authorityUserId = cluster.user_id ?? template?.user_id;
-  const configuredDriverLabels = DRIVER_LABELS.filter(
-    (spec) => labels[spec.key],
+  const labels = useMemo(
+    () => ({ ...(template?.labels ?? {}), ...(cluster.labels ?? {}) }),
+    [cluster.labels, template?.labels],
   );
-  const configuredDriverCategories = uniqueValues(
-    configuredDriverLabels.map((spec) => spec.category),
+  const apiEndpoint = parseEndpoint(cluster.api_address);
+  const kubernetesVersion = clusterKubernetesVersion(clusterWithTemplate);
+  const controlNodes =
+    nodeGroups
+      .filter((nodeGroup) => nodeGroup.role === "master")
+      .reduce((total, nodeGroup) => total + nodeGroup.node_count, 0) ||
+    cluster.master_count ||
+    0;
+  const workerNodes =
+    nodeGroups
+      .filter((nodeGroup) => nodeGroup.role !== "master")
+      .reduce((total, nodeGroup) => total + nodeGroup.node_count, 0) ||
+    cluster.node_count ||
+    0;
+  const externalNetwork = networks.find(
+    (network) =>
+      network.id === template?.external_network_id ||
+      network.name === template?.external_network_id,
+  );
+  const fixedNetwork = networks.find(
+    (network) =>
+      network.id === cluster.fixed_network ||
+      network.name === cluster.fixed_network,
+  );
+  const fixedSubnet = subnets.find(
+    (subnet) =>
+      subnet.id === cluster.fixed_subnet ||
+      subnet.name === cluster.fixed_subnet,
   );
   const isRefreshing =
     isClusterRefetching || isNodeGroupsRefetching || isTemplatesRefetching;
@@ -1051,34 +877,18 @@ export function ClusterDetailClient({
     useState<KubernetesClusterDetailTab>(activeTab);
 
   useEffect(() => {
-    setSelectedTab(activeTab);
-  }, [activeTab]);
-
-  useEffect(() => {
     const handlePopState = () => {
-      const segments = window.location.pathname.split("/").filter(Boolean);
-      const tab = segments[segments.length - 1];
-
-      if (tab && isKubernetesClusterDetailTab(tab)) {
-        setSelectedTab(tab);
-      }
+      const tab = window.location.pathname.split("/").filter(Boolean).at(-1);
+      if (tab && isKubernetesClusterDetailTab(tab)) setSelectedTab(tab);
     };
-
     window.addEventListener("popstate", handlePopState);
-
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   const handleTabChange = (value: string) => {
-    if (!isKubernetesClusterDetailTab(value)) {
-      return;
-    }
-
+    if (!isKubernetesClusterDetailTab(value)) return;
     setSelectedTab(value);
     const nextPath = `/kubernetes/clusters/${clusterId}/${value}`;
-
     if (window.location.pathname !== nextPath) {
       window.history.pushState(null, "", nextPath);
     }
@@ -1105,13 +915,17 @@ export function ClusterDetailClient({
             <h1 className="min-w-0 text-2xl font-semibold tracking-tight">
               {cluster.name || "Unnamed cluster"}
             </h1>
-            <Badge variant={statusVariant(cluster.status)}>
-              {displayStatus(cluster.status)}
-            </Badge>
+            {isTransitioning(cluster.status) ? (
+              <ProgressStatusBadge label={displayStatus(cluster.status)} />
+            ) : (
+              <Badge variant={statusVariant(cluster.status)}>
+                {displayStatus(cluster.status)}
+              </Badge>
+            )}
             {cluster.health_status ? (
               <Badge
                 variant={
-                  cluster.health_status === "HEALTHY"
+                  cluster.health_status.toUpperCase() === "HEALTHY"
                     ? "default"
                     : "destructive"
                 }
@@ -1120,587 +934,443 @@ export function ClusterDetailClient({
               </Badge>
             ) : null}
           </div>
-          <p className="font-mono text-sm text-muted-foreground">
+          <p className="truncate font-mono text-sm text-muted-foreground">
             {cluster.uuid}
           </p>
         </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-          className="h-9 gap-2"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+        <div className="flex items-center gap-2">
+          <Button
+            className="h-9 gap-2"
+            disabled={isRefreshing}
+            onClick={handleRefresh}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RefreshCw
+              className={`size-4 ${isRefreshing ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+          <ClusterLifecycleActions
+            cluster={clusterWithTemplate}
+            nodeGroups={nodeGroups}
+            onDeleted={() =>
+              router.replace(
+                `/kubernetes/clusters?deleting=${encodeURIComponent(cluster.uuid)}`,
+              )
+            }
+            onMutationAccepted={async () => {
+              await Promise.all([refetchCluster(), refetchNodeGroups()]);
+            }}
+            projectId={projectId}
+            regionId={regionId}
+            templates={templates}
           />
-          Refresh
-        </Button>
+        </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-        <SummaryTile
-          icon={Activity}
-          label="Cluster state"
-          value={displayStatus(cluster.status)}
-          detail={cluster.status_reason || "Magnum lifecycle status"}
-        />
-        <SummaryTile
-          icon={CheckCircle2}
-          label="Health"
-          value={
-            cluster.health_status ? displayStatus(cluster.health_status) : "-"
-          }
-          detail="Magnum health"
-        />
+      <HealthPanel cluster={cluster} />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryTile
           icon={Gauge}
           label="Kubernetes version"
-          value={kubernetesMinor}
-          detail="coe_version"
+          value={kubernetesVersion}
+          detail="Cluster-wide version"
         />
         <SummaryTile
           icon={Boxes}
-          label="Node groups"
-          value={String(nodePools.length)}
-          detail={`${controlNodes} control / ${workerNodes} worker`}
+          label="Nodes"
+          value={controlNodes + workerNodes}
+          detail={`${controlNodes} control plane / ${workerNodes} worker`}
         />
         <SummaryTile
-          icon={Cloud}
-          label="API endpoint"
-          value={apiEndpoint?.display ?? "-"}
-          detail={apiEndpoint?.protocol ?? "No API address reported"}
-        />
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <CapabilityTile
-          icon={Server}
-          title="Compute"
-          value={`${emptyToDash(template?.server_type || "vm").toUpperCase()} node servers`}
-          detail={`${emptyToDash(template?.master_flavor_id)} control, ${emptyToDash(template?.flavor_id)} worker`}
-        />
-        <CapabilityTile
-          icon={Network}
-          title="Networking"
-          value={`${renderDriver(template?.network_driver)} pod networking`}
-          detail={`Floating IP ${renderBoolean(cluster.floating_ip_enabled).toLowerCase()}`}
-        />
-        <CapabilityTile
-          icon={Database}
-          title="Storage"
-          value={renderDriver(template?.volume_driver, "No volume driver")}
-          detail={
-            template?.docker_volume_size
-              ? `${template.docker_volume_size} GB image volume per node`
-              : "Local image storage"
+          icon={Box}
+          label="Cluster template"
+          value={
+            template ? (
+              <Link
+                className="hover:underline focus-visible:underline"
+                href={`/kubernetes/templates/${template.uuid}`}
+              >
+                {template.name}
+              </Link>
+            ) : (
+              cluster.cluster_template_id
+            )
           }
+          detail="Configuration and upgrade source"
         />
-        <CapabilityTile
-          icon={ShieldCheck}
-          title="Key pair"
-          value={emptyToDash(cluster.keypair ?? template?.keypair_id)}
-          detail="SSH access"
-        />
-        <CapabilityTile
-          icon={Wrench}
-          title="Operations"
-          value={`Healing ${enabledText(getLabel(labels, ["auto_healing_enabled"]), "Enabled").toLowerCase()}`}
-          detail={`Scaling ${enabledText(getLabel(labels, ["auto_scaling_enabled"]), "Disabled").toLowerCase()}`}
-        />
-        <CapabilityTile
-          icon={ScrollText}
-          title="Driver labels"
-          value={`${configuredDriverLabels.length} configured`}
-          detail={joinOrDash(configuredDriverCategories)}
+        <ApiEndpointTile
+          endpoint={apiEndpoint}
+          isPublic={labelBoolean(
+            labels.master_lb_floating_ip_enabled,
+            cluster.floating_ip_enabled ?? true,
+          )}
         />
       </div>
 
       <Tabs
+        className="space-y-4"
         value={selectedTab}
         onValueChange={handleTabChange}
-        className="space-y-4"
       >
-        <TabsList className="grid h-auto w-full grid-cols-2 md:w-fit md:grid-cols-7">
+        <TabsList className="grid h-auto w-full grid-cols-2 md:grid-cols-7">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="node-groups">Node groups</TabsTrigger>
-          <TabsTrigger value="components">Components</TabsTrigger>
           <TabsTrigger value="networking">Networking</TabsTrigger>
-          <TabsTrigger value="authority">Authority</TabsTrigger>
-          <TabsTrigger value="template">Template</TabsTrigger>
+          <TabsTrigger value="storage">Storage</TabsTrigger>
+          <TabsTrigger value="security">Security</TabsTrigger>
+          <TabsTrigger value="add-ons">Add-ons</TabsTrigger>
           <TabsTrigger value="labels">Labels</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-4">
+        <TabsContent className="space-y-4" value="overview">
           <div className="grid gap-4 xl:grid-cols-2">
-            <DetailSection title="Cluster">
-              <DetailField label="Name">
-                {emptyToDash(cluster.name)}
+            <DetailSection title="Operations">
+              <DetailField label="Automatic healing">
+                {yesNo(labelBoolean(labels.auto_healing_enabled, true))}
               </DetailField>
-              <DetailField label="ID" className="font-mono text-xs">
+              <DetailField label="Automatic scaling">
+                {yesNo(labelBoolean(labels.auto_scaling_enabled, false))}
+              </DetailField>
+              <DetailField label="Create timeout">
+                {cluster.create_timeout
+                  ? `${cluster.create_timeout} minutes`
+                  : "-"}
+              </DetailField>
+            </DetailSection>
+            <DetailSection title="Placement">
+              <DetailField label="Default compute availability zone">
+                {labels.availability_zone || "Cloud scheduler"}
+              </DetailField>
+              <DetailField label="Control plane availability zones">
+                {labels.control_plane_availability_zones || "Inherited"}
+              </DetailField>
+              <DetailField label="Different failure domains">
+                {yesNo(labelBoolean(labels.different_failure_domain, false))}
+              </DetailField>
+              <DetailField label="Server group policies">
+                {labels.server_group_policies || "soft-anti-affinity"}
+              </DetailField>
+            </DetailSection>
+            <DetailSection title="Identity and timeline">
+              <DetailField label="Cluster ID" className="font-mono text-xs">
                 {cluster.uuid}
-              </DetailField>
-              <DetailField label="Status">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <Badge
-                    className="w-fit"
-                    variant={statusVariant(cluster.status)}
-                  >
-                    {displayStatus(cluster.status)}
-                  </Badge>
-                  {cluster.status_reason ? (
-                    <span className="text-xs text-muted-foreground">
-                      {cluster.status_reason}
-                    </span>
-                  ) : null}
-                </div>
-              </DetailField>
-              <DetailField label="Health">
-                {cluster.health_status ? (
-                  <Badge
-                    variant={
-                      cluster.health_status === "HEALTHY"
-                        ? "default"
-                        : "destructive"
-                    }
-                  >
-                    {displayStatus(cluster.health_status)}
-                  </Badge>
-                ) : (
-                  "-"
-                )}
-              </DetailField>
-              <DetailField label="Template">
-                <TemplateLink
-                  template={template}
-                  templateId={cluster.cluster_template_id}
-                />
               </DetailField>
               <DetailField label="Stack ID" className="font-mono text-xs">
                 {emptyToDash(cluster.stack_id)}
               </DetailField>
-            </DetailSection>
-
-            <DetailSection title="Kubernetes">
-              <DetailField label="Kubernetes Version">
-                {kubernetesMinor}
+              <DetailField label="Created">
+                {emptyToDash(cluster.created_at)}
               </DetailField>
-              <DetailField label="Control Nodes">{controlNodes}</DetailField>
-              <DetailField label="Worker Nodes">{workerNodes}</DetailField>
-              <DetailField label="Key Pair">
-                {emptyToDash(cluster.keypair)}
+              <DetailField label="Updated">
+                {emptyToDash(cluster.updated_at)}
+              </DetailField>
+              <DetailField label="Project ID" className="font-mono text-xs">
+                {emptyToDash(cluster.project_id)}
               </DetailField>
             </DetailSection>
           </div>
-
-          <DetailSection title="Stats">
-            <DetailField label="Total Nodes">
-              {totalNodes || controlNodes + workerNodes}
-            </DetailField>
-            <DetailField label="Node Groups">{nodePools.length}</DetailField>
-            <DetailField label="Flavors">
-              {joinOrDash(nodePoolFlavors)}
-            </DetailField>
-            <DetailField label="Create Timeout">
-              {cluster.create_timeout
-                ? `${cluster.create_timeout} minutes`
-                : "-"}
-            </DetailField>
-          </DetailSection>
-
-          <DetailSection title="Timestamps">
-            <DetailField label="Created">
-              {emptyToDash(cluster.created_at)}
-            </DetailField>
-            <DetailField label="Updated">
-              {emptyToDash(cluster.updated_at)}
-            </DetailField>
-            <DetailField label="Stack Created">
-              {emptyToDash(cluster.stack_created_at)}
-            </DetailField>
-            <DetailField label="Stack Updated">
-              {emptyToDash(cluster.stack_updated_at)}
-            </DetailField>
-          </DetailSection>
         </TabsContent>
 
-        <TabsContent value="node-groups" className="space-y-4">
-          <section className="space-y-3">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-sm font-semibold">Node groups</h2>
-              <p className="text-sm text-muted-foreground">
-                Magnum nodegroups separate control and worker capacity, and can
-                carry placement labels for availability zones or workload roles.
-              </p>
-            </div>
-            <NodePoolsTable nodePools={nodePools} />
-          </section>
-        </TabsContent>
-
-        <TabsContent value="components" className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <CapabilityTile
-              icon={Gauge}
-              title="Kubernetes"
-              value={kubernetesMinor}
-              detail="coe_version"
-            />
-            <CapabilityTile
-              icon={Route}
-              title="Pod network"
-              value={renderDriver(template?.network_driver)}
-              detail={
-                getLabel(labels, ["cilium_tag", "calico_tag", "flannel_tag"]) ||
-                "-"
-              }
-            />
-            <CapabilityTile
-              icon={HardDrive}
-              title="Storage driver"
-              value={renderDriver(template?.volume_driver, "No volume driver")}
-              detail={
-                getLabel(labels, [
-                  "cinder_csi_plugin_tag",
-                  "cinder_csi_attacher_tag",
-                ]) || "-"
-              }
-            />
-            <CapabilityTile
-              icon={Activity}
-              title="Auto scaling"
-              value={enabledText(
-                getLabel(labels, ["auto_scaling_enabled"]),
-                "Disabled",
-              )}
-              detail="Cluster Autoscaler integration"
-            />
-            <CapabilityTile
-              icon={CheckCircle2}
-              title="Auto healing"
-              value={enabledText(
-                getLabel(labels, ["auto_healing_enabled"]),
-                "Enabled",
-              )}
-              detail="Node remediation through Cluster API"
-            />
-            <CapabilityTile
-              icon={ScrollText}
-              title="Audit logs"
-              value={enabledText(
-                getLabel(labels, ["audit_log_enabled"]),
-                "Disabled",
-              )}
-              detail={`retention ${getLabel(labels, ["audit_log_maxage"]) || "30"} days`}
-            />
-            <CapabilityTile
-              icon={Globe2}
-              title="Service CIDR"
-              value={
-                getLabel(labels, ["service_cluster_ip_range"]) ||
-                "10.254.0.0/16"
-              }
-              detail={`pod CIDR ${getLabel(labels, ["calico_ipv4pool"]) || "10.100.0.0/16"}`}
-            />
-            <CapabilityTile
-              icon={Cloud}
-              title="Cloud provider"
-              value={enabledText(getLabel(labels, ["cloud_provider_enabled"]))}
-              detail={
-                getLabel(labels, [
-                  "cloud_provider_tag",
-                  "openstack_cloud_provider_tag",
-                ]) || "-"
-              }
-            />
-            <CapabilityTile
-              icon={ShieldCheck}
-              title="Keystone auth"
-              value={
-                getLabel(labels, ["k8s_keystone_auth_tag", "keystone_auth_tag"])
-                  ? "Configured"
-                  : "-"
-              }
-              detail={
-                getLabel(labels, [
-                  "k8s_keystone_auth_tag",
-                  "keystone_auth_tag",
-                ]) || "-"
-              }
-            />
+        <TabsContent className="space-y-3" value="node-groups">
+          <div>
+            <h2 className="text-sm font-semibold">Node groups</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              All node groups run Kubernetes {kubernetesVersion}. Magnum Cluster
+              API upgrades the cluster and every node group together.
+            </p>
           </div>
-
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Component Signals</h2>
-            <ComponentSignalsTable signals={componentSignals} />
-          </section>
-
-          <section className="space-y-3">
-            <div className="space-y-1">
-              <h2 className="text-sm font-semibold">Driver Configuration</h2>
-              <p className="text-sm text-muted-foreground">
-                These labels are specific to the VEXXHOST Cluster API driver for
-                Magnum. Missing values are shown with their documented defaults
-                where the driver provides one.
-              </p>
-            </div>
-            <DriverLabelsTable labels={labels} />
-          </section>
+          <NodeGroupsTable
+            autoScalingEnabled={labelBoolean(
+              labels.auto_scaling_enabled,
+              false,
+            )}
+            cluster={clusterWithTemplate}
+            flavors={flavors}
+            images={images}
+            isRefetching={isNodeGroupsRefetching}
+            nodeGroups={nodeGroups}
+            projectId={projectId}
+            refetch={() => {
+              void refetchNodeGroups();
+            }}
+            regionId={regionId}
+          />
         </TabsContent>
 
-        <TabsContent value="networking" className="space-y-4">
-          <DetailSection title="Access And Networking">
-            <DetailField label="API Address">
-              {apiEndpoint ? (
-                <a
-                  href={apiEndpoint.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline decoration-dotted underline-offset-2 hover:text-foreground"
-                >
-                  {apiEndpoint.href}
-                </a>
-              ) : (
-                "-"
-              )}
-            </DetailField>
-            <DetailField label="Fixed Network">
-              {emptyToDash(cluster.fixed_network)}
-            </DetailField>
-            <DetailField label="Fixed Subnet">
-              {emptyToDash(cluster.fixed_subnet)}
-            </DetailField>
-            <DetailField label="Fixed Subnet CIDR">
-              {getLabel(labels, ["fixed_subnet_cidr"]) || "10.0.0.0/24"}
-            </DetailField>
-            <DetailField label="Floating IP">
-              {renderBoolean(cluster.floating_ip_enabled)}
-            </DetailField>
-            <DetailField label="Master LB Floating IP">
-              {getLabel(labels, ["master_lb_floating_ip_enabled"]) || "true"}
-            </DetailField>
-            <DetailField label="Network Driver">
-              {emptyToDash(template?.network_driver)}
-            </DetailField>
-            <DetailField label="Pod CIDR">
-              {getLabel(labels, ["calico_ipv4pool"]) || "10.100.0.0/16"}
-            </DetailField>
-            <DetailField label="Service CIDR">
-              {getLabel(labels, ["service_cluster_ip_range"]) ||
-                "10.254.0.0/16"}
-            </DetailField>
-            <DetailField label="Octavia Provider">
-              {emptyToDash(getLabel(labels, ["octavia_provider"]))}
-            </DetailField>
-            <DetailField label="Octavia Algorithm">
-              {emptyToDash(getLabel(labels, ["octavia_lb_algorithm"]))}
-            </DetailField>
-            <DetailField label="Octavia Healthcheck">
-              {getLabel(labels, ["octavia_lb_healthcheck"]) || "true"}
-            </DetailField>
-            <DetailField label="External Network" className="font-mono text-xs">
-              {emptyToDash(template?.external_network_id)}
-            </DetailField>
-            <DetailField label="DNS Nameserver">
-              {emptyToDash(template?.dns_nameserver)}
-            </DetailField>
-          </DetailSection>
-        </TabsContent>
-
-        <TabsContent value="authority" className="space-y-4">
+        <TabsContent className="space-y-4" value="networking">
           <div className="grid gap-4 xl:grid-cols-2">
-            <DetailSection title="Authority">
-              <DetailField label="TLS">
-                {renderTls(template?.tls_disabled)}
+            <DetailSection title="Kubernetes networking">
+              <DetailField label="Pod network">
+                {template?.network_driver || "-"}
               </DetailField>
-              <DetailField label="API Authority">
-                {emptyToDash(apiEndpoint?.display)}
+              <DetailField label="Pod CIDR">
+                {labels.cilium_ipv4pool ||
+                  labels.calico_ipv4pool ||
+                  "10.100.0.0/16"}
               </DetailField>
-              <DetailField label="Certificate Authority">-</DetailField>
-              <DetailField label="API Cert SANs">
-                {emptyToDash(getLabel(labels, ["api_server_cert_sans"]))}
+              <DetailField label="Service CIDR">
+                {labels.service_cluster_ip_range || "10.254.0.0/16"}
               </DetailField>
-              <DetailField
-                label="API TLS Ciphers"
-                className="font-mono text-xs"
-              >
-                {emptyToDash(
-                  getLabel(labels, ["api_server_tls_cipher_suites"]),
-                )}
+              <DetailField label="Cluster domain">
+                {labels.dns_cluster_domain || "cluster.local"}
               </DetailField>
-              <DetailField
-                label="Kubelet TLS Ciphers"
-                className="font-mono text-xs"
-              >
-                {emptyToDash(getLabel(labels, ["kubelet_tls_cipher_suites"]))}
-              </DetailField>
-              <DetailField label="Keystone Authentication">
-                {getLabel(labels, [
-                  "k8s_keystone_auth_tag",
-                  "keystone_auth_tag",
-                ])
-                  ? "Configured"
-                  : "-"}
-              </DetailField>
-              <DetailField label="Keystone Auth Image">
-                {emptyToDash(
-                  getLabel(labels, [
-                    "k8s_keystone_auth_tag",
-                    "keystone_auth_tag",
-                  ]),
-                )}
-              </DetailField>
-              <DetailField label="Key Pair">
-                {emptyToDash(cluster.keypair ?? template?.keypair_id)}
+              <DetailField label="DNS resolvers">
+                {template?.dns_nameserver || "-"}
               </DetailField>
             </DetailSection>
+            <DetailSection title="OpenStack connectivity">
+              <DetailField label="External network">
+                <ResourceLink
+                  href={
+                    externalNetwork
+                      ? `/compute/networks/resources/${externalNetwork.id}`
+                      : undefined
+                  }
+                >
+                  {externalNetwork?.name ||
+                    template?.external_network_id ||
+                    "-"}
+                </ResourceLink>
+              </DetailField>
+              <DetailField label="Fixed network">
+                <ResourceLink
+                  href={
+                    fixedNetwork
+                      ? `/compute/networks/resources/${fixedNetwork.id}`
+                      : undefined
+                  }
+                >
+                  {fixedNetwork?.name || cluster.fixed_network || "-"}
+                </ResourceLink>
+              </DetailField>
+              <DetailField label="Fixed subnet">
+                {fixedSubnet?.name ||
+                  fixedSubnet?.cidr ||
+                  cluster.fixed_subnet ||
+                  "-"}
+              </DetailField>
+              <DetailField label="Fixed subnet CIDR">
+                {fixedSubnet?.cidr || labels.fixed_subnet_cidr || "10.0.0.0/24"}
+              </DetailField>
+            </DetailSection>
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <DetailSection title="Kubernetes API access">
+              <DetailField label="API load balancer">
+                {yesNo(
+                  cluster.master_lb_enabled ?? template?.master_lb_enabled,
+                )}
+              </DetailField>
+              <DetailField label="Public API address">
+                {yesNo(
+                  labelBoolean(
+                    labels.master_lb_floating_ip_enabled,
+                    cluster.floating_ip_enabled ?? true,
+                  ),
+                )}
+              </DetailField>
+              <DetailField label="Requested API floating IP">
+                {labels.api_server_floating_ip || "Automatic"}
+              </DetailField>
+              <DetailField label="API load balancer flavor">
+                {labels.api_server_lb_flavor || "Cloud default"}
+              </DetailField>
+              <DetailField label="API load balancer availability zone">
+                {labels.api_server_lb_availability_zone || "Cloud default"}
+              </DetailField>
+            </DetailSection>
+            <DetailSection title="Kubernetes Services">
+              <DetailField label="Octavia provider">
+                {labels.octavia_provider || "amphorav2"}
+              </DetailField>
+              <DetailField label="Load balancer algorithm">
+                {labels.octavia_lb_algorithm || "Provider default"}
+              </DetailField>
+              <DetailField label="Health monitors">
+                {yesNo(labelBoolean(labels.octavia_lb_healthcheck, true))}
+              </DetailField>
+            </DetailSection>
+          </div>
+        </TabsContent>
 
-            <DetailSection title="OIDC">
+        <TabsContent className="space-y-4" value="storage">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <DetailSection title="Node storage">
+              <DetailField label="Boot volume size">
+                {labels.boot_volume_size
+                  ? `${labels.boot_volume_size} GiB`
+                  : "Cloud default"}
+              </DetailField>
+              <DetailField label="Boot volume type">
+                {labels.boot_volume_type || "Cloud default"}
+              </DetailField>
+              <DetailField label="Boot volume availability zone">
+                {labels.boot_volume_availability_zone ||
+                  labels.availability_zone ||
+                  "Inherited"}
+              </DetailField>
+              <DetailField label="etcd volume size">
+                {Number(labels.etcd_volume_size || 0) > 0
+                  ? `${labels.etcd_volume_size} GiB`
+                  : "Root disk"}
+              </DetailField>
+              <DetailField label="etcd volume type">
+                {labels.etcd_volume_type || "Cloud default"}
+              </DetailField>
+              <DetailField label="Legacy container volume">
+                {template?.docker_volume_size
+                  ? `${template.docker_volume_size} GiB`
+                  : "Disabled"}
+              </DetailField>
+              <DetailField label="Legacy container volume type">
+                {template?.docker_volume_size
+                  ? labels.docker_volume_type || "Cloud default"
+                  : "Not applicable"}
+              </DetailField>
+            </DetailSection>
+            <DetailSection title="Workload storage">
+              <DetailField label="Cinder CSI">
+                {yesNo(labelBoolean(labels.cinder_csi_enabled, true))}
+              </DetailField>
+              <DetailField label="Cinder CSI version">
+                {labels.cinder_csi_plugin_tag || "Driver default"}
+              </DetailField>
+              <DetailField label="Manila CSI">
+                {yesNo(labelBoolean(labels.manila_csi_enabled, true))}
+              </DetailField>
+              <DetailField label="Manila CSI version">
+                {labels.manila_csi_plugin_tag || "Driver default"}
+              </DetailField>
+              <DetailField label="Manila share network">
+                {labels.manila_csi_share_network_id || "Not configured"}
+              </DetailField>
+            </DetailSection>
+          </div>
+        </TabsContent>
+
+        <TabsContent className="space-y-4" value="security">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <DetailSection title="Kubernetes API">
+              <DetailField label="Endpoint">
+                {apiEndpoint ? (
+                  <a
+                    className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                    href={apiEndpoint.href}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {apiEndpoint.href}
+                  </a>
+                ) : (
+                  "-"
+                )}
+              </DetailField>
+              <DetailField label="TLS">
+                {template?.tls_disabled ? "Disabled" : "Enabled"}
+              </DetailField>
+              <DetailField label="Additional certificate SANs">
+                {labels.api_server_cert_sans || "None"}
+              </DetailField>
+              <DetailField label="SSH key pair">
+                {cluster.keypair || template?.keypair_id || "-"}
+              </DetailField>
+              <DetailField label="Keystone authentication">
+                {yesNo(labelBoolean(labels.keystone_auth_enabled, true))}
+              </DetailField>
+            </DetailSection>
+            <DetailSection title="OpenID Connect">
               <DetailField label="Issuer URL">
-                {emptyToDash(getLabel(labels, ["oidc_issuer_url"]))}
+                {labels.oidc_issuer_url || "Not configured"}
               </DetailField>
               <DetailField label="Client ID">
-                {emptyToDash(getLabel(labels, ["oidc_client_id"]))}
+                {labels.oidc_client_id || "-"}
               </DetailField>
-              <DetailField label="Username Claim">
-                {getLabel(labels, ["oidc_username_claim"]) || "sub"}
+              <DetailField label="Username claim">
+                {labels.oidc_username_claim || "sub"}
               </DetailField>
-              <DetailField label="Username Prefix">
-                {getLabel(labels, ["oidc_username_prefix"]) || "-"}
+              <DetailField label="Username prefix">
+                {labels.oidc_username_prefix || "-"}
               </DetailField>
-              <DetailField label="Groups Claim">
-                {emptyToDash(getLabel(labels, ["oidc_groups_claim"]))}
+              <DetailField label="Groups claim">
+                {labels.oidc_groups_claim || "-"}
               </DetailField>
-              <DetailField label="Groups Prefix">
-                {emptyToDash(getLabel(labels, ["oidc_groups_prefix"]))}
+              <DetailField label="Groups prefix">
+                {labels.oidc_groups_prefix || "-"}
               </DetailField>
             </DetailSection>
-
-            <DetailSection title="Ownership">
-              <DetailField label="Project ID" className="font-mono text-xs">
-                {emptyToDash(authorityProjectId)}
+            <DetailSection title="Admission and TLS policy">
+              <DetailField label="Admission plugins">
+                {labels.admission_control_list
+                  ? `NodeRestriction,${labels.admission_control_list}`
+                  : "NodeRestriction"}
               </DetailField>
-              <DetailField label="User ID" className="font-mono text-xs">
-                {emptyToDash(authorityUserId)}
+              <DetailField label="API server TLS cipher suites">
+                {labels.api_server_tls_cipher_suites ||
+                  "Driver secure defaults"}
               </DetailField>
-              <DetailField label="Template Owner" className="font-mono text-xs">
-                {emptyToDash(template?.owner)}
-              </DetailField>
-              <DetailField label="Template Visibility">
-                {template?.public === undefined
-                  ? "-"
-                  : template.public
-                    ? "Public"
-                    : "Private"}
-              </DetailField>
-              <DetailField label="Template Hidden">
-                {renderBoolean(template?.hidden)}
-              </DetailField>
-              <DetailField label="Registry">
-                {renderBoolean(template?.registry_enabled)}
-              </DetailField>
-              <DetailField label="Insecure Registry">
-                {emptyToDash(template?.insecure_registry)}
+              <DetailField label="Kubelet TLS cipher suites">
+                {labels.kubelet_tls_cipher_suites || "Driver secure defaults"}
               </DetailField>
             </DetailSection>
           </div>
         </TabsContent>
 
-        <TabsContent value="template" className="space-y-4">
-          <DetailSection title="Template">
-            <DetailField label="Name">
-              {emptyToDash(template?.name)}
+        <TabsContent className="space-y-4" value="add-ons">
+          <div>
+            <h2 className="text-sm font-semibold">Cluster add-ons</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Integrations installed by Magnum Cluster API and the effective
+              versions selected for this cluster.
+            </p>
+          </div>
+          <DriverConfigurationTable
+            categories={["Component images"]}
+            labels={labels}
+            networkDriver={template?.network_driver}
+            sourceFor={(key) =>
+              cluster.labels?.[key] !== undefined
+                ? "Cluster override"
+                : "Template"
+            }
+          />
+          <DetailSection title="Proxy configuration">
+            <DetailField label="HTTP proxy">
+              {template?.http_proxy || "Not configured"}
             </DetailField>
-            <DetailField label="Image" className="font-mono text-xs">
-              {emptyToDash(template?.image_id)}
+            <DetailField label="HTTPS proxy">
+              {template?.https_proxy || "Not configured"}
             </DetailField>
-            <DetailField label="Server Type">
-              {emptyToDash(template?.server_type)}
-            </DetailField>
-            <DetailField label="Worker Flavor">
-              {emptyToDash(template?.flavor_id)}
-            </DetailField>
-            <DetailField label="Control Flavor">
-              {emptyToDash(template?.master_flavor_id)}
-            </DetailField>
-            <DetailField label="Network Driver">
-              {emptyToDash(template?.network_driver)}
-            </DetailField>
-            <DetailField label="Volume Driver">
-              {emptyToDash(template?.volume_driver)}
-            </DetailField>
-            <DetailField label="Boot Volume Size">
-              {emptyToDash(getLabel(labels, ["boot_volume_size"]))}
-            </DetailField>
-            <DetailField label="Boot Volume Type">
-              {emptyToDash(getLabel(labels, ["boot_volume_type"]))}
-            </DetailField>
-            <DetailField label="Boot Volume AZ">
-              {emptyToDash(getLabel(labels, ["boot_volume_availability_zone"]))}
-            </DetailField>
-            <DetailField label="etcd Volume Size">
-              {emptyToDash(getLabel(labels, ["etcd_volume_size"]))}
-            </DetailField>
-            <DetailField label="etcd Volume Type">
-              {emptyToDash(getLabel(labels, ["etcd_volume_type"]))}
-            </DetailField>
-            <DetailField label="Container Registry Prefix">
-              {emptyToDash(getLabel(labels, ["container_infra_prefix"]))}
-            </DetailField>
-            <DetailField label="External Network" className="font-mono text-xs">
-              {emptyToDash(template?.external_network_id)}
-            </DetailField>
-            <DetailField label="API Server Port">
-              {emptyToDash(template?.apiserver_port)}
-            </DetailField>
-            <DetailField label="Control Plane Load Balancer">
-              {renderBoolean(template?.master_lb_enabled)}
-            </DetailField>
-            <DetailField label="DNS Nameserver">
-              {emptyToDash(template?.dns_nameserver)}
-            </DetailField>
-            <DetailField label="TLS">
-              {renderTls(template?.tls_disabled)}
-            </DetailField>
-            <DetailField label="HTTP Proxy">
-              {emptyToDash(template?.http_proxy)}
-            </DetailField>
-            <DetailField label="HTTPS Proxy">
-              {emptyToDash(template?.https_proxy)}
-            </DetailField>
-            <DetailField label="No Proxy">
-              {emptyToDash(template?.no_proxy)}
+            <DetailField label="No proxy">
+              {template?.no_proxy || "Not configured"}
             </DetailField>
           </DetailSection>
         </TabsContent>
 
-        <TabsContent value="labels" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-2">
-            <DetailSection title="Cluster Labels">
-              <LabelsList labels={cluster.labels} />
-            </DetailSection>
-            <DetailSection title="Template Labels">
-              <LabelsList
-                labels={template?.labels}
-                emptyLabel="Template Labels"
-              />
-            </DetailSection>
-            <DetailSection title="Node Group Labels">
-              <NodeGroupLabelsList nodegroups={nodegroups} />
-            </DetailSection>
+        <TabsContent className="space-y-4" value="labels">
+          <div>
+            <h2 className="text-sm font-semibold">
+              Effective driver configuration
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Cluster overrides take precedence over template labels. Unset
+              values continue to follow the Magnum Cluster API driver.
+            </p>
           </div>
+          <DriverConfigurationTable
+            labels={labels}
+            networkDriver={template?.network_driver}
+            sourceFor={(key) =>
+              cluster.labels?.[key] !== undefined
+                ? "Cluster override"
+                : "Template"
+            }
+          />
         </TabsContent>
       </Tabs>
-
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Layers className="h-3.5 w-3.5" />
-        <span>
-          Node group Kubernetes versions use each Magnum nodegroup
-          <span className="font-mono"> kube_tag </span>
-          label when available.
-        </span>
-      </div>
     </div>
   );
 }
