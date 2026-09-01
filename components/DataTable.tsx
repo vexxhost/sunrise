@@ -7,9 +7,9 @@ import {
   getFilteredRowModel,
   useReactTable,
   RowData,
-} from "@tanstack/react-table"
-import { usePathname } from "next/navigation"
-import { formatDistanceToNow } from 'date-fns'
+} from "@tanstack/react-table";
+import { usePathname } from "next/navigation";
+import { formatDistanceToNow } from "date-fns";
 import {
   Table,
   TableBody,
@@ -17,46 +17,62 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import React from "react"
-import { Button } from "@/components/ui/button"
-import { TableEmpty } from "./TableEmpty"
-import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
-import pluralize from "pluralize"
-import { Checkbox } from "@/components/ui/checkbox"
-import { IDCell } from "@/components/DataTable/IDCell"
-import { useColumnVisibility } from "@/hooks/useColumnVisibility"
-import { useColumnOrder } from "@/hooks/useColumnOrder"
-import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter"
-import { ensureRequiredDataTableColumn } from "@/lib/data-table-columns"
-import { DataTableToolbar } from "./DataTable/Toolbar"
-declare module '@tanstack/react-table' {
+} from "@/components/ui/table";
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { TableEmpty } from "./TableEmpty";
+import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import pluralize from "pluralize";
+import { Checkbox } from "@/components/ui/checkbox";
+import { IDCell } from "@/components/DataTable/IDCell";
+import { useColumnVisibility } from "@/hooks/useColumnVisibility";
+import { useColumnOrder } from "@/hooks/useColumnOrder";
+import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter";
+import { ensureRequiredDataTableColumn } from "@/lib/data-table-columns";
+import { formatAge } from "@/lib/openstack/time";
+import { DataTableToolbar } from "./DataTable/Toolbar";
+declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
-    label?: string
-    monospace?: boolean
-    fieldType?: 'string' | 'number' | 'boolean' | 'date'
-    visible?: boolean
+    label?: string;
+    monospace?: boolean;
+    fieldType?: "string" | "number" | "boolean" | "date";
+    dateDisplay?: "relative" | "age";
+    visible?: boolean;
+    idLinkPath?: string;
   }
 }
 
 export interface DataTableRowAction<TData> {
-  label: string
-  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
-  onClick: (rows: TData[]) => void
-  icon?: React.ComponentType<{ className?: string }>
-  isDisabled?: (rows: TData[]) => boolean
+  label: string;
+  variant?:
+    "default" | "destructive" | "outline" | "secondary" | "ghost" | "link";
+  onClick: (rows: TData[]) => void;
+  icon?: React.ComponentType<{ className?: string }>;
+  isDisabled?: (rows: TData[]) => boolean;
 }
 
-interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
-  data: TData[]
-  isRefetching?: boolean
-  refetch?: () => void
-  resourceName: string
-  emptyIcon: React.ComponentType<{ className?: string }>
-  rowActions?: DataTableRowAction<TData>[]
-  onPageRowsChange?: (rows: TData[]) => void
+interface DataTableBaseProps<TData, TValue> {
+  columns: ColumnDef<TData, TValue>[];
+  data: TData[];
+  isRefetching?: boolean;
+  refetch?: () => void;
+  resourceName: string;
+  emptyIcon: React.ComponentType<{ className?: string }>;
+  onPageRowsChange?: (rows: TData[]) => void;
 }
+
+type DataTableSelectionProps<TData> =
+  | {
+      rowActions: DataTableRowAction<TData>[];
+      getRowId: (row: TData, index: number) => string;
+    }
+  | {
+      rowActions?: undefined;
+      getRowId?: (row: TData, index: number) => string;
+    };
+
+type DataTableProps<TData, TValue> = DataTableBaseProps<TData, TValue> &
+  DataTableSelectionProps<TData>;
 
 export function DataTable<TData, TValue>({
   columns,
@@ -67,11 +83,12 @@ export function DataTable<TData, TValue>({
   emptyIcon,
   rowActions = [],
   onPageRowsChange,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   // Use extracted hooks
-  const { globalFilter, setGlobalFilter } = useGlobalFilter()
+  const { globalFilter, setGlobalFilter } = useGlobalFilter();
 
   // Build columns array conditionally including checkbox column
   const tableColumns = React.useMemo(() => {
@@ -87,7 +104,9 @@ export function DataTable<TData, TValue>({
               table.getIsAllPageRowsSelected() ||
               (table.getIsSomePageRowsSelected() && "indeterminate")
             }
-            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            onCheckedChange={(value) =>
+              table.toggleAllPageRowsSelected(!!value)
+            }
             aria-label="Select all"
           />
         ),
@@ -106,12 +125,19 @@ export function DataTable<TData, TValue>({
     cols.push(...ensureRequiredDataTableColumn(columns));
     return cols;
   }, [columns, rowActions.length]);
-  const { columnVisibility, setColumnVisibility } = useColumnVisibility(tableColumns, resourceName)
-  const { columnOrder, setColumnOrder } = useColumnOrder(tableColumns, resourceName)
+  const { columnVisibility, setColumnVisibility } = useColumnVisibility(
+    tableColumns,
+    resourceName,
+  );
+  const { columnOrder, setColumnOrder } = useColumnOrder(
+    tableColumns,
+    resourceName,
+  );
 
   const table = useReactTable({
     data,
     columns: tableColumns,
+    getRowId,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -130,17 +156,17 @@ export function DataTable<TData, TValue>({
       columnOrder,
       globalFilter,
     },
-  })
+  });
 
-  const pageRows = table.getRowModel().rows
+  const pageRows = table.getRowModel().rows;
   const pageRowOriginals = React.useMemo(
     () => pageRows.map((row) => row.original),
     [pageRows],
-  )
+  );
 
   React.useEffect(() => {
-    onPageRowsChange?.(pageRowOriginals)
-  }, [onPageRowsChange, pageRowOriginals])
+    onPageRowsChange?.(pageRowOriginals);
+  }, [onPageRowsChange, pageRowOriginals]);
 
   return (
     <>
@@ -158,42 +184,59 @@ export function DataTable<TData, TValue>({
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="text-xs font-bold hover:bg-transparent">
+              <TableRow
+                key={headerGroup.id}
+                className="text-xs font-bold hover:bg-transparent"
+              >
                 {headerGroup.headers.map((header) => {
-                  const isIDColumn = typeof header.column.columnDef.header === 'string' && header.column.columnDef.header === 'ID';
-                  const isSelectColumn = header.column.id === 'select';
+                  const isIDColumn =
+                    typeof header.column.columnDef.header === "string" &&
+                    header.column.columnDef.header === "ID";
+                  const isSelectColumn = header.column.id === "select";
                   const canSort = header.column.getCanSort();
                   const isSorted = header.column.getIsSorted();
 
                   return (
-                    <TableHead key={header.id} className={`px-0 text-xs font-bold border-r ${isIDColumn ? "max-w-32" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] !px-3" : ""}`}>
-                      {header.isPlaceholder ? null : (
-                        isSelectColumn ? (
-                          flexRender(header.column.columnDef.header, header.getContext())
-                        ) : canSort ? (
-                          <Button
-                            variant="ghost"
-                            onClick={() => header.column.toggleSorting(isSorted === "asc")}
-                            className="h-full w-full py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
-                          >
-                            <span>
-                              {typeof header.column.columnDef.header === 'string'
-                                ? header.column.columnDef.header
-                                : flexRender(header.column.columnDef.header, header.getContext())}
-                            </span>
-                            {isSorted === "asc" ? (
-                              <ArrowUp className="h-3 w-3 shrink-0" />
-                            ) : isSorted === "desc" ? (
-                              <ArrowDown className="h-3 w-3 shrink-0" />
-                            ) : (
-                              <ArrowUpDown className="h-3 w-3 opacity-50 shrink-0" />
-                            )}
-                          </Button>
-                        ) : (
-                          <div className="py-2">
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                          </div>
+                    <TableHead
+                      key={header.id}
+                      className={`px-0 text-xs font-bold border-r ${isIDColumn ? "max-w-32" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] !px-3" : ""}`}
+                    >
+                      {header.isPlaceholder ? null : isSelectColumn ? (
+                        flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
                         )
+                      ) : canSort ? (
+                        <Button
+                          variant="ghost"
+                          onClick={() =>
+                            header.column.toggleSorting(isSorted === "asc")
+                          }
+                          className="h-full w-full py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
+                        >
+                          <span>
+                            {typeof header.column.columnDef.header === "string"
+                              ? header.column.columnDef.header
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
+                                )}
+                          </span>
+                          {isSorted === "asc" ? (
+                            <ArrowUp className="h-3 w-3 shrink-0" />
+                          ) : isSorted === "desc" ? (
+                            <ArrowDown className="h-3 w-3 shrink-0" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-50 shrink-0" />
+                          )}
+                        </Button>
+                      ) : (
+                        <div className="py-2">
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                        </div>
                       )}
                     </TableHead>
                   );
@@ -210,25 +253,50 @@ export function DataTable<TData, TValue>({
                   className={`group/row`}
                 >
                   {row.getVisibleCells().map((cell) => {
-                    const isIDColumn = typeof cell.column.columnDef.header === 'string' && cell.column.columnDef.header === 'ID';
-                    const isSelectColumn = cell.column.id === 'select';
-                    const isMonospace = cell.column.columnDef.meta?.monospace || isIDColumn;
+                    const isIDColumn =
+                      typeof cell.column.columnDef.header === "string" &&
+                      cell.column.columnDef.header === "ID";
+                    const isSelectColumn = cell.column.id === "select";
+                    const isMonospace =
+                      cell.column.columnDef.meta?.monospace || isIDColumn;
                     const cellValue = cell.getValue();
                     const fieldType = cell.column.columnDef.meta?.fieldType;
 
                     // Auto-format date fields if it's a date type and has a plain string value
                     let renderedCell;
-                    if (isIDColumn && typeof cellValue === 'string') {
-                      renderedCell = <IDCell value={cellValue} isSelected={row.getIsSelected()} linkPath={pathname} />;
-                    } else if (fieldType === 'date' && typeof cellValue === 'string') {
+                    if (isIDColumn && typeof cellValue === "string") {
+                      renderedCell = (
+                        <IDCell
+                          value={cellValue}
+                          isSelected={row.getIsSelected()}
+                          linkPath={
+                            cell.column.columnDef.meta?.idLinkPath ?? pathname
+                          }
+                        />
+                      );
+                    } else if (
+                      fieldType === "date" &&
+                      cell.column.columnDef.meta?.dateDisplay === "age"
+                    ) {
+                      renderedCell = formatAge(cellValue);
+                    } else if (
+                      fieldType === "date" &&
+                      typeof cellValue === "string"
+                    ) {
                       // Automatically format date fields using date-fns
                       try {
-                        renderedCell = formatDistanceToNow(new Date(cellValue), { addSuffix: true });
+                        renderedCell = formatDistanceToNow(
+                          new Date(cellValue),
+                          { addSuffix: true },
+                        );
                       } catch {
                         renderedCell = cellValue;
                       }
                     } else {
-                      renderedCell = flexRender(cell.column.columnDef.cell, cell.getContext());
+                      renderedCell = flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      );
                     }
 
                     return (
@@ -245,7 +313,11 @@ export function DataTable<TData, TValue>({
             ) : (
               <TableEmpty
                 columns={columns.length + 1}
-                message={resourceName ? `No ${pluralize(resourceName)} found.` : "No results."}
+                message={
+                  resourceName
+                    ? `No ${pluralize(resourceName)} found.`
+                    : "No results."
+                }
                 icon={emptyIcon}
               />
             )}
@@ -253,5 +325,5 @@ export function DataTable<TData, TValue>({
         </Table>
       </div>
     </>
-  )
+  );
 }

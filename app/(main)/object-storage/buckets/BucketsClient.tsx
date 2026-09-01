@@ -79,9 +79,8 @@ export function BucketsClient({
     },
     {
       accessorKey: 'creationDate',
-      header: 'Created At',
-      cell: ({ row }) => row.original.creationDate ?? '-',
-      meta: { fieldType: 'date', visible: true },
+      header: 'Age',
+      meta: { fieldType: 'date', dateDisplay: 'age', visible: true },
     },
     {
       id: 'actions',

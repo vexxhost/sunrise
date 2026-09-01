@@ -1,7 +1,11 @@
-'use client';
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQueries, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import {
   InstanceLifecycleDialog,
@@ -27,7 +31,6 @@ import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { Badge } from "@/components/ui/badge";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { ColumnDef } from "@tanstack/react-table";
-import { formatDistanceToNow } from 'date-fns';
 import { OsIcon } from "@/components/icons/OsIcon";
 import { imageOperatingSystemMetadata } from "@/lib/openstack/image-metadata";
 import {
@@ -42,23 +45,27 @@ import {
   canDeleteServer,
   canRunServerLifecycleAction,
   isServerTransitioning,
+  markServersDeleting,
   mergeServerUpdates,
 } from "@/lib/openstack/server-lifecycle";
+import { collectTransitionUpdates } from "@/lib/openstack/transition-poll";
 import { resolveServerFlavor } from "@/lib/openstack/server-flavor";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
 
-function collectServerUpdates(results: readonly { data?: Server }[]) {
-  return new Map(
-    results
-      .map((result) => result.data)
-      .filter((server): server is Server => Boolean(server))
-      .map((server) => [server.id, server]),
-  );
-}
-
-const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: string, addr: string, "OS-EXT-IPS:type": string, "OS-EXT-IPS-MAC:mac_addr": string }[] } }) => {
+const IpAddress = ({
+  addresses,
+}: {
+  addresses: {
+    [key: string]: {
+      version: string;
+      addr: string;
+      "OS-EXT-IPS:type": string;
+      "OS-EXT-IPS-MAC:mac_addr": string;
+    }[];
+  };
+}) => {
   return Object.keys(addresses).map((key: string) => {
     return (
       <div className="flex items-start gap-2 pb-1" key={key}>
@@ -70,34 +77,25 @@ const IpAddress = ({ addresses }: { addresses: { [key: string]: { version: strin
         </div>
       </div>
     );
-  })
-}
+  });
+};
 
 interface InstancesClientProps {
   regionId?: string;
   projectId?: string;
+  initialPendingDeletionIds?: string[];
 }
 
-function getServerImageId(server: Server, volumeImageIds: Record<string, string>) {
+function getServerImageId(
+  server: Server,
+  volumeImageIds: Record<string, string>,
+) {
   if (server.image && typeof server.image === "object" && server.image.id) {
     return server.image.id;
   }
 
   const attachedVolumes = server["os-extended-volumes:volumes_attached"];
   return volumeImageIds[attachedVolumes?.[0]?.id];
-}
-
-function formatAge(value: unknown) {
-  if (typeof value !== "string" || !value) {
-    return "-";
-  }
-
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) {
-    return "-";
-  }
-
-  return formatDistanceToNow(timestamp);
 }
 
 type ServerTableRow = Server & {
@@ -142,19 +140,40 @@ function FadedTableText({
   );
 }
 
-export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
+export function InstancesClient({
+  initialPendingDeletionIds = [],
+  regionId,
+  projectId,
+}: InstancesClientProps) {
   const queryClient = useQueryClient();
   const listOptions = useMemo(
     () => serversQueryOptions(regionId, projectId),
     [projectId, regionId],
   );
   // Fetch servers
-  const { data: serversData, isRefetching: isRefetchingServers, refetch: refetchServers } = useSuspenseQuery(
-    listOptions,
-  );
+  const {
+    data: serversData,
+    isRefetching: isRefetchingServers,
+    refetch: refetchServers,
+  } = useSuspenseQuery(listOptions);
   const [visiblePageServers, setVisiblePageServers] = useState<Server[]>([]);
-  const [pendingAction, setPendingAction] = useState<InstanceMutationKind | null>(null);
+  const [pendingAction, setPendingAction] =
+    useState<InstanceMutationKind | null>(null);
   const [actionTargets, setActionTargets] = useState<Server[]>([]);
+  const [pendingDeletionIds, setPendingDeletionIds] = useState(
+    () => new Set(initialPendingDeletionIds),
+  );
+  const hasPendingServers = serversData.some(({ id }) =>
+    pendingDeletionIds.has(id),
+  );
+
+  useEffect(() => {
+    if (hasPendingServers || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("deleting")) return;
+    url.searchParams.delete("deleting");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }, [hasPendingServers]);
 
   const transitioningVisibleServers = useMemo(
     () => visiblePageServers.filter(isServerTransitioning),
@@ -167,14 +186,20 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
       refetchOnReconnect: false,
       refetchOnWindowFocus: false,
     })),
-    combine: collectServerUpdates,
+    combine: collectTransitionUpdates<Server>,
   });
 
   useEffect(() => {
-    if (!transitioningUpdates.size) return;
-    queryClient.setQueryData<Server[]>(listOptions.queryKey, (current) =>
-      current ? mergeServerUpdates(current, transitioningUpdates) : current,
-    );
+    if (transitioningUpdates.hasErrors) {
+      void queryClient.invalidateQueries({ queryKey: listOptions.queryKey });
+    }
+    if (transitioningUpdates.updates.size) {
+      queryClient.setQueryData<Server[]>(listOptions.queryKey, (current) =>
+        current
+          ? mergeServerUpdates(current, transitioningUpdates.updates)
+          : current,
+      );
+    }
   }, [listOptions.queryKey, queryClient, transitioningUpdates]);
 
   const handlePageRowsChange = useCallback((rows: ServerTableRow[]) => {
@@ -194,23 +219,52 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
     setActionTargets([]);
   }, []);
 
-  const refreshAfterAction = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: listOptions.queryKey });
-    for (const server of actionTargets) {
-      await queryClient.invalidateQueries({
-        queryKey: [regionId, projectId, "server", server.id],
-      });
-    }
-  }, [actionTargets, listOptions.queryKey, projectId, queryClient, regionId]);
+  const refreshAfterAction = useCallback(
+    async (action: InstanceMutationKind, completedInstances: Server[]) => {
+      if (action === "delete" && completedInstances.length) {
+        const deletingIds = new Set(completedInstances.map(({ id }) => id));
+        setPendingDeletionIds(
+          (current) => new Set([...current, ...deletingIds]),
+        );
+        queryClient.setQueryData<Server[]>(listOptions.queryKey, (current) =>
+          current ? markServersDeleting(current, deletingIds) : current,
+        );
+        for (const server of completedInstances) {
+          queryClient.setQueryData<Server>(
+            [regionId, projectId, "server", server.id],
+            (current) =>
+              current
+                ? markServersDeleting([current], deletingIds)[0]
+                : current,
+          );
+        }
+        return;
+      }
+
+      await queryClient.invalidateQueries({ queryKey: listOptions.queryKey });
+      for (const server of completedInstances) {
+        await queryClient.invalidateQueries({
+          queryKey: [regionId, projectId, "server", server.id],
+        });
+      }
+    },
+    [listOptions.queryKey, projectId, queryClient, regionId],
+  );
 
   // Fetch volumes
-  const { data: volumesData } = useSuspenseQuery(volumesQueryOptions(regionId, projectId));
+  const { data: volumesData } = useSuspenseQuery(
+    volumesQueryOptions(regionId, projectId),
+  );
 
   // Fetch images
-  const { data: imagesData } = useSuspenseQuery(imagesQueryOptions(regionId, projectId));
+  const { data: imagesData } = useSuspenseQuery(
+    imagesQueryOptions(regionId, projectId),
+  );
 
   // Fetch flavors
-  const { data: flavorsData } = useSuspenseQuery(flavorsQueryOptions(regionId, projectId));
+  const { data: flavorsData } = useSuspenseQuery(
+    flavorsQueryOptions(regionId, projectId),
+  );
 
   // Process volume image IDs
   const volumeImageIds = useMemo(() => {
@@ -221,7 +275,7 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
         }
         return acc;
       },
-      {}
+      {},
     );
   }, [volumesData]);
 
@@ -236,12 +290,15 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
 
   const servers = useMemo<ServerTableRow[]>(() => {
     return serversData.map((server) => {
-      const imageId = getServerImageId(server, volumeImageIds);
+      const visibleServer = pendingDeletionIds.has(server.id)
+        ? markServersDeleting([server], pendingDeletionIds)[0]
+        : server;
+      const imageId = getServerImageId(visibleServer, volumeImageIds);
       const image = imageId ? imagesById[imageId] : undefined;
       const imageOs = imageOperatingSystemMetadata(image);
 
       return {
-        ...server,
+        ...visibleServer,
         imageId,
         imageName: image?.name || "",
         imageOsLabel: imageOs?.label ?? "VM",
@@ -249,184 +306,197 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
         imageOsText: imageOs?.known ? imageOs.version : imageOs?.label,
       };
     });
-  }, [imagesById, serversData, volumeImageIds]);
+  }, [imagesById, pendingDeletionIds, serversData, volumeImageIds]);
 
-  const columns = useMemo((): ColumnDef<ServerTableRow>[] => [
-    {
-      accessorKey: "name",
-      header: "Instance Name",
-      cell: ({ row }) => (
-        <ResourceLink
-          href={`/compute/instances/${encodeURIComponent(row.original.id)}`}
-        >
-          {row.original.name || "Unnamed instance"}
-        </ResourceLink>
-      ),
-      meta: {
-        fieldType: "string",
-        visible: true
-      }
-    },
-    {
-      accessorKey: "id",
-      header: "ID",
-      meta: {
-        fieldType: "string",
-        visible: true
-      }
-    },
-    {
-      accessorKey: "imageName",
-      header: "Image Name",
-      cell: ({ row }) => {
-        const content = (
-          <div
-            className="flex w-64 max-w-64 min-w-0 flex-col gap-0.5"
-            title={`${row.original.imageName || "-"}\n${row.original.imageOsLabel}`}
+  const columns = useMemo(
+    (): ColumnDef<ServerTableRow>[] => [
+      {
+        accessorKey: "name",
+        header: "Instance Name",
+        cell: ({ row }) => (
+          <ResourceLink
+            href={`/compute/instances/${encodeURIComponent(row.original.id)}`}
           >
-            <FadedTableText value={row.original.imageName || "-"} />
-            <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <OsIcon
-                className="size-3.5"
-                decorative
-                slug={row.original.imageOsSlug}
-              />
-              {row.original.imageOsText ? (
-                <span className="block min-w-0 truncate">
-                  {row.original.imageOsText}
-                </span>
-              ) : null}
-            </span>
-          </div>
-        );
+            {row.original.name || "Unnamed instance"}
+          </ResourceLink>
+        ),
+        meta: {
+          fieldType: "string",
+          visible: true,
+        },
+      },
+      {
+        accessorKey: "id",
+        header: "ID",
+        meta: {
+          fieldType: "string",
+          visible: true,
+        },
+      },
+      {
+        accessorKey: "imageName",
+        header: "Image Name",
+        cell: ({ row }) => {
+          const content = (
+            <div
+              className="flex w-64 max-w-64 min-w-0 flex-col gap-0.5"
+              title={`${row.original.imageName || "-"}\n${row.original.imageOsLabel}`}
+            >
+              <FadedTableText value={row.original.imageName || "-"} />
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <OsIcon
+                  className="size-3.5"
+                  decorative
+                  slug={row.original.imageOsSlug}
+                />
+                {row.original.imageOsText ? (
+                  <span className="block min-w-0 truncate">
+                    {row.original.imageOsText}
+                  </span>
+                ) : null}
+              </span>
+            </div>
+          );
 
-        return row.original.imageId ? (
-          <ResourceLink
-            href={`/compute/images/${encodeURIComponent(row.original.imageId)}`}
-            className="block w-fit max-w-full"
-          >
-            {content}
-          </ResourceLink>
-        ) : (
-          content
-        );
+          return row.original.imageId ? (
+            <ResourceLink
+              href={`/compute/images/${encodeURIComponent(row.original.imageId)}`}
+              className="block w-fit max-w-full"
+            >
+              {content}
+            </ResourceLink>
+          ) : (
+            content
+          );
+        },
+        meta: {
+          fieldType: "string",
+          visible: true,
+        },
       },
-      meta: {
-        fieldType: "string",
-        visible: true
-      }
-    },
-    {
-      accessorKey: "addresses",
-      header: "IP Address",
-      cell: ({ row }) => <IpAddress addresses={row.getValue('addresses')} />,
-      meta: {
-        fieldType: "string",
-        visible: true
-      }
-    },
-    {
-      accessorKey: "flavor",
-      header: "Flavor",
-      cell: ({ row }) => {
-        const flavor = resolveServerFlavor(row.original, flavorsData);
-        return flavor.id ? (
-          <ResourceLink
-            href={`/compute/instance-flavors/${encodeURIComponent(flavor.id)}`}
-          >
-            {flavor.name}
-          </ResourceLink>
-        ) : (
-          flavor.name
-        );
+      {
+        accessorKey: "addresses",
+        header: "IP Address",
+        cell: ({ row }) => <IpAddress addresses={row.getValue("addresses")} />,
+        meta: {
+          fieldType: "string",
+          visible: true,
+        },
       },
-      meta: {
-        fieldType: "string",
-        visible: true
-      }
-    },
-    {
-      accessorKey: "key_name",
-      header: "Key Pair",
-      meta: {
-        fieldType: "string",
-        visible: false
-      }
-    },
-    {
-      accessorKey: "status",
-      header: "Status",
-      cell: ({ row }) => {
-        const status = row.getValue("status");
-        const taskState = row.original["OS-EXT-STS:task_state"];
-        const transitioning = isServerTransitioning(row.original);
-        return (
-          <div className="space-y-1">
-            {transitioning ? (
-              <ProgressStatusBadge
-                label={formatServerActivity(status, taskState)}
-                title={`Nova status: ${formatServerStatus(status)}`}
-              />
-            ) : (
-              <Badge className="text-xs" variant={serverStatusBadgeVariant(status)}>
-                <span className="font-bold">{formatServerStatus(status)}</span>
-              </Badge>
-            )}
-            <p className="whitespace-nowrap text-xs text-muted-foreground">
-              {transitioning
-                ? `${formatServerStatus(status)} · ${formatServerPowerState(row.original["OS-EXT-STS:power_state"])}`
-                : formatServerPowerState(row.original["OS-EXT-STS:power_state"])}
-            </p>
-          </div>
-        )
+      {
+        accessorKey: "flavor",
+        header: "Flavor",
+        cell: ({ row }) => {
+          const flavor = resolveServerFlavor(row.original, flavorsData);
+          return flavor.id ? (
+            <ResourceLink
+              href={`/compute/instance-flavors/${encodeURIComponent(flavor.id)}`}
+            >
+              {flavor.name}
+            </ResourceLink>
+          ) : (
+            flavor.name
+          );
+        },
+        meta: {
+          fieldType: "string",
+          visible: true,
+        },
       },
-      meta: {
-        fieldType: "string",
-        visible: true
-      }
-    },
-    {
-      accessorKey: "OS-EXT-AZ:availability_zone",
-      header: "Availability Zone",
-      meta: {
-        fieldType: "string",
-        visible: false
-      }
-    },
-    {
-      id: "task",
-      accessorFn: (row) => row["OS-EXT-STS:task_state"],
-      header: "Task",
-      cell: ({ row }) => formatServerTaskState(row.original["OS-EXT-STS:task_state"]),
-      meta: {
-        fieldType: "string",
-        visible: false
-      }
-    },
-    {
-      accessorKey: "OS-EXT-STS:power_state",
-      header: "Power State",
-      cell: ({ row }) => formatServerPowerState(row.getValue("OS-EXT-STS:power_state")),
-      meta: {
-        fieldType: "number",
-        visible: false
-      }
-    },
-    {
-      accessorKey: "created",
-      header: "Age",
-      cell: ({ row }) => formatAge(row.getValue("created")),
-      meta: {
-        fieldType: "string",
-        visible: true
-      }
-    }
-  ], [flavorsData]);
+      {
+        accessorKey: "key_name",
+        header: "Key Pair",
+        meta: {
+          fieldType: "string",
+          visible: false,
+        },
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => {
+          const status = row.getValue("status");
+          const taskState = row.original["OS-EXT-STS:task_state"];
+          const transitioning = isServerTransitioning(row.original);
+          return (
+            <div className="space-y-1">
+              {transitioning ? (
+                <ProgressStatusBadge
+                  label={formatServerActivity(status, taskState)}
+                  title={`Nova status: ${formatServerStatus(status)}`}
+                />
+              ) : (
+                <Badge
+                  className="text-xs"
+                  variant={serverStatusBadgeVariant(status)}
+                >
+                  <span className="font-bold">
+                    {formatServerStatus(status)}
+                  </span>
+                </Badge>
+              )}
+              <p className="whitespace-nowrap text-xs text-muted-foreground">
+                {transitioning
+                  ? `${formatServerStatus(status)} · ${formatServerPowerState(row.original["OS-EXT-STS:power_state"])}`
+                  : formatServerPowerState(
+                      row.original["OS-EXT-STS:power_state"],
+                    )}
+              </p>
+            </div>
+          );
+        },
+        meta: {
+          fieldType: "string",
+          visible: true,
+        },
+      },
+      {
+        accessorKey: "OS-EXT-AZ:availability_zone",
+        header: "Availability Zone",
+        meta: {
+          fieldType: "string",
+          visible: false,
+        },
+      },
+      {
+        id: "task",
+        accessorFn: (row) => row["OS-EXT-STS:task_state"],
+        header: "Task",
+        cell: ({ row }) =>
+          formatServerTaskState(row.original["OS-EXT-STS:task_state"]),
+        meta: {
+          fieldType: "string",
+          visible: false,
+        },
+      },
+      {
+        accessorKey: "OS-EXT-STS:power_state",
+        header: "Power State",
+        cell: ({ row }) =>
+          formatServerPowerState(row.getValue("OS-EXT-STS:power_state")),
+        meta: {
+          fieldType: "number",
+          visible: false,
+        },
+      },
+      {
+        accessorKey: "created",
+        header: "Age",
+        meta: {
+          fieldType: "date",
+          dateDisplay: "age",
+          visible: true,
+        },
+      },
+    ],
+    [flavorsData],
+  );
 
   return (
     <>
       <DataTable
         data={servers}
+        getRowId={(server) => server.id}
         isRefetching={isRefetchingServers}
         refetch={refetchServers}
         columns={columns}
@@ -439,14 +509,18 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
             icon: Play,
             onClick: (rows) => openAction("start", rows),
             isDisabled: (rows) =>
-              rows.some((server) => !canRunServerLifecycleAction(server, "start")),
+              rows.some(
+                (server) => !canRunServerLifecycleAction(server, "start"),
+              ),
           },
           {
             label: "Stop",
             icon: CircleStop,
             onClick: (rows) => openAction("stop", rows),
             isDisabled: (rows) =>
-              rows.some((server) => !canRunServerLifecycleAction(server, "stop")),
+              rows.some(
+                (server) => !canRunServerLifecycleAction(server, "stop"),
+              ),
           },
           {
             label: "Reboot",
@@ -471,7 +545,8 @@ export function InstancesClient({ regionId, projectId }: InstancesClientProps) {
             icon: Trash2,
             variant: "destructive",
             onClick: (rows) => openAction("delete", rows),
-            isDisabled: (rows) => rows.some((server) => !canDeleteServer(server)),
+            isDisabled: (rows) =>
+              rows.some((server) => !canDeleteServer(server)),
           },
         ]}
       />

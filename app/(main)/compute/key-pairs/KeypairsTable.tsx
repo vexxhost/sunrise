@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { DataTable } from "@/components/DataTable";
 import { KeyRound, Trash2 } from "lucide-react";
@@ -25,8 +25,8 @@ export const keypairColumns: ColumnDef<Keypair>[] = [
     ),
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "type",
@@ -35,8 +35,8 @@ export const keypairColumns: ColumnDef<Keypair>[] = [
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "fingerprint",
@@ -45,40 +45,42 @@ export const keypairColumns: ColumnDef<Keypair>[] = [
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "public_key",
     header: "Public Key",
     cell: ({ row }: { row: { original: Keypair } }) => {
       const key = row.original.public_key;
-      return key.length > 50 ? `${key.substring(0, 50)}...` : key
+      return key.length > 50 ? `${key.substring(0, 50)}...` : key;
     },
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "user_id",
     header: "User ID",
-    cell: ({ row }: { row: { original: Keypair } }) => row.original.user_id || "-",
+    cell: ({ row }: { row: { original: Keypair } }) =>
+      row.original.user_id || "-",
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "created_at",
-    header: "Created At",
+    header: "Age",
     meta: {
       fieldType: "date",
-      visible: false
-    }
-  }
+      dateDisplay: "age",
+      visible: false,
+    },
+  },
 ];
 
 interface KeypairsTableProps {
@@ -89,7 +91,7 @@ interface KeypairsTableProps {
 export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
   const queryClient = useQueryClient();
   const { data, isRefetching, refetch } = useSuspenseQuery(
-    keypairsQueryOptions(regionId, projectId)
+    keypairsQueryOptions(regionId, projectId),
   );
   const [deleteTargets, setDeleteTargets] = useState<Keypair[]>([]);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -105,7 +107,8 @@ export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
           { projectId, regionId },
           keypair.name,
         );
-        if (!result.ok) failures.push(`${keypair.name}: ${result.error.message}`);
+        if (!result.ok)
+          failures.push(`${keypair.name}: ${result.error.message}`);
       }
       await queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "keypairs"],
@@ -127,6 +130,7 @@ export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
         columns={keypairColumns}
         resourceName={RESOURCE_NAME}
         emptyIcon={KeyRound}
+        getRowId={(keypair) => keypair.name}
         rowActions={[
           {
             label: "Delete",
@@ -158,7 +162,9 @@ export function KeypairsTable({ regionId, projectId }: KeypairsTableProps) {
       >
         <div className="max-h-36 overflow-y-auto rounded-md border px-3 py-2 text-sm">
           {deleteTargets.map((keypair) => (
-            <div key={keypair.name} className="py-1">{keypair.name}</div>
+            <div key={keypair.name} className="py-1">
+              {keypair.name}
+            </div>
           ))}
         </div>
       </MutationConfirmationDialog>

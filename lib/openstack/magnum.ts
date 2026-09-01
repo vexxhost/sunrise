@@ -14,6 +14,8 @@ import type {
   MagnumClusterTemplateListOptions,
   MagnumClusterTemplateListResponse,
   MagnumClusterTemplateResponse,
+  MagnumCertificate,
+  MagnumCertificateResponse,
 } from "@/types/openstack";
 
 const SERVICE_TYPE = "container-infra";
@@ -92,6 +94,14 @@ function unwrapNodeGroup(
   );
 }
 
+function unwrapCertificate(
+  data: MagnumCertificateResponse | null,
+): MagnumCertificate | undefined {
+  const certificate = data?.certificate ?? data;
+  if (!certificate?.cluster_uuid || !certificate.pem) return undefined;
+  return certificate as MagnumCertificate;
+}
+
 export async function listClusterTemplatesAction(
   options: MagnumClusterTemplateListOptions = {},
   regionId?: string,
@@ -126,34 +136,38 @@ export async function getClusterTemplateAction(
 export async function listClustersAction(
   options: MagnumClusterListOptions = {},
   regionId?: string,
+  projectId?: string,
 ): Promise<MagnumCluster[]> {
   const query = buildQueryString(options);
   const data = await magnumGet<MagnumClusterListResponse>(
-    query ? `/clusters?${query}` : "/clusters",
+    query ? `/clusters/detail?${query}` : "/clusters/detail",
     regionId,
   );
 
   const clusters = data?.clusters ?? [];
 
-  return Promise.all(
+  const detailedClusters = await Promise.all(
     clusters.map(async (cluster) => {
-      const [detailResult, nodegroupsResult] = await Promise.allSettled([
-        getClusterAction(cluster.uuid, regionId),
+      const nodegroupsResult = await Promise.allSettled([
         listClusterNodeGroupsAction(cluster.uuid, regionId),
       ]);
-      const detail =
-        detailResult.status === "fulfilled" ? detailResult.value : undefined;
-      const nodegroups =
-        nodegroupsResult.status === "fulfilled"
-          ? nodegroupsResult.value
-          : detail?.nodegroups;
+      const [nodegroups] = nodegroupsResult;
 
       return {
         ...cluster,
-        ...detail,
-        ...(nodegroups ? { nodegroups } : {}),
+        ...(nodegroups?.status === "fulfilled"
+          ? { nodegroups: nodegroups.value }
+          : {}),
       };
     }),
+  );
+
+  if (!projectId) return detailedClusters;
+  const normalizedProjectId = projectId.replace(/-/g, "").toLowerCase();
+  return detailedClusters.filter(
+    (cluster) =>
+      cluster.project_id?.replace(/-/g, "").toLowerCase() ===
+      normalizedProjectId,
   );
 }
 
@@ -177,13 +191,29 @@ export async function getClusterAction(
 export async function listClusterNodeGroupsAction(
   clusterId: string,
   regionId?: string,
+  detailed = false,
 ): Promise<MagnumClusterNodeGroup[]> {
   const data = await magnumGet<MagnumClusterNodeGroupListResponse>(
     `/clusters/${clusterId}/nodegroups`,
     regionId,
   );
 
-  return data?.nodegroups ?? [];
+  const nodeGroups = data?.nodegroups ?? [];
+  if (!detailed) return nodeGroups;
+
+  return Promise.all(
+    nodeGroups.map(async (nodeGroup) => {
+      try {
+        return await getClusterNodeGroupAction(
+          clusterId,
+          nodeGroup.uuid,
+          regionId,
+        );
+      } catch {
+        return nodeGroup;
+      }
+    }),
+  );
 }
 
 export async function getClusterNodeGroupAction(
@@ -202,4 +232,21 @@ export async function getClusterNodeGroupAction(
   }
 
   return nodegroup;
+}
+
+export async function getClusterCertificateAction(
+  clusterId: string,
+  regionId?: string,
+): Promise<MagnumCertificate> {
+  const data = await magnumGet<MagnumCertificateResponse>(
+    `/certificates/${encodeURIComponent(clusterId)}`,
+    regionId,
+  );
+  const certificate = unwrapCertificate(data);
+
+  if (!certificate) {
+    throw new Error(`Certificate authority for cluster ${clusterId} not found`);
+  }
+
+  return certificate;
 }

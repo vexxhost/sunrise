@@ -64,7 +64,10 @@ export function projectNetworksQueryOptions(
         path: withQuery("/v2.0/networks", { project_id: projectId }),
       });
 
-      return data?.networks ?? [];
+      return (data?.networks ?? []).filter(
+        (network) =>
+          network.project_id === projectId || network.tenant_id === projectId,
+      );
     },
     enabled: !!regionId && !!projectId,
   });
@@ -105,7 +108,10 @@ export function subnetsQueryOptions(
         path: withQuery("/v2.0/subnets", { project_id: projectId }),
       });
 
-      return data?.subnets ?? [];
+      return (data?.subnets ?? []).filter(
+        (subnet) =>
+          subnet.project_id === projectId || subnet.tenant_id === projectId,
+      );
     },
     enabled: !!regionId && !!projectId,
   });

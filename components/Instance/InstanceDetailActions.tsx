@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -19,6 +20,7 @@ import {
   InstanceLifecycleDialog,
   type InstanceMutationKind,
 } from "@/components/Instance/InstanceLifecycleDialog";
+import { ImagePicker } from "@/components/Image/ImageSelectOption";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -59,6 +61,7 @@ import {
   canRebuildServer,
   canRunServerLifecycleAction,
   isServerTransitioning,
+  markServersDeleting,
 } from "@/lib/openstack/server-lifecycle";
 import type { Server } from "@/types/openstack";
 
@@ -75,8 +78,10 @@ export function InstanceDetailActions({
   regionId,
   server,
 }: InstanceDetailActionsProps) {
+  const router = useRouter();
   const queryClient = useQueryClient();
-  const [lifecycleAction, setLifecycleAction] = useState<InstanceMutationKind | null>(null);
+  const [lifecycleAction, setLifecycleAction] =
+    useState<InstanceMutationKind | null>(null);
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [imageRef, setImageRef] = useState("");
@@ -107,11 +112,13 @@ export function InstanceDetailActions({
   };
 
   const openMetadataDialog = () => {
-    const entries = Object.entries(server.metadata ?? {}).map(([key, value], index) => ({
-      id: index + 1,
-      key,
-      value,
-    }));
+    const entries = Object.entries(server.metadata ?? {}).map(
+      ([key, value], index) => ({
+        id: index + 1,
+        key,
+        value,
+      }),
+    );
     setMetadata(entries);
     setNextMetadataId(entries.length + 1);
     setError(null);
@@ -130,6 +137,29 @@ export function InstanceDetailActions({
         queryKey: [regionId, projectId, "server-actions", server.id],
       }),
     ]);
+  };
+
+  const completeLifecycleAction = async (
+    action: InstanceMutationKind,
+    completedInstances: Server[],
+  ) => {
+    if (
+      action === "delete" &&
+      completedInstances.some(({ id }) => id === server.id)
+    ) {
+      const deletingIds = new Set([server.id]);
+      queryClient.setQueryData<Server[]>(
+        [regionId, projectId, "servers"],
+        (current) =>
+          current ? markServersDeleting(current, deletingIds) : current,
+      );
+      router.replace(
+        `/compute/instances?deleting=${encodeURIComponent(server.id)}`,
+      );
+      return;
+    }
+
+    await refresh();
   };
 
   const primaryAction = useMemo(() => {
@@ -181,7 +211,12 @@ export function InstanceDetailActions({
         server.id,
         {
           imageRef,
-          keyName: keyName === "preserve" ? undefined : keyName === "none" ? null : keyName,
+          keyName:
+            keyName === "preserve"
+              ? undefined
+              : keyName === "none"
+                ? null
+                : keyName,
           preserveEphemeral,
         },
       );
@@ -201,7 +236,9 @@ export function InstanceDetailActions({
     <>
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild className="h-10 gap-2">
-          <Link href={`/compute/instances/${encodeURIComponent(server.id)}/console`}>
+          <Link
+            href={`/compute/instances/${encodeURIComponent(server.id)}/console`}
+          >
             <Monitor className="size-4" />
             Connect
           </Link>
@@ -232,7 +269,12 @@ export function InstanceDetailActions({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="size-10" aria-label="Instance actions">
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-10"
+              aria-label="Instance actions"
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -265,7 +307,10 @@ export function InstanceDetailActions({
               <RefreshCw className="size-4" />
               Rebuild
             </DropdownMenuItem>
-            <DropdownMenuItem disabled={transitioning} onClick={openMetadataDialog}>
+            <DropdownMenuItem
+              disabled={transitioning}
+              onClick={openMetadataDialog}
+            >
               <Pencil className="size-4" />
               Edit metadata
             </DropdownMenuItem>
@@ -288,7 +333,7 @@ export function InstanceDetailActions({
       <InstanceLifecycleDialog
         action={lifecycleAction}
         instances={[server]}
-        onComplete={refresh}
+        onComplete={completeLifecycleAction}
         onOpenChange={(open) => {
           if (!open) setLifecycleAction(null);
         }}
@@ -306,7 +351,10 @@ export function InstanceDetailActions({
           </DialogHeader>
           <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
             {metadata.map((entry) => (
-              <div key={entry.id} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+              <div
+                key={entry.id}
+                className="grid grid-cols-[1fr_1fr_auto] gap-2"
+              >
                 <Input
                   aria-label="Metadata key"
                   maxLength={255}
@@ -315,7 +363,9 @@ export function InstanceDetailActions({
                   onChange={(event) =>
                     setMetadata((current) =>
                       current.map((item) =>
-                        item.id === entry.id ? { ...item, key: event.target.value } : item,
+                        item.id === entry.id
+                          ? { ...item, key: event.target.value }
+                          : item,
                       ),
                     )
                   }
@@ -328,7 +378,9 @@ export function InstanceDetailActions({
                   onChange={(event) =>
                     setMetadata((current) =>
                       current.map((item) =>
-                        item.id === entry.id ? { ...item, value: event.target.value } : item,
+                        item.id === entry.id
+                          ? { ...item, value: event.target.value }
+                          : item,
                       ),
                     )
                   }
@@ -339,7 +391,9 @@ export function InstanceDetailActions({
                   size="icon"
                   aria-label="Remove metadata"
                   onClick={() =>
-                    setMetadata((current) => current.filter((item) => item.id !== entry.id))
+                    setMetadata((current) =>
+                      current.filter((item) => item.id !== entry.id),
+                    )
                   }
                 >
                   <Trash2 className="size-4" />
@@ -362,7 +416,11 @@ export function InstanceDetailActions({
           </div>
           {error ? <MutationAlert>{error}</MutationAlert> : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMetadataOpen(false)} disabled={isPending}>
+            <Button
+              variant="outline"
+              onClick={() => setMetadataOpen(false)}
+              disabled={isPending}
+            >
               Cancel
             </Button>
             <Button onClick={saveMetadata} disabled={isPending}>
@@ -377,35 +435,42 @@ export function InstanceDetailActions({
           <DialogHeader>
             <DialogTitle>Rebuild instance</DialogTitle>
             <DialogDescription>
-              Rebuild replaces the root disk. Data on the root disk will be lost.
+              Rebuild replaces the root disk. Data on the root disk will be
+              lost.
             </DialogDescription>
           </DialogHeader>
           <MutationAlert variant="warning" title="Destructive operation">
-            Volume-backed instances can only use rebuild combinations supported by the
-            cloud&apos;s Nova microversion and storage backend.
+            Volume-backed instances can only use rebuild combinations supported
+            by the cloud&apos;s Nova microversion and storage backend.
           </MutationAlert>
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="rebuild-image">Image</Label>
-              <Select value={imageRef} onValueChange={setImageRef} disabled={imagesLoading || isPending}>
-                <SelectTrigger id="rebuild-image">
-                  <SelectValue placeholder={imagesLoading ? "Loading images" : "Choose an image"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {images.map((image) => (
-                    <SelectItem key={image.id} value={image.id}>
-                      {image.name || image.id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ImagePicker
+                disabled={imagesLoading || isPending}
+                id="rebuild-image"
+                images={images}
+                onValueChange={setImageRef}
+                placeholder={
+                  imagesLoading ? "Loading images" : "Choose an image"
+                }
+                value={imageRef}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="rebuild-key">Key pair</Label>
-              <Select value={keyName} onValueChange={setKeyName} disabled={isPending}>
-                <SelectTrigger id="rebuild-key"><SelectValue /></SelectTrigger>
+              <Select
+                value={keyName}
+                onValueChange={setKeyName}
+                disabled={isPending}
+              >
+                <SelectTrigger id="rebuild-key">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="preserve">Keep current key pair</SelectItem>
+                  <SelectItem value="preserve">
+                    Keep current key pair
+                  </SelectItem>
                   <SelectItem value="none">Remove key pair</SelectItem>
                   {keypairs.map((keypair) => (
                     <SelectItem key={keypair.name} value={keypair.name}>
@@ -416,16 +481,29 @@ export function InstanceDetailActions({
               </Select>
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <Checkbox checked={preserveEphemeral} onCheckedChange={(value) => setPreserveEphemeral(Boolean(value))} />
+              <Checkbox
+                checked={preserveEphemeral}
+                onCheckedChange={(value) =>
+                  setPreserveEphemeral(Boolean(value))
+                }
+              />
               Preserve ephemeral storage when the hypervisor supports it
             </label>
           </div>
           {error ? <MutationAlert>{error}</MutationAlert> : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRebuildOpen(false)} disabled={isPending}>
+            <Button
+              variant="outline"
+              onClick={() => setRebuildOpen(false)}
+              disabled={isPending}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={rebuild} disabled={!imageRef || isPending}>
+            <Button
+              variant="destructive"
+              onClick={rebuild}
+              disabled={!imageRef || isPending}
+            >
               <RefreshCw className="size-4" />
               {isPending ? "Rebuilding" : "Rebuild instance"}
             </Button>

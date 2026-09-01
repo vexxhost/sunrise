@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterResourcePreferencesByLiveIds,
   RESOURCE_PREFERENCE_LIMIT,
   addRecentResource,
   createResourcePreference,
@@ -100,6 +101,20 @@ describe("resource preferences", () => {
         context,
       }).recent,
     ).toEqual([current]);
+  });
+
+  it("removes stale resources of one kind without affecting other kinds", () => {
+    const liveCluster = resource("cluster-live", 4, "cluster");
+    const deletedCluster = resource("cluster-deleted", 3, "cluster");
+    const instance = resource("instance-live", 2, "instance");
+
+    expect(
+      filterResourcePreferencesByLiveIds(
+        [liveCluster, deletedCluster, instance],
+        "cluster",
+        [liveCluster.id],
+      ),
+    ).toEqual([liveCluster, instance]);
   });
 
   it("derives supported detail routes instead of accepting stored URLs", () => {

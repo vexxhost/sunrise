@@ -15,7 +15,31 @@ import type {
   ServerActionsListResponse,
   ServerActionResponse,
   ServerConsoleOutputResponse,
+  ComputeAvailabilityZoneListResponse,
 } from "@/types/openstack";
+
+export function serverAvailabilityZonesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "server-availability-zones"],
+    queryFn: async () => {
+      const data = await openstack<ComputeAvailabilityZoneListResponse>({
+        regionId: regionId!,
+        serviceType: "compute",
+        serviceName: "nova",
+        path: "/os-availability-zone",
+        apiVersion: "compute 2.79",
+      });
+
+      return (data?.availabilityZoneInfo ?? [])
+        .filter(({ zoneState }) => zoneState.available)
+        .sort((left, right) => left.zoneName.localeCompare(right.zoneName));
+    },
+    enabled: !!regionId && !!projectId,
+  });
+}
 
 /**
  * Query options for fetching list of servers

@@ -1,10 +1,17 @@
-'use client';
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQueries, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { Camera, Trash2 } from "lucide-react";
-import { snapshotQueryOptions, snapshotsQueryOptions } from "@/hooks/queries/useVolumes";
+import {
+  snapshotQueryOptions,
+  snapshotsQueryOptions,
+} from "@/hooks/queries/useVolumes";
 import { Badge } from "@/components/ui/badge";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Snapshot } from "@/types/openstack";
@@ -34,25 +41,26 @@ const columns: ColumnDef<Snapshot>[] = [
     ),
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "id",
     header: "ID",
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "description",
     header: "Description",
-    cell: ({ row }: { row: { original: Snapshot } }) => row.original.description || "-",
+    cell: ({ row }: { row: { original: Snapshot } }) =>
+      row.original.description || "-",
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "volume_id",
@@ -60,7 +68,7 @@ const columns: ColumnDef<Snapshot>[] = [
     meta: {
       monospace: true,
       fieldType: "string",
-      visible: true
+      visible: true,
     },
     cell: ({ row }: { row: { original: Snapshot } }) => (
       <ResourceLink
@@ -69,16 +77,17 @@ const columns: ColumnDef<Snapshot>[] = [
       >
         {row.original.volume_id}
       </ResourceLink>
-    )
+    ),
   },
   {
     accessorKey: "size",
     header: "Size",
-    cell: ({ row }: { row: { original: Snapshot } }) => row.original.size + " GB",
+    cell: ({ row }: { row: { original: Snapshot } }) =>
+      row.original.size + " GB",
     meta: {
       fieldType: "number",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "status",
@@ -108,29 +117,24 @@ const columns: ColumnDef<Snapshot>[] = [
       return transitioning ? (
         <ProgressStatusBadge label={status} />
       ) : (
-        <Badge variant={variant}>
-          {status}
-        </Badge>
+        <Badge variant={variant}>{status}</Badge>
       );
     },
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "created_at",
-    header: "Created At",
-    cell: ({ row }: { row: { original: Snapshot } }) => {
-      const date = new Date(row.original.created_at);
-      return date.toLocaleString();
-    },
+    header: "Age",
     meta: {
       fieldType: "date",
-      visible: true
-    }
-  }
-]
+      dateDisplay: "age",
+      visible: true,
+    },
+  },
+];
 
 interface SnapshotsClientProps {
   regionId?: string;
@@ -185,7 +189,8 @@ export function SnapshotsClient({ regionId, projectId }: SnapshotsClientProps) {
         variant: "destructive" as const,
         onClick: setDeleteTargets,
         isDisabled: (rows: Snapshot[]) =>
-          rows.length === 0 || rows.some((snapshot) => !canDeleteSnapshot(snapshot)),
+          rows.length === 0 ||
+          rows.some((snapshot) => !canDeleteSnapshot(snapshot)),
       },
     ],
     [],
@@ -201,6 +206,7 @@ export function SnapshotsClient({ regionId, projectId }: SnapshotsClientProps) {
         resourceName="snapshot"
         emptyIcon={Camera}
         rowActions={rowActions}
+        getRowId={(snapshot) => snapshot.id}
         onPageRowsChange={setVisibleSnapshots}
       />
       {deleteTargets.length ? (

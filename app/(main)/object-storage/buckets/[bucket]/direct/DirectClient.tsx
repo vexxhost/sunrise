@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
-import { useQuery } from '@tanstack/react-query';
-import type { ColumnDef } from '@tanstack/react-table';
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { HeadObjectCommand, type S3Client } from "@aws-sdk/client-s3";
+import { useQuery } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
   AlertTriangle,
   Calculator,
@@ -16,18 +16,18 @@ import {
   Home,
   Trash2,
   Upload,
-} from 'lucide-react';
-import bytes from 'bytes';
-import { DataTable } from '@/components/DataTable';
-import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
-import { BucketSettingsDialog } from '@/components/object-storage/BucketSettingsDialog';
+} from "lucide-react";
+import bytes from "bytes";
+import { DataTable } from "@/components/DataTable";
+import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { BucketSettingsDialog } from "@/components/object-storage/BucketSettingsDialog";
 import {
   ObjectMetadataDetails,
   type ObjectMetadataDetailsData,
-} from '@/components/ObjectMetadataDetails';
-import { UploadQueueMenu } from '@/components/UploadQueueMenu';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from "@/components/ObjectMetadataDetails";
+import { UploadQueueMenu } from "@/components/UploadQueueMenu";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -35,11 +35,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { makeBrowserS3Client } from '@/lib/s3/browser-client';
-import { getStsCredentialsForBrowser } from '@/lib/s3/browser-creds';
-import { directObjectPath } from '@/lib/s3/direct-route';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { makeBrowserS3Client } from "@/lib/s3/browser-client";
+import { getStsCredentialsForBrowser } from "@/lib/s3/browser-creds";
+import { directObjectPath } from "@/lib/s3/direct-route";
 import {
   browserUploadKey,
   calculateBrowserSelectionSize,
@@ -54,9 +54,9 @@ import {
   uploadBrowserFiles,
   type BrowserObjectRow,
   type BrowserSizeResult,
-} from '@/lib/s3/browser-objects';
-import { normalizeStorageClass } from '@/lib/s3/storage-class';
-import { useMutationRefresh } from '@/hooks/useMutationRefresh';
+} from "@/lib/s3/browser-objects";
+import { normalizeStorageClass } from "@/lib/s3/storage-class";
+import { useMutationRefresh } from "@/hooks/useMutationRefresh";
 
 interface DirectClientProps {
   activeProjectId: string;
@@ -86,10 +86,10 @@ function filePath(file: File) {
 }
 
 function triggerNativeDownload(url: string) {
-  const link = document.createElement('a');
+  const link = document.createElement("a");
   link.href = url;
-  link.rel = 'noopener';
-  link.style.display = 'none';
+  link.rel = "noopener";
+  link.style.display = "none";
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -99,10 +99,10 @@ export function DirectClient({
   activeProjectId,
   activeRegionId,
   bucket,
-  objectKey = '',
+  objectKey = "",
 }: DirectClientProps) {
   const searchParams = useSearchParams();
-  const prefix = searchParams.get('prefix') ?? '';
+  const prefix = searchParams.get("prefix") ?? "";
   const inspectKey = objectKey;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -117,7 +117,7 @@ export function DirectClient({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [overwriteOpen, setOverwriteOpen] = useState(false);
   const [overwriteKeys, setOverwriteKeys] = useState<string[]>([]);
-  const [folderName, setFolderName] = useState('');
+  const [folderName, setFolderName] = useState("");
   const [folderBusy, setFolderBusy] = useState(false);
   const [folderMessage, setFolderMessage] = useState<string | null>(null);
   const [folderError, setFolderError] = useState<string | null>(null);
@@ -135,15 +135,15 @@ export function DirectClient({
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadQueue, setDownloadQueue] = useState<DirectDownload[]>([]);
   const [startedDownloads, setStartedDownloads] = useState<Set<string>>(
-    () => new Set()
+    () => new Set(),
   );
   const activeBrowserSession =
     browserSession?.projectId === activeProjectId ? browserSession : null;
   const s3 = activeBrowserSession?.client ?? null;
   const endpoint = activeBrowserSession?.endpoint ?? null;
   const directObjectsKey = useMemo(
-    () => ['s3-direct', activeProjectId, 'objects', bucket, prefix] as const,
-    [activeProjectId, bucket, prefix]
+    () => ["s3-direct", activeProjectId, "objects", bucket, prefix] as const,
+    [activeProjectId, bucket, prefix],
   );
 
   useEffect(() => {
@@ -154,7 +154,7 @@ export function DirectClient({
       if (cancelled) return;
       if (!result.ok) {
         if (result.needsAuth) {
-          window.location.href = '/object-storage/auth/login';
+          window.location.href = "/object-storage/auth/login";
           return;
         }
         setCredsError(result.error);
@@ -164,7 +164,7 @@ export function DirectClient({
         client: makeBrowserS3Client(
           result.credentials,
           result.endpoint,
-          result.region
+          result.region,
         ),
         endpoint: result.endpoint,
         projectId: activeProjectId,
@@ -183,7 +183,7 @@ export function DirectClient({
   });
 
   const headQuery = useQuery({
-    queryKey: ['s3-direct', activeProjectId, 'head', bucket, inspectKey],
+    queryKey: ["s3-direct", activeProjectId, "head", bucket, inspectKey],
     enabled: !!s3 && !!inspectKey,
     retry: false,
     queryFn: () =>
@@ -191,27 +191,31 @@ export function DirectClient({
   });
   const refreshObjects = useMutationRefresh(directObjectsKey);
 
-  const rows = useMemo(() => listQuery.data?.rows ?? [], [listQuery.data?.rows]);
+  const rows = useMemo(
+    () => listQuery.data?.rows ?? [],
+    [listQuery.data?.rows],
+  );
   const segments = useMemo(
     () =>
       prefix
-        .replace(/\/$/, '')
-        .split('/')
+        .replace(/\/$/, "")
+        .split("/")
         .filter((segment) => segment.length > 0),
-    [prefix]
+    [prefix],
   );
   const inspectSegments = useMemo(
-    () => inspectKey.split('/').filter((segment) => segment.length > 0),
-    [inspectKey]
+    () => inspectKey.split("/").filter((segment) => segment.length > 0),
+    [inspectKey],
   );
-  const inspectedFileName = inspectSegments[inspectSegments.length - 1] ?? inspectKey;
+  const inspectedFileName =
+    inspectSegments[inspectSegments.length - 1] ?? inspectKey;
   const inspectedMetadata = useMemo<ObjectMetadataDetailsData | null>(() => {
     if (!headQuery.data || !inspectKey) return null;
     return {
       bucket,
       key: inspectKey,
       size:
-        typeof headQuery.data.ContentLength === 'number'
+        typeof headQuery.data.ContentLength === "number"
           ? headQuery.data.ContentLength
           : null,
       lastModified: headQuery.data.LastModified
@@ -247,7 +251,7 @@ export function DirectClient({
     if (selectedFiles.length > 0) {
       setUploadFiles((current) => [...current, ...selectedFiles]);
     }
-    input.value = '';
+    input.value = "";
     clearMessages();
     setUploadProgress(null);
     setOverwriteOpen(false);
@@ -271,7 +275,7 @@ export function DirectClient({
         const conflicts = await findBrowserUploadConflicts(
           s3,
           bucket,
-          files.map(({ key }) => key)
+          files.map(({ key }) => key),
         );
         if (conflicts.length > 0) {
           setOverwriteKeys(conflicts);
@@ -284,16 +288,16 @@ export function DirectClient({
         s3,
         bucket,
         files,
-        setUploadProgress
+        setUploadProgress,
       );
       setUploadMessage(
         `Uploaded ${result.uploaded} ${
-          result.uploaded === 1 ? 'object' : 'objects'
-        } directly to RGW.`
+          result.uploaded === 1 ? "object" : "objects"
+        } directly to RGW.`,
       );
       if (result.errors.length > 0) {
         setUploadError(
-          `${result.errors.length} upload failed. ${result.errors[0].key}: ${result.errors[0].error}`
+          `${result.errors.length} upload failed. ${result.errors[0].key}: ${result.errors[0].error}`,
         );
       }
       setUploadFiles([]);
@@ -312,7 +316,7 @@ export function DirectClient({
     setFolderBusy(true);
     try {
       const key = await createBrowserFolder(s3, bucket, prefix, folderName);
-      setFolderName('');
+      setFolderName("");
       setFolderMessage(`Created ${key} directly in RGW.`);
       await refreshObjects();
     } catch (error) {
@@ -339,12 +343,12 @@ export function DirectClient({
       setRemoveTargets([]);
       setRemoveMessage(
         `Removed ${result.deleted} ${
-          result.deleted === 1 ? 'object' : 'objects'
-        } directly from RGW.`
+          result.deleted === 1 ? "object" : "objects"
+        } directly from RGW.`,
       );
       if (result.errors.length > 0) {
         setRemoveError(
-          `${result.errors.length} delete failed. ${result.errors[0].key}: ${result.errors[0].error}`
+          `${result.errors.length} delete failed. ${result.errors[0].key}: ${result.errors[0].error}`,
         );
       }
       await refreshObjects();
@@ -364,7 +368,7 @@ export function DirectClient({
       const result = await calculateBrowserSelectionSize(
         s3,
         bucket,
-        selectedRows
+        selectedRows,
       );
       setSizeResult({
         ...result,
@@ -390,14 +394,14 @@ export function DirectClient({
     try {
       const keys = Array.from(
         new Set(
-          (
-            await collectBrowserSelectionKeys(s3, bucket, selectedRows)
-          ).filter((key) => !key.endsWith('/'))
-        )
+          (await collectBrowserSelectionKeys(s3, bucket, selectedRows)).filter(
+            (key) => !key.endsWith("/"),
+          ),
+        ),
       );
 
       if (keys.length === 0) {
-        setDownloadError('No downloadable objects were found.');
+        setDownloadError("No downloadable objects were found.");
         return;
       }
 
@@ -409,7 +413,7 @@ export function DirectClient({
 
       if (downloads.length === 1) {
         triggerNativeDownload(downloads[0].url);
-        setDownloadMessage('Started 1 direct download.');
+        setDownloadMessage("Started 1 direct download.");
       } else {
         setDownloadQueue(downloads);
         setDownloadOpen(true);
@@ -423,14 +427,14 @@ export function DirectClient({
 
   const columns: ColumnDef<BrowserObjectRow>[] = [
     {
-      accessorKey: 'name',
-      header: 'Name',
+      accessorKey: "name",
+      header: "Name",
       enableHiding: false,
       cell: ({ row }) => {
         const item = row.original;
-        if (item.kind === 'folder') {
+        if (item.kind === "folder") {
           const params = new URLSearchParams();
-          params.set('prefix', item.fullPath);
+          params.set("prefix", item.fullPath);
           return (
             <Link
               href={`?${params.toString()}`}
@@ -451,54 +455,54 @@ export function DirectClient({
           </Link>
         );
       },
-      meta: { fieldType: 'string', visible: true, monospace: true },
+      meta: { fieldType: "string", visible: true, monospace: true },
     },
     {
-      accessorKey: 'size',
-      header: 'Size',
+      accessorKey: "size",
+      header: "Size",
       cell: ({ row }) => {
         const item = row.original;
-        return item.kind === 'object' && item.size !== null
-          ? bytes(item.size, { unitSeparator: ' ' })
-          : '-';
+        return item.kind === "object" && item.size !== null
+          ? bytes(item.size, { unitSeparator: " " })
+          : "-";
       },
-      meta: { fieldType: 'number', visible: true },
+      meta: { fieldType: "number", visible: true },
     },
     {
-      accessorKey: 'lastModified',
-      header: 'Last Modified',
+      accessorKey: "lastModified",
+      header: "Last Modified",
       cell: ({ row }) =>
-        row.original.kind === 'object'
-          ? row.original.lastModified ?? '-'
-          : '-',
-      meta: { fieldType: 'date', visible: true },
+        row.original.kind === "object"
+          ? (row.original.lastModified ?? "-")
+          : "-",
+      meta: { fieldType: "date", visible: true },
     },
     {
-      accessorKey: 'storageClass',
-      header: 'Storage Class',
+      accessorKey: "storageClass",
+      header: "Storage Class",
       cell: ({ row }) =>
-        row.original.kind === 'object'
-          ? row.original.storageClass ?? '-'
-          : '-',
-      meta: { fieldType: 'string', visible: false },
+        row.original.kind === "object"
+          ? (row.original.storageClass ?? "-")
+          : "-",
+      meta: { fieldType: "string", visible: false },
     },
     {
-      accessorKey: 'etag',
-      header: 'ETag',
+      accessorKey: "etag",
+      header: "ETag",
       cell: ({ row }) =>
-        row.original.kind === 'object' ? row.original.etag ?? '-' : '-',
-      meta: { fieldType: 'string', visible: false, monospace: true },
+        row.original.kind === "object" ? (row.original.etag ?? "-") : "-",
+      meta: { fieldType: "string", visible: false, monospace: true },
     },
     {
-      id: 'objectActions',
-      header: 'Actions',
+      id: "objectActions",
+      header: "Actions",
       enableSorting: false,
       enableHiding: false,
       cell: ({ row }) => {
         const item = row.original;
         return (
           <div className="flex items-center gap-1">
-            {item.kind === 'object' && (
+            {item.kind === "object" && (
               <Button
                 type="button"
                 size="icon-sm"
@@ -525,7 +529,7 @@ export function DirectClient({
           </div>
         );
       },
-      meta: { fieldType: 'string', visible: true },
+      meta: { fieldType: "string", visible: true },
     },
   ];
 
@@ -538,17 +542,19 @@ export function DirectClient({
   }
 
   if (!s3) {
-    return <div className="text-sm text-muted-foreground">Acquiring credentials</div>;
+    return (
+      <div className="text-sm text-muted-foreground">Acquiring credentials</div>
+    );
   }
 
   const directNotice = (
     <div className="rounded-md border border-blue-500/50 bg-blue-500/10 p-3 text-sm">
       <div className="font-medium">Direct browser mode</div>
       <div className="text-muted-foreground">
-        S3 operations on this page go from your browser straight to{' '}
-        <code>{endpoint || 'the S3 endpoint'}</code>. Ceph 20.2.3 requires CORS
-        on this bucket; global RGW CORS may become available after a future
-        Ceph 21.x or later upgrade.
+        S3 operations on this page go from your browser straight to{" "}
+        <code>{endpoint || "the S3 endpoint"}</code>. Ceph 20.2.3 requires CORS
+        on this bucket; global RGW CORS may become available after a future Ceph
+        21.x or later upgrade.
       </div>
     </div>
   );
@@ -567,13 +573,13 @@ export function DirectClient({
             <span>{bucket}</span>
           </Link>
           {parentSegments.map((segment, index) => {
-            const upToHere = `${parentSegments.slice(0, index + 1).join('/')}/`;
+            const upToHere = `${parentSegments.slice(0, index + 1).join("/")}/`;
             return (
               <span key={upToHere} className="flex items-center gap-1">
                 <ChevronRight className="h-3.5 w-3.5" />
                 <Link
                   href={`/object-storage/buckets/${encodeURIComponent(
-                    bucket
+                    bucket,
                   )}/direct?prefix=${encodeURIComponent(upToHere)}`}
                   className="hover:text-foreground"
                 >
@@ -601,7 +607,9 @@ export function DirectClient({
             {describeBrowserS3Error(headQuery.error)}
           </div>
         )}
-        {inspectedMetadata && <ObjectMetadataDetails data={inspectedMetadata} />}
+        {inspectedMetadata && (
+          <ObjectMetadataDetails data={inspectedMetadata} />
+        )}
       </div>
     );
   }
@@ -609,14 +617,14 @@ export function DirectClient({
   const removeDialogTarget = removeTargets[0];
   const removeDialogTitle =
     removeTargets.length === 1
-      ? `Remove ${removeDialogTarget?.kind === 'folder' ? 'folder' : 'item'}?`
-      : 'Remove selected?';
+      ? `Remove ${removeDialogTarget?.kind === "folder" ? "folder" : "item"}?`
+      : "Remove selected?";
   const removeDialogDescription =
     removeTargets.length === 1
-      ? removeDialogTarget?.kind === 'folder'
-        ? 'This will remove this folder and all items inside it.'
-        : 'This will remove this item.'
-      : 'This will remove the selected items. Selected folders include all items inside them.';
+      ? removeDialogTarget?.kind === "folder"
+        ? "This will remove this folder and all items inside it."
+        : "This will remove this item."
+      : "This will remove the selected items. Selected folders include all items inside them.";
 
   return (
     <div className="space-y-3">
@@ -631,13 +639,13 @@ export function DirectClient({
             <span>{bucket}</span>
           </Link>
           {segments.map((segment, index) => {
-            const upToHere = `${segments.slice(0, index + 1).join('/')}/`;
+            const upToHere = `${segments.slice(0, index + 1).join("/")}/`;
             return (
               <span key={upToHere} className="flex items-center gap-1">
                 <ChevronRight className="h-3.5 w-3.5" />
                 <Link
                   href={`/object-storage/buckets/${encodeURIComponent(
-                    bucket
+                    bucket,
                   )}/direct?prefix=${encodeURIComponent(upToHere)}`}
                   className="hover:text-foreground"
                 >
@@ -649,7 +657,7 @@ export function DirectClient({
         </div>
         <Link
           href={`/object-storage/buckets/${encodeURIComponent(bucket)}${
-            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""
           }`}
           className="text-xs text-muted-foreground underline hover:text-foreground"
         >
@@ -671,7 +679,10 @@ export function DirectClient({
           multiple
           className="hidden"
           onChange={(event) => handleFilesSelected(event.currentTarget)}
-          {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+          {...({ webkitdirectory: "", directory: "" } as Record<
+            string,
+            string
+          >)}
         />
         <Button
           type="button"
@@ -705,9 +716,9 @@ export function DirectClient({
           <Upload className="h-4 w-4" />
           {uploading
             ? uploadProgress === null
-              ? 'Uploading'
+              ? "Uploading"
               : `Uploading ${uploadProgress}%`
-            : 'Upload'}
+            : "Upload"}
         </Button>
 
         <div className="h-6 w-px bg-border" />
@@ -716,7 +727,7 @@ export function DirectClient({
           value={folderName}
           onChange={(event) => setFolderName(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') {
+            if (event.key === "Enter") {
               event.preventDefault();
               void handleCreateFolder();
             }
@@ -752,14 +763,24 @@ export function DirectClient({
         downloadMessage ||
         downloadError) && (
         <div className="space-y-1 text-sm">
-          {uploadMessage && <div className="text-muted-foreground">{uploadMessage}</div>}
-          {folderMessage && <div className="text-muted-foreground">{folderMessage}</div>}
-          {removeMessage && <div className="text-muted-foreground">{removeMessage}</div>}
-          {downloadMessage && <div className="text-muted-foreground">{downloadMessage}</div>}
+          {uploadMessage && (
+            <div className="text-muted-foreground">{uploadMessage}</div>
+          )}
+          {folderMessage && (
+            <div className="text-muted-foreground">{folderMessage}</div>
+          )}
+          {removeMessage && (
+            <div className="text-muted-foreground">{removeMessage}</div>
+          )}
+          {downloadMessage && (
+            <div className="text-muted-foreground">{downloadMessage}</div>
+          )}
           {uploadError && <div className="text-destructive">{uploadError}</div>}
           {folderError && <div className="text-destructive">{folderError}</div>}
           {removeError && <div className="text-destructive">{removeError}</div>}
-          {downloadError && <div className="text-destructive">{downloadError}</div>}
+          {downloadError && (
+            <div className="text-destructive">{downloadError}</div>
+          )}
         </div>
       )}
 
@@ -769,16 +790,16 @@ export function DirectClient({
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{sizeResult.label}</span>
               <Badge variant="secondary">
-                {bytes(sizeResult.totalBytes, { unitSeparator: ' ' })}
+                {bytes(sizeResult.totalBytes, { unitSeparator: " " })}
               </Badge>
               <span className="text-muted-foreground">
-                {sizeResult.totalBytes} bytes across {sizeResult.objectCount}{' '}
-                {sizeResult.objectCount === 1 ? 'object' : 'objects'}
+                {sizeResult.totalBytes} bytes across {sizeResult.objectCount}{" "}
+                {sizeResult.objectCount === 1 ? "object" : "objects"}
                 {sizeResult.folderCount > 0
                   ? ` in ${sizeResult.folderCount} ${
-                      sizeResult.folderCount === 1 ? 'folder' : 'folders'
+                      sizeResult.folderCount === 1 ? "folder" : "folders"
                     }`
-                  : ''}
+                  : ""}
               </span>
             </div>
           )}
@@ -796,20 +817,21 @@ export function DirectClient({
         isRefetching={listQuery.isRefetching}
         resourceName="object"
         emptyIcon={Folder}
+        getRowId={(row) => `${row.kind}:${row.fullPath}`}
         rowActions={[
           {
-            label: downloadBusy ? 'Preparing downloads' : 'Download selected',
+            label: downloadBusy ? "Preparing downloads" : "Download selected",
             icon: Download,
             onClick: (selectedRows) => void downloadRows(selectedRows),
           },
           {
-            label: 'Remove selected',
-            variant: 'destructive',
+            label: "Remove selected",
+            variant: "destructive",
             icon: Trash2,
             onClick: openRemoveDialog,
           },
           {
-            label: sizeBusy ? 'Calculating size' : 'Calculate size',
+            label: sizeBusy ? "Calculating size" : "Calculate size",
             icon: Calculator,
             onClick: (selectedRows) => void calculateRows(selectedRows),
           },
@@ -820,23 +842,24 @@ export function DirectClient({
         <div
           className={`rounded-md border p-3 text-sm flex gap-2 ${
             isBrowserAccessDenied(listQuery.error)
-              ? 'border-yellow-500/50 bg-yellow-500/10'
-              : 'border-red-500/50 bg-red-500/10'
+              ? "border-yellow-500/50 bg-yellow-500/10"
+              : "border-red-500/50 bg-red-500/10"
           }`}
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <div className="font-medium">
               {isBrowserAccessDenied(listQuery.error)
-                ? 'Access denied'
-                : 'Unable to list objects'}
+                ? "Access denied"
+                : "Unable to list objects"}
             </div>
             <div className="text-muted-foreground">
               {describeBrowserS3Error(listQuery.error)}
             </div>
             {!isBrowserAccessDenied(listQuery.error) && (
               <div className="mt-1 text-muted-foreground">
-                If this is a CORS error, inspect the request in browser DevTools.
+                If this is a CORS error, inspect the request in browser
+                DevTools.
               </div>
             )}
           </div>
@@ -892,9 +915,9 @@ export function DirectClient({
               <Upload className="h-4 w-4" />
               {uploading
                 ? uploadProgress === null
-                  ? 'Uploading'
+                  ? "Uploading"
                   : `Uploading ${uploadProgress}%`
-                : 'Overwrite'}
+                : "Overwrite"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -916,7 +939,7 @@ export function DirectClient({
           {removeTargets.slice(0, 10).map((target) => (
             <div key={target.fullPath} className="flex gap-2 text-xs">
               <span className="shrink-0 text-muted-foreground">
-                {target.kind === 'folder' ? 'Folder' : 'Item'}
+                {target.kind === "folder" ? "Folder" : "Item"}
               </span>
               <span className="break-all font-mono">{target.fullPath}</span>
             </div>
@@ -966,7 +989,7 @@ export function DirectClient({
                       }
                     >
                       <Download className="h-4 w-4" />
-                      {started ? 'Download again' : 'Download'}
+                      {started ? "Download again" : "Download"}
                     </a>
                   </Button>
                 </div>
@@ -984,7 +1007,6 @@ export function DirectClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }

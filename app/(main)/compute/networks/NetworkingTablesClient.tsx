@@ -558,8 +558,8 @@ export function SecurityGroupsTableClient({
       },
       {
         accessorKey: "created_at",
-        header: "Created",
-        meta: { fieldType: "date", visible: false },
+        header: "Age",
+        meta: { fieldType: "date", dateDisplay: "age", visible: false },
       },
     ],
     [],

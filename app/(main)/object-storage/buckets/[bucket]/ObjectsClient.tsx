@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ColumnDef } from '@tanstack/react-table';
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ColumnDef } from "@tanstack/react-table";
 import {
   AlertTriangle,
   Calculator,
@@ -15,14 +15,14 @@ import {
   Home,
   Trash2,
   Upload,
-} from 'lucide-react';
-import bytes from 'bytes';
-import { DataTable } from '@/components/DataTable';
-import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
-import { BucketSettingsDialog } from '@/components/object-storage/BucketSettingsDialog';
-import { UploadQueueMenu } from '@/components/UploadQueueMenu';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from "lucide-react";
+import bytes from "bytes";
+import { DataTable } from "@/components/DataTable";
+import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { BucketSettingsDialog } from "@/components/object-storage/BucketSettingsDialog";
+import { UploadQueueMenu } from "@/components/UploadQueueMenu";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -30,10 +30,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { objectsQueryOptions } from '@/hooks/queries/useObjects';
-import { useMutationRefresh } from '@/hooks/useMutationRefresh';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { objectsQueryOptions } from "@/hooks/queries/useObjects";
+import { useMutationRefresh } from "@/hooks/useMutationRefresh";
 import {
   calculateSelectionSize,
   createFolder,
@@ -43,12 +43,12 @@ import {
   type RemoveSelectionEntry,
   type RemoveSelectionResult,
   type SizeSelectionEntry,
-} from '@/lib/s3/actions';
+} from "@/lib/s3/actions";
 
 type Row =
-  | { kind: 'folder'; name: string; fullPath: string }
+  | { kind: "folder"; name: string; fullPath: string }
   | {
-      kind: 'object';
+      kind: "object";
       name: string;
       fullPath: string;
       size: number | null;
@@ -74,12 +74,12 @@ type UploadResult =
 
 function basenameOf(prefix: string, key: string) {
   const tail = key.startsWith(prefix) ? key.slice(prefix.length) : key;
-  return tail.replace(/\/$/, '');
+  return tail.replace(/\/$/, "");
 }
 
 function downloadUrl(bucket: string, key: string) {
   return `/object-storage/buckets/${encodeURIComponent(
-    bucket
+    bucket,
   )}/download?key=${encodeURIComponent(key)}`;
 }
 
@@ -92,37 +92,37 @@ function filePath(file: File) {
 
 function selectionFor(rows: Row[]): SizeSelectionEntry[] {
   return rows.map((row) => {
-    if (row.kind === 'folder') {
-      return { kind: 'folder', fullPath: row.fullPath };
+    if (row.kind === "folder") {
+      return { kind: "folder", fullPath: row.fullPath };
     }
-    return { kind: 'object', fullPath: row.fullPath, size: row.size };
+    return { kind: "object", fullPath: row.fullPath, size: row.size };
   });
 }
 
 function removalFor(rows: Row[]): RemoveSelectionEntry[] {
   return rows.map((row) => {
-    if (row.kind === 'folder') {
-      return { kind: 'folder', fullPath: row.fullPath };
+    if (row.kind === "folder") {
+      return { kind: "folder", fullPath: row.fullPath };
     }
-    return { kind: 'object', fullPath: row.fullPath };
+    return { kind: "object", fullPath: row.fullPath };
   });
 }
 
 function downloadSelection(bucket: string, rows: Row[]) {
   if (rows.length === 0) return;
 
-  const form = document.createElement('form');
-  form.method = 'POST';
+  const form = document.createElement("form");
+  form.method = "POST";
   form.action = `/object-storage/buckets/${encodeURIComponent(
-    bucket
+    bucket,
   )}/download-selected`;
-  form.style.display = 'none';
+  form.style.display = "none";
 
-  const input = document.createElement('input');
-  input.type = 'hidden';
-  input.name = 'entries';
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = "entries";
   input.value = JSON.stringify(
-    rows.map((row) => ({ kind: row.kind, fullPath: row.fullPath }))
+    rows.map((row) => ({ kind: row.kind, fullPath: row.fullPath })),
   );
 
   form.appendChild(input);
@@ -147,15 +147,19 @@ export function ObjectsClient({
   initialData,
 }: ObjectsClientProps) {
   const searchParams = useSearchParams();
-  const prefix = searchParams.get('prefix') ?? '';
+  const prefix = searchParams.get("prefix") ?? "";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const objectListOptions = useMemo(
     () => objectsQueryOptions(activeProjectId, bucket, prefix),
-    [activeProjectId, bucket, prefix]
+    [activeProjectId, bucket, prefix],
   );
 
-  const { data = initialData, refetch, isRefetching } = useQuery({
+  const {
+    data = initialData,
+    refetch,
+    isRefetching,
+  } = useQuery({
     ...objectListOptions,
     initialData: prefix === initialPrefix ? initialData : undefined,
   });
@@ -163,15 +167,15 @@ export function ObjectsClient({
 
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadPhase, setUploadPhase] = useState<'sending' | 'storing' | null>(
-    null
+  const [uploadPhase, setUploadPhase] = useState<"sending" | "storing" | null>(
+    null,
   );
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [overwriteOpen, setOverwriteOpen] = useState(false);
   const [overwriteKeys, setOverwriteKeys] = useState<string[]>([]);
-  const [folderName, setFolderName] = useState('');
+  const [folderName, setFolderName] = useState("");
   const [folderBusy, setFolderBusy] = useState(false);
   const [folderMessage, setFolderMessage] = useState<string | null>(null);
   const [folderError, setFolderError] = useState<string | null>(null);
@@ -187,12 +191,12 @@ export function ObjectsClient({
   const rows: Row[] = useMemo(
     () => [
       ...data.folders.map<Row>((f) => ({
-        kind: 'folder',
+        kind: "folder",
         name: basenameOf(prefix, f.prefix),
         fullPath: f.prefix,
       })),
       ...data.objects.map<Row>((o) => ({
-        kind: 'object',
+        kind: "object",
         name: basenameOf(prefix, o.key),
         fullPath: o.key,
         size: o.size,
@@ -201,7 +205,7 @@ export function ObjectsClient({
         etag: o.etag,
       })),
     ],
-    [data.folders, data.objects, prefix]
+    [data.folders, data.objects, prefix],
   );
 
   const handleFilesSelected = (input: HTMLInputElement) => {
@@ -209,7 +213,7 @@ export function ObjectsClient({
     if (selectedFiles.length > 0) {
       setUploadFiles((currentFiles) => [...currentFiles, ...selectedFiles]);
     }
-    input.value = '';
+    input.value = "";
     setUploadMessage(null);
     setUploadError(null);
     setUploadPhase(null);
@@ -222,28 +226,28 @@ export function ObjectsClient({
     return new Promise<UploadResult>((resolve) => {
       const formData = new FormData();
       for (const file of uploadFiles) {
-        formData.append('files', file, file.name);
-        formData.append('keys', `${prefix}${filePath(file)}`);
+        formData.append("files", file, file.name);
+        formData.append("keys", `${prefix}${filePath(file)}`);
       }
       if (confirmOverwrite) {
-        formData.append('confirmOverwrite', 'true');
+        formData.append("confirmOverwrite", "true");
       }
 
       const request = new XMLHttpRequest();
       request.open(
-        'POST',
-        `/object-storage/buckets/${encodeURIComponent(bucket)}/upload`
+        "POST",
+        `/object-storage/buckets/${encodeURIComponent(bucket)}/upload`,
       );
-      request.setRequestHeader('X-Sunrise-Project-Id', activeProjectId);
+      request.setRequestHeader("X-Sunrise-Project-Id", activeProjectId);
       request.upload.onprogress = (event) => {
         if (!event.lengthComputable) return;
-        setUploadPhase('sending');
+        setUploadPhase("sending");
         setUploadProgress(
-          Math.min(99, Math.round((event.loaded / event.total) * 100))
+          Math.min(99, Math.round((event.loaded / event.total) * 100)),
         );
       };
       request.upload.onload = () => {
-        setUploadPhase('storing');
+        setUploadPhase("storing");
         setUploadProgress(null);
       };
       request.onload = () => {
@@ -253,7 +257,8 @@ export function ObjectsClient({
           resolve({
             ok: false,
             needsAuth: false,
-            error: request.responseText || `Upload failed with ${request.status}`,
+            error:
+              request.responseText || `Upload failed with ${request.status}`,
           });
         }
       };
@@ -261,7 +266,7 @@ export function ObjectsClient({
         resolve({
           ok: false,
           needsAuth: false,
-          error: 'Upload request failed',
+          error: "Upload request failed",
         });
       };
       request.send(formData);
@@ -271,7 +276,7 @@ export function ObjectsClient({
   const handleUpload = async (confirmOverwrite = false) => {
     if (uploadFiles.length === 0 || uploading) return;
     setUploading(true);
-    setUploadPhase('sending');
+    setUploadPhase("sending");
     setUploadProgress(0);
     setUploadMessage(null);
     setUploadError(null);
@@ -286,31 +291,33 @@ export function ObjectsClient({
 
     if (!result.ok) {
       if (result.needsAuth) {
-        window.location.href = '/object-storage/auth/login';
+        window.location.href = "/object-storage/auth/login";
         return;
       }
-      if ('conflict' in result && result.conflict) {
+      if ("conflict" in result && result.conflict) {
         setOverwriteKeys(result.existingKeys);
         setOverwriteOpen(true);
         return;
       }
       setUploadError(
-        'error' in result ? result.error : 'Upload requires overwrite confirmation'
+        "error" in result
+          ? result.error
+          : "Upload requires overwrite confirmation",
       );
       return;
     }
 
     setUploadMessage(
-      `Uploaded ${result.uploaded} ${result.uploaded === 1 ? 'object' : 'objects'}.`
+      `Uploaded ${result.uploaded} ${result.uploaded === 1 ? "object" : "objects"}.`,
     );
     if (result.errors.length > 0) {
       setUploadError(
-        `${result.errors.length} upload failed. ${result.errors[0].key}: ${result.errors[0].error}`
+        `${result.errors.length} upload failed. ${result.errors[0].key}: ${result.errors[0].error}`,
       );
     }
     setUploadFiles([]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    if (folderInputRef.current) folderInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (folderInputRef.current) folderInputRef.current.value = "";
     await refreshObjects();
   };
 
@@ -324,20 +331,20 @@ export function ObjectsClient({
       activeProjectId,
       bucket,
       prefix,
-      folderName
+      folderName,
     );
     setFolderBusy(false);
 
     if (!result.ok) {
       if (result.needsAuth) {
-        window.location.href = '/object-storage/auth/login';
+        window.location.href = "/object-storage/auth/login";
         return;
       }
       setFolderError(result.error);
       return;
     }
 
-    setFolderName('');
+    setFolderName("");
     setFolderMessage(`Created ${result.key}`);
     await refreshObjects();
   };
@@ -359,13 +366,13 @@ export function ObjectsClient({
     const result: RemoveSelectionResult = await removeSelection(
       activeProjectId,
       bucket,
-      removalFor(removeTargets)
+      removalFor(removeTargets),
     );
     setRemoving(false);
 
     if (!result.ok) {
       if (result.needsAuth) {
-        window.location.href = '/object-storage/auth/login';
+        window.location.href = "/object-storage/auth/login";
         return;
       }
       setRemoveError(result.error);
@@ -375,11 +382,11 @@ export function ObjectsClient({
     setRemoveOpen(false);
     setRemoveTargets([]);
     setRemoveMessage(
-      `Removed ${result.deleted} ${result.deleted === 1 ? 'object' : 'objects'}.`
+      `Removed ${result.deleted} ${result.deleted === 1 ? "object" : "objects"}.`,
     );
     if (result.errors.length > 0) {
       setRemoveError(
-        `${result.errors.length} delete failed. ${result.errors[0].key}: ${result.errors[0].error}`
+        `${result.errors.length} delete failed. ${result.errors[0].key}: ${result.errors[0].error}`,
       );
     }
     await refreshObjects();
@@ -393,13 +400,13 @@ export function ObjectsClient({
 
     const result = await calculateSelectionSize(
       bucket,
-      selectionFor(selectedRows)
+      selectionFor(selectedRows),
     );
     setSizeBusy(false);
 
     if (!result.ok) {
       if (result.needsAuth) {
-        window.location.href = '/object-storage/auth/login';
+        window.location.href = "/object-storage/auth/login";
         return;
       }
       setSizeError(result.error);
@@ -417,14 +424,14 @@ export function ObjectsClient({
 
   const columns: ColumnDef<Row>[] = [
     {
-      accessorKey: 'name',
-      header: 'Name',
+      accessorKey: "name",
+      header: "Name",
       enableHiding: false,
       cell: ({ row }) => {
         const r = row.original;
-        if (r.kind === 'folder') {
+        if (r.kind === "folder") {
           const params = new URLSearchParams();
-          params.set('prefix', r.fullPath);
+          params.set("prefix", r.fullPath);
           return (
             <Link
               href={`?${params.toString()}`}
@@ -438,7 +445,7 @@ export function ObjectsClient({
         return (
           <Link
             href={`/object-storage/buckets/${encodeURIComponent(
-              bucket
+              bucket,
             )}/object/${encodeURIComponent(r.fullPath)}`}
             className="flex items-center gap-2 text-primary hover:underline"
           >
@@ -447,56 +454,56 @@ export function ObjectsClient({
           </Link>
         );
       },
-      meta: { fieldType: 'string', visible: true, monospace: true },
+      meta: { fieldType: "string", visible: true, monospace: true },
     },
     {
-      accessorKey: 'size',
-      header: 'Size',
+      accessorKey: "size",
+      header: "Size",
       cell: ({ row }) => {
         const r = row.original;
-        if (r.kind === 'folder' || r.size === null) return '-';
-        return bytes(r.size, { unitSeparator: ' ' });
+        if (r.kind === "folder" || r.size === null) return "-";
+        return bytes(r.size, { unitSeparator: " " });
       },
-      meta: { fieldType: 'number', visible: true },
+      meta: { fieldType: "number", visible: true },
     },
     {
-      accessorKey: 'lastModified',
-      header: 'Last Modified',
+      accessorKey: "lastModified",
+      header: "Last Modified",
       cell: ({ row }) => {
         const r = row.original;
-        if (r.kind === 'folder') return '-';
-        return r.lastModified ?? '-';
+        if (r.kind === "folder") return "-";
+        return r.lastModified ?? "-";
       },
-      meta: { fieldType: 'date', visible: true },
+      meta: { fieldType: "date", visible: true },
     },
     {
-      accessorKey: 'storageClass',
-      header: 'Storage Class',
+      accessorKey: "storageClass",
+      header: "Storage Class",
       cell: ({ row }) => {
         const r = row.original;
-        return r.kind === 'object' ? r.storageClass ?? '-' : '-';
+        return r.kind === "object" ? (r.storageClass ?? "-") : "-";
       },
-      meta: { fieldType: 'string', visible: false },
+      meta: { fieldType: "string", visible: false },
     },
     {
-      accessorKey: 'etag',
-      header: 'ETag',
+      accessorKey: "etag",
+      header: "ETag",
       cell: ({ row }) => {
         const r = row.original;
-        return r.kind === 'object' ? r.etag ?? '-' : '-';
+        return r.kind === "object" ? (r.etag ?? "-") : "-";
       },
-      meta: { fieldType: 'string', visible: false, monospace: true },
+      meta: { fieldType: "string", visible: false, monospace: true },
     },
     {
-      id: 'objectActions',
-      header: 'Actions',
+      id: "objectActions",
+      header: "Actions",
       enableSorting: false,
       enableHiding: false,
       cell: ({ row }) => {
         const r = row.original;
         return (
           <div className="flex items-center gap-1">
-            {r.kind === 'object' && (
+            {r.kind === "object" && (
               <Button asChild size="icon-sm" variant="ghost" title="Download">
                 <a href={downloadUrl(bucket, r.fullPath)}>
                   <Download className="h-4 w-4" />
@@ -518,25 +525,25 @@ export function ObjectsClient({
           </div>
         );
       },
-      meta: { fieldType: 'string', visible: true },
+      meta: { fieldType: "string", visible: true },
     },
   ];
 
   const segments = prefix
-    .replace(/\/$/, '')
-    .split('/')
+    .replace(/\/$/, "")
+    .split("/")
     .filter((s) => s.length > 0);
   const removeDialogTarget = removeTargets[0];
   const removeDialogTitle =
     removeTargets.length === 1
-      ? `Remove ${removeDialogTarget?.kind === 'folder' ? 'folder' : 'item'}?`
-      : 'Remove selected?';
+      ? `Remove ${removeDialogTarget?.kind === "folder" ? "folder" : "item"}?`
+      : "Remove selected?";
   const removeDialogDescription =
     removeTargets.length === 1
-      ? removeDialogTarget?.kind === 'folder'
-        ? 'This will remove this folder and all items inside it.'
-        : 'This will remove this item.'
-      : 'This will remove the selected items. Selected folders include all items inside them.';
+      ? removeDialogTarget?.kind === "folder"
+        ? "This will remove this folder and all items inside it."
+        : "This will remove this item."
+      : "This will remove the selected items. Selected folders include all items inside them.";
 
   return (
     <div className="space-y-3">
@@ -550,13 +557,13 @@ export function ObjectsClient({
             <span>{bucket}</span>
           </Link>
           {segments.map((seg, idx) => {
-            const upToHere = segments.slice(0, idx + 1).join('/') + '/';
+            const upToHere = segments.slice(0, idx + 1).join("/") + "/";
             return (
               <span key={idx} className="flex items-center gap-1">
                 <ChevronRight className="h-3.5 w-3.5" />
                 <Link
                   href={`/object-storage/buckets/${encodeURIComponent(
-                    bucket
+                    bucket,
                   )}?prefix=${encodeURIComponent(upToHere)}`}
                   className="hover:text-foreground"
                 >
@@ -568,7 +575,7 @@ export function ObjectsClient({
         </div>
         <Link
           href={`/object-storage/buckets/${encodeURIComponent(bucket)}/direct${
-            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""
           }`}
           className="text-xs underline text-muted-foreground hover:text-foreground"
         >
@@ -590,7 +597,10 @@ export function ObjectsClient({
           multiple
           className="hidden"
           onChange={(event) => handleFilesSelected(event.currentTarget)}
-          {...({ webkitdirectory: '', directory: '' } as Record<string, string>)}
+          {...({ webkitdirectory: "", directory: "" } as Record<
+            string,
+            string
+          >)}
         />
         <Button
           type="button"
@@ -625,10 +635,10 @@ export function ObjectsClient({
         >
           <Upload className="h-4 w-4" />
           {uploading
-            ? uploadPhase === 'storing'
-              ? 'Storing in RGW'
+            ? uploadPhase === "storing"
+              ? "Storing in RGW"
               : `Sending ${uploadProgress ?? 0}%`
-            : 'Upload'}
+            : "Upload"}
         </Button>
 
         <div className="h-6 w-px bg-border" />
@@ -637,7 +647,7 @@ export function ObjectsClient({
           value={folderName}
           onChange={(event) => setFolderName(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') {
+            if (event.key === "Enter") {
               event.preventDefault();
               void handleCreateFolder();
             }
@@ -673,9 +683,15 @@ export function ObjectsClient({
         removeMessage ||
         removeError) && (
         <div className="space-y-1 text-sm">
-          {uploadMessage && <div className="text-muted-foreground">{uploadMessage}</div>}
-          {folderMessage && <div className="text-muted-foreground">{folderMessage}</div>}
-          {removeMessage && <div className="text-muted-foreground">{removeMessage}</div>}
+          {uploadMessage && (
+            <div className="text-muted-foreground">{uploadMessage}</div>
+          )}
+          {folderMessage && (
+            <div className="text-muted-foreground">{folderMessage}</div>
+          )}
+          {removeMessage && (
+            <div className="text-muted-foreground">{removeMessage}</div>
+          )}
           {uploadError && <div className="text-destructive">{uploadError}</div>}
           {folderError && <div className="text-destructive">{folderError}</div>}
           {removeError && <div className="text-destructive">{removeError}</div>}
@@ -688,16 +704,16 @@ export function ObjectsClient({
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">{sizeResult.label}</span>
               <Badge variant="secondary">
-                {bytes(sizeResult.totalBytes, { unitSeparator: ' ' })}
+                {bytes(sizeResult.totalBytes, { unitSeparator: " " })}
               </Badge>
               <span className="text-muted-foreground">
-                {sizeResult.totalBytes} bytes across {sizeResult.objectCount}{' '}
-                {sizeResult.objectCount === 1 ? 'object' : 'objects'}
+                {sizeResult.totalBytes} bytes across {sizeResult.objectCount}{" "}
+                {sizeResult.objectCount === 1 ? "object" : "objects"}
                 {sizeResult.folderCount > 0
                   ? ` in ${sizeResult.folderCount} ${
-                      sizeResult.folderCount === 1 ? 'folder' : 'folders'
+                      sizeResult.folderCount === 1 ? "folder" : "folders"
                     }`
-                  : ''}
+                  : ""}
               </span>
             </div>
           )}
@@ -712,24 +728,25 @@ export function ObjectsClient({
         isRefetching={isRefetching}
         resourceName="object"
         emptyIcon={Folder}
+        getRowId={(row) => `${row.kind}:${row.fullPath}`}
         rowActions={[
           {
-            label: 'Download selected',
+            label: "Download selected",
             icon: Download,
             onClick: (selectedRows) => {
               downloadSelection(bucket, selectedRows);
             },
           },
           {
-            label: 'Remove selected',
-            variant: 'destructive',
+            label: "Remove selected",
+            variant: "destructive",
             icon: Trash2,
             onClick: (selectedRows) => {
               openRemoveDialog(selectedRows);
             },
           },
           {
-            label: sizeBusy ? 'Calculating size' : 'Calculate size',
+            label: sizeBusy ? "Calculating size" : "Calculate size",
             icon: Calculator,
             onClick: (selectedRows) => {
               void calculateRows(selectedRows);
@@ -748,7 +765,7 @@ export function ObjectsClient({
               <code> {bucket}</code>
               {prefix ? (
                 <>
-                  {' '}
+                  {" "}
                   at prefix <code>{prefix}</code>
                 </>
               ) : null}
@@ -808,10 +825,10 @@ export function ObjectsClient({
             >
               <Upload className="h-4 w-4" />
               {uploading
-                ? uploadPhase === 'storing'
-                  ? 'Storing in RGW'
+                ? uploadPhase === "storing"
+                  ? "Storing in RGW"
                   : `Sending ${uploadProgress ?? 0}%`
-                : 'Overwrite'}
+                : "Overwrite"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -833,7 +850,7 @@ export function ObjectsClient({
           {removeTargets.slice(0, 10).map((target) => (
             <div key={target.fullPath} className="flex gap-2 text-xs">
               <span className="shrink-0 text-muted-foreground">
-                {target.kind === 'folder' ? 'Folder' : 'Item'}
+                {target.kind === "folder" ? "Folder" : "Item"}
               </span>
               <span className="font-mono break-all">{target.fullPath}</span>
             </div>
@@ -845,7 +862,6 @@ export function ObjectsClient({
           )}
         </div>
       </MutationConfirmationDialog>
-
     </div>
   );
 }

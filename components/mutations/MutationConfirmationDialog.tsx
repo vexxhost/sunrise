@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui/spinner";
 type MutationConfirmationDialogProps = {
   children?: React.ReactNode;
   confirmLabel?: string;
+  confirmDisabled?: boolean;
   description: React.ReactNode;
   error?: string | null;
   onConfirm: () => Promise<void> | void;
@@ -30,6 +31,7 @@ type MutationConfirmationDialogProps = {
 export function MutationConfirmationDialog({
   children,
   confirmLabel = "Confirm",
+  confirmDisabled = false,
   description,
   error,
   onConfirm,
@@ -68,7 +70,7 @@ export function MutationConfirmationDialog({
           <Button
             type="button"
             variant={destructive ? "destructive" : "default"}
-            disabled={pending}
+            disabled={pending || confirmDisabled}
             onClick={() => void onConfirm()}
           >
             {pending ? (

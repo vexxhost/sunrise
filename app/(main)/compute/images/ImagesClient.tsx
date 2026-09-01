@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -8,12 +8,15 @@ import {
 } from "@tanstack/react-query";
 import { DataTable } from "@/components/DataTable";
 import { ImageIcon, Pencil, Trash2 } from "lucide-react";
-import { imageQueryOptions, imagesQueryOptions } from "@/hooks/queries/useImages";
+import {
+  imageQueryOptions,
+  imagesQueryOptions,
+} from "@/hooks/queries/useImages";
 import { Badge } from "@/components/ui/badge";
 import type { Image } from "@/types/openstack/glance";
 import { ColumnDef } from "@tanstack/react-table";
 import { titleCase } from "title-case";
-import bytes from 'bytes';
+import bytes from "bytes";
 import { OsIcon } from "@/components/icons/OsIcon";
 import { imageOperatingSystemMetadata } from "@/lib/openstack/image-metadata";
 import {
@@ -85,8 +88,8 @@ const columns: ColumnDef<Image>[] = [
     },
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "id",
@@ -94,8 +97,8 @@ const columns: ColumnDef<Image>[] = [
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "status",
@@ -135,8 +138,8 @@ const columns: ColumnDef<Image>[] = [
     },
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "visibility",
@@ -159,16 +162,12 @@ const columns: ColumnDef<Image>[] = [
           break;
       }
 
-      return (
-        <Badge variant={variant}>
-          {visibility}
-        </Badge>
-      );
+      return <Badge variant={variant}>{visibility}</Badge>;
     },
     meta: {
       fieldType: "string",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "size",
@@ -177,46 +176,51 @@ const columns: ColumnDef<Image>[] = [
       if (row.original.size === null || row.original.size === undefined) {
         return "-";
       }
-      return bytes(row.original.size, { unitSeparator: ' ' });
+      return bytes(row.original.size, { unitSeparator: " " });
     },
     meta: {
       fieldType: "number",
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "virtual_size",
     header: "Virtual Size",
     cell: ({ row }: { row: { original: Image } }) => {
-      if (row.original.virtual_size === null || row.original.virtual_size === undefined) {
+      if (
+        row.original.virtual_size === null ||
+        row.original.virtual_size === undefined
+      ) {
         return "-";
       }
-      return bytes(row.original.virtual_size, { unitSeparator: ' ' });
+      return bytes(row.original.virtual_size, { unitSeparator: " " });
     },
     meta: {
       fieldType: "number",
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "disk_format",
     header: "Disk Format",
-    cell: ({ row }: { row: { original: Image } }) => row.original.disk_format || "-",
+    cell: ({ row }: { row: { original: Image } }) =>
+      row.original.disk_format || "-",
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: true
-    }
+      visible: true,
+    },
   },
   {
     accessorKey: "container_format",
     header: "Container Format",
-    cell: ({ row }: { row: { original: Image } }) => row.original.container_format || "-",
+    cell: ({ row }: { row: { original: Image } }) =>
+      row.original.container_format || "-",
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "min_disk",
@@ -226,8 +230,8 @@ const columns: ColumnDef<Image>[] = [
     },
     meta: {
       fieldType: "number",
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "min_ram",
@@ -237,56 +241,61 @@ const columns: ColumnDef<Image>[] = [
     },
     meta: {
       fieldType: "number",
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "checksum",
     header: "Checksum",
-    cell: ({ row }: { row: { original: Image } }) => row.original.checksum || "-",
+    cell: ({ row }: { row: { original: Image } }) =>
+      row.original.checksum || "-",
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "os_hash_algo",
     header: "Hash Algorithm",
-    cell: ({ row }: { row: { original: Image } }) => row.original.os_hash_algo || "-",
+    cell: ({ row }: { row: { original: Image } }) =>
+      row.original.os_hash_algo || "-",
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "os_hash_value",
     header: "Hash Value",
-    cell: ({ row }: { row: { original: Image } }) => row.original.os_hash_value || "-",
+    cell: ({ row }: { row: { original: Image } }) =>
+      row.original.os_hash_value || "-",
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "protected",
     header: "Protected",
-    cell: ({ row }: { row: { original: Image } }) => row.original.protected ? "Yes" : "No",
+    cell: ({ row }: { row: { original: Image } }) =>
+      row.original.protected ? "Yes" : "No",
     meta: {
       fieldType: "boolean",
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "os_hidden",
     header: "Hidden",
-    cell: ({ row }: { row: { original: Image } }) => row.original.os_hidden ? "Yes" : "No",
+    cell: ({ row }: { row: { original: Image } }) =>
+      row.original.os_hidden ? "Yes" : "No",
     meta: {
       fieldType: "boolean",
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "owner",
@@ -295,34 +304,36 @@ const columns: ColumnDef<Image>[] = [
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "direct_url",
     header: "Direct URL",
-    cell: ({ row }: { row: { original: Image } }) => row.original.direct_url || "-",
+    cell: ({ row }: { row: { original: Image } }) =>
+      row.original.direct_url || "-",
     meta: {
       fieldType: "string",
       monospace: true,
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "created_at",
-    header: "Created At",
+    header: "Age",
     meta: {
       fieldType: "date",
-      visible: true
-    }
+      dateDisplay: "age",
+      visible: true,
+    },
   },
   {
     accessorKey: "updated_at",
     header: "Updated At",
     meta: {
       fieldType: "date",
-      visible: false
-    }
+      visible: false,
+    },
   },
   {
     accessorKey: "tags",
@@ -349,9 +360,9 @@ const columns: ColumnDef<Image>[] = [
     },
     meta: {
       fieldType: "string",
-      visible: false
-    }
-  }
+      visible: false,
+    },
+  },
 ];
 
 interface ImagesClientProps {
@@ -371,7 +382,9 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
     refetchOnWindowFocus: false,
   });
   const [visiblePageImages, setVisiblePageImages] = useState<Image[]>([]);
-  const [pendingAction, setPendingAction] = useState<ImageMutationKind | null>(null);
+  const [pendingAction, setPendingAction] = useState<ImageMutationKind | null>(
+    null,
+  );
   const [actionTargets, setActionTargets] = useState<Image[]>([]);
   const activeVisibleImages = useMemo(
     () =>
@@ -406,13 +419,21 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
   }, []);
 
   const refreshAfterAction = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: imageListOptions.queryKey });
+    await queryClient.invalidateQueries({
+      queryKey: imageListOptions.queryKey,
+    });
     for (const image of actionTargets) {
       await queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "image", image.id],
       });
     }
-  }, [actionTargets, imageListOptions.queryKey, projectId, queryClient, regionId]);
+  }, [
+    actionTargets,
+    imageListOptions.queryKey,
+    projectId,
+    queryClient,
+    regionId,
+  ]);
 
   const rowActions = useMemo(
     () => [
@@ -459,11 +480,7 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
 
       return changed ? nextImages : existing;
     });
-  }, [
-    activeVisibleImageUpdates,
-    imageListOptions.queryKey,
-    queryClient,
-  ]);
+  }, [activeVisibleImageUpdates, imageListOptions.queryKey, queryClient]);
 
   return (
     <>
@@ -475,6 +492,7 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
         resourceName="image"
         emptyIcon={ImageIcon}
         rowActions={rowActions}
+        getRowId={(image) => image.id}
         onPageRowsChange={handlePageRowsChange}
       />
       {pendingAction ? (

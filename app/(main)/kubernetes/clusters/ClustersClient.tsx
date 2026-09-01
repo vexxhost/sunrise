@@ -1,17 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { formatDistanceToNow } from "date-fns";
 import { Activity } from "lucide-react";
+import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/DataTable";
 import {
   clusterTemplatesQueryOptions,
   clustersQueryOptions,
 } from "@/hooks/queries/useMagnum";
+import {
+  clusterKubernetesVersion,
+  kubernetesHealthSummary,
+} from "@/lib/openstack/magnum-domain";
 import type { MagnumCluster, MagnumClusterTemplate } from "@/types/openstack";
 
 interface ClustersClientProps {
@@ -31,24 +36,6 @@ function displayStatus(status: string) {
     .replace(/_/g, " ")
     .toLowerCase()
     .replace(/\b\w/g, (match) => match.toUpperCase());
-}
-
-function minorVersion(version: string | undefined) {
-  const match = version?.match(/^v?(\d+)\.(\d+)/);
-  return match ? `${match[1]}.${match[2]}` : "-";
-}
-
-function formatAge(value: unknown) {
-  if (typeof value !== "string" || !value) {
-    return "-";
-  }
-
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) {
-    return "-";
-  }
-
-  return formatDistanceToNow(timestamp);
 }
 
 function isKubernetesCluster(
@@ -97,13 +84,18 @@ function clusterColumns(
       header: "Status",
       cell: ({ row }: { row: { original: MagnumCluster } }) => (
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant={statusVariant(row.original.status)}>
-            {displayStatus(row.original.status)}
-          </Badge>
+          {row.original.status.endsWith("_IN_PROGRESS") ? (
+            <ProgressStatusBadge label={displayStatus(row.original.status)} />
+          ) : (
+            <Badge variant={statusVariant(row.original.status)}>
+              {displayStatus(row.original.status)}
+            </Badge>
+          )}
           {row.original.health_status ? (
             <Badge
+              title={kubernetesHealthSummary(row.original)}
               variant={
-                row.original.health_status === "HEALTHY"
+                row.original.health_status.toUpperCase() === "HEALTHY"
                   ? "default"
                   : "destructive"
               }
@@ -125,7 +117,16 @@ function clusterColumns(
         const template =
           row.original.cluster_template ??
           templatesById.get(row.original.cluster_template_id);
-        return template?.name ?? row.original.cluster_template_id ?? "-";
+        return template ? (
+          <Link
+            className="underline-offset-2 hover:underline focus-visible:underline"
+            href={`/kubernetes/templates/${template.uuid}`}
+          >
+            {template.name}
+          </Link>
+        ) : (
+          (row.original.cluster_template_id ?? "-")
+        );
       },
       meta: {
         fieldType: "string",
@@ -160,9 +161,10 @@ function clusterColumns(
         const template =
           row.original.cluster_template ??
           templatesById.get(row.original.cluster_template_id);
-        return minorVersion(
-          row.original.coe_version ?? template?.labels?.kube_tag,
-        );
+        return clusterKubernetesVersion({
+          ...row.original,
+          cluster_template: template,
+        });
       },
       meta: {
         fieldType: "string",
@@ -172,10 +174,9 @@ function clusterColumns(
     {
       accessorKey: "created_at",
       header: "Age",
-      cell: ({ row }: { row: { original: MagnumCluster } }) =>
-        formatAge(row.original.created_at),
       meta: {
-        fieldType: "string",
+        fieldType: "date",
+        dateDisplay: "age",
         visible: true,
       },
     },
@@ -183,11 +184,29 @@ function clusterColumns(
 }
 
 export function ClustersClient({ regionId, projectId }: ClustersClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const deletingClusterId = searchParams.get("deleting");
   const {
     data: clusters,
     isRefetching,
     refetch,
-  } = useSuspenseQuery(clustersQueryOptions(regionId, projectId));
+  } = useSuspenseQuery({
+    ...clustersQueryOptions(regionId, projectId),
+    refetchInterval: ({ state }) => {
+      const current = Array.isArray(state.data) ? state.data : [];
+      const pendingDeletion = Boolean(
+        deletingClusterId &&
+        current.some((cluster) => cluster.uuid === deletingClusterId),
+      );
+      return pendingDeletion ||
+        current.some((cluster) => cluster.status.endsWith("_IN_PROGRESS"))
+        ? 5_000
+        : false;
+    },
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
+  });
   const { data: templates } = useSuspenseQuery(
     clusterTemplatesQueryOptions(regionId, projectId),
   );
@@ -196,10 +215,35 @@ export function ClustersClient({ regionId, projectId }: ClustersClientProps) {
     return new Map(templates.map((template) => [template.uuid, template]));
   }, [templates]);
 
+  useEffect(() => {
+    if (
+      deletingClusterId &&
+      !clusters.some((cluster) => cluster.uuid === deletingClusterId)
+    ) {
+      router.replace("/kubernetes/clusters", { scroll: false });
+    }
+  }, [clusters, deletingClusterId, router]);
+
+  const clustersWithPendingDeletion = useMemo(
+    () =>
+      clusters.map((cluster) =>
+        cluster.uuid === deletingClusterId
+          ? {
+              ...cluster,
+              status: "DELETE_IN_PROGRESS",
+              status_reason: "Magnum accepted the cluster deletion request.",
+            }
+          : cluster,
+      ),
+    [clusters, deletingClusterId],
+  );
+
   const kubernetesClusters = useMemo(
     () =>
-      clusters.filter((cluster) => isKubernetesCluster(cluster, templatesById)),
-    [clusters, templatesById],
+      clustersWithPendingDeletion.filter((cluster) =>
+        isKubernetesCluster(cluster, templatesById),
+      ),
+    [clustersWithPendingDeletion, templatesById],
   );
 
   const columns = useMemo(() => clusterColumns(templatesById), [templatesById]);
