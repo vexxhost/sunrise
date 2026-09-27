@@ -5,9 +5,10 @@ import {
   generatePkce,
   generateState,
   getOidcConfig,
+  normalizeObjectStorageReturnTo,
 } from '@/lib/s3/oidc';
 
-export async function GET() {
+export async function GET(request: Request) {
   const { authorization_endpoint } = await discoverOidc();
   const { clientId, redirectUri } = getOidcConfig();
 
@@ -17,6 +18,9 @@ export async function GET() {
   const session = await getSession();
   session.s3OidcVerifier = verifier;
   session.s3OidcState = state;
+  session.s3OidcReturnTo = normalizeObjectStorageReturnTo(
+    new URL(request.url).searchParams.get('returnTo'),
+  );
   await session.save();
 
   const url = new URL(authorization_endpoint);

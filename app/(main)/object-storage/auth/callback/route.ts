@@ -9,6 +9,7 @@ import {
   assumeRoleWithIdToken,
   tryExtractRgwProjectRoles,
 } from '@/lib/s3/sts';
+import { normalizeObjectStorageReturnTo } from '@/lib/s3/oidc';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -19,10 +20,12 @@ export async function GET(request: Request) {
   const session = await getSession();
   const expectedState = session.s3OidcState;
   const verifier = session.s3OidcVerifier;
+  const returnTo = normalizeObjectStorageReturnTo(session.s3OidcReturnTo);
 
   // Clear single-use values regardless of outcome
   session.s3OidcState = undefined;
   session.s3OidcVerifier = undefined;
+  session.s3OidcReturnTo = undefined;
 
   if (error) {
     await session.save();
@@ -62,5 +65,5 @@ export async function GET(request: Request) {
     return new NextResponse(`S3 auth failed: ${msg}`, { status: 500 });
   }
 
-  return NextResponse.redirect(`${process.env.DASHBOARD_URL}/object-storage`);
+  return NextResponse.redirect(new URL(returnTo, request.url));
 }

@@ -1,6 +1,27 @@
 import { randomBytes, createHash } from 'crypto';
 
 export const OIDC_REDIRECT_PATH = '/object-storage/auth/callback';
+export const OBJECT_STORAGE_HOME_PATH = '/object-storage';
+
+export function normalizeObjectStorageReturnTo(value?: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return OBJECT_STORAGE_HOME_PATH;
+  }
+
+  const url = new URL(value, 'http://localhost');
+  const isObjectStoragePage =
+    url.pathname === OBJECT_STORAGE_HOME_PATH ||
+    url.pathname.startsWith(`${OBJECT_STORAGE_HOME_PATH}/`);
+  const isAuthPage = url.pathname.startsWith(
+    `${OBJECT_STORAGE_HOME_PATH}/auth/`,
+  );
+
+  if (!isObjectStoragePage || isAuthPage) {
+    return OBJECT_STORAGE_HOME_PATH;
+  }
+
+  return `${url.pathname}${url.search}${url.hash}`;
+}
 
 export function getOidcConfig() {
   const issuer = process.env.KEYCLOAK_ISSUER;
