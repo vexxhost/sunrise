@@ -9,7 +9,10 @@ import {
   assumeRoleWithIdToken,
   tryExtractRgwProjectRoles,
 } from '@/lib/s3/sts';
-import { normalizeObjectStorageReturnTo } from '@/lib/s3/oidc';
+import {
+  getOidcConfig,
+  normalizeObjectStorageReturnTo,
+} from '@/lib/s3/oidc';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -65,5 +68,5 @@ export async function GET(request: Request) {
     return new NextResponse(`S3 auth failed: ${msg}`, { status: 500 });
   }
 
-  return NextResponse.redirect(new URL(returnTo, request.url));
+  return NextResponse.redirect(new URL(returnTo, getOidcConfig().dashboardUrl));
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  MAX_OBJECT_STORAGE_RETURN_TO_LENGTH,
   normalizeObjectStorageReturnTo,
   OBJECT_STORAGE_HOME_PATH,
 } from '@/lib/s3/oidc';
@@ -13,6 +14,22 @@ describe('normalizeObjectStorageReturnTo', () => {
       ),
     ).toBe('/object-storage/buckets?create=bucket#bucket-list');
     expect(normalizeObjectStorageReturnTo('/object-storage/roles')).toBe(
+      '/object-storage/roles',
+    );
+  });
+
+  it('bounds cookie-backed targets while preserving their section', () => {
+    const longObjectPath = `/object-storage/buckets/example/object/${'a'.repeat(
+      MAX_OBJECT_STORAGE_RETURN_TO_LENGTH,
+    )}`;
+    const longRoleQuery = `/object-storage/roles?filter=${'b'.repeat(
+      MAX_OBJECT_STORAGE_RETURN_TO_LENGTH,
+    )}`;
+
+    expect(normalizeObjectStorageReturnTo(longObjectPath)).toBe(
+      '/object-storage/buckets',
+    );
+    expect(normalizeObjectStorageReturnTo(longRoleQuery)).toBe(
       '/object-storage/roles',
     );
   });
