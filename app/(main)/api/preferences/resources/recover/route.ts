@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readPrefs, writePrefs } from "@/lib/prefs";
-import {
-  removeResourcePreference,
-  type ResourcePreference,
-} from "@/lib/resource-preferences";
 import {
   isRecoveryResourceKind,
   recoveryDestination,
   recoveryPreferenceKind,
 } from "@/lib/resource-recovery";
-import { getSession } from "@/lib/session";
 
 // S3 object keys can contain up to 1,024 characters. Other resource IDs are
 // much shorter, but using one bound keeps this internal endpoint predictable.
@@ -41,39 +35,11 @@ export async function GET(request: NextRequest) {
   }
 
   const destination = recoveryDestination({ kind: kindValue, parentId, mode });
-  const session = await getSession();
   const preferenceKind = recoveryPreferenceKind(kindValue);
-
-  if (preferenceKind && session.projectId && session.regionId) {
-    const prefs = await readPrefs();
-    const target: Pick<
-      ResourcePreference,
-      "kind" | "id" | "projectId" | "regionId"
-    > = {
-      kind: preferenceKind,
-      id,
-      projectId: session.projectId,
-      regionId: session.regionId,
-    };
-    const recentResources = removeResourcePreference(
-      prefs.recentResources ?? [],
-      target,
-    );
-    const pinnedResources = removeResourcePreference(
-      prefs.pinnedResources ?? [],
-      target,
-    );
-
-    if (
-      recentResources.length !== (prefs.recentResources ?? []).length ||
-      pinnedResources.length !== (prefs.pinnedResources ?? []).length
-    ) {
-      await writePrefs({ recentResources, pinnedResources });
-    }
-  }
 
   const redirectUrl = new URL(destination, request.url);
   redirectUrl.searchParams.set("notice", "resource-unavailable");
   redirectUrl.searchParams.set("kind", kindValue);
+  if (preferenceKind) redirectUrl.searchParams.set("resourceId", id);
   return NextResponse.redirect(redirectUrl);
 }

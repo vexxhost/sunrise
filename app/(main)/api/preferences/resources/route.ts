@@ -3,6 +3,7 @@ import { readPrefs, writePrefs } from "@/lib/prefs";
 import {
   addRecentResource,
   createResourcePreference,
+  removeResourcePreference,
   togglePinnedResource,
   visibleResourcePreferences,
 } from "@/lib/resource-preferences";
@@ -10,7 +11,10 @@ import { getSession } from "@/lib/session";
 import { isSameOriginRequest } from "@/lib/request-origin";
 
 export async function POST(request: NextRequest) {
-  if (!isSameOriginRequest(request.headers, request.nextUrl.origin)) {
+  if (
+    !request.headers.get("origin") ||
+    !isSameOriginRequest(request.headers, request.nextUrl.origin)
+  ) {
     return NextResponse.json(
       { error: "Invalid request origin" },
       { status: 403 },
@@ -33,18 +37,28 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
   }
 
   if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
   }
 
   const { operation, resource: input } = body as {
     operation?: unknown;
     resource?: unknown;
   };
-  if (operation !== "recent" && operation !== "toggle-pin") {
+  if (
+    operation !== "recent" &&
+    operation !== "toggle-pin" &&
+    operation !== "remove-stale"
+  ) {
     return NextResponse.json({ error: "Invalid operation" }, { status: 400 });
   }
 
@@ -60,6 +74,18 @@ export async function POST(request: NextRequest) {
   const prefs = await readPrefs();
   const recent = prefs.recentResources ?? [];
   const pinned = prefs.pinnedResources ?? [];
+
+  if (operation === "remove-stale") {
+    const recentResources = removeResourcePreference(recent, resource);
+    const pinnedResources = removeResourcePreference(pinned, resource);
+    if (
+      recentResources.length !== recent.length ||
+      pinnedResources.length !== pinned.length
+    ) {
+      await writePrefs({ recentResources, pinnedResources });
+    }
+    return new Response(null, { status: 204 });
+  }
 
   if (operation === "recent") {
     const nextRecent = addRecentResource(recent, resource);
