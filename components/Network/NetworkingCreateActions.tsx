@@ -50,7 +50,7 @@ import {
   buildFloatingIpPortOptions,
   parseFloatingIpPortSelection,
 } from "@/lib/openstack/neutron-floating-ip";
-import { clearCreateActionIntent } from "@/lib/create-actions";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 
 interface ScopeProps {
   initiallyOpen?: boolean;
@@ -99,6 +99,7 @@ export function CreateNetworkAction({
   regionId,
 }: ScopeProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -222,6 +223,7 @@ export function CreateRouterAction({
   regionId,
 }: ScopeProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -332,6 +334,7 @@ export function CreatePortAction({
   regionId,
 }: ScopeProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -526,6 +529,7 @@ export function AllocateFloatingIpAction({
   regionId,
 }: ScopeProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [floatingNetworkId, setFloatingNetworkId] = useState("");
   const [portSelection, setPortSelection] = useState("none");
@@ -699,6 +703,7 @@ export function CreateSecurityGroupAction({
   regionId,
 }: ScopeProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { createKeypairAction } from "@/lib/openstack/nova-actions";
-import { clearCreateActionIntent } from "@/lib/create-actions";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 
 interface KeypairActionsProps {
   initiallyOpen?: boolean;
@@ -33,6 +33,7 @@ export function KeypairActions({
   regionId,
 }: KeypairActionsProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [mode, setMode] = useState<"generate" | "import">("generate");
   const [name, setName] = useState("");

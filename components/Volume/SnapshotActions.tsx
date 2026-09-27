@@ -27,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { volumesQueryOptions } from "@/hooks/queries/useVolumes";
 import { createSnapshotAction } from "@/lib/openstack/cinder-actions";
 import { canSnapshotVolume } from "@/lib/openstack/storage-lifecycle";
-import { clearCreateActionIntent } from "@/lib/create-actions";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 
 interface SnapshotActionsProps {
   initiallyOpen?: boolean;
@@ -41,6 +41,7 @@ export function SnapshotActions({
   regionId,
 }: SnapshotActionsProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [volumeId, setVolumeId] = useState("");
   const [name, setName] = useState("");

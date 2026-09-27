@@ -44,7 +44,7 @@ import {
   serverAvailabilityZonesQueryOptions,
 } from "@/hooks/queries/useServers";
 import { formatFlavorCapacity } from "@/lib/openstack/flavor";
-import { clearCreateActionIntent } from "@/lib/create-actions";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { createServerAction } from "@/lib/openstack/nova-actions";
 import { normalizeMutationProjectId } from "@/lib/mutations";
 import type {
@@ -140,6 +140,7 @@ export function InstanceActions({
   regionId,
 }: InstanceActionsProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [isOpen, setIsOpen] = useState(initiallyOpen);
   const [form, setForm] = useState<LaunchFormState>(INITIAL_FORM);
   const [nextMetadataId, setNextMetadataId] = useState(1);
@@ -237,7 +238,7 @@ export function InstanceActions({
       setOptionsLoading(true);
       void loadOptions();
     },
-    [loadOptions],
+    [clearCreateActionIntent, loadOptions],
   );
 
   useEffect(() => {

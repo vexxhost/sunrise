@@ -272,14 +272,9 @@ export function isCreateActionRequested(
   return (Array.isArray(value) ? value[0] : value) === action;
 }
 
-export function clearCreateActionIntent() {
-  if (typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  if (!url.searchParams.has("create")) return;
+export function createActionIntentClearedHref(href: string) {
+  const url = new URL(href, "http://localhost");
+  if (!url.searchParams.has("create")) return null;
   url.searchParams.delete("create");
-  window.history.replaceState(
-    null,
-    "",
-    `${url.pathname}${url.search}${url.hash}`,
-  );
+  return `${url.pathname}${url.search}${url.hash}`;
 }

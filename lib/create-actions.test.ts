@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCreateActions,
+  createActionIntentClearedHref,
   createActionsForService,
   isCreateActionRequested,
 } from "@/lib/create-actions";
@@ -114,5 +115,18 @@ describe("create action availability", () => {
       true,
     );
     expect(isCreateActionRequested(undefined, "instance")).toBe(false);
+  });
+
+  it("removes only the create action intent from a route", () => {
+    expect(
+      createActionIntentClearedHref(
+        "https://sunrise.example/compute/instances?create=instance&filter=active#servers",
+      ),
+    ).toBe("/compute/instances?filter=active#servers");
+    expect(
+      createActionIntentClearedHref(
+        "/compute/instances?filter=active#servers",
+      ),
+    ).toBeNull();
   });
 });

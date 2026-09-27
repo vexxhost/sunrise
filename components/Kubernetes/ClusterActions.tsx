@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { ClusterMutationSheet } from "@/components/Kubernetes/ClusterMutationSheet";
 import { Button } from "@/components/ui/button";
-import { clearCreateActionIntent } from "@/lib/create-actions";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 
 interface ClusterActionsProps {
   initiallyOpen?: boolean;
@@ -17,6 +17,7 @@ export function ClusterActions({
   projectId,
   regionId,
 }: ClusterActionsProps) {
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);

@@ -25,7 +25,7 @@ import { bucketsQueryOptions } from '@/hooks/queries/useBuckets';
 import type { Bucket } from '@/lib/s3/actions';
 import { createBucket, deleteBucket } from '@/lib/s3/bucket-actions';
 import { validateBucketName } from '@/lib/s3/bucket-validation';
-import { clearCreateActionIntent } from '@/lib/create-actions';
+import { useClearCreateActionIntent } from '@/hooks/useClearCreateActionIntent';
 
 type BucketsData = {
   buckets: Bucket[];
@@ -50,6 +50,7 @@ export function BucketsClient({
   initialData: BucketsData;
 }) {
   const router = useRouter();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const {
     data = initialData,
     refetch,

@@ -29,7 +29,7 @@ import {
   volumeTypesQueryOptions,
 } from "@/hooks/queries/useVolumes";
 import { createVolumeAction } from "@/lib/openstack/cinder-actions";
-import { clearCreateActionIntent } from "@/lib/create-actions";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 
 interface VolumeActionsProps {
   initiallyOpen?: boolean;
@@ -51,6 +51,7 @@ export function VolumeActions({
   regionId,
 }: VolumeActionsProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [form, setForm] = useState(INITIAL_FORM);
   const [error, setError] = useState<string | null>(null);

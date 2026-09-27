@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createImageAction } from "@/lib/openstack/glance-actions";
-import { clearCreateActionIntent } from "@/lib/create-actions";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import type { DiskFormat, ImageVisibility } from "@/types/openstack";
 
 interface ImageActionsProps {
@@ -128,6 +128,7 @@ export function ImageActions({
   regionId,
 }: ImageActionsProps) {
   const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
