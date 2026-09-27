@@ -20,6 +20,7 @@ import {
   browserUploadKey,
   findBrowserUploadConflicts,
   getBrowserBucketPolicy,
+  isBrowserObjectNotFound,
   listBrowserObjects,
   removeBrowserSelection,
   uploadBrowserFiles,
@@ -179,6 +180,27 @@ describe('listBrowserObjects', () => {
       ],
       isTruncated: false,
     });
+  });
+});
+
+describe('isBrowserObjectNotFound', () => {
+  it('recognizes direct RGW missing-object and missing-bucket responses', () => {
+    expect(
+      isBrowserObjectNotFound(
+        Object.assign(new Error('Missing'), {
+          name: 'NoSuchKey',
+          $metadata: { httpStatusCode: 404 },
+        })
+      )
+    ).toBe(true);
+    expect(
+      isBrowserObjectNotFound(
+        Object.assign(new Error('Denied'), {
+          name: 'AccessDenied',
+          $metadata: { httpStatusCode: 403 },
+        })
+      )
+    ).toBe(false);
   });
 });
 

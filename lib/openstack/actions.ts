@@ -2,6 +2,10 @@
 
 import { getSession } from '@/lib/session';
 import { getServiceEndpoint } from './catalog';
+import {
+  OpenStackConnectionError,
+  OpenStackRequestError,
+} from './request';
 import { redirect } from 'next/navigation';
 
 interface OpenStackActionOptions {
@@ -14,6 +18,7 @@ interface OpenStackActionOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: any;
   unscoped?: boolean;
+  errorMode?: 'return-null' | 'throw';
 }
 
 /**
@@ -35,6 +40,7 @@ export async function openstack<T = any>(
     method = 'GET',
     body,
     unscoped = false,
+    errorMode = 'return-null',
   } = options;
 
   // Get session token (either unscoped or project-scoped)
@@ -79,6 +85,9 @@ export async function openstack<T = any>(
       cache: 'no-store',
     });
   } catch (error) {
+    if (errorMode === 'throw') {
+      throw new OpenStackConnectionError(error);
+    }
     console.error('OpenStack fetch error:', error);
     return null;
   }
@@ -86,6 +95,9 @@ export async function openstack<T = any>(
   if (!response.ok) {
     if (response.status === 401) {
       redirect('/auth/logout?reason=expired');
+    }
+    if (errorMode === 'throw') {
+      throw new OpenStackRequestError(response.status, response.statusText);
     }
     console.error(`OpenStack API error: ${response.status} ${response.statusText} for ${url}`);
     return null;

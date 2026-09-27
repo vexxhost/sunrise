@@ -7,6 +7,8 @@ import { NavigationMenu } from "@/components/navigation/NavigationMenu";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { CloudContextProvider } from "@/components/cloud/CloudContext";
 import { loadCloudContext } from "@/lib/cloud-context";
+import { ResourceRecoveryNotice } from "@/components/resources/ResourceRecoveryNotice";
+import { Suspense } from "react";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -51,7 +53,12 @@ export default async function RootLayout({
           <Providers>
             <CloudContextProvider value={cloudContext.snapshot}>
               <NavigationMenu />
-              <main>{children}</main>
+              <main>
+                <Suspense>
+                  <ResourceRecoveryNotice />
+                </Suspense>
+                {children}
+              </main>
             </CloudContextProvider>
           </Providers>
         </ThemeProvider>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HeadObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { useQuery } from "@tanstack/react-query";
@@ -49,6 +49,7 @@ import {
   findBrowserUploadConflicts,
   getBrowserDownloadUrl,
   isBrowserAccessDenied,
+  isBrowserObjectNotFound,
   listBrowserObjects,
   removeBrowserSelection,
   uploadBrowserFiles,
@@ -57,6 +58,7 @@ import {
 } from "@/lib/s3/browser-objects";
 import { normalizeStorageClass } from "@/lib/s3/storage-class";
 import { useMutationRefresh } from "@/hooks/useMutationRefresh";
+import { resourceRecoveryPath } from "@/lib/resource-recovery";
 
 interface DirectClientProps {
   activeProjectId: string;
@@ -101,6 +103,7 @@ export function DirectClient({
   bucket,
   objectKey = "",
 }: DirectClientProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const prefix = searchParams.get("prefix") ?? "";
   const inspectKey = objectKey;
@@ -189,6 +192,24 @@ export function DirectClient({
     queryFn: () =>
       s3!.send(new HeadObjectCommand({ Bucket: bucket, Key: inspectKey })),
   });
+
+  useEffect(() => {
+    const error = inspectKey ? headQuery.error : listQuery.error;
+    if (!error || !isBrowserObjectNotFound(error)) return;
+
+    router.replace(
+      resourceRecoveryPath(
+        inspectKey
+          ? {
+              kind: "object",
+              id: inspectKey,
+              parentId: bucket,
+              mode: "direct",
+            }
+          : { kind: "bucket", id: bucket },
+      ),
+    );
+  }, [bucket, headQuery.error, inspectKey, listQuery.error, router]);
   const refreshObjects = useMutationRefresh(directObjectsKey);
 
   const rows = useMemo(
@@ -602,7 +623,7 @@ export function DirectClient({
         {headQuery.isLoading && (
           <div className="text-sm text-muted-foreground">Loading metadata</div>
         )}
-        {headQuery.error && (
+        {headQuery.error && !isBrowserObjectNotFound(headQuery.error) && (
           <div className="rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-destructive">
             {describeBrowserS3Error(headQuery.error)}
           </div>
@@ -838,7 +859,7 @@ export function DirectClient({
         ]}
       />
 
-      {listQuery.error && (
+      {listQuery.error && !isBrowserObjectNotFound(listQuery.error) && (
         <div
           className={`rounded-md border p-3 text-sm flex gap-2 ${
             isBrowserAccessDenied(listQuery.error)

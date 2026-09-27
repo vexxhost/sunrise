@@ -1,10 +1,9 @@
-import { notFound } from "next/navigation";
-
 import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
 import { snapshotQueryOptions } from "@/hooks/queries/useVolumes";
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 import { SnapshotDetailClient } from "./SnapshotDetailClient";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 interface SnapshotPageProps {
   params: Promise<{ id: string }>;
@@ -16,11 +15,10 @@ export default async function SnapshotPage({ params }: SnapshotPageProps) {
   const queryClient = makeQueryClient();
   const query = snapshotQueryOptions(session.regionId, session.projectId, id);
 
-  try {
-    await queryClient.fetchQuery(query);
-  } catch {
-    notFound();
-  }
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(query), {
+    kind: "snapshot",
+    id,
+  });
 
   return (
     <PrefetchHydrationBoundary queries={[query]} queryClient={queryClient}>

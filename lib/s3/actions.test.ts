@@ -11,7 +11,7 @@ vi.mock('@/lib/s3/client', () => ({
   S3AuthRequiredError: class S3AuthRequiredError extends Error {},
 }));
 
-import { listObjectsForRender } from '@/lib/s3/actions';
+import { headObjectForRender, listObjectsForRender } from '@/lib/s3/actions';
 
 describe('S3 object listing failures', () => {
   beforeEach(() => {
@@ -35,6 +35,25 @@ describe('S3 object listing failures', () => {
       needsAuth: false,
       notFound: true,
       error: 'Bucket could not be found or accessed.',
+    });
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it('returns an expected missing-object state without logging an SDK error', async () => {
+    const error = Object.assign(new Error('UnknownError'), {
+      name: 'NotFound',
+      $metadata: { httpStatusCode: 404 },
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.send.mockRejectedValue(error);
+
+    const result = await headObjectForRender('bucket', 'removed.txt');
+
+    expect(result).toEqual({
+      ok: false,
+      needsAuth: false,
+      notFound: true,
+      error: 'Object could not be found or accessed.',
     });
     expect(consoleError).not.toHaveBeenCalled();
   });

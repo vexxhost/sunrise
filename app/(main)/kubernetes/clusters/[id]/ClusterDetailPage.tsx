@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation";
 import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
 import {
   clusterNodeGroupsQueryOptions,
@@ -9,6 +8,7 @@ import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 import { ClusterDetailClient } from "./ClusterDetailClient";
 import type { KubernetesClusterDetailTab } from "./tabs";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 interface ClusterDetailPageProps {
   id: string;
@@ -36,13 +36,14 @@ export async function ClusterDetailPage({
     session.projectId,
   );
 
-  try {
-    await queryClient.fetchQuery(clusterQuery);
-    await queryClient.prefetchQuery(nodeGroupsQuery);
-    await queryClient.prefetchQuery(templatesQuery);
-  } catch {
-    notFound();
-  }
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(clusterQuery), {
+    kind: "cluster",
+    id,
+  });
+  await Promise.all([
+    queryClient.prefetchQuery(nodeGroupsQuery),
+    queryClient.prefetchQuery(templatesQuery),
+  ]);
 
   return (
     <PrefetchHydrationBoundary

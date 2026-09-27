@@ -1,11 +1,10 @@
-import { notFound } from "next/navigation";
-
 import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
 import { keypairQueryOptions } from "@/hooks/queries/useServers";
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 
 import { KeyPairDetailClient } from "./KeyPairDetailClient";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 interface KeyPairPageProps {
   params: Promise<{ name: string }>;
@@ -21,11 +20,10 @@ export default async function KeyPairPage({ params }: KeyPairPageProps) {
     name,
   );
 
-  try {
-    await queryClient.fetchQuery(keyPairQuery);
-  } catch {
-    notFound();
-  }
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(keyPairQuery), {
+    kind: "key-pair",
+    id: name,
+  });
 
   return (
     <PrefetchHydrationBoundary

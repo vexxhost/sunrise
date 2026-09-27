@@ -52,6 +52,7 @@ async function resolveRegionId(regionId?: string) {
 async function magnumGet<T>(
   path: string,
   regionId?: string,
+  errorMode: "return-null" | "throw" = "return-null",
 ): Promise<T | null> {
   const resolvedRegionId = await resolveRegionId(regionId);
 
@@ -61,6 +62,7 @@ async function magnumGet<T>(
     serviceName: SERVICE_NAME,
     apiVersion: API_VERSION,
     path,
+    errorMode,
   });
 }
 
@@ -123,6 +125,7 @@ export async function getClusterTemplateAction(
   const data = await magnumGet<MagnumClusterTemplateResponse>(
     `/clustertemplates/${uuid}`,
     regionId,
+    "throw",
   );
   const template = unwrapClusterTemplate(data);
 
@@ -178,6 +181,7 @@ export async function getClusterAction(
   const data = await magnumGet<MagnumClusterResponse>(
     `/clusters/${uuid}`,
     regionId,
+    "throw",
   );
   const cluster = unwrapCluster(data);
 
@@ -224,6 +228,7 @@ export async function getClusterNodeGroupAction(
   const data = await magnumGet<MagnumClusterNodeGroupResponse>(
     `/clusters/${clusterId}/nodegroups/${nodeGroupId}`,
     regionId,
+    "throw",
   );
   const nodegroup = unwrapNodeGroup(data);
 

@@ -49,6 +49,7 @@ export function imageQueryOptions(
         serviceType: 'image',
         serviceName: 'glance',
         path: `/v2/images/${id}`,
+        errorMode: 'throw',
       });
 
       if (!data) {

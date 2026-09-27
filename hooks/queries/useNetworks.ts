@@ -172,6 +172,7 @@ export function subnetQueryOptions(
         serviceType: "network",
         serviceName: "neutron",
         path: `/v2.0/subnets/${encodeURIComponent(id)}`,
+        errorMode: "throw",
       });
       if (!data) throw new Error("Subnet not found");
       return data.subnet;
@@ -213,6 +214,7 @@ export function routerQueryOptions(
         serviceType: "network",
         serviceName: "neutron",
         path: `/v2.0/routers/${encodeURIComponent(id)}`,
+        errorMode: "throw",
       });
       if (!data) throw new Error("Router not found");
       return data.router;
@@ -257,6 +259,7 @@ export function networkQueryOptions(
         serviceType: "network",
         serviceName: "neutron",
         path: `/v2.0/networks/${encodeURIComponent(id)}`,
+        errorMode: "throw",
       });
 
       if (!data) {
@@ -329,6 +332,7 @@ export function floatingIpQueryOptions(
         serviceType: "network",
         serviceName: "neutron",
         path: `/v2.0/floatingips/${encodeURIComponent(id)}`,
+        errorMode: "throw",
       });
       if (!data) throw new Error("Floating IP not found");
       return data.floatingip;
@@ -353,6 +357,7 @@ export function portQueryOptions(
         serviceType: "network",
         serviceName: "neutron",
         path: `/v2.0/ports/${encodeURIComponent(id)}`,
+        errorMode: "throw",
       });
 
       if (!data) {
@@ -408,6 +413,7 @@ export function securityGroupQueryOptions(
         serviceType: "network",
         serviceName: "neutron",
         path: `/v2.0/security-groups/${encodeURIComponent(id)}`,
+        errorMode: "throw",
       });
 
       if (!data) {
