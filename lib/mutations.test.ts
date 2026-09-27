@@ -35,6 +35,7 @@ function cloudContext(
         message: "Available in RegionOne",
       },
     ],
+    createActions: [],
     personalResources: { pinned: [], recent: [] },
     ...overrides,
   };
@@ -145,11 +146,7 @@ describe("mutation outcomes", () => {
     const targets = [{ id: "image-a" }, { id: "image-b" }, { id: "image-c" }];
 
     expect(
-      retainFailedTargets(targets, [
-        { ok: true },
-        { ok: false },
-        { ok: true },
-      ]),
+      retainFailedTargets(targets, [{ ok: true }, { ok: false }, { ok: true }]),
     ).toEqual([{ id: "image-b" }]);
   });
 });

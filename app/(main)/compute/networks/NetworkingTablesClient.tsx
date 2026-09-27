@@ -43,6 +43,7 @@ import { ResourceLink } from "@/components/resources/ResourceLink";
 interface NetworkingTableProps {
   projectId: string;
   regionId: string;
+  initiallyOpen?: boolean;
 }
 
 function NameLink({
@@ -54,11 +55,7 @@ function NameLink({
   name: string;
   id: string;
 }) {
-  return (
-    <ResourceLink href={href}>
-      {name.trim() || id}
-    </ResourceLink>
-  );
+  return <ResourceLink href={href}>{name.trim() || id}</ResourceLink>;
 }
 
 function StateBadge({ active, label }: { active: boolean; label: string }) {
@@ -83,6 +80,7 @@ function TableIntro({
 export function NetworksTableClient({
   projectId,
   regionId,
+  initiallyOpen = false,
 }: NetworkingTableProps) {
   const networks = useSuspenseQuery(
     projectNetworksQueryOptions(regionId, projectId),
@@ -181,7 +179,11 @@ export function NetworksTableClient({
     <>
       <TableIntro
         action={
-          <CreateNetworkAction projectId={projectId} regionId={regionId} />
+          <CreateNetworkAction
+            projectId={projectId}
+            regionId={regionId}
+            initiallyOpen={initiallyOpen}
+          />
         }
       >
         Project-owned layer 2 networks and their address spaces.
@@ -203,6 +205,7 @@ export function NetworksTableClient({
 export function RoutersTableClient({
   projectId,
   regionId,
+  initiallyOpen = false,
 }: NetworkingTableProps) {
   const routers = useSuspenseQuery(routersQueryOptions(regionId, projectId));
   const externalNetworks = useSuspenseQuery(
@@ -294,7 +297,11 @@ export function RoutersTableClient({
     <>
       <TableIntro
         action={
-          <CreateRouterAction projectId={projectId} regionId={regionId} />
+          <CreateRouterAction
+            projectId={projectId}
+            regionId={regionId}
+            initiallyOpen={initiallyOpen}
+          />
         }
       >
         Layer 3 routing, subnet interfaces, and external gateways.
@@ -316,6 +323,7 @@ export function RoutersTableClient({
 export function PortsTableClient({
   projectId,
   regionId,
+  initiallyOpen = false,
 }: NetworkingTableProps) {
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
   const networks = useSuspenseQuery(networksQueryOptions(regionId, projectId));
@@ -351,7 +359,8 @@ export function PortsTableClient({
           <ResourceLink
             href={`/compute/networks/resources/${encodeURIComponent(row.original.network_id)}`}
           >
-            {networkById.get(row.original.network_id)?.name || row.original.network_id}
+            {networkById.get(row.original.network_id)?.name ||
+              row.original.network_id}
           </ResourceLink>
         ),
         meta: { fieldType: "string", visible: true },
@@ -400,7 +409,13 @@ export function PortsTableClient({
   return (
     <>
       <TableIntro
-        action={<CreatePortAction projectId={projectId} regionId={regionId} />}
+        action={
+          <CreatePortAction
+            projectId={projectId}
+            regionId={regionId}
+            initiallyOpen={initiallyOpen}
+          />
+        }
       >
         Virtual interfaces connecting project resources to networks.
       </TableIntro>
@@ -421,6 +436,7 @@ export function PortsTableClient({
 export function FloatingIpsTableClient({
   projectId,
   regionId,
+  initiallyOpen = false,
 }: NetworkingTableProps) {
   const floatingIps = useSuspenseQuery(
     floatingIpsQueryOptions(regionId, projectId),
@@ -500,7 +516,11 @@ export function FloatingIpsTableClient({
     <>
       <TableIntro
         action={
-          <AllocateFloatingIpAction projectId={projectId} regionId={regionId} />
+          <AllocateFloatingIpAction
+            projectId={projectId}
+            regionId={regionId}
+            initiallyOpen={initiallyOpen}
+          />
         }
       >
         Public addresses allocated to the active project.
@@ -522,6 +542,7 @@ export function FloatingIpsTableClient({
 export function SecurityGroupsTableClient({
   projectId,
   regionId,
+  initiallyOpen = false,
 }: NetworkingTableProps) {
   const groups = useSuspenseQuery(
     securityGroupsQueryOptions(regionId, projectId),
@@ -572,6 +593,7 @@ export function SecurityGroupsTableClient({
           <CreateSecurityGroupAction
             projectId={projectId}
             regionId={regionId}
+            initiallyOpen={initiallyOpen}
           />
         }
       >

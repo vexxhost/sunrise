@@ -30,6 +30,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { GLOBAL_SEARCH_EVENT } from "@/components/navigation/global-search-events";
+import { createActionIcons } from "@/components/resources/CreateResourceMenu";
 import {
   excludeKnownGlobalSearchResources,
   globalSearchResourceDescription,
@@ -37,9 +38,7 @@ import {
   type GlobalSearchResource,
 } from "@/lib/global-search";
 import { loadGlobalSearchIndex } from "@/lib/global-search-actions";
-import type {
-  ServiceDirectoryId,
-} from "@/lib/openstack/service-directory";
+import type { ServiceDirectoryId } from "@/lib/openstack/service-directory";
 import type { ResourceKind } from "@/lib/resource-preferences";
 
 const resourceIcons: Record<
@@ -92,10 +91,8 @@ function ResourceItem({
 export function GlobalCommandPalette() {
   const {
     services,
-    personalResources: {
-      pinned: pinnedResources,
-      recent: recentResources,
-    },
+    personalResources: { pinned: pinnedResources, recent: recentResources },
+    createActions,
     region,
     project,
   } = useCloudContext();
@@ -215,6 +212,32 @@ export function GlobalCommandPalette() {
               <RefreshCw aria-hidden="true" />
               <span>Refresh current page</span>
             </CommandItem>
+          </CommandGroup>
+
+          <CommandSeparator />
+          <CommandGroup heading="Create resources">
+            {createActions.map((action) => {
+              const Icon = createActionIcons[action.id];
+              const available = action.capability.status === "available";
+              return (
+                <CommandItem
+                  key={action.id}
+                  value={`${action.label} ${action.description} ${action.group}`}
+                  disabled={!available}
+                  onSelect={() => available && navigate(action.href)}
+                >
+                  <Icon aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium">{action.label}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {available
+                        ? action.description
+                        : action.capability.message}
+                    </span>
+                  </span>
+                </CommandItem>
+              );
+            })}
           </CommandGroup>
 
           <CommandSeparator />

@@ -1,5 +1,6 @@
 import { Database, KeyRound, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
+import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import {
   ServiceLandingPage,
   ServiceLandingSection,
@@ -8,6 +9,7 @@ import {
   type ServiceLandingMetric,
 } from "@/components/service-landing/ServiceLanding";
 import { loadCloudContext } from "@/lib/cloud-context";
+import { createActionsForService } from "@/lib/create-actions";
 import { listBucketsForRender } from "@/lib/s3/actions";
 import { listRolesForRender } from "@/lib/s3/role-actions";
 import { RoleDetailsDialog } from "./RoleDetailsDialog";
@@ -67,6 +69,13 @@ export default async function ObjectStoragePage() {
       detail: roleError ?? "RGW IAM list access for the active project",
     },
   ];
+  const createActions = createActionsForService(
+    snapshot.createActions,
+    "object-storage",
+  );
+  const createById = new Map(
+    createActions.map((action) => [action.id, action]),
+  );
 
   return (
     <ServiceLandingPage
@@ -74,7 +83,12 @@ export default async function ObjectStoragePage() {
       description="Browse S3-compatible buckets and objects, and inspect the RGW role used by the active project."
       context={snapshot}
       serviceId="object-storage"
-      actions={<RoleDetailsDialog />}
+      actions={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <CreateResourceMenu actions={createActions} />
+          <RoleDetailsDialog />
+        </div>
+      }
       metrics={metrics}
     >
       <ServiceLandingSection
@@ -94,6 +108,7 @@ export default async function ObjectStoragePage() {
                   ? (bucketError ?? "Count unavailable")
                   : `${bucketCount} visible`,
               badge: bucketRestricted ? "Restricted" : "Available",
+              createAction: createById.get("bucket"),
             },
             {
               name: "Access roles",

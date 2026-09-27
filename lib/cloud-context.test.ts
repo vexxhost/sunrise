@@ -215,6 +215,14 @@ describe("cloud context snapshot", () => {
       "available",
     );
     expect(
+      snapshot.createActions.find(({ id }) => id === "instance")?.capability
+        .status,
+    ).toBe("available");
+    expect(
+      snapshot.createActions.find(({ id }) => id === "volume")?.capability
+        .status,
+    ).toBe("unavailable");
+    expect(
       snapshot.services.find(({ id }) => id === "kubernetes")?.status,
     ).toBe("unavailable");
   });

@@ -29,8 +29,10 @@ import {
   volumeTypesQueryOptions,
 } from "@/hooks/queries/useVolumes";
 import { createVolumeAction } from "@/lib/openstack/cinder-actions";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 
 interface VolumeActionsProps {
+  initiallyOpen?: boolean;
   projectId?: string;
   regionId?: string;
 }
@@ -43,9 +45,14 @@ const INITIAL_FORM = {
   availabilityZone: "default",
 };
 
-export function VolumeActions({ projectId, regionId }: VolumeActionsProps) {
+export function VolumeActions({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: VolumeActionsProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const clearCreateActionIntent = useClearCreateActionIntent();
+  const [open, setOpen] = useState(initiallyOpen);
   const [form, setForm] = useState(INITIAL_FORM);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -60,6 +67,7 @@ export function VolumeActions({ projectId, regionId }: VolumeActionsProps) {
 
   const setDialogOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
+    if (!nextOpen) clearCreateActionIntent();
     setError(null);
     if (nextOpen) setForm(INITIAL_FORM);
   };
@@ -76,9 +84,12 @@ export function VolumeActions({ projectId, regionId }: VolumeActionsProps) {
           name: form.name,
           description: form.description || undefined,
           size: form.size,
-          volumeType: form.volumeType === "default" ? undefined : form.volumeType,
+          volumeType:
+            form.volumeType === "default" ? undefined : form.volumeType,
           availabilityZone:
-            form.availabilityZone === "default" ? undefined : form.availabilityZone,
+            form.availabilityZone === "default"
+              ? undefined
+              : form.availabilityZone,
         },
       );
 
@@ -114,8 +125,8 @@ export function VolumeActions({ projectId, regionId }: VolumeActionsProps) {
                 Create volume
               </DialogTitle>
               <DialogDescription>
-                Provision project block storage. Cinder selects the default type and
-                availability zone unless you override them.
+                Provision project block storage. Cinder selects the default type
+                and availability zone unless you override them.
               </DialogDescription>
             </DialogHeader>
 
@@ -128,7 +139,10 @@ export function VolumeActions({ projectId, regionId }: VolumeActionsProps) {
                   maxLength={255}
                   value={form.name}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, name: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
                   }
                   disabled={isPending}
                   required
@@ -143,7 +157,10 @@ export function VolumeActions({ projectId, regionId }: VolumeActionsProps) {
                   step={1}
                   value={form.size}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, size: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      size: event.target.value,
+                    }))
                   }
                   disabled={isPending}
                   required

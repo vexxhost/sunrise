@@ -9,12 +9,14 @@ import {
   Database,
   HardDrive,
   ImageIcon,
+  Plus,
   Server,
 } from "lucide-react";
 import { ProjectContextHeader } from "@/components/overview/ProjectContextHeader";
 import { Badge } from "@/components/ui/badge";
 import type { CloudContextSnapshot } from "@/lib/cloud-context-snapshot";
 import type { ServiceDirectoryId } from "@/lib/openstack/service-directory";
+import type { CreateAction } from "@/lib/create-actions";
 import { cn } from "@/lib/utils";
 import {
   resourceKindLabel,
@@ -43,6 +45,7 @@ export type ServiceLandingResource = {
   href?: string;
   meta?: string;
   badge?: string;
+  createAction?: CreateAction;
 };
 
 const recentResourceIcons: Record<ResourceKind, LandingIcon> = {
@@ -280,21 +283,56 @@ export function ServiceResourceGrid({
           </>
         );
 
-        return resource.href ? (
-          <Link
-            key={resource.name}
-            href={resource.href}
-            className="group min-h-28 rounded-md border p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {content}
-          </Link>
-        ) : (
+        if (!resource.href)
+          return (
+            <div
+              key={resource.name}
+              className="min-h-28 rounded-md border border-dashed p-4 opacity-70"
+              aria-disabled="true"
+            >
+              {content}
+            </div>
+          );
+
+        const createAvailable =
+          resource.createAction?.capability.status === "available";
+
+        return (
           <div
             key={resource.name}
-            className="min-h-28 rounded-md border border-dashed p-4 opacity-70"
-            aria-disabled="true"
+            className="overflow-hidden rounded-md border"
           >
-            {content}
+            <Link
+              href={resource.href}
+              className="group block min-h-28 p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              {content}
+            </Link>
+            {resource.createAction ? (
+              <div className="border-t px-3 py-2">
+                {createAvailable ? (
+                  <Link
+                    href={resource.createAction.href}
+                    className="inline-flex min-h-8 items-center gap-1.5 rounded-sm px-2 text-xs font-medium text-primary transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Plus className="size-3.5" aria-hidden="true" />
+                    {resource.createAction.label}
+                  </Link>
+                ) : (
+                  <span
+                    className="inline-flex min-h-8 cursor-not-allowed items-center gap-1.5 px-2 text-xs text-muted-foreground"
+                    title={resource.createAction.capability.message}
+                    aria-disabled="true"
+                  >
+                    <Plus className="size-3.5" aria-hidden="true" />
+                    {resource.createAction.label}
+                    <span className="sr-only">
+                      {resource.createAction.capability.message}
+                    </span>
+                  </span>
+                )}
+              </div>
+            ) : null}
           </div>
         );
       })}
