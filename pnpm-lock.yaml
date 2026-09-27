@@ -20,6 +20,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1141.0
         version: 3.1141.0
+      '@aws-sdk/xml-builder':
+        specifier: 3.972.41
+        version: 3.972.41
       '@codemirror/lang-json':
         specifier: ^6.0.2
         version: 6.0.2
@@ -77,6 +80,9 @@ importers:
       '@smithy/node-http-handler':
         specifier: 4.12.1
         version: 4.12.1
+      '@smithy/types':
+        specifier: 4.19.0
+        version: 4.19.0
       '@tanstack/react-query':
         specifier: ^5.104.0
         version: 5.104.0(react@19.3.0)

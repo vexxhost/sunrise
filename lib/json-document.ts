@@ -12,58 +12,105 @@ const stringOrStrings = z.union([
   z.array(z.string().min(1, 'must not contain empty values')).min(1),
 ]);
 
-const policyStatementSchema = z
-  .object({
-    Sid: z.string().optional(),
-    Effect: z.enum(['Allow', 'Deny']),
-    Principal: z.unknown().optional(),
-    NotPrincipal: z.unknown().optional(),
-    Action: stringOrStrings.optional(),
-    NotAction: stringOrStrings.optional(),
-    Resource: stringOrStrings.optional(),
-    NotResource: stringOrStrings.optional(),
-    Condition: z.record(z.string(), z.unknown()).optional(),
-  })
+const policyStatementFields = {
+  Sid: z.string().optional(),
+  Effect: z.enum(['Allow', 'Deny']),
+  Principal: z.unknown().optional(),
+  NotPrincipal: z.unknown().optional(),
+  Action: stringOrStrings.optional(),
+  NotAction: stringOrStrings.optional(),
+  Resource: stringOrStrings.optional(),
+  NotResource: stringOrStrings.optional(),
+  Condition: z.record(z.string(), z.unknown()).optional(),
+};
+
+function requireAction(
+  statement: z.infer<z.ZodObject<typeof policyStatementFields>>,
+  context: z.RefinementCtx,
+) {
+  if (statement.Action === undefined && statement.NotAction === undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'needs Action or NotAction',
+      path: ['Action'],
+    });
+  }
+}
+
+function requirePrincipal(
+  statement: z.infer<z.ZodObject<typeof policyStatementFields>>,
+  context: z.RefinementCtx,
+) {
+  if (
+    statement.Principal === undefined &&
+    statement.NotPrincipal === undefined
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'needs Principal or NotPrincipal',
+      path: ['Principal'],
+    });
+  }
+}
+
+function requireResource(
+  statement: z.infer<z.ZodObject<typeof policyStatementFields>>,
+  context: z.RefinementCtx,
+) {
+  if (
+    statement.Resource === undefined &&
+    statement.NotResource === undefined
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'needs Resource or NotResource',
+      path: ['Resource'],
+    });
+  }
+}
+
+const resourcePolicyStatementSchema = z
+  .object(policyStatementFields)
   .passthrough()
   .superRefine((statement, context) => {
-    if (
-      statement.Principal === undefined &&
-      statement.NotPrincipal === undefined
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'needs Principal or NotPrincipal',
-        path: ['Principal'],
-      });
-    }
-    if (statement.Action === undefined && statement.NotAction === undefined) {
-      context.addIssue({
-        code: 'custom',
-        message: 'needs Action or NotAction',
-        path: ['Action'],
-      });
-    }
-    if (
-      statement.Resource === undefined &&
-      statement.NotResource === undefined
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'needs Resource or NotResource',
-        path: ['Resource'],
-      });
-    }
+    requirePrincipal(statement, context);
+    requireAction(statement, context);
+    requireResource(statement, context);
   });
 
-const bucketPolicySchema = z
-  .object({
-    Version: z.enum(['2008-10-17', '2012-10-17']).optional(),
-    Statement: z.preprocess(
-      (value) => (Array.isArray(value) ? value : [value]),
-      z.array(policyStatementSchema).min(1),
-    ),
-  })
-  .passthrough();
+const trustPolicyStatementSchema = z
+  .object(policyStatementFields)
+  .passthrough()
+  .superRefine((statement, context) => {
+    requirePrincipal(statement, context);
+    requireAction(statement, context);
+  });
+
+const identityPolicyStatementSchema = z
+  .object(policyStatementFields)
+  .passthrough()
+  .superRefine((statement, context) => {
+    requireAction(statement, context);
+    requireResource(statement, context);
+  });
+
+function policyDocumentSchema<T extends z.ZodType>(statement: T) {
+  return z
+    .object({
+      Version: z.enum(['2008-10-17', '2012-10-17']).optional(),
+      Statement: z.preprocess(
+        (value) => (Array.isArray(value) ? value : [value]),
+        z.array(statement).min(1),
+      ),
+    })
+    .passthrough();
+}
+
+const bucketPolicySchema = policyDocumentSchema(resourcePolicyStatementSchema);
+const iamTrustPolicySchema = policyDocumentSchema(trustPolicyStatementSchema);
+const iamPermissionPolicySchema = policyDocumentSchema(
+  identityPolicyStatementSchema,
+);
 
 const lifecycleRecord = z.record(z.string(), z.unknown());
 
@@ -157,6 +204,18 @@ export function validateBucketPolicyJson(
     };
   }
   return result;
+}
+
+export function validateIamTrustPolicyJson(
+  document: string,
+): JsonDocumentValidation<z.infer<typeof iamTrustPolicySchema>> {
+  return validateJson(document, iamTrustPolicySchema, 'Trust policy');
+}
+
+export function validateIamPermissionPolicyJson(
+  document: string,
+): JsonDocumentValidation<z.infer<typeof iamPermissionPolicySchema>> {
+  return validateJson(document, iamPermissionPolicySchema, 'Permission policy');
 }
 
 export function validateBucketLifecycleJson(

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   validateBucketLifecycleJson,
   validateBucketPolicyJson,
+  validateIamPermissionPolicyJson,
+  validateIamTrustPolicyJson,
 } from '@/lib/json-document';
 
 describe('bucket policy JSON validation', () => {
@@ -84,6 +86,71 @@ describe('bucket policy JSON validation', () => {
     expect(validateBucketPolicyJson(policy)).toEqual({
       ok: false,
       errors: ['Bucket policies cannot exceed 20 KiB.'],
+    });
+  });
+});
+
+describe('IAM policy JSON validation', () => {
+  it('accepts a trust policy without a resource', () => {
+    expect(
+      validateIamTrustPolicyJson(
+        JSON.stringify({
+          Version: '2012-10-17',
+          Statement: {
+            Effect: 'Allow',
+            Principal: {
+              Federated:
+                'arn:aws:iam::RGW1:oidc-provider/id.example.test/realms/demo',
+            },
+            Action: ['sts:AssumeRoleWithWebIdentity', 'sts:TagSession'],
+          },
+        }),
+      ).ok,
+    ).toBe(true);
+  });
+
+  it('requires a principal in a trust policy', () => {
+    expect(
+      validateIamTrustPolicyJson(
+        JSON.stringify({
+          Statement: [{ Effect: 'Allow', Action: 'sts:AssumeRole' }],
+        }),
+      ),
+    ).toEqual({
+      ok: false,
+      errors: [
+        'Statement[0].Principal: needs Principal or NotPrincipal',
+      ],
+    });
+  });
+
+  it('accepts an identity policy without a principal', () => {
+    expect(
+      validateIamPermissionPolicyJson(
+        JSON.stringify({
+          Version: '2012-10-17',
+          Statement: [
+            {
+              Effect: 'Allow',
+              Action: ['s3:GetObject', 's3:ListBucket'],
+              Resource: ['arn:aws:s3:::artifacts', 'arn:aws:s3:::artifacts/*'],
+            },
+          ],
+        }),
+      ).ok,
+    ).toBe(true);
+  });
+
+  it('requires a resource in an identity policy', () => {
+    expect(
+      validateIamPermissionPolicyJson(
+        JSON.stringify({
+          Statement: [{ Effect: 'Allow', Action: 's3:ListAllMyBuckets' }],
+        }),
+      ),
+    ).toEqual({
+      ok: false,
+      errors: ['Statement[0].Resource: needs Resource or NotResource'],
     });
   });
 });

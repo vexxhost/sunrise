@@ -14,12 +14,14 @@ export function JsonEditor({
   onChange,
   errors,
   height = '360px',
+  readOnly = false,
 }: {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
   errors: string[];
   height?: string;
+  readOnly?: boolean;
 }) {
   const { resolvedTheme } = useTheme();
   const isHydrated = useIsHydrated();
@@ -56,9 +58,10 @@ export function JsonEditor({
           aria-label={label}
           value={value}
           height={height}
+          editable={!readOnly}
           theme={appearance === 'dark' ? 'dark' : 'light'}
           extensions={extensions}
-          onChange={onChange}
+          onChange={readOnly ? undefined : onChange}
           basicSetup={{
             lineNumbers: true,
             highlightActiveLineGutter: true,
