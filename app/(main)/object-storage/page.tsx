@@ -121,6 +121,7 @@ export default async function ObjectStoragePage() {
                   ? (roleError ?? "Count unavailable")
                   : `${roleCount} visible`,
               badge: roleRestricted ? "Restricted" : "Available",
+              createAction: createById.get("role"),
             },
           ]}
         />

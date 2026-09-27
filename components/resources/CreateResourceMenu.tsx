@@ -17,6 +17,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  ShieldPlus,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ export const createActionIcons: Record<
   cluster: Boxes,
   "cluster-template": Settings,
   bucket: Database,
+  role: ShieldPlus,
 };
 
 function actionAvailable(action: CreateAction) {

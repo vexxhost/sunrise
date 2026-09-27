@@ -17,7 +17,8 @@ export type CreateActionId =
   | "key-pair"
   | "cluster"
   | "cluster-template"
-  | "bucket";
+  | "bucket"
+  | "role";
 
 export type CreateActionService = "compute" | "kubernetes" | "object-storage";
 
@@ -177,6 +178,18 @@ const definitions: CreateActionDefinition[] = [
     href: "/object-storage/buckets?create=bucket",
     service: "object-storage",
     group: "Object Storage",
+    catalogIdentities: [
+      { serviceType: "object-storage-s3", serviceName: "s3" },
+    ],
+    requiresObjectStorageCredentials: true,
+  },
+  {
+    id: "role",
+    label: "Create IAM role",
+    description: "Create an assumable role in the active RGW account.",
+    href: "/object-storage/roles?create=role",
+    service: "object-storage",
+    group: "Access management",
     catalogIdentities: [
       { serviceType: "object-storage-s3", serviceName: "s3" },
     ],

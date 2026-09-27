@@ -60,19 +60,22 @@ describe("create action availability", () => {
     );
   });
 
-  it("requires active RGW credentials before offering bucket creation", () => {
-    const bucket = build({
+  it("requires active RGW credentials before offering Object Storage creation", () => {
+    const objectStorageActions = build({
       objectStorageRole: {
         status: "authentication-required",
         message: "Sign in to Object Storage",
       },
-    }).find(({ id }) => id === "bucket");
+    }).filter(({ service }) => service === "object-storage");
 
-    expect(bucket?.capability).toEqual({
-      status: "unavailable",
-      permission: "unknown",
-      message: "Sign in to Object Storage",
-    });
+    expect(objectStorageActions).toHaveLength(2);
+    expect(
+      objectStorageActions.every(
+        ({ capability }) =>
+          capability.status === "unavailable" &&
+          capability.message === "Sign in to Object Storage",
+      ),
+    ).toBe(true);
   });
 
   it("keeps permissions unknown until the service handles the mutation", () => {
@@ -103,13 +106,12 @@ describe("create action availability", () => {
   });
 
   it("does not advertise create flows that have no implemented CRUD", () => {
-    expect(build().map(({ id }) => id)).not.toContain("role");
     expect(build().map(({ id }) => id)).not.toContain("share");
     expect(build().map(({ id }) => id)).not.toContain("load-balancer");
   });
 
   it("filters service actions and validates URL intents", () => {
-    expect(createActionsForService(build(), "object-storage")).toHaveLength(1);
+    expect(createActionsForService(build(), "object-storage")).toHaveLength(2);
     expect(isCreateActionRequested("instance", "instance")).toBe(true);
     expect(isCreateActionRequested(["volume", "instance"], "volume")).toBe(
       true,

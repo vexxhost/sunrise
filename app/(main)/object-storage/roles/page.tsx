@@ -1,12 +1,21 @@
 import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
-import { DataTableHeader } from '@/components/DataTable/Header';
+import { isCreateActionRequested } from '@/lib/create-actions';
 import { getSession, normalizeProjectId } from '@/lib/session';
 import { listRolesForRender } from '@/lib/s3/role-actions';
 import { RolesClient } from './RolesClient';
 
-export default async function RolesPage() {
+export default async function RolesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ create?: string | string[] }>;
+}) {
   const session = await getSession();
   const activeProjectId = normalizeProjectId(session.projectId);
+  const activeRegionId = session.regionId ?? '';
+  const createRequested = isCreateActionRequested(
+    (await searchParams).create,
+    'role',
+  );
   const result = await listRolesForRender();
 
   if (!result.ok && result.needsAuth) {
@@ -17,16 +26,17 @@ export default async function RolesPage() {
   }
 
   return (
-    <>
-      <DataTableHeader resourceName="role" actions={undefined} />
-      <RolesClient
-        activeProjectId={activeProjectId}
-        initialData={{
-          roles: result.roles,
-          accessDenied: result.accessDenied,
-          denialRequestId: result.denialRequestId,
-        }}
-      />
-    </>
+    <RolesClient
+      key={createRequested ? 'create' : 'idle'}
+      activeProjectId={activeProjectId}
+      activeRegionId={activeRegionId}
+      initiallyCreateOpen={createRequested}
+      initialData={{
+        roles: result.roles,
+        activeRoleArn: result.activeRoleArn,
+        accessDenied: result.accessDenied,
+        denialRequestId: result.denialRequestId,
+      }}
+    />
   );
 }
