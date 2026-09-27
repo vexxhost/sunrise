@@ -15,6 +15,8 @@ import {
   ServiceResourceGrid,
   type ServiceLandingMetric,
 } from "@/components/service-landing/ServiceLanding";
+import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
+import { createActionsForService } from "@/lib/create-actions";
 import { loadCloudContext } from "@/lib/cloud-context";
 import {
   loadProjectOverview,
@@ -95,6 +97,13 @@ export default async function ComputePage() {
     { label: "Networks", icon: Network, ...networks },
     { label: "Security groups", icon: Shield, ...securityGroups },
   ];
+  const createActions = createActionsForService(
+    snapshot.createActions,
+    "compute",
+  );
+  const createById = new Map(
+    createActions.map((action) => [action.id, action]),
+  );
 
   return (
     <ServiceLandingPage
@@ -102,6 +111,7 @@ export default async function ComputePage() {
       description="Operate virtual machines and the images, storage, networking, and access resources that support them."
       context={snapshot}
       serviceId="compute"
+      actions={<CreateResourceMenu actions={createActions} />}
       metrics={metrics}
     >
       <ServiceLandingSection
@@ -117,6 +127,7 @@ export default async function ComputePage() {
               description:
                 "Inspect virtual machines, status, addresses, and console access.",
               meta: currentMeta(instances),
+              createAction: createById.get("instance"),
             },
             {
               name: "Images",
@@ -125,6 +136,7 @@ export default async function ComputePage() {
               description:
                 "Browse operating-system and workload images available to instances.",
               meta: "Glance image catalog",
+              createAction: createById.get("image"),
             },
             {
               name: "Instance flavors",
@@ -150,6 +162,7 @@ export default async function ComputePage() {
               description:
                 "Inspect persistent block devices and their attachments.",
               meta: currentMeta(volumes),
+              createAction: createById.get("volume"),
             },
             {
               name: "Snapshots",
@@ -157,6 +170,7 @@ export default async function ComputePage() {
               icon: Camera,
               description: "Browse reusable point-in-time volume snapshots.",
               meta: currentMeta(snapshots),
+              createAction: createById.get("snapshot"),
             },
           ]}
         />
@@ -175,13 +189,15 @@ export default async function ComputePage() {
               description:
                 "Review tenant networks, subnets, and connected resources.",
               meta: currentMeta(networks),
+              createAction: createById.get("network"),
             },
             {
               name: "Security groups",
+              href: "/compute/networks/security-groups",
               icon: Shield,
               description: "Review ingress and egress policy applied to ports.",
               meta: currentMeta(securityGroups),
-              badge: "Page planned",
+              createAction: createById.get("security-group"),
             },
             {
               name: "Key pairs",
@@ -189,6 +205,7 @@ export default async function ComputePage() {
               icon: KeyRound,
               description: "Review SSH public keys registered with Nova.",
               meta: currentMeta(keyPairs),
+              createAction: createById.get("key-pair"),
             },
           ]}
         />

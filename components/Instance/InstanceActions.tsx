@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Server, Trash2 } from "lucide-react";
 
@@ -38,6 +44,7 @@ import {
   serverAvailabilityZonesQueryOptions,
 } from "@/hooks/queries/useServers";
 import { formatFlavorCapacity } from "@/lib/openstack/flavor";
+import { clearCreateActionIntent } from "@/lib/create-actions";
 import { createServerAction } from "@/lib/openstack/nova-actions";
 import { normalizeMutationProjectId } from "@/lib/mutations";
 import type {
@@ -50,6 +57,7 @@ import type {
 } from "@/types/openstack";
 
 interface InstanceActionsProps {
+  initiallyOpen?: boolean;
   projectId?: string;
   regionId?: string;
 }
@@ -126,9 +134,13 @@ function projectSecurityGroups(
   );
 }
 
-export function InstanceActions({ projectId, regionId }: InstanceActionsProps) {
+export function InstanceActions({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: InstanceActionsProps) {
   const queryClient = useQueryClient();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(initiallyOpen);
   const [form, setForm] = useState<LaunchFormState>(INITIAL_FORM);
   const [nextMetadataId, setNextMetadataId] = useState(1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -140,7 +152,7 @@ export function InstanceActions({ projectId, regionId }: InstanceActionsProps) {
   const [availabilityZones, setAvailabilityZones] = useState<
     ComputeAvailabilityZone[]
   >([]);
-  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [optionsLoading, setOptionsLoading] = useState(initiallyOpen);
   const [isPending, startTransition] = useTransition();
   const visibleNetworks = useMemo(
     () => projectNetworks(networks, projectId),
@@ -161,21 +173,16 @@ export function InstanceActions({ projectId, regionId }: InstanceActionsProps) {
     );
   }, [form.count, form.flavorRef, form.imageRef, form.name]);
 
-  const handleOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        setErrorMessage(null);
-        setIsOpen(false);
-        return;
-      }
-
-      setIsOpen(open);
-      setForm(INITIAL_FORM);
-      setNextMetadataId(1);
-      setErrorMessage(null);
-      setOptionsLoading(true);
-
-      void Promise.all([
+  const loadOptions = useCallback(async () => {
+    try {
+      const [
+        nextImages,
+        nextFlavors,
+        nextNetworks,
+        nextSecurityGroups,
+        nextKeypairs,
+        nextAvailabilityZones,
+      ] = await Promise.all([
         queryClient.fetchQuery(imagesQueryOptions(regionId, projectId)),
         queryClient.fetchQuery(flavorsQueryOptions(regionId, projectId)),
         queryClient.fetchQuery(networksQueryOptions(regionId, projectId)),
@@ -184,49 +191,58 @@ export function InstanceActions({ projectId, regionId }: InstanceActionsProps) {
         queryClient.fetchQuery(
           serverAvailabilityZonesQueryOptions(regionId, projectId),
         ),
-      ])
-        .then(
-          ([
-            nextImages,
-            nextFlavors,
-            nextNetworks,
-            nextSecurityGroups,
-            nextKeypairs,
-            nextAvailabilityZones,
-          ]) => {
-            const scopedNetworks = projectNetworks(nextNetworks, projectId);
-            const scopedSecurityGroups = projectSecurityGroups(
-              nextSecurityGroups,
-              projectId,
-            );
-            const defaultSecurityGroup = scopedSecurityGroups.find(
-              ({ name }) => name === "default",
-            );
+      ]);
+      const scopedNetworks = projectNetworks(nextNetworks, projectId);
+      const scopedSecurityGroups = projectSecurityGroups(
+        nextSecurityGroups,
+        projectId,
+      );
+      const defaultSecurityGroup = scopedSecurityGroups.find(
+        ({ name }) => name === "default",
+      );
 
-            setImages(nextImages);
-            setFlavors(nextFlavors);
-            setNetworks(nextNetworks);
-            setSecurityGroups(nextSecurityGroups);
-            setKeypairs(nextKeypairs);
-            setAvailabilityZones(nextAvailabilityZones);
-            setForm((current) => ({
-              ...current,
-              networkIds: scopedNetworks[0]?.id ? [scopedNetworks[0].id] : [],
-              securityGroupNames: defaultSecurityGroup
-                ? [defaultSecurityGroup.name]
-                : [],
-            }));
-          },
-        )
-        .catch(() => {
-          setErrorMessage(
-            "Unable to load launch options. Refresh and try again.",
-          );
-        })
-        .finally(() => setOptionsLoading(false));
+      setImages(nextImages);
+      setFlavors(nextFlavors);
+      setNetworks(nextNetworks);
+      setSecurityGroups(nextSecurityGroups);
+      setKeypairs(nextKeypairs);
+      setAvailabilityZones(nextAvailabilityZones);
+      setForm((current) => ({
+        ...current,
+        networkIds: scopedNetworks[0]?.id ? [scopedNetworks[0].id] : [],
+        securityGroupNames: defaultSecurityGroup
+          ? [defaultSecurityGroup.name]
+          : [],
+      }));
+    } catch {
+      setErrorMessage("Unable to load launch options. Refresh and try again.");
+    } finally {
+      setOptionsLoading(false);
+    }
+  }, [projectId, queryClient, regionId]);
+
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        setErrorMessage(null);
+        setIsOpen(false);
+        clearCreateActionIntent();
+        return;
+      }
+
+      setIsOpen(open);
+      setForm(INITIAL_FORM);
+      setNextMetadataId(1);
+      setErrorMessage(null);
+      setOptionsLoading(true);
+      void loadOptions();
     },
-    [projectId, queryClient, regionId],
+    [loadOptions],
   );
+
+  useEffect(() => {
+    if (initiallyOpen) void loadOptions();
+  }, [initiallyOpen, loadOptions]);
 
   const toggleString = (values: string[], value: string) =>
     values.includes(value)
@@ -286,7 +302,7 @@ export function InstanceActions({ projectId, regionId }: InstanceActionsProps) {
         return;
       }
 
-      setIsOpen(false);
+      handleOpenChange(false);
       setForm(INITIAL_FORM);
       void queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "servers"],

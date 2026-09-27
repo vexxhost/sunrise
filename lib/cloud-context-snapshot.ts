@@ -1,4 +1,5 @@
 import type { OpenStackCatalogService } from "@/lib/openstack/catalog";
+import { buildCreateActions, type CreateAction } from "@/lib/create-actions";
 import {
   buildServiceDirectory,
   type ServiceDirectoryItem,
@@ -44,6 +45,7 @@ export type CloudContextSnapshot = {
   projects: Project[];
   regions: Region[];
   services: ServiceDirectoryItem[];
+  createActions: CreateAction[];
   personalResources: {
     pinned: ResourcePreference[];
     recent: ResourcePreference[];
@@ -155,6 +157,7 @@ export function buildCloudContextSnapshot({
         status: "authentication-required",
         message: "Sign in to verify service availability",
       };
+  const role = activeRole(session);
 
   return {
     user: { name: userName ?? null },
@@ -168,11 +171,18 @@ export function buildCloudContextSnapshot({
       name: regionName,
       status: session.regionId ? "selected" : "missing",
     },
-    role: activeRole(session),
+    role,
     catalog: catalogStatus,
     projects,
     regions,
     services: buildServiceDirectory(catalog, session.regionId),
+    createActions: buildCreateActions({
+      catalog,
+      catalogStatus: catalogStatus.status,
+      objectStorageRole: role,
+      projectId: session.projectId,
+      regionId: session.regionId,
+    }),
     personalResources,
   };
 }

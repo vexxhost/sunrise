@@ -13,6 +13,8 @@ import {
   ServiceResourceGrid,
   type ServiceLandingMetric,
 } from "@/components/service-landing/ServiceLanding";
+import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
+import { createActionsForService } from "@/lib/create-actions";
 import { loadCloudContext } from "@/lib/cloud-context";
 import {
   listClustersAction,
@@ -146,6 +148,13 @@ export default async function KubernetesPage() {
       detail: healthDetail,
     },
   ];
+  const createActions = createActionsForService(
+    snapshot.createActions,
+    "kubernetes",
+  );
+  const createById = new Map(
+    createActions.map((action) => [action.id, action]),
+  );
 
   return (
     <ServiceLandingPage
@@ -153,6 +162,7 @@ export default async function KubernetesPage() {
       description="Deploy and operate Magnum-backed Kubernetes clusters, templates, node groups, networking, and storage."
       context={snapshot}
       serviceId="kubernetes"
+      actions={<CreateResourceMenu actions={createActions} />}
       metrics={metrics}
     >
       <ServiceLandingSection
@@ -171,6 +181,7 @@ export default async function KubernetesPage() {
                 clusterCount === "-"
                   ? clusterDetail
                   : `${clusterCount} in this project`,
+              createAction: createById.get("cluster"),
             },
             {
               name: "Cluster templates",
@@ -179,6 +190,7 @@ export default async function KubernetesPage() {
               description:
                 "Review Magnum templates, flavors, images, drivers, and visibility.",
               meta: `${templates.length} available`,
+              createAction: createById.get("cluster-template"),
             },
             {
               name: "Load balancers",

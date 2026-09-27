@@ -27,15 +27,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { volumesQueryOptions } from "@/hooks/queries/useVolumes";
 import { createSnapshotAction } from "@/lib/openstack/cinder-actions";
 import { canSnapshotVolume } from "@/lib/openstack/storage-lifecycle";
+import { clearCreateActionIntent } from "@/lib/create-actions";
 
 interface SnapshotActionsProps {
+  initiallyOpen?: boolean;
   projectId?: string;
   regionId?: string;
 }
 
-export function SnapshotActions({ projectId, regionId }: SnapshotActionsProps) {
+export function SnapshotActions({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: SnapshotActionsProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [volumeId, setVolumeId] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -49,6 +55,7 @@ export function SnapshotActions({ projectId, regionId }: SnapshotActionsProps) {
 
   const setDialogOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
+    if (!nextOpen) clearCreateActionIntent();
     setError(null);
     if (nextOpen) {
       setVolumeId("");
@@ -102,16 +109,23 @@ export function SnapshotActions({ projectId, regionId }: SnapshotActionsProps) {
             </DialogHeader>
             <div className="space-y-1.5">
               <Label htmlFor="snapshot-volume">Volume</Label>
-              <Select value={volumeId} onValueChange={setVolumeId} disabled={isPending}>
+              <Select
+                value={volumeId}
+                onValueChange={setVolumeId}
+                disabled={isPending}
+              >
                 <SelectTrigger id="snapshot-volume">
                   <SelectValue
-                    placeholder={volumes.isLoading ? "Loading volumes" : "Choose a volume"}
+                    placeholder={
+                      volumes.isLoading ? "Loading volumes" : "Choose a volume"
+                    }
                   />
                 </SelectTrigger>
                 <SelectContent>
                   {eligibleVolumes.map((volume) => (
                     <SelectItem key={volume.id} value={volume.id}>
-                      {volume.name || volume.id} · {volume.size} GiB · {volume.status}
+                      {volume.name || volume.id} · {volume.size} GiB ·{" "}
+                      {volume.status}
                     </SelectItem>
                   ))}
                 </SelectContent>

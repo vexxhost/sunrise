@@ -19,15 +19,21 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { createKeypairAction } from "@/lib/openstack/nova-actions";
+import { clearCreateActionIntent } from "@/lib/create-actions";
 
 interface KeypairActionsProps {
+  initiallyOpen?: boolean;
   projectId?: string;
   regionId?: string;
 }
 
-export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
+export function KeypairActions({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: KeypairActionsProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [mode, setMode] = useState<"generate" | "import">("generate");
   const [name, setName] = useState("");
   const [publicKey, setPublicKey] = useState("");
@@ -48,6 +54,7 @@ export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen) reset();
     setOpen(nextOpen);
+    if (!nextOpen) clearCreateActionIntent();
   };
 
   const submit = () => {
@@ -68,7 +75,9 @@ export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
 
       if (mode === "generate") {
         if (!result.data.private_key) {
-          setError("Nova created the key pair but did not return private key material.");
+          setError(
+            "Nova created the key pair but did not return private key material.",
+          );
           return;
         }
         setPrivateKey(result.data.private_key);
@@ -78,8 +87,7 @@ export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
         return;
       }
 
-      setOpen(false);
-      reset();
+      handleOpenChange(false);
       void queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "keypairs"],
       });
@@ -125,9 +133,12 @@ export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
 
           {privateKey ? (
             <div className="space-y-4">
-              <MutationAlert variant="warning" title="Save this private key now">
-                Nova will not return the private key again. Store it securely before
-                closing this dialog.
+              <MutationAlert
+                variant="warning"
+                title="Save this private key now"
+              >
+                Nova will not return the private key again. Store it securely
+                before closing this dialog.
               </MutationAlert>
               <Textarea
                 className="min-h-52 font-mono text-xs"
@@ -154,7 +165,10 @@ export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
               </div>
             </div>
           ) : (
-            <Tabs value={mode} onValueChange={(value) => setMode(value as typeof mode)}>
+            <Tabs
+              value={mode}
+              onValueChange={(value) => setMode(value as typeof mode)}
+            >
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="generate">Generate</TabsTrigger>
                 <TabsTrigger value="import">Import public key</TabsTrigger>
@@ -175,7 +189,10 @@ export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
                     Use letters, numbers, periods, underscores, or hyphens.
                   </p>
                 </div>
-                <TabsContent value="generate" className="mt-0 text-sm text-muted-foreground">
+                <TabsContent
+                  value="generate"
+                  className="mt-0 text-sm text-muted-foreground"
+                >
                   Nova will generate an SSH key and return its private key once.
                 </TabsContent>
                 <TabsContent value="import" className="mt-0 space-y-1.5">
@@ -200,19 +217,27 @@ export function KeypairActions({ projectId, regionId }: KeypairActionsProps) {
               type="button"
               variant="outline"
               disabled={isPending}
-              onClick={() => setOpen(false)}
+              onClick={() => handleOpenChange(false)}
             >
               {privateKey ? "Done" : "Cancel"}
             </Button>
             {!privateKey ? (
               <Button
                 type="button"
-                disabled={!name.trim() || (mode === "import" && !publicKey.trim()) || isPending}
+                disabled={
+                  !name.trim() ||
+                  (mode === "import" && !publicKey.trim()) ||
+                  isPending
+                }
                 onClick={submit}
               >
                 {isPending
-                  ? mode === "generate" ? "Generating" : "Importing"
-                  : mode === "generate" ? "Generate key pair" : "Import key pair"}
+                  ? mode === "generate"
+                    ? "Generating"
+                    : "Importing"
+                  : mode === "generate"
+                    ? "Generate key pair"
+                    : "Import key pair"}
               </Button>
             ) : null}
           </DialogFooter>

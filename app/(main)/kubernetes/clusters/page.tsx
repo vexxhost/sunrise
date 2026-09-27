@@ -10,17 +10,28 @@ import {
   flavorsQueryOptions,
   keypairsQueryOptions,
 } from "@/hooks/queries/useServers";
+import { isCreateActionRequested } from "@/lib/create-actions";
 
-export default async function ClustersPage() {
+export default async function ClustersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ create?: string | string[] }>;
+}) {
   const session = await getSession();
+  const createRequested = isCreateActionRequested(
+    (await searchParams).create,
+    "cluster",
+  );
 
   return (
     <DataTableHydrationBoundary
       resourceName="cluster"
       actions={
         <ClusterActions
+          key={createRequested ? "create" : "idle"}
           regionId={session.regionId}
           projectId={session.projectId}
+          initiallyOpen={createRequested}
         />
       }
       queries={[

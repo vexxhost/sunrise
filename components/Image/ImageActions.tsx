@@ -26,9 +26,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createImageAction } from "@/lib/openstack/glance-actions";
+import { clearCreateActionIntent } from "@/lib/create-actions";
 import type { DiskFormat, ImageVisibility } from "@/types/openstack";
 
 interface ImageActionsProps {
+  initiallyOpen?: boolean;
   projectId?: string;
   regionId?: string;
 }
@@ -88,13 +90,18 @@ function uploadImageData({
 }) {
   return new Promise<UploadResult>((resolve) => {
     const request = new XMLHttpRequest();
-    request.open("POST", `/compute/images/${encodeURIComponent(imageId)}/upload`);
+    request.open(
+      "POST",
+      `/compute/images/${encodeURIComponent(imageId)}/upload`,
+    );
     request.setRequestHeader("X-Sunrise-Project-Id", projectId);
     request.setRequestHeader("X-Sunrise-Region-Id", regionId);
     request.setRequestHeader("Content-Type", "application/octet-stream");
     request.upload.onprogress = (event) => {
       if (event.lengthComputable) {
-        onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+        onProgress(
+          Math.min(99, Math.round((event.loaded / event.total) * 100)),
+        );
       }
     };
     request.upload.onload = onStoring;
@@ -104,19 +111,25 @@ function uploadImageData({
       } catch {
         resolve({
           ok: false,
-          error: request.responseText || `Upload failed with ${request.status}.`,
+          error:
+            request.responseText || `Upload failed with ${request.status}.`,
         });
       }
     };
-    request.onerror = () => resolve({ ok: false, error: "Image upload failed." });
+    request.onerror = () =>
+      resolve({ ok: false, error: "Image upload failed." });
     request.send(file);
   });
 }
 
-export function ImageActions({ projectId, regionId }: ImageActionsProps) {
+export function ImageActions({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: ImageActionsProps) {
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [diskFormat, setDiskFormat] = useState<DiskFormat>("qcow2");
@@ -127,7 +140,9 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
   const [isProtected, setIsProtected] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"catalog" | "sending" | "storing" | null>(null);
+  const [phase, setPhase] = useState<"catalog" | "sending" | "storing" | null>(
+    null,
+  );
   const [progress, setProgress] = useState(0);
   const [isPending, startTransition] = useTransition();
 
@@ -148,6 +163,7 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
 
   const setDialogOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
+    if (!nextOpen) clearCreateActionIntent();
     if (nextOpen) reset();
   };
 
@@ -200,7 +216,7 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
 
       setProgress(100);
       setPhase(null);
-      setOpen(false);
+      setDialogOpen(false);
     });
   };
 
@@ -232,7 +248,10 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
         Upload image
       </Button>
 
-      <Dialog open={open} onOpenChange={(nextOpen) => !isPending && setDialogOpen(nextOpen)}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => !isPending && setDialogOpen(nextOpen)}
+      >
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <form className="space-y-5" onSubmit={handleSubmit}>
             <DialogHeader>
@@ -297,10 +316,14 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
                   onValueChange={(value) => setDiskFormat(value as DiskFormat)}
                   disabled={isPending}
                 >
-                  <SelectTrigger id="image-format"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="image-format">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     {DISK_FORMATS.map((format) => (
-                      <SelectItem key={format} value={format}>{format.toUpperCase()}</SelectItem>
+                      <SelectItem key={format} value={format}>
+                        {format.toUpperCase()}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -309,13 +332,21 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
                 <Label htmlFor="image-visibility">Visibility</Label>
                 <Select
                   value={visibility}
-                  onValueChange={(value) => setVisibility(value as ImageVisibility)}
+                  onValueChange={(value) =>
+                    setVisibility(value as ImageVisibility)
+                  }
                   disabled={isPending}
                 >
-                  <SelectTrigger id="image-visibility"><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="image-visibility">
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     {VISIBILITIES.map((value) => (
-                      <SelectItem key={value} value={value} className="capitalize">
+                      <SelectItem
+                        key={value}
+                        value={value}
+                        className="capitalize"
+                      >
                         {value}
                       </SelectItem>
                     ))}
@@ -355,7 +386,9 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
                   placeholder="linux, production"
                   disabled={isPending}
                 />
-                <p className="text-xs text-muted-foreground">Separate tags with commas.</p>
+                <p className="text-xs text-muted-foreground">
+                  Separate tags with commas.
+                </p>
               </div>
             </div>
 
@@ -383,11 +416,17 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
                     className={`h-full bg-primary transition-[width] ${phase !== "sending" ? "w-full animate-pulse" : ""}`}
-                    style={phase === "sending" ? { width: `${progress}%` } : undefined}
+                    style={
+                      phase === "sending"
+                        ? { width: `${progress}%` }
+                        : undefined
+                    }
                   />
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  {phaseStatus ? <ProgressStatusBadge label={phaseStatus} /> : null}
+                  {phaseStatus ? (
+                    <ProgressStatusBadge label={phaseStatus} />
+                  ) : null}
                   <p className="text-xs text-muted-foreground">{phaseText}</p>
                 </div>
               </div>
@@ -403,7 +442,10 @@ export function ImageActions({ projectId, regionId }: ImageActionsProps) {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={!name.trim() || !file || isPending}>
+              <Button
+                type="submit"
+                disabled={!name.trim() || !file || isPending}
+              >
                 {isPending ? "Uploading" : "Upload image"}
               </Button>
             </DialogFooter>

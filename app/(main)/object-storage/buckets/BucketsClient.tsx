@@ -25,6 +25,7 @@ import { bucketsQueryOptions } from '@/hooks/queries/useBuckets';
 import type { Bucket } from '@/lib/s3/actions';
 import { createBucket, deleteBucket } from '@/lib/s3/bucket-actions';
 import { validateBucketName } from '@/lib/s3/bucket-validation';
+import { clearCreateActionIntent } from '@/lib/create-actions';
 
 type BucketsData = {
   buckets: Bucket[];
@@ -40,19 +41,25 @@ function startObjectStorageLogin() {
 export function BucketsClient({
   activeProjectId,
   activeRegionId,
+  initiallyCreateOpen = false,
   initialData,
 }: {
   activeProjectId: string;
   activeRegionId: string;
+  initiallyCreateOpen?: boolean;
   initialData: BucketsData;
 }) {
   const router = useRouter();
-  const { data = initialData, refetch, isRefetching } = useQuery({
+  const {
+    data = initialData,
+    refetch,
+    isRefetching,
+  } = useQuery({
     ...bucketsQueryOptions(activeProjectId),
     initialData,
   });
   const [bucketName, setBucketName] = useState('');
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(initiallyCreateOpen);
   const [createName, setCreateName] = useState('');
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Bucket | null>(null);
@@ -61,6 +68,15 @@ export function BucketsClient({
   const [error, setError] = useState<string | null>(null);
   const scope = { projectId: activeProjectId, regionId: activeRegionId };
   const createValidation = createName ? validateBucketName(createName) : null;
+
+  const handleCreateOpenChange = (nextOpen: boolean) => {
+    setCreateOpen(nextOpen);
+    if (!nextOpen) {
+      clearCreateActionIntent();
+      setCreateName('');
+      setError(null);
+    }
+  };
 
   const columns: ColumnDef<Bucket>[] = [
     {
@@ -128,8 +144,7 @@ export function BucketsClient({
       setError(result.error.message);
       return;
     }
-    setCreateOpen(false);
-    setCreateName('');
+    handleCreateOpenChange(false);
     setMessage(result.message);
     await refetch();
   };
@@ -167,7 +182,7 @@ export function BucketsClient({
           type="button"
           onClick={() => {
             setError(null);
-            setCreateOpen(true);
+            handleCreateOpenChange(true);
           }}
         >
           <Plus className="size-4" />
@@ -207,8 +222,9 @@ export function BucketsClient({
 
       {data.accessDenied && (
         <MutationAlert variant="warning" title="Bucket listing not permitted">
-          Your role does not have <code>s3:ListAllMyBuckets</code>. You can still
-          open any bucket that the role can access by entering its name above.
+          Your role does not have <code>s3:ListAllMyBuckets</code>. You can
+          still open any bucket that the role can access by entering its name
+          above.
         </MutationAlert>
       )}
 
@@ -225,11 +241,7 @@ export function BucketsClient({
         open={createOpen}
         onOpenChange={(nextOpen) => {
           if (creating) return;
-          setCreateOpen(nextOpen);
-          if (!nextOpen) {
-            setCreateName('');
-            setError(null);
-          }
+          handleCreateOpenChange(nextOpen);
         }}
       >
         <DialogContent>
@@ -262,11 +274,7 @@ export function BucketsClient({
               type="button"
               variant="outline"
               disabled={creating}
-              onClick={() => {
-                setCreateOpen(false);
-                setCreateName('');
-                setError(null);
-              }}
+              onClick={() => handleCreateOpenChange(false)}
             >
               Cancel
             </Button>

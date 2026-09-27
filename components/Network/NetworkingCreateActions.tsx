@@ -50,8 +50,10 @@ import {
   buildFloatingIpPortOptions,
   parseFloatingIpPortSelection,
 } from "@/lib/openstack/neutron-floating-ip";
+import { clearCreateActionIntent } from "@/lib/create-actions";
 
 interface ScopeProps {
+  initiallyOpen?: boolean;
   projectId: string;
   regionId: string;
 }
@@ -91,9 +93,13 @@ function ToggleField({
   );
 }
 
-export function CreateNetworkAction({ projectId, regionId }: ScopeProps) {
+export function CreateNetworkAction({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: ScopeProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
@@ -103,6 +109,7 @@ export function CreateNetworkAction({ projectId, regionId }: ScopeProps) {
 
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
+    if (!next) clearCreateActionIntent();
     setError(null);
     if (next) {
       setName("");
@@ -209,9 +216,13 @@ export function CreateNetworkAction({ projectId, regionId }: ScopeProps) {
   );
 }
 
-export function CreateRouterAction({ projectId, regionId }: ScopeProps) {
+export function CreateRouterAction({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: ScopeProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
@@ -219,6 +230,7 @@ export function CreateRouterAction({ projectId, regionId }: ScopeProps) {
   const [pending, startTransition] = useTransition();
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
+    if (!next) clearCreateActionIntent();
     setError(null);
     if (next) {
       setName("");
@@ -314,9 +326,13 @@ export function CreateRouterAction({ projectId, regionId }: ScopeProps) {
   );
 }
 
-export function CreatePortAction({ projectId, regionId }: ScopeProps) {
+export function CreatePortAction({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: ScopeProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [networkId, setNetworkId] = useState("");
@@ -335,6 +351,7 @@ export function CreatePortAction({ projectId, regionId }: ScopeProps) {
   });
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
+    if (!next) clearCreateActionIntent();
     setError(null);
     if (next) {
       setName("");
@@ -503,9 +520,13 @@ export function CreatePortAction({ projectId, regionId }: ScopeProps) {
   );
 }
 
-export function AllocateFloatingIpAction({ projectId, regionId }: ScopeProps) {
+export function AllocateFloatingIpAction({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: ScopeProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [floatingNetworkId, setFloatingNetworkId] = useState("");
   const [portSelection, setPortSelection] = useState("none");
   const [description, setDescription] = useState("");
@@ -536,6 +557,7 @@ export function AllocateFloatingIpAction({ projectId, regionId }: ScopeProps) {
   );
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
+    if (!next) clearCreateActionIntent();
     setError(null);
     if (next) {
       setFloatingNetworkId("");
@@ -671,15 +693,20 @@ export function AllocateFloatingIpAction({ projectId, regionId }: ScopeProps) {
   );
 }
 
-export function CreateSecurityGroupAction({ projectId, regionId }: ScopeProps) {
+export function CreateSecurityGroupAction({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: ScopeProps) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
+    if (!next) clearCreateActionIntent();
     setError(null);
     if (next) {
       setName("");

@@ -6,10 +6,19 @@ import {
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 import { RoutersTableClient } from "../NetworkingTablesClient";
+import { isCreateActionRequested } from "@/lib/create-actions";
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ create?: string | string[] }>;
+}) {
   const session = await getSession();
   if (!session.projectId || !session.regionId) return null;
+  const createRequested = isCreateActionRequested(
+    (await searchParams).create,
+    "router",
+  );
   const queryClient = makeQueryClient();
   await Promise.all([
     queryClient.prefetchQuery(
@@ -22,8 +31,10 @@ export default async function Page() {
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <RoutersTableClient
+        key={createRequested ? "create" : "idle"}
         regionId={session.regionId}
         projectId={session.projectId}
+        initiallyOpen={createRequested}
       />
     </HydrationBoundary>
   );
