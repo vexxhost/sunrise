@@ -1,10 +1,9 @@
-import { notFound } from "next/navigation";
-
 import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
 import { flavorQueryOptions } from "@/hooks/queries/useServers";
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 import { FlavorDetailClient } from "./FlavorDetailClient";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 interface FlavorPageProps {
   params: Promise<{ id: string }>;
@@ -22,11 +21,10 @@ export default async function FlavorPage({
     id,
   );
 
-  try {
-    await queryClient.fetchQuery(flavorQuery);
-  } catch {
-    notFound();
-  }
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(flavorQuery), {
+    kind: "flavor",
+    id,
+  });
 
   return (
     <PrefetchHydrationBoundary queries={[flavorQuery]} queryClient={queryClient}>

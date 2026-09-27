@@ -212,6 +212,16 @@ export function togglePinnedResource(
   };
 }
 
+export function removeResourcePreference(
+  current: ResourcePreference[],
+  target: Pick<ResourcePreference, "kind" | "id" | "projectId" | "regionId">,
+) {
+  const key = resourcePreferenceKey(target);
+  return parseResourcePreferences(current).filter(
+    (candidate) => resourcePreferenceKey(candidate) !== key,
+  );
+}
+
 export function resourcesForContext(
   current: ResourcePreference[],
   context: ResourcePreferenceContext,

@@ -80,7 +80,7 @@ export function isBrowserAccessDenied(error: unknown) {
   return name === 'AccessDenied' || name === 'Forbidden' || status === 403;
 }
 
-function isNoSuchObject(error: unknown) {
+export function isBrowserObjectNotFound(error: unknown) {
   const { name, status } = awsErrorName(error);
   return name === 'NotFound' || name === 'NoSuchKey' || status === 404;
 }
@@ -185,7 +185,7 @@ export async function findBrowserUploadConflicts(
       await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
       conflicts.add(key);
     } catch (error) {
-      if (!isNoSuchObject(error)) throw error;
+      if (!isBrowserObjectNotFound(error)) throw error;
     }
   }
 

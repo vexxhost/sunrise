@@ -54,6 +54,7 @@ export function volumeQueryOptions(
         serviceType: 'volumev3',
         serviceName: 'cinder',
         path: `/volumes/${id}`,
+        errorMode: 'throw',
       });
 
       if (!data) {
@@ -109,6 +110,7 @@ export function snapshotQueryOptions(
         serviceType: 'volumev3',
         serviceName: 'cinder',
         path: `/snapshots/${id}`,
+        errorMode: 'throw',
       });
 
       if (!data) {

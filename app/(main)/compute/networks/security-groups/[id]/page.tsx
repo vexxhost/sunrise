@@ -6,6 +6,7 @@ import {
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 import { SecurityGroupDetailClient } from "./SecurityGroupDetailClient";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 export default async function Page({
   params,
@@ -15,14 +16,18 @@ export default async function Page({
   const [{ id }, session] = await Promise.all([params, getSession()]);
   if (!session.projectId || !session.regionId) return null;
   const queryClient = makeQueryClient();
-  await Promise.all([
-    queryClient.prefetchQuery(
-      securityGroupQueryOptions(session.regionId, session.projectId, id),
-    ),
-    queryClient.prefetchQuery(
-      securityGroupsQueryOptions(session.regionId, session.projectId),
-    ),
-  ]);
+  const securityGroupQuery = securityGroupQueryOptions(
+    session.regionId,
+    session.projectId,
+    id,
+  );
+  await fetchOpenStackResourceOrRecover(
+    queryClient.fetchQuery(securityGroupQuery),
+    { kind: "security-group", id },
+  );
+  await queryClient.prefetchQuery(
+    securityGroupsQueryOptions(session.regionId, session.projectId),
+  );
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <SecurityGroupDetailClient

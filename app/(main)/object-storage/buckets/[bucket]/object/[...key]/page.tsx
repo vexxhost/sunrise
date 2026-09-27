@@ -5,6 +5,7 @@ import { objectMetadataQueryOptions } from '@/hooks/queries/useObjects';
 import { headObjectForRender } from '@/lib/s3/actions';
 import { makeQueryClient } from '@/lib/query-client';
 import { getSession, normalizeProjectId } from '@/lib/session';
+import { recoverMissingResource } from '@/lib/resource-recovery-server';
 
 interface PageProps {
   params: Promise<{ bucket: string; key: string[] }>;
@@ -20,6 +21,16 @@ export default async function Page({ params }: PageProps) {
   const probe = await headObjectForRender(bucket, objectKey);
   if (!probe.ok && probe.needsAuth) {
     return <ObjectStorageAuthRedirect />;
+  }
+  if (!probe.ok && probe.notFound) {
+    recoverMissingResource({
+      kind: 'object',
+      id: objectKey,
+      parentId: bucket,
+    });
+  }
+  if (!probe.ok) {
+    throw new Error(probe.error);
   }
 
   const queryClient = makeQueryClient();

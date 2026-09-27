@@ -1,10 +1,9 @@
-import { notFound } from "next/navigation";
-
 import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
 import { clusterTemplateQueryOptions } from "@/hooks/queries/useMagnum";
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 import { ClusterTemplateDetailClient } from "./ClusterTemplateDetailClient";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 interface ClusterTemplatePageProps {
   params: Promise<{ id: string }>;
@@ -22,11 +21,10 @@ export default async function ClusterTemplatePage({
     id,
   );
 
-  try {
-    await queryClient.fetchQuery(templateQuery);
-  } catch {
-    notFound();
-  }
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(templateQuery), {
+    kind: "cluster-template",
+    id,
+  });
 
   return (
     <PrefetchHydrationBoundary

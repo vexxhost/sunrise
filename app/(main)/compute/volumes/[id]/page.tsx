@@ -1,9 +1,9 @@
-import { notFound } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { makeQueryClient } from "@/lib/query-client";
 import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import { VolumeDetailClient } from "./VolumeDetailClient";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 interface VolumePageProps {
   params: Promise<{ id: string }>;
@@ -15,11 +15,10 @@ export default async function VolumePage({ params }: VolumePageProps) {
   const queryClient = makeQueryClient();
   const volumeQuery = volumeQueryOptions(session.regionId, session.projectId, id);
 
-  try {
-    await queryClient.fetchQuery(volumeQuery);
-  } catch {
-    notFound();
-  }
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(volumeQuery), {
+    kind: "volume",
+    id,
+  });
 
   return (
     <PrefetchHydrationBoundary queries={[volumeQuery]} queryClient={queryClient}>

@@ -1,5 +1,3 @@
-import { notFound } from "next/navigation";
-
 import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import {
@@ -14,6 +12,7 @@ import {
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 import { NodeGroupDetailClient } from "./NodeGroupDetailClient";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 interface NodeGroupPageProps {
   params: Promise<{ id: string; nodeGroupId: string }>;
@@ -48,14 +47,15 @@ export default async function NodeGroupPage({ params }: NodeGroupPageProps) {
     imagesQueryOptions(session.regionId, session.projectId),
   ];
 
-  try {
-    await Promise.all([
-      queryClient.fetchQuery(clusterQuery),
-      queryClient.fetchQuery(nodeGroupQuery),
-    ]);
-  } catch {
-    notFound();
-  }
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(clusterQuery), {
+    kind: "cluster",
+    id,
+  });
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(nodeGroupQuery), {
+    kind: "node-group",
+    id: nodeGroupId,
+    parentId: id,
+  });
 
   return (
     <PrefetchHydrationBoundary queries={queries} queryClient={queryClient}>

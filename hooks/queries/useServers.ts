@@ -86,6 +86,7 @@ export function serverQueryOptions(
         serviceName: "nova",
         path: `/servers/${encodeURIComponent(id)}`,
         apiVersion: "compute 2.79",
+        errorMode: "throw",
       });
 
       if (!data) {
@@ -143,6 +144,7 @@ export function flavorQueryOptions(
         serviceName: "nova",
         path: `/flavors/${id}`,
         apiVersion: "compute 2.79",
+        errorMode: "throw",
       });
 
       if (!data) {
@@ -174,6 +176,7 @@ export function serverInterfacesQueryOptions(
         serviceName: "nova",
         path: `/servers/${encodeURIComponent(serverId)}/os-interface`,
         apiVersion: "compute 2.79",
+        errorMode: "throw",
       });
 
       if (!data) {
@@ -231,6 +234,7 @@ export function keypairQueryOptions(
         serviceName: "nova",
         path: `/os-keypairs/${encodeURIComponent(name)}`,
         apiVersion: "compute 2.79",
+        errorMode: "throw",
       });
 
       if (!data) {

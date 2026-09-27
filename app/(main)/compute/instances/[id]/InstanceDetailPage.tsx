@@ -17,6 +17,7 @@ import { volumeQueryOptions } from '@/hooks/queries/useVolumes';
 import { imageQueryOptions } from '@/hooks/queries/useImages';
 import { makeQueryClient } from '@/lib/query-client';
 import type { InstanceDetailTab } from './tabs';
+import { fetchOpenStackResourceOrRecover } from '@/lib/resource-recovery-server';
 
 interface InstanceDetailPageProps {
   id: string;
@@ -31,8 +32,14 @@ export async function InstanceDetailPage({ id, activeTab }: InstanceDetailPagePr
   const queryClient = makeQueryClient();
   const serverQuery = serverQueryOptions(regionId, projectId, id);
   const interfacesQuery = serverInterfacesQueryOptions(regionId, projectId, id);
-  const server = await queryClient.fetchQuery(serverQuery);
-  const interfaceAttachments = await queryClient.fetchQuery(interfacesQuery);
+  const server = await fetchOpenStackResourceOrRecover(
+    queryClient.fetchQuery(serverQuery),
+    { kind: 'instance', id },
+  );
+  const interfaceAttachments = await fetchOpenStackResourceOrRecover(
+    queryClient.fetchQuery(interfacesQuery),
+    { kind: 'instance', id },
+  );
 
   const attachedVolumeIds =
     server['os-extended-volumes:volumes_attached']?.map(

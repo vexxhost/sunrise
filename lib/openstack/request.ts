@@ -6,12 +6,25 @@ export class OpenStackRequestError extends Error {
     readonly statusText: string,
   ) {
     super(`OpenStack request failed: ${status} ${statusText}`);
+    this.name = "OpenStackRequestError";
   }
+}
+
+export function isOpenStackNotFoundError(
+  error: unknown,
+): error is OpenStackRequestError {
+  return (
+    error instanceof OpenStackRequestError ||
+    (!!error &&
+      typeof error === "object" &&
+      (error as { name?: unknown }).name === "OpenStackRequestError")
+  ) && (error as { status?: unknown }).status === 404;
 }
 
 export class OpenStackConnectionError extends Error {
   constructor(readonly originalError: unknown) {
     super("OpenStack service is unreachable");
+    this.name = "OpenStackConnectionError";
   }
 }
 

@@ -5,6 +5,7 @@ import {
   addRecentResource,
   createResourcePreference,
   parseResourcePreferences,
+  removeResourcePreference,
   resourcePreferenceHref,
   serializeResourcePreferences,
   togglePinnedResource,
@@ -101,6 +102,19 @@ describe("resource preferences", () => {
         context,
       }).recent,
     ).toEqual([current]);
+  });
+
+  it("removes only the exact stale resource in the active context", () => {
+    const current = resource("same-id", 4);
+    const otherKind = resource("same-id", 3, "volume");
+    const otherProject = {
+      ...resource("same-id", 2),
+      projectId: "37c05c43a57d419097dce9eee2769027",
+    };
+
+    expect(
+      removeResourcePreference([current, otherKind, otherProject], current),
+    ).toEqual([otherKind, otherProject]);
   });
 
   it("removes stale resources of one kind without affecting other kinds", () => {

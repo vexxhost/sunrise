@@ -1,10 +1,10 @@
 import { ObjectsClient } from './ObjectsClient';
-import { BucketNotFound } from './BucketNotFound';
 import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
 import { DataTableHeader } from '@/components/DataTable/Header';
 import { RecentResourceTracker } from '@/components/resources/RecentResourceTracker';
 import { listObjectsForRender } from '@/lib/s3/actions';
 import { getSession, normalizeProjectId } from '@/lib/session';
+import { recoverMissingResource } from '@/lib/resource-recovery-server';
 
 interface PageProps {
   params: Promise<{ bucket: string }>;
@@ -25,7 +25,7 @@ export default async function Page({ params, searchParams }: PageProps) {
     return <ObjectStorageAuthRedirect />;
   }
   if (!probe.ok && probe.notFound) {
-    return <BucketNotFound bucket={bucket} />;
+    recoverMissingResource({ kind: 'bucket', id: bucket });
   }
   if (!probe.ok) {
     throw new Error(probe.error);

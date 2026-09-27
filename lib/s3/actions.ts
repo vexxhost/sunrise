@@ -55,6 +55,13 @@ function isNoSuchBucket(e: unknown): boolean {
   return name === 'NoSuchBucket' || status === 404;
 }
 
+function isNoSuchObject(e: unknown): boolean {
+  const anyErr = e as any;
+  const name = anyErr?.name || anyErr?.Code;
+  const status = anyErr?.$metadata?.httpStatusCode;
+  return name === 'NotFound' || name === 'NoSuchKey' || status === 404;
+}
+
 function isNoSuchBucketPolicy(e: unknown): boolean {
   const anyErr = e as any;
   const name = anyErr?.name || anyErr?.Code;
@@ -277,7 +284,7 @@ export type S3ObjectMetadata = {
 export type HeadObjectResult =
   | { ok: true; data: S3ObjectMetadata }
   | { ok: false; needsAuth: true }
-  | { ok: false; needsAuth: false; error: string };
+  | { ok: false; needsAuth: false; error: string; notFound?: boolean };
 
 async function headObjectWithCredentialRefresh(
   bucket: string,
@@ -312,6 +319,14 @@ async function headObjectWithCredentialRefresh(
     };
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
+    if (isNoSuchObject(e)) {
+      return {
+        ok: false,
+        needsAuth: false,
+        notFound: true,
+        error: 'Object could not be found or accessed.',
+      };
+    }
     const detail = describeAwsError(e);
     console.error('[s3/headObject] FAILED:', detail, e);
     return { ok: false, needsAuth: false, error: detail };
