@@ -18,6 +18,7 @@ export type SunriseSession = {
   s3Credentials?: S3StsCredentials;
   s3OidcVerifier?: string;
   s3OidcState?: string;
+  s3OidcReturnTo?: string;
   // Unified Sunrise OIDC flow (Keycloak as IdP for both Keystone + S3 STS).
   oidcVerifier?: string;
   oidcState?: string;

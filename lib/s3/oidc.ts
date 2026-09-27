@@ -1,6 +1,47 @@
 import { randomBytes, createHash } from 'crypto';
 
 export const OIDC_REDIRECT_PATH = '/object-storage/auth/callback';
+export const OBJECT_STORAGE_HOME_PATH = '/object-storage';
+export const MAX_OBJECT_STORAGE_RETURN_TO_LENGTH = 256;
+
+function objectStorageSectionPath(pathname: string) {
+  if (
+    pathname === `${OBJECT_STORAGE_HOME_PATH}/buckets` ||
+    pathname.startsWith(`${OBJECT_STORAGE_HOME_PATH}/buckets/`)
+  ) {
+    return `${OBJECT_STORAGE_HOME_PATH}/buckets`;
+  }
+  if (
+    pathname === `${OBJECT_STORAGE_HOME_PATH}/roles` ||
+    pathname.startsWith(`${OBJECT_STORAGE_HOME_PATH}/roles/`)
+  ) {
+    return `${OBJECT_STORAGE_HOME_PATH}/roles`;
+  }
+  return OBJECT_STORAGE_HOME_PATH;
+}
+
+export function normalizeObjectStorageReturnTo(value?: string | null) {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return OBJECT_STORAGE_HOME_PATH;
+  }
+
+  const url = new URL(value, 'http://localhost');
+  const isObjectStoragePage =
+    url.pathname === OBJECT_STORAGE_HOME_PATH ||
+    url.pathname.startsWith(`${OBJECT_STORAGE_HOME_PATH}/`);
+  const isAuthPage = url.pathname.startsWith(
+    `${OBJECT_STORAGE_HOME_PATH}/auth/`,
+  );
+
+  if (!isObjectStoragePage || isAuthPage) {
+    return OBJECT_STORAGE_HOME_PATH;
+  }
+
+  const returnTo = `${url.pathname}${url.search}${url.hash}`;
+  return returnTo.length <= MAX_OBJECT_STORAGE_RETURN_TO_LENGTH
+    ? returnTo
+    : objectStorageSectionPath(url.pathname);
+}
 
 export function getOidcConfig() {
   const issuer = process.env.KEYCLOAK_ISSUER;
@@ -12,6 +53,7 @@ export function getOidcConfig() {
   return {
     issuer,
     clientId,
+    dashboardUrl,
     redirectUri: `${dashboardUrl}${OIDC_REDIRECT_PATH}`,
   };
 }
