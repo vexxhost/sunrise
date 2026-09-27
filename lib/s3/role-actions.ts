@@ -362,6 +362,14 @@ async function readRoleDetails(
         description = response.Role?.Description ?? null;
         createdAt = response.Role?.CreateDate?.toISOString() ?? null;
         maxSessionDuration = response.Role?.MaxSessionDuration ?? null;
+        tags = normalizeRoleTags(
+          (response.Role?.Tags ?? []).flatMap((tag) =>
+            tag.Key !== undefined && tag.Value !== undefined
+              ? [{ key: tag.Key, value: tag.Value }]
+              : [],
+          ),
+        );
+        tagsAvailable = true;
         assumeRolePolicy = formatPolicyDocument(
           response.Role?.AssumeRolePolicyDocument,
         );
@@ -379,13 +387,15 @@ async function readRoleDetails(
         tags = normalizeRoleTags(await listIamRoleTags(client, roleName));
         tagsAvailable = true;
       } catch (error) {
-        warnings.push(
-          roleDetailWarning(
-            "Unable to list role tags",
-            "You do not have permission to view role tags.",
-            error,
-          ),
-        );
+        if (!tagsAvailable) {
+          warnings.push(
+            roleDetailWarning(
+              "Unable to list role tags",
+              "You do not have permission to view role tags.",
+              error,
+            ),
+          );
+        }
       }
 
       try {
@@ -1044,11 +1054,10 @@ export async function detachIamManagedRolePolicy(
 ): Promise<MutationResult<{ roleName: string; policyArn: string }>> {
   const prepared = await prepareIamMutation(expectedScope);
   if (!prepared.ok) return prepared.result;
+  const normalizedPolicyArn = policyArn.trim();
   const validationError =
     mutableRoleError(roleName, prepared.activeRoleName) ??
-    (!isSupportedRgwManagedPolicy(policyArn)
-      ? "This managed policy is not supported by Ceph RGW."
-      : null);
+    (!normalizedPolicyArn ? "Select an attached managed policy." : null);
   if (validationError) {
     prepared.client.destroy();
     return roleValidationFailure(prepared.scope, validationError);
@@ -1058,11 +1067,11 @@ export async function detachIamManagedRolePolicy(
     await prepared.client.send(
       new DetachRolePolicyCommand({
         RoleName: roleName.trim(),
-        PolicyArn: policyArn,
+        PolicyArn: normalizedPolicyArn,
       }),
     );
     return mutationSuccess({
-      data: { roleName: roleName.trim(), policyArn },
+      data: { roleName: roleName.trim(), policyArn: normalizedPolicyArn },
       message: "Managed policy detached.",
       scope: prepared.scope,
     });

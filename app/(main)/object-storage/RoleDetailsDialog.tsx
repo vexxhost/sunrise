@@ -55,7 +55,6 @@ import {
 } from "@/lib/s3/role-actions";
 import {
   defaultIamPermissionPolicy,
-  isSupportedRgwManagedPolicy,
   RGW_MANAGED_POLICIES,
   validateIamPolicyName,
   validateIamRoleTags,
@@ -787,9 +786,7 @@ export function RoleDetailsDialog({
                                 {policy.arn}
                               </div>
                             </div>
-                            {canMutate &&
-                            scope &&
-                            isSupportedRgwManagedPolicy(policy.arn) ? (
+                            {canMutate && scope ? (
                               <Button
                                 type="button"
                                 variant="outline"

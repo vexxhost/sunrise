@@ -2,6 +2,7 @@ import {
   AttachRolePolicyCommand,
   CreateRoleCommand,
   DeleteRoleCommand,
+  DetachRolePolicyCommand,
   GetRoleCommand,
   GetRolePolicyCommand,
   ListAttachedRolePoliciesCommand,
@@ -42,6 +43,7 @@ import {
   attachIamManagedRolePolicy,
   createIamRole,
   deleteIamRole,
+  detachIamManagedRolePolicy,
   getAccessRoleDetails,
   getRoleDetails,
   listRoles,
@@ -406,6 +408,51 @@ describe("IAM role actions", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("Expected role details");
     expect(JSON.parse(result.assumeRolePolicy ?? "{}")).toEqual(rawPolicy);
+  });
+
+  it("falls back to tags returned by GetRole when ListRoleTags is denied", async () => {
+    const client = createClient();
+    client.send.mockImplementation((command) => {
+      if (command instanceof GetRoleCommand) {
+        return Promise.resolve({
+          Role: {
+            Arn: activeRoleArn,
+            Tags: [
+              { Key: "project-access", Value: "project:readwrite" },
+              { Key: "presence-only", Value: "" },
+            ],
+          },
+        });
+      }
+      if (command instanceof ListRoleTagsCommand) {
+        return Promise.reject(accessDeniedError());
+      }
+      if (command instanceof ListRolePoliciesCommand) {
+        return Promise.resolve({ PolicyNames: [], IsTruncated: false });
+      }
+      if (command instanceof ListAttachedRolePoliciesCommand) {
+        return Promise.resolve({ AttachedPolicies: [], IsTruncated: false });
+      }
+      throw new Error("Unexpected IAM command");
+    });
+    mocks.getActiveRoleIamContext.mockResolvedValue({
+      client,
+      roleArn: activeRoleArn,
+      roleName: "AssumeRoleSunriseReadWrite",
+    });
+
+    const result = await getAccessRoleDetails();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected role details");
+    expect(result.tagsAvailable).toBe(true);
+    expect(result.tags).toEqual([
+      { key: "project-access", value: "project:readwrite" },
+      { key: "presence-only", value: "" },
+    ]);
+    expect(result.warnings).not.toContain(
+      "You do not have permission to view role tags.",
+    );
   });
 
   it("keeps partial role details and replaces Ceph diagnostics with friendly permission warnings", async () => {
@@ -879,6 +926,38 @@ describe("IAM role actions", () => {
       },
     });
     expect(client.send).not.toHaveBeenCalled();
+  });
+
+  it("detaches a policy returned by RGW even when it is not attachable", async () => {
+    const client = createClient();
+    client.send.mockImplementation((command) => {
+      expect(command).toBeInstanceOf(DetachRolePolicyCommand);
+      expect(command.input).toEqual({
+        RoleName: "SunriseTestRole",
+        PolicyArn: "arn:aws:iam::RGW1:policy/LegacyManagedPolicy",
+      });
+      return Promise.resolve({});
+    });
+    mocks.getActiveRoleIamContext.mockResolvedValue({
+      client,
+      roleArn: activeRoleArn,
+      roleName: "AssumeRoleSunriseReadWrite",
+    });
+
+    const result = await detachIamManagedRolePolicy(
+      { projectId: "project-a", regionId: "RegionOne" },
+      "SunriseTestRole",
+      "arn:aws:iam::RGW1:policy/LegacyManagedPolicy",
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        roleName: "SunriseTestRole",
+        policyArn: "arn:aws:iam::RGW1:policy/LegacyManagedPolicy",
+      },
+    });
+    expect(client.destroy).toHaveBeenCalledOnce();
   });
 
   it("explains why a role with policies cannot be deleted", async () => {
