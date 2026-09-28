@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   getS3Client: vi.fn(),
   guardMutationContext: vi.fn(),
   revalidatePath: vi.fn(),
+  removeSavedResourcePreferences: vi.fn(),
   send: vi.fn(),
 }));
 
@@ -26,6 +27,9 @@ vi.mock('@/lib/mutation-context', () => ({
 vi.mock('@/lib/s3/client', () => ({
   getS3Client: mocks.getS3Client,
   S3AuthRequiredError: class S3AuthRequiredError extends Error {},
+}));
+vi.mock('@/lib/resource-preference-store', () => ({
+  removeSavedResourcePreferences: mocks.removeSavedResourcePreferences,
 }));
 
 import {
@@ -56,6 +60,7 @@ describe('S3 bucket lifecycle actions', () => {
       ok: true,
       context: { scope },
     });
+    mocks.removeSavedResourcePreferences.mockResolvedValue(0);
     mocks.send.mockResolvedValue({});
   });
 
@@ -120,6 +125,32 @@ describe('S3 bucket lifecycle actions', () => {
       },
     });
     expect(mocks.send.mock.calls[0][0]).toBeInstanceOf(DeleteBucketCommand);
+    expect(mocks.removeSavedResourcePreferences).not.toHaveBeenCalled();
+  });
+
+  it('removes a deleted bucket from saved resources', async () => {
+    const result = await deleteBucket(scope, 'project-artifacts');
+
+    expect(result.ok).toBe(true);
+    expect(mocks.removeSavedResourcePreferences).toHaveBeenCalledWith(
+      [{ kind: 'bucket', id: 'project-artifacts' }],
+      scope,
+    );
+  });
+
+  it('keeps a successful bucket deletion successful when preference cleanup fails', async () => {
+    mocks.removeSavedResourcePreferences.mockRejectedValue(
+      new Error('cookie unavailable'),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const result = await deleteBucket(scope, 'project-artifacts');
+
+    expect(result).toMatchObject({ ok: true, status: 'success' });
+    expect(warn).toHaveBeenCalledWith(
+      '[s3/bucket] saved resource cleanup failed',
+      expect.objectContaining({ bucket: 'project-artifacts' }),
+    );
   });
 
   it('rejects invalid policy JSON before contacting RGW', async () => {

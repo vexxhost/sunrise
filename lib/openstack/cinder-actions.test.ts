@@ -10,6 +10,7 @@ import {
   attachVolumeAction,
   createSnapshotAction,
   createVolumeAction,
+  deleteVolumeAction,
   detachVolumeAction,
 } from "@/lib/openstack/cinder-actions";
 
@@ -76,6 +77,18 @@ describe("Cinder mutation actions", () => {
     expect(
       mocks.executeOpenStackMutation.mock.calls[0][0].body.snapshot.force,
     ).toBeUndefined();
+  });
+
+  it("removes a deleted volume from saved resources", async () => {
+    await deleteVolumeAction(scope, "volume-a");
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/volumes/volume-a",
+        removedResource: { kind: "volume", id: "volume-a" },
+      }),
+    );
   });
 
   it("maps attachment operations to Nova 2.79", async () => {

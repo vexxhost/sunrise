@@ -164,6 +164,7 @@ export async function deleteVolumeAction(
     ...CINDER_SERVICE,
     path: `/volumes/${encodeURIComponent(parsedId.value)}`,
     method: "DELETE",
+    removedResource: { kind: "volume", id: parsedId.value },
     apiVersion: CINDER_API_VERSION,
     invalidates: [
       "/compute",

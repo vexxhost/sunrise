@@ -5,7 +5,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   isRecoveryResourceKind,
-  recoveryPreferenceKind,
   recoveryResourceDescription,
   recoveryResourceLabel,
 } from "@/lib/resource-recovery";
@@ -23,26 +22,7 @@ export function ResourceRecoveryNotice() {
     return null;
   }
 
-  const preferenceKind = recoveryPreferenceKind(kindValue);
-  const resourceId = searchParams.get("resourceId");
   const dismiss = () => {
-    if (preferenceKind && resourceId) {
-      void fetch("/api/preferences/resources", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          operation: "remove-stale",
-          resource: {
-            kind: preferenceKind,
-            id: resourceId,
-            name: resourceId,
-          },
-        }),
-        credentials: "same-origin",
-        keepalive: true,
-      }).catch(() => undefined);
-    }
-
     const next = new URLSearchParams(searchParams.toString());
     next.delete("notice");
     next.delete("kind");
@@ -72,11 +52,7 @@ export function ResourceRecoveryNotice() {
           </p>
         </div>
         <Button
-          aria-label={
-            preferenceKind && resourceId
-              ? "Dismiss notice and remove stale saved resource"
-              : "Dismiss notice"
-          }
+          aria-label="Dismiss notice"
           className="-mr-1 -mt-1 text-muted-foreground"
           onClick={dismiss}
           size="icon-sm"

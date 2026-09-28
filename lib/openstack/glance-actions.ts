@@ -158,6 +158,7 @@ export async function deleteImageAction(
     ...SERVICE,
     path: `/v2/images/${encodeURIComponent(parsedId.value)}`,
     method: "DELETE",
+    removedResource: { kind: "image", id: parsedId.value },
     invalidates: [
       "/compute",
       "/compute/images",

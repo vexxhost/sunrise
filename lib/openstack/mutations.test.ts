@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getServiceCatalog: vi.fn(),
   guardMutationContext: vi.fn(),
   revalidatePath: vi.fn(),
+  removeSavedResourcePreferences: vi.fn(),
   resolveServiceEndpoint: vi.fn(),
 }));
 
@@ -16,6 +17,9 @@ vi.mock("@/lib/openstack/catalog", () => ({
   getServiceCatalog: mocks.getServiceCatalog,
   resolveServiceEndpoint: mocks.resolveServiceEndpoint,
 }));
+vi.mock("@/lib/resource-preference-store", () => ({
+  removeSavedResourcePreferences: mocks.removeSavedResourcePreferences,
+}));
 
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 
@@ -26,6 +30,7 @@ describe("OpenStack mutation executor", () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     mocks.getServiceCatalog.mockResolvedValue([]);
+    mocks.removeSavedResourcePreferences.mockResolvedValue(0);
     mocks.resolveServiceEndpoint.mockReturnValue("https://nova.example/v2.1");
     mocks.guardMutationContext.mockResolvedValue({
       ok: true,
@@ -61,6 +66,7 @@ describe("OpenStack mutation executor", () => {
       },
     });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(mocks.removeSavedResourcePreferences).not.toHaveBeenCalled();
   });
 
   it("returns public OpenStack validation details for rejected input", async () => {
@@ -116,6 +122,7 @@ describe("OpenStack mutation executor", () => {
       serviceName: "nova",
       serviceType: "compute",
       successMessage: "Instance api is being created.",
+      removedResource: { kind: "instance", id: "server-a" },
       transform: (payload) => (payload as { server: { id: string } }).server,
     });
 
@@ -129,6 +136,39 @@ describe("OpenStack mutation executor", () => {
       ["/compute"],
       ["/compute/instances"],
     ]);
+    expect(mocks.removeSavedResourcePreferences).toHaveBeenCalledWith(
+      [{ kind: "instance", id: "server-a" }],
+      scope,
+    );
+  });
+
+  it("keeps a successful mutation successful when preference cleanup fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 204 }),
+    );
+    mocks.removeSavedResourcePreferences.mockRejectedValue(
+      new Error("cookie unavailable"),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "delete this instance",
+      method: "DELETE",
+      path: "/servers/server-a",
+      removedResource: { kind: "instance", id: "server-a" },
+      scope,
+      serviceName: "nova",
+      serviceType: "compute",
+      successMessage: "Instance deletion requested.",
+    });
+
+    expect(result).toMatchObject({ ok: true, status: "success" });
+    expect(warn).toHaveBeenCalledWith(
+      "[mutation] saved resource cleanup failed",
+      expect.objectContaining({
+        resource: { kind: "instance", id: "server-a" },
+      }),
+    );
   });
 
   it("does not contact a service when the rendered context is stale", async () => {

@@ -23,7 +23,7 @@ export default async function Page({ params }: PageProps) {
     return <ObjectStorageAuthRedirect />;
   }
   if (!probe.ok && probe.notFound) {
-    recoverMissingResource({
+    await recoverMissingResource({
       kind: 'object',
       id: objectKey,
       parentId: bucket,

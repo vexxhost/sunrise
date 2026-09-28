@@ -526,6 +526,7 @@ describe("Magnum cluster lifecycle mutations", () => {
       expect.objectContaining({
         method: "DELETE",
         path: "/clusters/cluster-a",
+        removedResource: { kind: "cluster", id: "cluster-a" },
       }),
     );
   });

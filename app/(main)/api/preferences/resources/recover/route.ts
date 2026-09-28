@@ -3,7 +3,11 @@ import {
   isRecoveryResourceKind,
   recoveryDestination,
   recoveryPreferenceKind,
+  type ResourceRecoveryTarget,
 } from "@/lib/resource-recovery";
+import { verifyResourceRecoveryProof } from "@/lib/resource-recovery-proof";
+import { removeSavedResourcePreferences } from "@/lib/resource-preference-store";
+import { getSession } from "@/lib/session";
 
 // S3 object keys can contain up to 1,024 characters. Other resource IDs are
 // much shorter, but using one bound keeps this internal endpoint predictable.
@@ -37,9 +41,45 @@ export async function GET(request: NextRequest) {
   const destination = recoveryDestination({ kind: kindValue, parentId, mode });
   const preferenceKind = recoveryPreferenceKind(kindValue);
 
+  if (preferenceKind) {
+    const session = await getSession();
+    const recoveryAt = Number(
+      request.nextUrl.searchParams.get("recoveryAt") ?? Number.NaN,
+    );
+    const recoveryProof = request.nextUrl.searchParams.get("recoveryProof");
+    const target: ResourceRecoveryTarget = {
+      kind: kindValue,
+      id,
+      parentId,
+      mode,
+    };
+    if (
+      session.projectId &&
+      session.regionId &&
+      recoveryProof &&
+      verifyResourceRecoveryProof(
+        target,
+        { projectId: session.projectId, regionId: session.regionId },
+        { issuedAt: recoveryAt, signature: recoveryProof },
+      )
+    ) {
+      try {
+        await removeSavedResourcePreferences(
+          [{ kind: preferenceKind, id }],
+          { projectId: session.projectId, regionId: session.regionId },
+        );
+      } catch (error) {
+        console.warn("[preferences] missing resource cleanup failed", {
+          error,
+          id,
+          kind: preferenceKind,
+        });
+      }
+    }
+  }
+
   const redirectUrl = new URL(destination, request.url);
   redirectUrl.searchParams.set("notice", "resource-unavailable");
   redirectUrl.searchParams.set("kind", kindValue);
-  if (preferenceKind) redirectUrl.searchParams.set("resourceId", id);
   return NextResponse.redirect(redirectUrl);
 }
