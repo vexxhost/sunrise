@@ -33,6 +33,8 @@ type OpenStackMutationOptions<T> = {
   serviceType: string;
   successMessage: string;
   transform?: (payload: unknown) => T;
+  endpointOverride?: string;
+  requireRegion?: boolean;
 };
 
 function responseRequestId(response: Response) {
@@ -95,30 +97,35 @@ export async function executeOpenStackMutation<T = null>({
   serviceType,
   successMessage,
   transform,
+  endpointOverride,
+  requireRegion = true,
 }: OpenStackMutationOptions<T>): Promise<MutationResult<T>> {
-  const guarded = await guardMutationContext(scope);
+  const guarded = await guardMutationContext(scope, { requireRegion });
   if (!guarded.ok) return guarded.result;
 
   const { projectToken, scope: activeScope } = guarded.context;
-  const catalog = await getServiceCatalog(projectToken!);
-  if (!catalog) {
-    return mutationFailure(
-      {
-        code: "service-error",
-        message:
-          "Cloud service discovery is temporarily unavailable. Try again shortly.",
-        retryable: true,
-      },
-      activeScope,
-    );
-  }
+  let endpoint = endpointOverride;
+  if (!endpoint) {
+    const catalog = await getServiceCatalog(projectToken!);
+    if (!catalog) {
+      return mutationFailure(
+        {
+          code: "service-error",
+          message:
+            "Cloud service discovery is temporarily unavailable. Try again shortly.",
+          retryable: true,
+        },
+        activeScope,
+      );
+    }
 
-  const endpoint = resolveServiceEndpoint(
-    catalog,
-    activeScope.regionId!,
-    serviceType,
-    serviceName,
-  );
+    endpoint = resolveServiceEndpoint(
+      catalog,
+      activeScope.regionId!,
+      serviceType,
+      serviceName,
+    ) ?? undefined;
+  }
 
   if (!endpoint) {
     return mutationFailure(

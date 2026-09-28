@@ -19,6 +19,7 @@ interface OpenStackActionOptions {
   body?: any;
   unscoped?: boolean;
   errorMode?: 'return-null' | 'throw';
+  endpointOverride?: string;
 }
 
 /**
@@ -41,6 +42,7 @@ export async function openstack<T = any>(
     body,
     unscoped = false,
     errorMode = 'return-null',
+    endpointOverride,
   } = options;
 
   // Get session token (either unscoped or project-scoped)
@@ -53,7 +55,9 @@ export async function openstack<T = any>(
   }
 
   // Get endpoint (always calls OpenStack directly on server)
-  const endpoint = await getServiceEndpoint(regionId, serviceType, serviceName, token);
+  const endpoint =
+    endpointOverride ??
+    (await getServiceEndpoint(regionId, serviceType, serviceName, token));
   if (!endpoint) {
     return null;
   }

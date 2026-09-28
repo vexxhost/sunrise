@@ -82,6 +82,7 @@ const serviceDirectoryIcons: Record<
   compute: Server,
   kubernetes: Container,
   "object-storage": Database,
+  identity: KeyRound,
   orchestration: Layers,
   dns: Globe2,
   "file-system": FolderTree,

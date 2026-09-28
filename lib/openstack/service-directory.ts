@@ -7,6 +7,7 @@ export type ServiceDirectoryId =
   | "compute"
   | "kubernetes"
   | "object-storage"
+  | "identity"
   | "orchestration"
   | "dns"
   | "file-system";
@@ -64,6 +65,13 @@ const serviceDirectoryDefinitions: ServiceDirectoryDefinition[] = [
     catalogIdentities: [
       { serviceType: "object-storage-s3", serviceName: "s3" },
     ],
+  },
+  {
+    id: "identity",
+    label: "Identity",
+    description: "Manage project-scoped application credentials and access.",
+    href: "/identity",
+    catalogIdentities: [{ serviceType: "identity", serviceName: "keystone" }],
   },
   {
     id: "orchestration",
