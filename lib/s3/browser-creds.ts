@@ -3,7 +3,10 @@
 import { getSession } from '@/lib/session';
 import type { S3StsCredentials } from '@/lib/session';
 import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
-import { ensureActiveProjectS3Credentials } from '@/lib/s3/session';
+import {
+  ensureActiveProjectS3Credentials,
+  S3ProjectRoleUnavailableError,
+} from '@/lib/s3/session';
 
 export type BrowserStsResult =
   | { ok: true; credentials: S3StsCredentials; endpoint: string; region: string }
@@ -19,7 +22,15 @@ export type BrowserStsResult =
  */
 export async function getStsCredentialsForBrowser(): Promise<BrowserStsResult> {
   const session = await getSession();
-  const creds = await ensureActiveProjectS3Credentials(session);
+  let creds;
+  try {
+    creds = await ensureActiveProjectS3Credentials(session);
+  } catch (error) {
+    if (error instanceof S3ProjectRoleUnavailableError) {
+      return { ok: false, needsAuth: true };
+    }
+    throw error;
+  }
 
   if (!creds) {
     return { ok: false, needsAuth: true };

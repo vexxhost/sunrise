@@ -3,12 +3,17 @@ import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-const mocks = vi.hoisted(() => ({
-  ensureActiveProjectS3Credentials: vi.fn(),
-  getActiveS3Credentials: vi.fn(),
-  getS3Endpoint: vi.fn(),
-  getSession: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  class S3ProjectRoleUnavailableError extends Error {}
+
+  return {
+    ensureActiveProjectS3Credentials: vi.fn(),
+    getActiveS3Credentials: vi.fn(),
+    getS3Endpoint: vi.fn(),
+    getSession: vi.fn(),
+    S3ProjectRoleUnavailableError,
+  };
+});
 
 vi.mock('@/lib/session', () => ({
   getActiveS3Credentials: mocks.getActiveS3Credentials,
@@ -23,6 +28,7 @@ vi.mock('@/lib/s3/endpoint', () => ({
 vi.mock('@/lib/s3/session', () => ({
   ensureActiveProjectS3Credentials:
     mocks.ensureActiveProjectS3Credentials,
+  S3ProjectRoleUnavailableError: mocks.S3ProjectRoleUnavailableError,
 }));
 
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
@@ -156,5 +162,16 @@ describe('getS3Client', () => {
 
     await expect(getS3Client()).rejects.toBeInstanceOf(S3AuthRequiredError);
     expect(mocks.ensureActiveProjectS3Credentials).not.toHaveBeenCalled();
+  });
+
+  it('routes a revoked project role through credential recovery', async () => {
+    mocks.getSession.mockResolvedValue({ projectId: 'project-id' });
+    mocks.ensureActiveProjectS3Credentials.mockRejectedValue(
+      new mocks.S3ProjectRoleUnavailableError()
+    );
+
+    await expect(
+      getS3Client({ allowCredentialRefresh: true })
+    ).rejects.toBeInstanceOf(S3AuthRequiredError);
   });
 });

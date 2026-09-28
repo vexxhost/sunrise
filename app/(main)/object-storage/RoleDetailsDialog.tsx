@@ -40,6 +40,7 @@ import {
   validateIamTrustPolicyJson,
 } from "@/lib/json-document";
 import type { MutationResult, MutationScope } from "@/lib/mutations";
+import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
 import {
   attachIamManagedRolePolicy,
   deleteIamInlineRolePolicy,
@@ -93,12 +94,6 @@ type RoleDetailsDialogProps = {
   trigger?: ReactNode;
   onChanged?: () => Promise<void> | void;
 };
-
-function startObjectStorageLogin() {
-  window.location.assign(
-    new URL("/object-storage/auth/login", window.location.origin).toString(),
-  );
-}
 
 export function RoleDetailsDialog({
   roleName,
@@ -185,7 +180,7 @@ export function RoleDetailsDialog({
 
     if (!result.ok) {
       if (result.error.code === "authentication-required") {
-        startObjectStorageLogin();
+        startObjectStorageCredentialRefresh();
         return false;
       }
       setError(result.error.message);

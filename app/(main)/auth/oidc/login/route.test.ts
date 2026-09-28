@@ -1,0 +1,77 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => {
+  process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS = "demo";
+  return {
+    buildAuthorizeUrl: vi.fn(),
+    generatePkce: vi.fn(),
+    generateState: vi.fn(),
+    getSession: vi.fn(),
+  };
+});
+
+vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
+vi.mock("@/lib/oidc/sunrise", () => ({
+  buildAuthorizeUrl: mocks.buildAuthorizeUrl,
+  generatePkce: mocks.generatePkce,
+  generateState: mocks.generateState,
+}));
+
+import { GET } from "./route";
+
+describe("OIDC login route", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.generatePkce.mockReturnValue({
+      verifier: "pkce-verifier",
+      challenge: "pkce-challenge",
+    });
+    mocks.generateState.mockReturnValue("oidc-state");
+    mocks.buildAuthorizeUrl.mockResolvedValue(
+      "https://identity.example.test/authorize",
+    );
+  });
+
+  it("forwards the account-selection prompt and clears its one-shot cookie", async () => {
+    const session = { save: vi.fn().mockResolvedValue(undefined) };
+    mocks.getSession.mockResolvedValue(session);
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/login?idp=demo&prompt=select_account&returnTo=%2Fobject-storage%2Fbuckets",
+      ),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://identity.example.test/authorize",
+    );
+    expect(mocks.buildAuthorizeUrl).toHaveBeenCalledWith({
+      challenge: "pkce-challenge",
+      state: "oidc-state",
+      prompt: "select_account",
+    });
+    expect(session).toMatchObject({
+      oidcVerifier: "pkce-verifier",
+      oidcState: "oidc-state",
+      oidcIdProvider: "demo",
+      oidcReturnTo: "/object-storage/buckets",
+    });
+    expect(session.save).toHaveBeenCalledOnce();
+    expect(response.headers.get("set-cookie")).toContain(
+      "sunrise-auth-prompt=",
+    );
+  });
+
+  it("rejects providers that are not configured", async () => {
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/login?idp=unknown&prompt=login",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.getSession).not.toHaveBeenCalled();
+    expect(mocks.buildAuthorizeUrl).not.toHaveBeenCalled();
+  });
+});

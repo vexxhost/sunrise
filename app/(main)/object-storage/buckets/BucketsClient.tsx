@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ColumnDef } from '@tanstack/react-table';
-import { ArrowRight, Database, Plus, Trash2 } from 'lucide-react';
-import { DataTable } from '@/components/DataTable';
-import { MutationAlert } from '@/components/mutations/MutationAlert';
-import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
-import { Button } from '@/components/ui/button';
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ColumnDef } from "@tanstack/react-table";
+import { ArrowRight, Database, Plus, Trash2 } from "lucide-react";
+import { DataTable } from "@/components/DataTable";
+import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -17,26 +17,21 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
-import { bucketsQueryOptions } from '@/hooks/queries/useBuckets';
-import type { Bucket } from '@/lib/s3/actions';
-import { createBucket, deleteBucket } from '@/lib/s3/bucket-actions';
-import { validateBucketName } from '@/lib/s3/bucket-validation';
-import { useClearCreateActionIntent } from '@/hooks/useClearCreateActionIntent';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { bucketsQueryOptions } from "@/hooks/queries/useBuckets";
+import type { Bucket } from "@/lib/s3/actions";
+import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
+import { createBucket, deleteBucket } from "@/lib/s3/bucket-actions";
+import { validateBucketName } from "@/lib/s3/bucket-validation";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 
 type BucketsData = {
   buckets: Bucket[];
   accessDenied: boolean;
 };
-
-function startObjectStorageLogin() {
-  window.location.assign(
-    new URL('/object-storage/auth/login', window.location.origin).toString(),
-  );
-}
 
 export function BucketsClient({
   activeProjectId,
@@ -59,9 +54,9 @@ export function BucketsClient({
     ...bucketsQueryOptions(activeProjectId),
     initialData,
   });
-  const [bucketName, setBucketName] = useState('');
+  const [bucketName, setBucketName] = useState("");
   const [createOpen, setCreateOpen] = useState(initiallyCreateOpen);
-  const [createName, setCreateName] = useState('');
+  const [createName, setCreateName] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Bucket | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -74,15 +69,15 @@ export function BucketsClient({
     setCreateOpen(nextOpen);
     if (!nextOpen) {
       clearCreateActionIntent();
-      setCreateName('');
+      setCreateName("");
       setError(null);
     }
   };
 
   const columns: ColumnDef<Bucket>[] = [
     {
-      accessorKey: 'name',
-      header: 'Name',
+      accessorKey: "name",
+      header: "Name",
       enableHiding: false,
       cell: ({ row }) => (
         <Link
@@ -92,16 +87,16 @@ export function BucketsClient({
           {row.original.name}
         </Link>
       ),
-      meta: { fieldType: 'string', visible: true, monospace: true },
+      meta: { fieldType: "string", visible: true, monospace: true },
     },
     {
-      accessorKey: 'creationDate',
-      header: 'Age',
-      meta: { fieldType: 'date', dateDisplay: 'age', visible: true },
+      accessorKey: "creationDate",
+      header: "Age",
+      meta: { fieldType: "date", dateDisplay: "age", visible: true },
     },
     {
-      id: 'actions',
-      header: 'Actions',
+      id: "actions",
+      header: "Actions",
       enableSorting: false,
       enableHiding: false,
       cell: ({ row }) => (
@@ -120,7 +115,7 @@ export function BucketsClient({
           <span className="sr-only">Delete bucket</span>
         </Button>
       ),
-      meta: { fieldType: 'string', visible: true },
+      meta: { fieldType: "string", visible: true },
     },
   ];
 
@@ -138,8 +133,8 @@ export function BucketsClient({
     const result = await createBucket(scope, createName);
     setCreating(false);
     if (!result.ok) {
-      if (result.error.code === 'authentication-required') {
-        startObjectStorageLogin();
+      if (result.error.code === "authentication-required") {
+        startObjectStorageCredentialRefresh();
         return;
       }
       setError(result.error.message);
@@ -158,8 +153,8 @@ export function BucketsClient({
     const result = await deleteBucket(scope, deleteTarget.name);
     setDeleting(false);
     if (!result.ok) {
-      if (result.error.code === 'authentication-required') {
-        startObjectStorageLogin();
+      if (result.error.code === "authentication-required") {
+        startObjectStorageCredentialRefresh();
         return;
       }
       setError(result.error.message);
@@ -285,7 +280,7 @@ export function BucketsClient({
               onClick={() => void handleCreate()}
             >
               {creating ? <Spinner /> : <Plus className="size-4" />}
-              {creating ? 'Creating' : 'Create bucket'}
+              {creating ? "Creating" : "Create bucket"}
             </Button>
           </DialogFooter>
         </DialogContent>

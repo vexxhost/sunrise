@@ -30,7 +30,7 @@ export async function getRegions(): Promise<Region[]> {
 
   if (!response.ok) {
     if (isKeystoneAuthFailure(response.status)) {
-      redirect('/auth/logout?reason=expired');
+      redirect('/auth/refresh');
     }
     console.error('Failed to fetch regions:', response.statusText);
     return [];
@@ -78,7 +78,7 @@ export async function getProjects(): Promise<Project[]> {
 
   if (!response.ok) {
     if (isKeystoneAuthFailure(response.status)) {
-      redirect('/auth/logout?reason=expired');
+      redirect('/auth/refresh');
     }
     console.error('Failed to fetch projects:', response.statusText);
     return [];

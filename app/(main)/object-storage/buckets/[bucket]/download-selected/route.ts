@@ -2,16 +2,16 @@ import {
   GetObjectCommand,
   ListObjectsV2Command,
   type S3Client,
-} from '@aws-sdk/client-s3';
-import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
+} from "@aws-sdk/client-s3";
+import { getS3Client, S3AuthRequiredError } from "@/lib/s3/client";
+import { objectStorageAuthRefreshHref } from "@/lib/s3/auth-navigation";
 
 interface RouteContext {
   params: Promise<{ bucket: string }>;
 }
 
 type SelectedEntry =
-  | { kind: 'folder'; fullPath: string }
-  | { kind: 'object'; fullPath: string };
+  { kind: "folder"; fullPath: string } | { kind: "object"; fullPath: string };
 
 type ZipEntry = {
   path: string;
@@ -31,16 +31,16 @@ for (let index = 0; index < 256; index += 1) {
 }
 
 function listedFolderPrefix(prefix: string): string {
-  if (!prefix) return '';
-  return prefix.endsWith('/') ? prefix : `${prefix}/`;
+  if (!prefix) return "";
+  return prefix.endsWith("/") ? prefix : `${prefix}/`;
 }
 
 function safeZipPath(key: string): string {
   return key
-    .replace(/^\/+/, '')
-    .split('/')
-    .filter((part) => part !== '.' && part !== '..')
-    .join('/');
+    .replace(/^\/+/, "")
+    .split("/")
+    .filter((part) => part !== "." && part !== "..")
+    .join("/");
 }
 
 function crc32(data: Uint8Array): number {
@@ -64,7 +64,10 @@ function writeUint32(target: Uint8Array, offset: number, value: number) {
   target[offset + 3] = (value >>> 24) & 0xff;
 }
 
-function concatParts(parts: Uint8Array[], totalLength: number): Uint8Array<ArrayBuffer> {
+function concatParts(
+  parts: Uint8Array[],
+  totalLength: number,
+): Uint8Array<ArrayBuffer> {
   const output = new Uint8Array(totalLength);
   let offset = 0;
   for (const part of parts) {
@@ -122,7 +125,7 @@ function makeZip(entries: ZipEntry[]): Uint8Array<ArrayBuffer> {
 
   const centralDirectorySize = centralDirectoryParts.reduce(
     (total, part) => total + part.length,
-    0
+    0,
   );
   const centralDirectoryOffset = offset;
   const end = new Uint8Array(22);
@@ -145,10 +148,10 @@ function makeZip(entries: ZipEntry[]): Uint8Array<ArrayBuffer> {
 async function getObjectBytes(
   client: S3Client,
   bucket: string,
-  key: string
+  key: string,
 ): Promise<Uint8Array> {
   const response = await client.send(
-    new GetObjectCommand({ Bucket: bucket, Key: key })
+    new GetObjectCommand({ Bucket: bucket, Key: key }),
   );
   if (!response.Body) {
     throw new Error(`Object ${key} had no response body`);
@@ -159,7 +162,7 @@ async function getObjectBytes(
 async function listFolderKeys(
   client: S3Client,
   bucket: string,
-  prefix: string
+  prefix: string,
 ): Promise<string[]> {
   const keys: string[] = [];
   let continuationToken: string | undefined;
@@ -171,7 +174,7 @@ async function listFolderKeys(
         Prefix: prefix,
         ContinuationToken: continuationToken,
         MaxKeys: 1000,
-      })
+      }),
     );
 
     for (const object of response.Contents ?? []) {
@@ -191,18 +194,18 @@ async function listFolderKeys(
 async function collectKeys(
   client: S3Client,
   bucket: string,
-  entries: SelectedEntry[]
+  entries: SelectedEntry[],
 ): Promise<string[]> {
   const keys = new Set<string>();
   const folderPrefixes = entries
-    .filter((entry): entry is Extract<SelectedEntry, { kind: 'folder' }> => {
-      return entry.kind === 'folder';
+    .filter((entry): entry is Extract<SelectedEntry, { kind: "folder" }> => {
+      return entry.kind === "folder";
     })
     .map((entry) => listedFolderPrefix(entry.fullPath))
     .filter(Boolean);
 
   for (const entry of entries) {
-    if (entry.kind !== 'object') continue;
+    if (entry.kind !== "object") continue;
     const key = entry.fullPath;
     if (key) keys.add(key);
   }
@@ -218,35 +221,37 @@ async function collectKeys(
 }
 
 function zipFileName(bucket: string): string {
-  return `${bucket || 'objects'}-selected.zip`.replace(/["\\]/g, '_');
+  return `${bucket || "objects"}-selected.zip`.replace(/["\\]/g, "_");
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
   const { bucket: rawBucket } = await params;
   const bucket = decodeURIComponent(rawBucket);
   const formData = await request.formData();
-  const rawEntries = formData.get('entries');
+  const rawEntries = formData.get("entries");
 
-  if (typeof rawEntries !== 'string') {
-    return new Response('Missing selected entries', { status: 400 });
+  if (typeof rawEntries !== "string") {
+    return new Response("Missing selected entries", { status: 400 });
   }
 
   let entries: SelectedEntry[];
   try {
     entries = JSON.parse(rawEntries) as SelectedEntry[];
   } catch {
-    return new Response('Invalid selected entries', { status: 400 });
+    return new Response("Invalid selected entries", { status: 400 });
   }
 
   if (!Array.isArray(entries) || entries.length === 0) {
-    return new Response('No selected entries', { status: 400 });
+    return new Response("No selected entries", { status: 400 });
   }
 
   try {
     const client = await getS3Client({ allowCredentialRefresh: true });
     const keys = await collectKeys(client, bucket, entries);
     if (keys.length === 0) {
-      return new Response('Selected folders contain no objects', { status: 404 });
+      return new Response("Selected folders contain no objects", {
+        status: 404,
+      });
     }
 
     const zipEntries: ZipEntry[] = [];
@@ -260,29 +265,34 @@ export async function POST(request: Request, { params }: RouteContext) {
     const zip = makeZip(zipEntries);
     const fileName = zipFileName(bucket);
     const headers = new Headers();
-    headers.set('Content-Type', 'application/zip');
+    headers.set("Content-Type", "application/zip");
     headers.set(
-      'Content-Disposition',
+      "Content-Disposition",
       `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(
-        fileName
-      )}`
+        fileName,
+      )}`,
     );
-    headers.set('Content-Length', String(zip.length));
+    headers.set("Content-Length", String(zip.length));
 
     return new Response(zip, { headers });
   } catch (e) {
     if (e instanceof S3AuthRequiredError) {
+      const url = new URL(request.url);
+      const bucketPath = `/object-storage/buckets/${encodeURIComponent(bucket)}`;
       return new Response(null, {
         status: 303,
         headers: {
-          Location: new URL('/object-storage/auth/login', request.url).toString(),
+          Location: new URL(
+            objectStorageAuthRefreshHref(bucketPath),
+            url,
+          ).toString(),
         },
       });
     }
-    console.error('[s3/download-selected] FAILED:', e);
+    console.error("[s3/download-selected] FAILED:", e);
     return new Response(
-      'Unable to download selected objects. Please try again.',
-      { status: 502 }
+      "Unable to download selected objects. Please try again.",
+      { status: 502 },
     );
   }
 }

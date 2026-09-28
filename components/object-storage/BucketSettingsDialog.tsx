@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Check, Plus, Settings2, Trash2 } from 'lucide-react';
-import { JsonEditor } from '@/components/JsonEditor';
-import { MutationAlert } from '@/components/mutations/MutationAlert';
-import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { useState } from "react";
+import { Check, Plus, Settings2, Trash2 } from "lucide-react";
+import { JsonEditor } from "@/components/JsonEditor";
+import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -15,15 +15,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   validateBucketLifecycleJson,
   validateBucketPolicyJson,
-} from '@/lib/json-document';
+} from "@/lib/json-document";
 import {
   getBucketSettings,
   removeBucketCors,
@@ -37,10 +37,11 @@ import {
   type BucketSetting,
   type BucketSettingsResult,
   type BucketVersioningState,
-} from '@/lib/s3/bucket-actions';
-import type { MutationResult, MutationScope } from '@/lib/mutations';
+} from "@/lib/s3/bucket-actions";
+import type { MutationResult, MutationScope } from "@/lib/mutations";
+import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
 
-const CORS_METHODS = ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'] as const;
+const CORS_METHODS = ["GET", "PUT", "POST", "DELETE", "HEAD"] as const;
 
 type EditableCorsRule = {
   id: string;
@@ -51,24 +52,18 @@ type EditableCorsRule = {
   maxAgeSeconds: string;
 };
 
-type PendingAction = 'cors' | 'lifecycle' | 'policy' | 'versioning' | null;
-
-function startObjectStorageLogin() {
-  window.location.assign(
-    new URL('/object-storage/auth/login', window.location.origin).toString(),
-  );
-}
+type PendingAction = "cors" | "lifecycle" | "policy" | "versioning" | null;
 
 function policyTemplate(bucketArn: string) {
   return JSON.stringify(
     {
-      Version: '2012-10-17',
+      Version: "2012-10-17",
       Statement: [
         {
-          Sid: 'BucketAccess',
-          Effect: 'Allow',
-          Principal: { AWS: ['arn:aws:iam::ACCOUNT_ID:root'] },
-          Action: ['s3:GetObject'],
+          Sid: "BucketAccess",
+          Effect: "Allow",
+          Principal: { AWS: ["arn:aws:iam::ACCOUNT_ID:root"] },
+          Action: ["s3:GetObject"],
           Resource: [`${bucketArn}/*`],
         },
       ],
@@ -83,9 +78,9 @@ function lifecycleTemplate() {
     {
       Rules: [
         {
-          ID: 'expire-temporary-objects',
-          Status: 'Enabled',
-          Prefix: 'tmp/',
+          ID: "expire-temporary-objects",
+          Status: "Enabled",
+          Prefix: "tmp/",
           Expiration: { Days: 30 },
           AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 },
         },
@@ -99,23 +94,23 @@ function lifecycleTemplate() {
 function newCorsRule(index: number): EditableCorsRule {
   return {
     id: `rule-${index + 1}`,
-    allowedHeaders: '*',
-    allowedMethods: ['GET'],
-    allowedOrigins: '',
-    exposeHeaders: 'ETag, x-amz-request-id',
-    maxAgeSeconds: '3600',
+    allowedHeaders: "*",
+    allowedMethods: ["GET"],
+    allowedOrigins: "",
+    exposeHeaders: "ETag, x-amz-request-id",
+    maxAgeSeconds: "3600",
   };
 }
 
 function editableCorsRule(rule: BucketCorsRule): EditableCorsRule {
   return {
     id: rule.id,
-    allowedHeaders: rule.allowedHeaders.join(', '),
+    allowedHeaders: rule.allowedHeaders.join(", "),
     allowedMethods: rule.allowedMethods,
-    allowedOrigins: rule.allowedOrigins.join(', '),
-    exposeHeaders: rule.exposeHeaders.join(', '),
+    allowedOrigins: rule.allowedOrigins.join(", "),
+    exposeHeaders: rule.exposeHeaders.join(", "),
     maxAgeSeconds:
-      rule.maxAgeSeconds === null ? '' : String(rule.maxAgeSeconds),
+      rule.maxAgeSeconds === null ? "" : String(rule.maxAgeSeconds),
   };
 }
 
@@ -134,7 +129,7 @@ function corsRuleValue(rule: EditableCorsRule): BucketCorsRule {
     allowedMethods: rule.allowedMethods,
     allowedOrigins: splitValues(rule.allowedOrigins),
     exposeHeaders: splitValues(rule.exposeHeaders),
-    maxAgeSeconds: maxAge === '' ? null : Number(maxAge),
+    maxAgeSeconds: maxAge === "" ? null : Number(maxAge),
   };
 }
 
@@ -145,14 +140,14 @@ function settingMessage<T>({
   label: string;
   setting: BucketSetting<T>;
 }) {
-  if (setting.status === 'permission-denied') {
+  if (setting.status === "permission-denied") {
     return (
       <MutationAlert variant="warning" title={`${label} unavailable`}>
         {setting.message}
       </MutationAlert>
     );
   }
-  if (setting.status === 'error') {
+  if (setting.status === "error") {
     return (
       <MutationAlert title={`${label} could not be loaded`}>
         {setting.message}
@@ -180,36 +175,38 @@ export function BucketSettingsDialog({
   const [pending, setPending] = useState<PendingAction>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [policy, setPolicy] = useState('');
-  const [lifecycle, setLifecycle] = useState('');
+  const [policy, setPolicy] = useState("");
+  const [lifecycle, setLifecycle] = useState("");
   const [corsRules, setCorsRules] = useState<EditableCorsRule[]>([]);
   const [versioning, setVersioning] =
-    useState<BucketVersioningState>('Unversioned');
+    useState<BucketVersioningState>("Unversioned");
   const [removePolicyOpen, setRemovePolicyOpen] = useState(false);
   const [removeCorsOpen, setRemoveCorsOpen] = useState(false);
   const [removeLifecycleOpen, setRemoveLifecycleOpen] = useState(false);
 
-  const applySettings = (result: Extract<BucketSettingsResult, { ok: true }>) => {
+  const applySettings = (
+    result: Extract<BucketSettingsResult, { ok: true }>,
+  ) => {
     setSettings(result);
     setPolicy(
-      result.policy.status === 'loaded'
+      result.policy.status === "loaded"
         ? result.policy.value
         : policyTemplate(result.bucketArn),
     );
     setLifecycle(
-      result.lifecycle.status === 'loaded'
+      result.lifecycle.status === "loaded"
         ? result.lifecycle.value
         : lifecycleTemplate(),
     );
     setCorsRules(
-      result.cors.status === 'loaded' && result.cors.value.length > 0
+      result.cors.status === "loaded" && result.cors.value.length > 0
         ? result.cors.value.map(editableCorsRule)
         : [newCorsRule(0)],
     );
     setVersioning(
-      result.versioning.status === 'loaded'
+      result.versioning.status === "loaded"
         ? result.versioning.value
-        : 'Unversioned',
+        : "Unversioned",
     );
   };
 
@@ -220,7 +217,7 @@ export function BucketSettingsDialog({
     setLoading(false);
     if (!result.ok) {
       if (result.needsAuth) {
-        startObjectStorageLogin();
+        startObjectStorageCredentialRefresh();
         return;
       }
       setSettings(result);
@@ -246,8 +243,8 @@ export function BucketSettingsDialog({
   ) => {
     setPending(null);
     if (!result.ok) {
-      if (result.error.code === 'authentication-required') {
-        startObjectStorageLogin();
+      if (result.error.code === "authentication-required") {
+        startObjectStorageCredentialRefresh();
         return false;
       }
       setError(result.error.message);
@@ -262,89 +259,89 @@ export function BucketSettingsDialog({
   };
 
   const savePolicy = async () => {
-    setPending('policy');
+    setPending("policy");
     setMessage(null);
     setError(null);
     await applyMutationResult(
       await saveBucketPolicy(scope, bucket, policy),
-      'policy',
+      "policy",
     );
   };
 
   const removePolicy = async () => {
-    setPending('policy');
+    setPending("policy");
     setMessage(null);
     setError(null);
     const succeeded = await applyMutationResult(
       await removeBucketPolicy(scope, bucket),
-      'policy',
+      "policy",
     );
     if (succeeded) setRemovePolicyOpen(false);
   };
 
   const saveCors = async () => {
-    setPending('cors');
+    setPending("cors");
     setMessage(null);
     setError(null);
     await applyMutationResult(
       await saveBucketCors(scope, bucket, corsRules.map(corsRuleValue)),
-      'cors',
+      "cors",
     );
   };
 
   const removeCors = async () => {
-    setPending('cors');
+    setPending("cors");
     setMessage(null);
     setError(null);
     const succeeded = await applyMutationResult(
       await removeBucketCors(scope, bucket),
-      'cors',
+      "cors",
     );
     if (succeeded) setRemoveCorsOpen(false);
   };
 
-  const saveVersioning = async (status: 'Enabled' | 'Suspended') => {
-    setPending('versioning');
+  const saveVersioning = async (status: "Enabled" | "Suspended") => {
+    setPending("versioning");
     setMessage(null);
     setError(null);
     await applyMutationResult(
       await updateBucketVersioning(scope, bucket, status),
-      'versioning',
+      "versioning",
     );
   };
 
   const saveLifecycle = async () => {
-    setPending('lifecycle');
+    setPending("lifecycle");
     setMessage(null);
     setError(null);
     await applyMutationResult(
       await saveBucketLifecycle(scope, bucket, lifecycle),
-      'lifecycle',
+      "lifecycle",
     );
   };
 
   const removeLifecycle = async () => {
-    setPending('lifecycle');
+    setPending("lifecycle");
     setMessage(null);
     setError(null);
     const succeeded = await applyMutationResult(
       await removeBucketLifecycle(scope, bucket),
-      'lifecycle',
+      "lifecycle",
     );
     if (succeeded) setRemoveLifecycleOpen(false);
   };
 
   const loadedSettings = settings?.ok ? settings : null;
   const policyEditable =
-    loadedSettings?.policy.status === 'loaded' ||
-    loadedSettings?.policy.status === 'not-configured';
+    loadedSettings?.policy.status === "loaded" ||
+    loadedSettings?.policy.status === "not-configured";
   const corsEditable =
-    loadedSettings?.cors.status === 'loaded' ||
-    loadedSettings?.cors.status === 'not-configured';
-  const versioningEditable = loadedSettings?.versioning.status === 'loaded';
+    loadedSettings?.cors.status === "loaded" ||
+    loadedSettings?.cors.status === "not-configured";
+  const versioningEditable = loadedSettings?.versioning.status === "loaded";
   const lifecycleEditable =
-    loadedSettings?.lifecycle.status === 'loaded' ||
-    loadedSettings?.lifecycle.status === 'not-configured';
+    loadedSettings?.lifecycle.status === "loaded" ||
+    loadedSettings?.lifecycle.status === "not-configured";
   const policyValidation = validateBucketPolicyJson(policy);
   const lifecycleValidation = validateBucketLifecycleJson(lifecycle);
 
@@ -405,13 +402,13 @@ export function BucketSettingsDialog({
                       <div className="text-xs font-medium text-muted-foreground">
                         Location constraint
                       </div>
-                      {loadedSettings.location.status === 'loaded' ? (
+                      {loadedSettings.location.status === "loaded" ? (
                         <div className="text-sm">
-                          {loadedSettings.location.value ?? 'Default placement'}
+                          {loadedSettings.location.value ?? "Default placement"}
                         </div>
                       ) : (
                         settingMessage({
-                          label: 'Location',
+                          label: "Location",
                           setting: loadedSettings.location,
                         })
                       )}
@@ -434,12 +431,12 @@ export function BucketSettingsDialog({
                           type="button"
                           size="sm"
                           variant={
-                            versioning === 'Enabled' ? 'default' : 'outline'
+                            versioning === "Enabled" ? "default" : "outline"
                           }
-                          disabled={pending === 'versioning'}
-                          onClick={() => void saveVersioning('Enabled')}
+                          disabled={pending === "versioning"}
+                          onClick={() => void saveVersioning("Enabled")}
                         >
-                          {versioning === 'Enabled' ? (
+                          {versioning === "Enabled" ? (
                             <Check className="size-4" />
                           ) : null}
                           Enabled
@@ -448,12 +445,12 @@ export function BucketSettingsDialog({
                           type="button"
                           size="sm"
                           variant={
-                            versioning === 'Suspended' ? 'default' : 'outline'
+                            versioning === "Suspended" ? "default" : "outline"
                           }
-                          disabled={pending === 'versioning'}
-                          onClick={() => void saveVersioning('Suspended')}
+                          disabled={pending === "versioning"}
+                          onClick={() => void saveVersioning("Suspended")}
                         >
-                          {versioning === 'Suspended' ? (
+                          {versioning === "Suspended" ? (
                             <Check className="size-4" />
                           ) : null}
                           Suspended
@@ -461,7 +458,7 @@ export function BucketSettingsDialog({
                       </div>
                     ) : (
                       settingMessage({
-                        label: 'Versioning',
+                        label: "Versioning",
                         setting: loadedSettings.versioning,
                       })
                     )}
@@ -471,7 +468,7 @@ export function BucketSettingsDialog({
                 <TabsContent value="policy" className="space-y-3 pt-3">
                   {policyEditable ? (
                     <>
-                      {loadedSettings.policy.status === 'not-configured' ? (
+                      {loadedSettings.policy.status === "not-configured" ? (
                         <MutationAlert variant="warning">
                           No bucket policy is configured. The editor contains a
                           starter document that is not active until saved.
@@ -491,8 +488,8 @@ export function BucketSettingsDialog({
                           variant="destructive"
                           size="sm"
                           disabled={
-                            pending === 'policy' ||
-                            loadedSettings.policy.status === 'not-configured'
+                            pending === "policy" ||
+                            loadedSettings.policy.status === "not-configured"
                           }
                           onClick={() => setRemovePolicyOpen(true)}
                         >
@@ -503,18 +500,18 @@ export function BucketSettingsDialog({
                           type="button"
                           size="sm"
                           disabled={
-                            pending === 'policy' || !policyValidation.ok
+                            pending === "policy" || !policyValidation.ok
                           }
                           onClick={() => void savePolicy()}
                         >
-                          {pending === 'policy' ? <Spinner /> : null}
+                          {pending === "policy" ? <Spinner /> : null}
                           Save policy
                         </Button>
                       </div>
                     </>
                   ) : (
                     settingMessage({
-                      label: 'Policy',
+                      label: "Policy",
                       setting: loadedSettings.policy,
                     })
                   )}
@@ -523,7 +520,7 @@ export function BucketSettingsDialog({
                 <TabsContent value="cors" className="space-y-3 pt-3">
                   {corsEditable ? (
                     <>
-                      {loadedSettings.cors.status === 'not-configured' ? (
+                      {loadedSettings.cors.status === "not-configured" ? (
                         <MutationAlert variant="warning">
                           No CORS configuration is active for this bucket.
                         </MutationAlert>
@@ -535,7 +532,9 @@ export function BucketSettingsDialog({
                             className="space-y-3 rounded-md border p-3"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="font-medium">Rule {index + 1}</div>
+                              <div className="font-medium">
+                                Rule {index + 1}
+                              </div>
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -557,7 +556,9 @@ export function BucketSettingsDialog({
 
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div className="space-y-1.5">
-                                <Label htmlFor={`cors-id-${index}`}>Rule ID</Label>
+                                <Label htmlFor={`cors-id-${index}`}>
+                                  Rule ID
+                                </Label>
                                 <Input
                                   id={`cors-id-${index}`}
                                   value={rule.id}
@@ -631,11 +632,14 @@ export function BucketSettingsDialog({
                                     className="flex items-center gap-1.5 font-normal"
                                   >
                                     <Checkbox
-                                      checked={rule.allowedMethods.includes(method)}
+                                      checked={rule.allowedMethods.includes(
+                                        method,
+                                      )}
                                       onCheckedChange={(checked) =>
                                         setCorsRules((current) =>
                                           current.map((item, itemIndex) => {
-                                            if (itemIndex !== index) return item;
+                                            if (itemIndex !== index)
+                                              return item;
                                             return {
                                               ...item,
                                               allowedMethods: checked
@@ -674,7 +678,8 @@ export function BucketSettingsDialog({
                                         itemIndex === index
                                           ? {
                                               ...item,
-                                              allowedHeaders: event.target.value,
+                                              allowedHeaders:
+                                                event.target.value,
                                             }
                                           : item,
                                       ),
@@ -730,8 +735,8 @@ export function BucketSettingsDialog({
                             variant="destructive"
                             size="sm"
                             disabled={
-                              pending === 'cors' ||
-                              loadedSettings.cors.status === 'not-configured'
+                              pending === "cors" ||
+                              loadedSettings.cors.status === "not-configured"
                             }
                             onClick={() => setRemoveCorsOpen(true)}
                           >
@@ -742,17 +747,17 @@ export function BucketSettingsDialog({
                         <Button
                           type="button"
                           size="sm"
-                          disabled={pending === 'cors'}
+                          disabled={pending === "cors"}
                           onClick={() => void saveCors()}
                         >
-                          {pending === 'cors' ? <Spinner /> : null}
+                          {pending === "cors" ? <Spinner /> : null}
                           Save CORS
                         </Button>
                       </div>
                     </>
                   ) : (
                     settingMessage({
-                      label: 'CORS',
+                      label: "CORS",
                       setting: loadedSettings.cors,
                     })
                   )}
@@ -761,7 +766,7 @@ export function BucketSettingsDialog({
                 <TabsContent value="lifecycle" className="space-y-3 pt-3">
                   {lifecycleEditable ? (
                     <>
-                      {loadedSettings.lifecycle.status === 'not-configured' ? (
+                      {loadedSettings.lifecycle.status === "not-configured" ? (
                         <MutationAlert variant="warning">
                           No lifecycle configuration is active. The editor
                           contains an expiration example that is not active
@@ -789,8 +794,8 @@ export function BucketSettingsDialog({
                           variant="destructive"
                           size="sm"
                           disabled={
-                            pending === 'lifecycle' ||
-                            loadedSettings.lifecycle.status === 'not-configured'
+                            pending === "lifecycle" ||
+                            loadedSettings.lifecycle.status === "not-configured"
                           }
                           onClick={() => setRemoveLifecycleOpen(true)}
                         >
@@ -801,19 +806,18 @@ export function BucketSettingsDialog({
                           type="button"
                           size="sm"
                           disabled={
-                            pending === 'lifecycle' ||
-                            !lifecycleValidation.ok
+                            pending === "lifecycle" || !lifecycleValidation.ok
                           }
                           onClick={() => void saveLifecycle()}
                         >
-                          {pending === 'lifecycle' ? <Spinner /> : null}
+                          {pending === "lifecycle" ? <Spinner /> : null}
                           Save lifecycle
                         </Button>
                       </div>
                     </>
                   ) : (
                     settingMessage({
-                      label: 'Lifecycle configuration',
+                      label: "Lifecycle configuration",
                       setting: loadedSettings.lifecycle,
                     })
                   )}
@@ -839,7 +843,7 @@ export function BucketSettingsDialog({
         open={removePolicyOpen}
         onOpenChange={setRemovePolicyOpen}
         onConfirm={removePolicy}
-        pending={pending === 'policy'}
+        pending={pending === "policy"}
         title="Remove bucket policy?"
         description="Requests will fall back to IAM permissions and any remaining bucket ACLs."
         confirmLabel="Remove policy"
@@ -852,7 +856,7 @@ export function BucketSettingsDialog({
         open={removeCorsOpen}
         onOpenChange={setRemoveCorsOpen}
         onConfirm={removeCors}
-        pending={pending === 'cors'}
+        pending={pending === "cors"}
         title="Remove CORS configuration?"
         description="Browser requests from other origins will no longer be authorized by this bucket configuration."
         confirmLabel="Remove CORS"
@@ -865,7 +869,7 @@ export function BucketSettingsDialog({
         open={removeLifecycleOpen}
         onOpenChange={setRemoveLifecycleOpen}
         onConfirm={removeLifecycle}
-        pending={pending === 'lifecycle'}
+        pending={pending === "lifecycle"}
         title="Remove lifecycle configuration?"
         description="Automatic expiration, transition, and incomplete-upload cleanup rules will stop running for this bucket."
         confirmLabel="Remove lifecycle"

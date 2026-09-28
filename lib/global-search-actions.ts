@@ -105,7 +105,7 @@ async function loadOpenStackSource({
     return { kind: source.kind, items };
   } catch (error) {
     if (error instanceof OpenStackRequestError && error.status === 401) {
-      redirect("/auth/logout?reason=expired");
+      redirect("/auth/refresh");
     }
     console.error(`[global-search] failed to load ${source.label}`, { error });
     return {
@@ -134,7 +134,7 @@ export async function loadGlobalSearchIndex(): Promise<GlobalSearchIndex> {
   const token = session.keystoneProjectToken;
   const regionId = session.regionId;
 
-  if (!token) redirect("/auth/logout?reason=expired");
+  if (!token) redirect("/auth/refresh");
   if (!regionId || !session.projectId) {
     return { resources: [], unavailableSources: [] };
   }

@@ -1,7 +1,7 @@
-import { randomBytes, createHash } from 'crypto';
+import { randomBytes, createHash } from "crypto";
 
-export const OIDC_REDIRECT_PATH = '/object-storage/auth/callback';
-export const OBJECT_STORAGE_HOME_PATH = '/object-storage';
+export const OIDC_REDIRECT_PATH = "/object-storage/auth/callback";
+export const OBJECT_STORAGE_HOME_PATH = "/object-storage";
 export const MAX_OBJECT_STORAGE_RETURN_TO_LENGTH = 256;
 
 function objectStorageSectionPath(pathname: string) {
@@ -21,11 +21,11 @@ function objectStorageSectionPath(pathname: string) {
 }
 
 export function normalizeObjectStorageReturnTo(value?: string | null) {
-  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
     return OBJECT_STORAGE_HOME_PATH;
   }
 
-  const url = new URL(value, 'http://localhost');
+  const url = new URL(value, "http://localhost");
   const isObjectStoragePage =
     url.pathname === OBJECT_STORAGE_HOME_PATH ||
     url.pathname.startsWith(`${OBJECT_STORAGE_HOME_PATH}/`);
@@ -47,9 +47,9 @@ export function getOidcConfig() {
   const issuer = process.env.KEYCLOAK_ISSUER;
   const clientId = process.env.KEYCLOAK_S3_CLIENT_ID;
   const dashboardUrl = process.env.DASHBOARD_URL;
-  if (!issuer) throw new Error('KEYCLOAK_ISSUER not set');
-  if (!clientId) throw new Error('KEYCLOAK_S3_CLIENT_ID not set');
-  if (!dashboardUrl) throw new Error('DASHBOARD_URL not set');
+  if (!issuer) throw new Error("KEYCLOAK_ISSUER not set");
+  if (!clientId) throw new Error("KEYCLOAK_S3_CLIENT_ID not set");
+  if (!dashboardUrl) throw new Error("DASHBOARD_URL not set");
   return {
     issuer,
     clientId,
@@ -72,7 +72,7 @@ export async function discoverOidc(): Promise<OidcDiscovery> {
   }
   const { issuer } = getOidcConfig();
   const res = await fetch(`${issuer}/.well-known/openid-configuration`, {
-    cache: 'no-store',
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(`OIDC discovery failed: ${res.status}`);
   const value = (await res.json()) as OidcDiscovery;
@@ -81,12 +81,16 @@ export async function discoverOidc(): Promise<OidcDiscovery> {
 }
 
 function base64url(buf: Buffer): string {
-  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return buf
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 export function generatePkce() {
   const verifier = base64url(randomBytes(32));
-  const challenge = base64url(createHash('sha256').update(verifier).digest());
+  const challenge = base64url(createHash("sha256").update(verifier).digest());
   return { verifier, challenge };
 }
 
@@ -98,15 +102,15 @@ export async function exchangeCodeForTokens(code: string, verifier: string) {
   const { token_endpoint } = await discoverOidc();
   const { clientId, redirectUri } = getOidcConfig();
   const body = new URLSearchParams({
-    grant_type: 'authorization_code',
+    grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
     client_id: clientId,
     code_verifier: verifier,
   });
   const res = await fetch(token_endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
   if (!res.ok) {
@@ -120,4 +124,34 @@ export async function exchangeCodeForTokens(code: string, verifier: string) {
     expires_in: number;
     token_type: string;
   };
+}
+
+export type S3OidcRefreshResult = {
+  access_token: string;
+  id_token?: string;
+  refresh_token?: string;
+  expires_in: number;
+  token_type: string;
+};
+
+export async function refreshS3Tokens(
+  refreshToken: string,
+): Promise<S3OidcRefreshResult> {
+  const { token_endpoint } = await discoverOidc();
+  const { clientId } = getOidcConfig();
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+  const res = await fetch(token_endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`S3 OIDC refresh failed: ${res.status} ${text}`);
+  }
+  return (await res.json()) as S3OidcRefreshResult;
 }

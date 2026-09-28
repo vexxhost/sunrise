@@ -160,7 +160,7 @@ export function buildCloudContextSnapshot({
   const role = activeRole(session);
 
   return {
-    user: { name: userName ?? null },
+    user: { name: userName ?? session.oidcIdentity?.displayName ?? null },
     project: {
       id: session.projectId ?? null,
       name: projectName,

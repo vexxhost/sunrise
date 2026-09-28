@@ -27,6 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { validateIamTrustPolicyJson } from "@/lib/json-document";
 import type { MutationScope } from "@/lib/mutations";
+import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
 import {
   createIamRole,
   type CreateIamRoleInput,
@@ -43,12 +44,6 @@ import {
 
 const steps = ["details", "trust", "tags", "review"] as const;
 type Step = (typeof steps)[number];
-
-function startObjectStorageLogin() {
-  window.location.assign(
-    new URL("/object-storage/auth/login", window.location.origin).toString(),
-  );
-}
 
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
@@ -134,7 +129,7 @@ export function IamRoleCreateSheet({
     setPending(false);
     if (!result.ok) {
       if (result.error.code === "authentication-required") {
-        startObjectStorageLogin();
+        startObjectStorageCredentialRefresh();
         return;
       }
       setError(result.error.message);

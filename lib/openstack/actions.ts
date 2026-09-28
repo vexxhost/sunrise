@@ -49,7 +49,7 @@ export async function openstack<T = any>(
 
   if (!token) {
     console.error(`No ${unscoped ? 'unscoped' : 'project'} token in session`);
-    redirect('/auth/logout?reason=expired');
+    redirect('/auth/refresh');
   }
 
   // Get endpoint (always calls OpenStack directly on server)
@@ -94,7 +94,7 @@ export async function openstack<T = any>(
 
   if (!response.ok) {
     if (response.status === 401) {
-      redirect('/auth/logout?reason=expired');
+      redirect('/auth/refresh');
     }
     if (errorMode === 'throw') {
       throw new OpenStackRequestError(response.status, response.statusText);

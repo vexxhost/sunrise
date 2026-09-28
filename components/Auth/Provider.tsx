@@ -1,54 +1,61 @@
 import Login from "@/components/Auth/Login";
-import { AuthScene } from "@/components/Auth/AuthScene";
+import { AuthRecovery } from "@/components/Auth/AuthRecovery";
+import { SessionRefreshRedirect } from "@/components/Auth/SessionRefreshRedirect";
+import {
+  AUTH_PROMPT_COOKIE,
+  parseOidcAuthorizationPrompt,
+} from "@/lib/auth-prompt";
 import { getKeystoneSessionState } from "@/lib/keystone/session";
 import { getSession } from "@/lib/session";
-import { redirect } from "next/navigation";
-
-function SessionUnavailable({ reason }: { reason: string }) {
-  return (
-    <AuthScene>
-      <div className="max-w-sm">
-        <p className="text-sm font-medium text-amber-700 dark:text-amber-200">
-          Connection interrupted
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold text-foreground">
-          Session unavailable
-        </h1>
-        <p className="mt-4 text-sm leading-6 text-muted-foreground">
-          Sunrise could not validate the Keystone session. Sign in again to
-          continue.
-        </p>
-        <p className="mt-4 break-words rounded-md border border-border bg-muted/60 p-3 text-xs leading-5 text-muted-foreground">
-          {reason}
-        </p>
-        <a
-          className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-md bg-foreground px-4 text-sm font-semibold text-background transition-colors hover:bg-foreground/90"
-          href="/auth/logout"
-        >
-          Sign in again
-        </a>
-      </div>
-    </AuthScene>
-  );
-}
+import { cookies } from "next/headers";
 
 export default async function Provider({ children }: any) {
   const session = await getSession();
+  const cookieStore = await cookies();
+  const authorizationPrompt = parseOidcAuthorizationPrompt(
+    cookieStore.get(AUTH_PROMPT_COOKIE)?.value,
+  );
+
   if (!session.keystone_unscoped_token) {
-    return <Login />;
+    if (session.oidcIdentity && session.authRecovery) {
+      return (
+        <AuthRecovery
+          identity={session.oidcIdentity}
+          reason={session.authRecovery.reason}
+        />
+      );
+    }
+    if (session.oidcIdentity && session.keycloakRefreshToken) {
+      return <SessionRefreshRedirect />;
+    }
+    return <Login authorizationPrompt={authorizationPrompt} />;
   }
 
   const sessionState = await getKeystoneSessionState(session);
   if (sessionState.status === "missing") {
-    return <Login />;
+    return <Login authorizationPrompt={authorizationPrompt} />;
   }
 
   if (sessionState.status === "invalid") {
-    redirect("/auth/logout?reason=expired");
+    return <SessionRefreshRedirect />;
   }
 
   if (sessionState.status === "unknown") {
-    return <SessionUnavailable reason={sessionState.reason} />;
+    return (
+      <AuthRecovery
+        identity={session.oidcIdentity}
+        reason={session.authRecovery?.reason ?? "session-unavailable"}
+      />
+    );
+  }
+
+  if (!session.projectId || !session.keystoneProjectToken) {
+    return (
+      <AuthRecovery
+        identity={session.oidcIdentity}
+        reason={session.authRecovery?.reason ?? "no-projects"}
+      />
+    );
   }
 
   return <>{children}</>;

@@ -1,26 +1,27 @@
-'use client';
+"use client";
 
-import { useQuery } from '@tanstack/react-query';
-import type { ColumnDef } from '@tanstack/react-table';
-import { useState, type ReactNode } from 'react';
-import { AlertTriangle, Plus, ShieldCheck, Trash2 } from 'lucide-react';
-import { DataTable } from '@/components/DataTable';
-import { FadedText } from '@/components/FadedText';
-import { MutationAlert } from '@/components/mutations/MutationAlert';
-import { MutationConfirmationDialog } from '@/components/mutations/MutationConfirmationDialog';
-import { IamRoleCreateSheet } from '@/components/object-storage/IamRoleCreateSheet';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useClearCreateActionIntent } from '@/hooks/useClearCreateActionIntent';
-import type { MutationScope } from '@/lib/mutations';
-import { RoleDetailsDialog } from '../RoleDetailsDialog';
+import { useQuery } from "@tanstack/react-query";
+import type { ColumnDef } from "@tanstack/react-table";
+import { useState, type ReactNode } from "react";
+import { AlertTriangle, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { DataTable } from "@/components/DataTable";
+import { FadedText } from "@/components/FadedText";
+import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { IamRoleCreateSheet } from "@/components/object-storage/IamRoleCreateSheet";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
+import type { MutationScope } from "@/lib/mutations";
+import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
+import { RoleDetailsDialog } from "../RoleDetailsDialog";
 import {
   deleteIamRole,
   listRoles,
   type IamRoleSummary,
-} from '@/lib/s3/role-actions';
+} from "@/lib/s3/role-actions";
 
 type RolesData = {
   roles: IamRoleSummary[];
@@ -29,17 +30,11 @@ type RolesData = {
   denialRequestId?: string;
 };
 
-function startObjectStorageLogin() {
-  window.location.assign(
-    new URL('/object-storage/auth/login', window.location.origin).toString(),
-  );
-}
-
 function formatSessionDuration(seconds: number | null) {
-  if (seconds === null) return '-';
+  if (seconds === null) return "-";
   if (seconds % 3600 === 0) {
     const hours = seconds / 3600;
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
   }
   if (seconds % 60 === 0) return `${seconds / 60} minutes`;
   return `${seconds} seconds`;
@@ -57,14 +52,18 @@ export function RolesClient({
   initialData: RolesData;
 }) {
   const clearCreateActionIntent = useClearCreateActionIntent();
-  const { data = initialData, refetch, isRefetching } = useQuery({
-    queryKey: ['s3', activeProjectId, 'roles'],
+  const {
+    data = initialData,
+    refetch,
+    isRefetching,
+  } = useQuery({
+    queryKey: ["s3", activeProjectId, "roles"],
     queryFn: async () => {
       const result = await listRoles();
       if (!result.ok) {
         if (result.needsAuth) {
-          startObjectStorageLogin();
-          throw new Error('S3 authentication required');
+          startObjectStorageCredentialRefresh();
+          throw new Error("S3 authentication required");
         }
         throw new Error(result.error);
       }
@@ -80,7 +79,7 @@ export function RolesClient({
   });
   const [createOpen, setCreateOpen] = useState(initiallyCreateOpen);
   const [deleteTarget, setDeleteTarget] = useState<IamRoleSummary | null>(null);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,11 +100,7 @@ export function RolesClient({
   };
 
   const handleDelete = async () => {
-    if (
-      !deleteTarget ||
-      deleting ||
-      deleteConfirmation !== deleteTarget.name
-    ) {
+    if (!deleteTarget || deleting || deleteConfirmation !== deleteTarget.name) {
       return;
     }
     setDeleting(true);
@@ -114,15 +109,15 @@ export function RolesClient({
     const result = await deleteIamRole(scope, deleteTarget.name);
     setDeleting(false);
     if (!result.ok) {
-      if (result.error.code === 'authentication-required') {
-        startObjectStorageLogin();
+      if (result.error.code === "authentication-required") {
+        startObjectStorageCredentialRefresh();
         return;
       }
       setError(result.error.message);
       return;
     }
     setDeleteTarget(null);
-    setDeleteConfirmation('');
+    setDeleteConfirmation("");
     setMessage(result.message);
     await refetch();
   };
@@ -139,8 +134,8 @@ export function RolesClient({
 
   const columns: ColumnDef<IamRoleSummary>[] = [
     {
-      accessorKey: 'name',
-      header: 'Name',
+      accessorKey: "name",
+      header: "Name",
       enableHiding: false,
       cell: ({ row }) =>
         roleDialog(
@@ -158,11 +153,11 @@ export function RolesClient({
             ) : null}
           </button>,
         ),
-      meta: { fieldType: 'string', visible: true },
+      meta: { fieldType: "string", visible: true },
     },
     {
-      accessorKey: 'arn',
-      header: 'ARN',
+      accessorKey: "arn",
+      header: "ARN",
       cell: ({ row }) =>
         roleDialog(
           row.original,
@@ -177,39 +172,39 @@ export function RolesClient({
             />
           </button>,
         ),
-      meta: { fieldType: 'string', visible: true, monospace: true },
+      meta: { fieldType: "string", visible: true, monospace: true },
     },
     {
-      accessorKey: 'path',
-      header: 'Path',
-      meta: { fieldType: 'string', visible: true, monospace: true },
+      accessorKey: "path",
+      header: "Path",
+      meta: { fieldType: "string", visible: true, monospace: true },
     },
     {
-      accessorKey: 'description',
-      header: 'Description',
-      cell: ({ row }) => row.original.description ?? '-',
-      meta: { fieldType: 'string', visible: false },
+      accessorKey: "description",
+      header: "Description",
+      cell: ({ row }) => row.original.description ?? "-",
+      meta: { fieldType: "string", visible: false },
     },
     {
-      accessorKey: 'createdAt',
-      header: 'Age',
-      meta: { fieldType: 'date', dateDisplay: 'age', visible: true },
+      accessorKey: "createdAt",
+      header: "Age",
+      meta: { fieldType: "date", dateDisplay: "age", visible: true },
     },
     {
-      accessorKey: 'maxSessionDuration',
-      header: 'Max Session Duration',
+      accessorKey: "maxSessionDuration",
+      header: "Max Session Duration",
       cell: ({ row }) => formatSessionDuration(row.original.maxSessionDuration),
-      meta: { fieldType: 'number', visible: false },
+      meta: { fieldType: "number", visible: false },
     },
     {
-      accessorKey: 'id',
-      header: 'Role ID',
-      cell: ({ row }) => row.original.id ?? '-',
-      meta: { fieldType: 'string', visible: false, monospace: true },
+      accessorKey: "id",
+      header: "Role ID",
+      cell: ({ row }) => row.original.id ?? "-",
+      meta: { fieldType: "string", visible: false, monospace: true },
     },
     {
-      id: 'actions',
-      header: 'Actions',
+      id: "actions",
+      header: "Actions",
       enableSorting: false,
       enableHiding: false,
       cell: ({ row }) => (
@@ -220,13 +215,13 @@ export function RolesClient({
           className="text-destructive hover:text-destructive"
           title={
             row.original.isActive
-              ? 'The current access role cannot be deleted'
+              ? "The current access role cannot be deleted"
               : `Delete ${row.original.name}`
           }
           disabled={row.original.isActive}
           onClick={() => {
             setError(null);
-            setDeleteConfirmation('');
+            setDeleteConfirmation("");
             setDeleteTarget(row.original);
           }}
         >
@@ -234,7 +229,7 @@ export function RolesClient({
           <span className="sr-only">Delete role</span>
         </Button>
       ),
-      meta: { fieldType: 'string', visible: true },
+      meta: { fieldType: "string", visible: true },
     },
   ];
 
@@ -303,7 +298,7 @@ export function RolesClient({
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setDeleteTarget(null);
-            setDeleteConfirmation('');
+            setDeleteConfirmation("");
             setError(null);
           }
         }}
