@@ -44,6 +44,7 @@ import {
   type RemoveSelectionResult,
   type SizeSelectionEntry,
 } from "@/lib/s3/actions";
+import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
 
 type Row =
   | { kind: "folder"; name: string; fullPath: string }
@@ -291,7 +292,7 @@ export function ObjectsClient({
 
     if (!result.ok) {
       if (result.needsAuth) {
-        window.location.href = "/object-storage/auth/login";
+        startObjectStorageCredentialRefresh();
         return;
       }
       if ("conflict" in result && result.conflict) {
@@ -337,7 +338,7 @@ export function ObjectsClient({
 
     if (!result.ok) {
       if (result.needsAuth) {
-        window.location.href = "/object-storage/auth/login";
+        startObjectStorageCredentialRefresh();
         return;
       }
       setFolderError(result.error);
@@ -372,7 +373,7 @@ export function ObjectsClient({
 
     if (!result.ok) {
       if (result.needsAuth) {
-        window.location.href = "/object-storage/auth/login";
+        startObjectStorageCredentialRefresh();
         return;
       }
       setRemoveError(result.error);
@@ -406,7 +407,7 @@ export function ObjectsClient({
 
     if (!result.ok) {
       if (result.needsAuth) {
-        window.location.href = "/object-storage/auth/login";
+        startObjectStorageCredentialRefresh();
         return;
       }
       setSizeError(result.error);

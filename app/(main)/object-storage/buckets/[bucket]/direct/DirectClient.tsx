@@ -39,6 +39,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { makeBrowserS3Client } from "@/lib/s3/browser-client";
 import { getStsCredentialsForBrowser } from "@/lib/s3/browser-creds";
+import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
 import { directObjectPath } from "@/lib/s3/direct-route";
 import {
   browserUploadKey,
@@ -157,7 +158,7 @@ export function DirectClient({
       if (cancelled) return;
       if (!result.ok) {
         if (result.needsAuth) {
-          window.location.href = "/object-storage/auth/login";
+          startObjectStorageCredentialRefresh();
           return;
         }
         setCredsError(result.error);

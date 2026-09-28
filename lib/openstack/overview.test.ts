@@ -465,7 +465,7 @@ describe("project overview loading", () => {
         regionId: "RegionOne",
         projectId: "project-id",
       }),
-    ).rejects.toThrow("redirect:/auth/logout?reason=expired");
-    expect(mocks.redirect).toHaveBeenCalledWith("/auth/logout?reason=expired");
+    ).rejects.toThrow("redirect:/auth/refresh");
+    expect(mocks.redirect).toHaveBeenCalledWith("/auth/refresh");
   });
 });

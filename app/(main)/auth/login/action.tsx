@@ -9,6 +9,7 @@ import {
 export const login = async (state: LoginFormState, formData: FormData) => {
   const validatedFields = LoginFormSchema.safeParse({
     idProvider: formData.get("id_provider"),
+    prompt: formData.get("authorization_prompt") || undefined,
   });
 
   if (!validatedFields.success) {
@@ -17,5 +18,8 @@ export const login = async (state: LoginFormState, formData: FormData) => {
     };
   }
 
-  redirectToIdentityProvider(validatedFields.data["idProvider"]);
+  redirectToIdentityProvider(
+    validatedFields.data.idProvider,
+    validatedFields.data.prompt,
+  );
 };

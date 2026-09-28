@@ -388,8 +388,8 @@ describe("operational feed loading", () => {
         catalog,
         now,
       }),
-    ).rejects.toThrow("redirect:/auth/logout?reason=expired");
-    expect(mocks.redirect).toHaveBeenCalledWith("/auth/logout?reason=expired");
+    ).rejects.toThrow("redirect:/auth/refresh");
+    expect(mocks.redirect).toHaveBeenCalledWith("/auth/refresh");
   });
 
   it("redirects when a resource check reports an expired token", async () => {
@@ -409,7 +409,7 @@ describe("operational feed loading", () => {
         catalog,
         now,
       }),
-    ).rejects.toThrow("redirect:/auth/logout?reason=expired");
-    expect(mocks.redirect).toHaveBeenCalledWith("/auth/logout?reason=expired");
+    ).rejects.toThrow("redirect:/auth/refresh");
+    expect(mocks.redirect).toHaveBeenCalledWith("/auth/refresh");
   });
 });

@@ -1,18 +1,21 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-
-const S3_AUTH_LOGIN_PATH = '/object-storage/auth/login';
+import { useEffect } from "react";
+import { Spinner } from "@/components/ui/spinner";
+import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
 
 export function ObjectStorageAuthRedirect() {
   useEffect(() => {
-    const loginUrl = new URL(S3_AUTH_LOGIN_PATH, window.location.origin);
-    loginUrl.searchParams.set(
-      'returnTo',
-      `${window.location.pathname}${window.location.search}${window.location.hash}`,
-    );
-    window.location.replace(loginUrl.toString());
+    startObjectStorageCredentialRefresh();
   }, []);
 
-  return null;
+  return (
+    <div
+      aria-live="polite"
+      className="flex min-h-[45vh] items-center justify-center gap-3 text-sm text-muted-foreground"
+    >
+      <Spinner className="size-5" />
+      Refreshing Object Storage access...
+    </div>
+  );
 }

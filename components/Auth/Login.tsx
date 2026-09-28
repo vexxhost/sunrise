@@ -25,7 +25,11 @@ function SubmitButton() {
   );
 }
 
-export default function Login() {
+export default function Login({
+  authorizationPrompt,
+}: {
+  authorizationPrompt?: "login" | "select_account";
+}) {
   const [state, action] = useActionState(login, undefined);
 
   return (
@@ -42,6 +46,13 @@ export default function Login() {
         </p>
 
         <form action={action} className="mt-9 space-y-5">
+          {authorizationPrompt ? (
+            <input
+              type="hidden"
+              name="authorization_prompt"
+              value={authorizationPrompt}
+            />
+          ) : null}
           <div>
             <label
               htmlFor="id_provider"
@@ -62,7 +73,10 @@ export default function Login() {
             />
 
             {state?.errors?.idProvider && (
-              <p className="mt-2 text-sm text-rose-700 dark:text-rose-300" role="alert">
+              <p
+                className="mt-2 text-sm text-rose-700 dark:text-rose-300"
+                role="alert"
+              >
                 {state.errors.idProvider.join(" ")}
               </p>
             )}

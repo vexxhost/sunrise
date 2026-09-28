@@ -340,7 +340,7 @@ async function loadService(
   } catch (error) {
     if (error instanceof OpenStackRequestError) {
       if (error.status === 401) {
-        redirect("/auth/logout?reason=expired");
+        redirect("/auth/refresh");
       }
       if (error.status === 403) {
         return {

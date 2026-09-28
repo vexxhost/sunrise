@@ -1,5 +1,6 @@
 import 'server-only';
 import { randomBytes, createHash } from 'crypto';
+import type { SunriseIdentity } from '@/lib/session';
 
 /**
  * OIDC client config for the unified Sunrise login flow.
@@ -28,6 +29,8 @@ export type SunriseOidcConfig = {
   rgwAudience: string;
 };
 
+export type OidcAuthorizationPrompt = 'login' | 'select_account';
+
 export function getSunriseOidcConfig(): SunriseOidcConfig {
   const issuer = process.env.KEYCLOAK_ISSUER;
   const clientId = process.env.KEYCLOAK_SERVER_CLIENT_ID;
@@ -52,6 +55,7 @@ type OidcDiscovery = {
   authorization_endpoint: string;
   token_endpoint: string;
   end_session_endpoint?: string;
+  userinfo_endpoint?: string;
 };
 
 let discoveryCache: { value: OidcDiscovery; fetchedAt: number } | null = null;
@@ -70,6 +74,104 @@ export async function discoverOidc(): Promise<OidcDiscovery> {
   return value;
 }
 
+type IdTokenClaims = {
+  aud?: string | string[];
+  azp?: string;
+  email?: string;
+  exp?: number;
+  iss?: string;
+  name?: string;
+  preferred_username?: string;
+  sub?: string;
+};
+
+function decodeIdTokenClaims(idToken: string): IdTokenClaims | null {
+  const payload = idToken.split('.')[1];
+  if (!payload) return null;
+
+  try {
+    return JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    ) as IdTokenClaims;
+  } catch {
+    return null;
+  }
+}
+
+export function extractOidcIdentity(
+  idToken: string,
+  identityProvider: string,
+): SunriseIdentity | null {
+  const claims = decodeIdTokenClaims(idToken);
+  if (!claims?.sub || !claims.iss) return null;
+
+  const { issuer, clientId } = getSunriseOidcConfig();
+  const audiences = Array.isArray(claims.aud)
+    ? claims.aud
+    : claims.aud
+      ? [claims.aud]
+      : [];
+  const intendedForClient =
+    audiences.includes(clientId) || claims.azp === clientId;
+  const expired =
+    typeof claims.exp === 'number' && claims.exp * 1000 <= Date.now();
+
+  if (claims.iss !== issuer || !intendedForClient || expired) return null;
+
+  const email = claims.email?.trim() || undefined;
+  const preferredUsername = claims.preferred_username?.trim() || undefined;
+  const displayName =
+    claims.name?.trim() || preferredUsername || email || claims.sub;
+
+  return {
+    subject: claims.sub,
+    displayName,
+    email,
+    preferredUsername,
+    issuer: claims.iss,
+    identityProvider,
+  };
+}
+
+export async function resolveOidcIdentity(
+  accessToken: string,
+  idToken: string,
+  identityProvider: string,
+): Promise<SunriseIdentity | null> {
+  const tokenIdentity = extractOidcIdentity(idToken, identityProvider);
+
+  try {
+    const { userinfo_endpoint } = await discoverOidc();
+    if (!userinfo_endpoint) return tokenIdentity;
+
+    const response = await fetch(userinfo_endpoint, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: 'no-store',
+    });
+    if (!response.ok) return tokenIdentity;
+
+    const claims = (await response.json()) as IdTokenClaims;
+    if (!claims.sub) return tokenIdentity;
+    if (tokenIdentity && claims.sub !== tokenIdentity.subject) return null;
+
+    const { issuer } = getSunriseOidcConfig();
+    const email = claims.email?.trim() || undefined;
+    const preferredUsername = claims.preferred_username?.trim() || undefined;
+    return {
+      subject: claims.sub,
+      displayName:
+        claims.name?.trim() || preferredUsername || email || claims.sub,
+      email,
+      preferredUsername,
+      issuer,
+      identityProvider,
+    };
+  } catch (error) {
+    console.warn('Unable to load OIDC UserInfo; using ID token claims:', error);
+    return tokenIdentity;
+  }
+}
+
 function base64url(buf: Buffer): string {
   return buf
     .toString('base64')
@@ -80,9 +182,7 @@ function base64url(buf: Buffer): string {
 
 export function generatePkce() {
   const verifier = base64url(randomBytes(32));
-  const challenge = base64url(
-    createHash('sha256').update(verifier).digest()
-  );
+  const challenge = base64url(createHash('sha256').update(verifier).digest());
   return { verifier, challenge };
 }
 
@@ -104,7 +204,7 @@ export type RefreshTokenResult = Omit<CodeExchangeResult, 'id_token'> & {
 
 export async function exchangeCodeForTokens(
   code: string,
-  verifier: string
+  verifier: string,
 ): Promise<CodeExchangeResult> {
   const { token_endpoint } = await discoverOidc();
   const { clientId, clientSecret, redirectUri } = getSunriseOidcConfig();
@@ -132,7 +232,7 @@ export async function exchangeCodeForTokens(
 }
 
 export async function refreshAccessToken(
-  refreshToken: string
+  refreshToken: string,
 ): Promise<RefreshTokenResult> {
   const { token_endpoint } = await discoverOidc();
   const { clientId, clientSecret } = getSunriseOidcConfig();
@@ -173,7 +273,7 @@ export type TokenExchangeResult = {
  * `sunrise-server` is permitted to exchange to the target audience.
  */
 export async function tokenExchangeForRgw(
-  subjectAccessToken: string
+  subjectAccessToken: string,
 ): Promise<TokenExchangeResult> {
   const { token_endpoint } = await discoverOidc();
   const { clientId, clientSecret, rgwAudience } = getSunriseOidcConfig();
@@ -211,6 +311,7 @@ export async function buildAuthorizeUrl(opts: {
   challenge: string;
   state: string;
   scope?: string;
+  prompt?: OidcAuthorizationPrompt;
 }): Promise<string> {
   const { authorization_endpoint } = await discoverOidc();
   const { clientId, redirectUri } = getSunriseOidcConfig();
@@ -222,5 +323,23 @@ export async function buildAuthorizeUrl(opts: {
   url.searchParams.set('state', opts.state);
   url.searchParams.set('code_challenge', opts.challenge);
   url.searchParams.set('code_challenge_method', 'S256');
+  if (opts.prompt) url.searchParams.set('prompt', opts.prompt);
+  return url.toString();
+}
+
+export async function buildEndSessionUrl(opts: {
+  postLogoutRedirectUri: string;
+  idTokenHint?: string;
+}): Promise<string | null> {
+  const { end_session_endpoint } = await discoverOidc();
+  if (!end_session_endpoint) return null;
+
+  const { clientId } = getSunriseOidcConfig();
+  const url = new URL(end_session_endpoint);
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('post_logout_redirect_uri', opts.postLogoutRedirectUri);
+  if (opts.idTokenHint) {
+    url.searchParams.set('id_token_hint', opts.idTokenHint);
+  }
   return url.toString();
 }

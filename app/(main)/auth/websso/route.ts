@@ -1,5 +1,8 @@
 import { getSession } from '@/lib/session';
-import { finalizeKeystoneSession } from '@/lib/keystone/login';
+import {
+  finalizeKeystoneSession,
+  KeystoneSessionSetupError,
+} from '@/lib/keystone/login';
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? '/';
 
@@ -23,7 +26,22 @@ export async function POST(request: Request) {
     return new Response('Invalid WebSSO response', { status: 400 });
   }
 
-  await finalizeKeystoneSession(session, token);
+  try {
+    const resolution = await finalizeKeystoneSession(session, token);
+    session.authRecovery =
+      resolution.status === 'ready' ? undefined : { reason: resolution.status };
+  } catch (error) {
+    session.authRecovery = {
+      reason:
+        error instanceof KeystoneSessionSetupError
+          ? error.reason
+          : 'session-unavailable',
+    };
+    console.error(
+      '[auth/websso] Keystone session finalize failed:',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+  }
   await session.save();
 
   return Response.redirect(DASHBOARD_URL, 303);

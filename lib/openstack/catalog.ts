@@ -32,7 +32,7 @@ export async function getServiceCatalog(
 
   if (!catalogResponse.ok) {
     if (catalogResponse.status === 401) {
-      redirect('/auth/logout?reason=expired');
+      redirect('/auth/refresh');
     }
     console.error('[catalog] service catalog request failed', {
       requestId:

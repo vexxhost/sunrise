@@ -34,7 +34,7 @@ export async function getUserInfo() {
 
   if (!response.ok) {
     if (isKeystoneAuthFailure(response.status)) {
-      redirect('/auth/logout?reason=expired');
+      redirect('/auth/refresh');
     }
     return null;
   }
@@ -78,7 +78,7 @@ export async function getRegionsAction() {
 
   if (!response.ok) {
     if (isKeystoneAuthFailure(response.status)) {
-      redirect('/auth/logout?reason=expired');
+      redirect('/auth/refresh');
     }
     console.error('Failed to fetch regions:', response.statusText);
     return [];
@@ -121,7 +121,7 @@ export async function getProjectsAction() {
 
   if (!response.ok) {
     if (isKeystoneAuthFailure(response.status)) {
-      redirect('/auth/logout?reason=expired');
+      redirect('/auth/refresh');
     }
     console.error('Failed to fetch projects:', response.statusText);
     return [];
