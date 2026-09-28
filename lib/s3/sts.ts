@@ -1,14 +1,17 @@
-import { STSClient, AssumeRoleWithWebIdentityCommand } from '@aws-sdk/client-sts';
+import {
+  STSClient,
+  AssumeRoleWithWebIdentityCommand,
+} from '@aws-sdk/client-sts';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent } from 'https';
 import type { S3StsCredentials } from '@/lib/session';
 import { normalizeProjectId } from '@/lib/session';
 import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
 
-async function getStsClient() {
-  const endpoint = await getS3Endpoint();
+async function getStsClient(endpoint?: string) {
+  const resolvedEndpoint = endpoint ?? (await getS3Endpoint());
   return new STSClient({
-    endpoint,
+    endpoint: resolvedEndpoint,
     region: S3_REGION,
     requestHandler: new NodeHttpHandler({
       httpsAgent: new Agent({
@@ -21,7 +24,8 @@ async function getStsClient() {
 export async function assumeRoleWithIdToken(
   idToken: string,
   projectId: string,
-  roleArn?: string
+  roleArn?: string,
+  endpoint?: string,
 ): Promise<S3StsCredentials> {
   const normalizedProjectId = normalizeProjectId(projectId);
   if (!normalizedProjectId) {
@@ -35,17 +39,22 @@ export async function assumeRoleWithIdToken(
     throw new Error(`No RGW role ARN found for project ${normalizedProjectId}`);
   }
 
-  const client = await getStsClient();
+  const client = await getStsClient(endpoint);
   const res = await client.send(
     new AssumeRoleWithWebIdentityCommand({
       RoleArn: resolvedRoleArn,
       RoleSessionName: `sunrise-${normalizedProjectId.slice(0, 20)}`,
       WebIdentityToken: idToken,
       DurationSeconds: 3600,
-    })
+    }),
   );
   const c = res.Credentials;
-  if (!c?.AccessKeyId || !c.SecretAccessKey || !c.SessionToken || !c.Expiration) {
+  if (
+    !c?.AccessKeyId ||
+    !c.SecretAccessKey ||
+    !c.SessionToken ||
+    !c.Expiration
+  ) {
     throw new Error('STS returned incomplete credentials');
   }
   return {
@@ -62,10 +71,9 @@ function parseJwtClaims(token: string): Record<string, unknown> {
   if (!payload) throw new Error('JWT payload is missing');
 
   const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
-  return JSON.parse(Buffer.from(padded, 'base64url').toString('utf-8')) as Record<
-    string,
-    unknown
-  >;
+  return JSON.parse(
+    Buffer.from(padded, 'base64url').toString('utf-8'),
+  ) as Record<string, unknown>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

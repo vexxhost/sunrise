@@ -48,6 +48,7 @@ export type SunriseSession = {
   oidcIdentity?: SunriseIdentity;
   authRecovery?: AuthRecoveryIssue;
   keycloakRefreshToken?: string;
+  cloudContextBootstrapId?: string;
 };
 
 export function normalizeProjectId(projectId?: string | null): string {

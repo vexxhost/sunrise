@@ -1,6 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
+import { takeCloudContextBootstrap } from "@/lib/cloud-context-bootstrap";
 import {
   buildCloudContextSnapshot,
   type CloudContextSnapshot,
@@ -22,18 +23,31 @@ export type CloudContext = {
   snapshot: CloudContextSnapshot;
 };
 
-export const loadCloudContext = cache(async (): Promise<CloudContext> => {
-  // Keep the established initialization order: these helpers can establish
-  // project and region defaults for an authenticated session.
-  const regions = await getRegions();
-  const projects = await getProjects();
+export async function loadCloudContextUncached(): Promise<CloudContext> {
   const session = await getSession();
-  const [prefs, userInfo, catalog] = await Promise.all([
+  const bootstrap = takeCloudContextBootstrap(session.cloudContextBootstrapId);
+  const knownUserName =
+    bootstrap?.userName ??
+    session.oidcIdentity?.preferredUsername ??
+    session.oidcIdentity?.displayName;
+  const [prefs, projects, regions, userInfo, catalog] = await Promise.all([
     readPrefs(),
-    getUserInfo(),
-    session.keystoneProjectToken
-      ? getServiceCatalog(session.keystoneProjectToken)
-      : Promise.resolve(null),
+    bootstrap
+      ? Promise.resolve(
+          [...bootstrap.projects].sort((a, b) => a.name.localeCompare(b.name)),
+        )
+      : getProjects(),
+    bootstrap
+      ? Promise.resolve(
+          [...bootstrap.regions].sort((a, b) => a.id.localeCompare(b.id)),
+        )
+      : getRegions(),
+    knownUserName ? Promise.resolve(null) : getUserInfo(),
+    bootstrap?.catalog
+      ? Promise.resolve(bootstrap.catalog)
+      : session.keystoneProjectToken
+        ? getServiceCatalog(session.keystoneProjectToken)
+        : Promise.resolve(null),
   ]);
 
   return {
@@ -45,8 +59,10 @@ export const loadCloudContext = cache(async (): Promise<CloudContext> => {
       prefs,
       projects,
       regions,
-      userName: userInfo?.name,
+      userName: knownUserName ?? userInfo?.name,
       catalog,
     }),
   };
-});
+}
+
+export const loadCloudContext = cache(loadCloudContextUncached);

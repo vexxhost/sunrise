@@ -43,6 +43,7 @@ describe("Magnum cluster queries", () => {
       { limit: 20 },
       "RegionOne",
       "project-a",
+      "https://magnum.example.test/v1",
     );
 
     expect(result.map(({ uuid }) => uuid)).toEqual(["cluster-a"]);
@@ -50,6 +51,13 @@ describe("Magnum cluster queries", () => {
       expect.objectContaining({
         path: "/clusters/detail?limit=20",
         apiVersion: "container-infra latest",
+        endpointOverride: "https://magnum.example.test/v1",
+      }),
+    );
+    expect(mocks.openstack).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/clusters/cluster-a/nodegroups",
+        endpointOverride: "https://magnum.example.test/v1",
       }),
     );
   });

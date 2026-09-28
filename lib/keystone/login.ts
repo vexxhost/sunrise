@@ -1,5 +1,6 @@
 import 'server-only';
 import type { IronSession } from 'iron-session';
+import type { OpenStackCatalogService } from '@/lib/openstack/catalog';
 import type { SunriseSession } from '@/lib/session';
 import { readPrefs, writePrefs } from '@/lib/prefs';
 import type { Project, Region } from '@/types/openstack/keystone';
@@ -19,9 +20,23 @@ export class KeystoneSessionSetupError extends Error {
 }
 
 export type KeystoneSessionResolution =
-  | { status: 'ready'; project: Project; region?: Region }
+  | {
+      status: 'ready';
+      project: Project;
+      region?: Region;
+      projects: Project[];
+      regions: Region[];
+      catalog?: OpenStackCatalogService[];
+      userName?: string;
+    }
   | { status: 'no-projects'; region?: Region }
   | { status: 'no-role'; region?: Region };
+
+type ProjectScopedToken = {
+  value: string;
+  catalog?: OpenStackCatalogService[];
+  userName?: string;
+};
 
 function setupError(operation: string, status: number) {
   return new KeystoneSessionSetupError(
@@ -122,7 +137,7 @@ export async function fetchRegions(token: string): Promise<Region[]> {
 async function requestProjectScopedToken(
   unscopedToken: string,
   projectId: string,
-): Promise<string> {
+): Promise<ProjectScopedToken> {
   const KEYSTONE_API = keystoneApi();
   if (!KEYSTONE_API) {
     throw new KeystoneSessionSetupError(
@@ -165,7 +180,31 @@ async function requestProjectScopedToken(
       'Project scoping response did not include a token',
     );
   }
-  return token;
+  let payload:
+    | {
+        token?: {
+          catalog?: OpenStackCatalogService[];
+          user?: { name?: string };
+        };
+      }
+    | undefined;
+  try {
+    payload = (await response.json()) as typeof payload;
+  } catch {
+    // Some Keystone-compatible deployments omit the response body. The
+    // subject token remains valid; callers can discover metadata normally.
+  }
+
+  return {
+    value: token,
+    catalog: Array.isArray(payload?.token?.catalog)
+      ? payload.token.catalog
+      : undefined,
+    userName:
+      typeof payload?.token?.user?.name === 'string'
+        ? payload.token.user.name
+        : undefined,
+  };
 }
 
 export async function getProjectScopedToken(
@@ -173,7 +212,7 @@ export async function getProjectScopedToken(
   projectId: string,
 ): Promise<string | undefined> {
   try {
-    return await requestProjectScopedToken(unscopedToken, projectId);
+    return (await requestProjectScopedToken(unscopedToken, projectId)).value;
   } catch (e) {
     console.error('Error fetching project-scoped token:', e);
     return undefined;
@@ -217,15 +256,13 @@ export async function finalizeKeystoneSession(
     : [];
 
   let selectedProject: Project | undefined;
+  let scopedToken: ProjectScopedToken | undefined;
   for (const project of projectCandidates) {
     try {
-      const scopedToken = await requestProjectScopedToken(
-        unscopedToken,
-        project.id,
-      );
+      scopedToken = await requestProjectScopedToken(unscopedToken, project.id);
       selectedProject = project;
       session.projectId = project.id;
-      session.keystoneProjectToken = scopedToken;
+      session.keystoneProjectToken = scopedToken.value;
       break;
     } catch (error) {
       if (
@@ -266,5 +303,9 @@ export async function finalizeKeystoneSession(
     status: 'ready',
     project: selectedProject,
     region: candidateRegion,
+    projects,
+    regions,
+    catalog: scopedToken?.catalog,
+    userName: scopedToken?.userName,
   };
 }

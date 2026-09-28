@@ -221,7 +221,7 @@ describe("cloud context snapshot", () => {
       catalog: null,
     });
 
-    expect(snapshot.user.name).toBe("Restricted Operator");
+    expect(snapshot.user.name).toBe("restricted@example.test");
     expect(snapshot.catalog.status).toBe("unavailable");
     expect(snapshot.services.every(({ status }) => status === "unknown")).toBe(
       true,
