@@ -55,7 +55,7 @@ export function ApplicationCredentialsClient({
   const clearCreateActionIntent = useClearCreateActionIntent();
   const { data, isRefetching, refetch } = useQuery({
     queryKey: [activeProjectId, "identity", "application-credentials"],
-    queryFn: listApplicationCredentialsAction,
+    queryFn: () => listApplicationCredentialsAction(),
     initialData,
     retry: false,
   });

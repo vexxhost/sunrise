@@ -18,6 +18,7 @@ vi.mock("@/lib/openstack/keystone-actions", () => ({
 }));
 vi.mock("@/lib/openstack/identity-api", () => ({
   identityApiUrl: () => "https://identity.example.test/v3",
+  publicIdentityApiUrl: () => "https://identity.public.test/v3",
 }));
 vi.mock("@/lib/session", () => ({
   getSession: mocks.getSession,
@@ -76,6 +77,7 @@ describe("application credential queries", () => {
     expect(result.observedAt).toEqual(expect.any(Number));
     expect(result.roles).toEqual([{ id: "reader-id", name: "reader" }]);
     expect(result.serviceTypes).toEqual(["compute", "identity"]);
+    expect(result.authUrl).toBe("https://identity.public.test/v3");
     expect(mocks.openstack).toHaveBeenCalledWith(
       expect.objectContaining({
         endpointOverride: "https://identity.example.test/v3",

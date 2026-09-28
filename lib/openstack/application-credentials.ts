@@ -8,7 +8,10 @@ import {
   parseApplicationCredentialList,
 } from "@/lib/openstack/application-credential-schema";
 import { getUserInfo } from "@/lib/openstack/keystone-actions";
-import { identityApiUrl } from "@/lib/openstack/identity-api";
+import {
+  identityApiUrl,
+  publicIdentityApiUrl,
+} from "@/lib/openstack/identity-api";
 import { isOpenStackNotFoundError } from "@/lib/openstack/request";
 import { getSession, normalizeProjectId } from "@/lib/session";
 import type {
@@ -75,7 +78,7 @@ export async function listApplicationCredentialsAction(): Promise<ApplicationCre
     roles: context.roles,
     serviceTypes,
     userId: context.userId,
-    authUrl: identityApiUrl(),
+    authUrl: publicIdentityApiUrl(),
   };
 }
 
