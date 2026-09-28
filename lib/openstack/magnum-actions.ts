@@ -664,6 +664,7 @@ export async function deleteClusterAction(
     ...MAGNUM_SERVICE,
     path: `/clusters/${encodeURIComponent(parsedId.data)}`,
     method: "DELETE",
+    removedResource: { kind: "cluster", id: parsedId.data },
     apiVersion: MAGNUM_API_VERSION,
     invalidates: ["/", "/kubernetes", "/kubernetes/clusters"],
     successMessage: "Cluster deletion started.",

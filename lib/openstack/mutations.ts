@@ -14,6 +14,10 @@ import {
   resolveServiceEndpoint,
 } from "@/lib/openstack/catalog";
 import { serviceUrl } from "@/lib/openstack/request";
+import {
+  removeSavedResourcePreferences,
+  type SavedResourceTarget,
+} from "@/lib/resource-preference-store";
 
 type OpenStackMutationOptions<T> = {
   actionLabel: string;
@@ -23,6 +27,7 @@ type OpenStackMutationOptions<T> = {
   invalidates?: string[];
   method: "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
+  removedResource?: SavedResourceTarget;
   scope: MutationScope;
   serviceName: string;
   serviceType: string;
@@ -84,6 +89,7 @@ export async function executeOpenStackMutation<T = null>({
   invalidates = [],
   method,
   path,
+  removedResource,
   scope,
   serviceName,
   serviceType,
@@ -212,6 +218,20 @@ export async function executeOpenStackMutation<T = null>({
 
   for (const invalidatedPath of new Set(invalidates)) {
     revalidatePath(invalidatedPath);
+  }
+
+  if (removedResource && activeScope.regionId) {
+    try {
+      await removeSavedResourcePreferences([removedResource], {
+        projectId: activeScope.projectId,
+        regionId: activeScope.regionId,
+      });
+    } catch (error) {
+      console.warn("[mutation] saved resource cleanup failed", {
+        error,
+        resource: removedResource,
+      });
+    }
   }
 
   return mutationSuccess({

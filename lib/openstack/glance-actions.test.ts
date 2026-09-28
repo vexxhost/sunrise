@@ -6,7 +6,11 @@ vi.mock("@/lib/openstack/mutations", () => ({
   executeOpenStackMutation: mocks.executeOpenStackMutation,
 }));
 
-import { createImageAction, updateImageAction } from "@/lib/openstack/glance-actions";
+import {
+  createImageAction,
+  deleteImageAction,
+  updateImageAction,
+} from "@/lib/openstack/glance-actions";
 
 const scope = { projectId: "project-a", regionId: "RegionOne" };
 
@@ -66,5 +70,17 @@ describe("Glance mutation actions", () => {
       path: "/protected",
       value: true,
     });
+  });
+
+  it("removes a deleted image from saved resources", async () => {
+    await deleteImageAction(scope, "image-a");
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/v2/images/image-a",
+        removedResource: { kind: "image", id: "image-a" },
+      }),
+    );
   });
 });

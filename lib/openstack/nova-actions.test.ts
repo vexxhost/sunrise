@@ -14,6 +14,7 @@ import {
   attachPortAction,
   createKeypairAction,
   createServerAction,
+  deleteServerAction,
   deleteKeypairAction,
   detachPortAction,
   replaceServerMetadataAction,
@@ -116,6 +117,18 @@ describe("Nova mutation actions", () => {
         path: "/servers/server-a/action",
         body: { reboot: { type: "HARD" } },
         successMessage: "Forced reboot requested.",
+      }),
+    );
+  });
+
+  it("removes a deleted instance from saved resources", async () => {
+    await deleteServerAction(scope, "server-a");
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/servers/server-a",
+        removedResource: { kind: "instance", id: "server-a" },
       }),
     );
   });

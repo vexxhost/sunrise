@@ -35,6 +35,7 @@ import {
   type MutationScope,
 } from '@/lib/mutations';
 import { bucketArn } from '@/lib/s3/arn';
+import { removeSavedResourcePreferences } from '@/lib/resource-preference-store';
 import { validateBucketName } from '@/lib/s3/bucket-validation';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
 
@@ -439,6 +440,20 @@ export async function deleteBucket(
   }
 
   revalidateBuckets();
+  try {
+    await removeSavedResourcePreferences(
+      [{ kind: 'bucket', id: normalizedBucket }],
+      {
+        projectId: prepared.scope.projectId,
+        regionId: prepared.scope.regionId!,
+      },
+    );
+  } catch (error) {
+    console.warn('[s3/bucket] saved resource cleanup failed', {
+      bucket: normalizedBucket,
+      error,
+    });
+  }
   return mutationSuccess({
     data: { bucket: normalizedBucket },
     message: `Bucket ${normalizedBucket} was deleted.`,

@@ -236,6 +236,7 @@ export async function deleteServerAction(
     serviceName: SERVICE_NAME,
     path: `/servers/${encodeURIComponent(parsedId.value)}`,
     method: "DELETE",
+    removedResource: { kind: "instance", id: parsedId.value },
     apiVersion: API_VERSION,
     invalidates: [
       "/compute",
