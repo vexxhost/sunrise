@@ -4,11 +4,15 @@ const mocks = vi.hoisted(() => {
   process.env.DASHBOARD_URL = "https://sunrise.example.test";
   return {
     getSession: vi.fn(),
+    startSessionLifetime: vi.fn(),
     finalizeKeystoneSession: vi.fn(),
   };
 });
 
-vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
+vi.mock("@/lib/session", () => ({
+  getSession: mocks.getSession,
+  startSessionLifetime: mocks.startSessionLifetime,
+}));
 vi.mock("@/lib/keystone/login", () => ({
   finalizeKeystoneSession: mocks.finalizeKeystoneSession,
   KeystoneSessionSetupError: class KeystoneSessionSetupError extends Error {
@@ -32,6 +36,7 @@ describe("legacy WebSSO recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.startSessionLifetime.mockResolvedValue(undefined);
   });
 
   it("redirects no-project identities into the recovery experience", async () => {
@@ -47,6 +52,7 @@ describe("legacy WebSSO recovery", () => {
     );
     expect(session).toMatchObject({ authRecovery: { reason: "no-projects" } });
     expect(session.save).toHaveBeenCalledOnce();
+    expect(mocks.startSessionLifetime).toHaveBeenCalledWith(session);
   });
 
   it("preserves an access-denied failure for the recovery screen", async () => {

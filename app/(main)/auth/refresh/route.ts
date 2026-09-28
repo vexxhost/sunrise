@@ -9,6 +9,7 @@ function loginUrl(identityProvider: string, returnTo: string) {
   const url = new URL("/auth/oidc/login", DASHBOARD_URL);
   url.searchParams.set("idp", identityProvider);
   url.searchParams.set("returnTo", returnTo);
+  url.searchParams.set("continuation", "1");
   return url;
 }
 
@@ -17,6 +18,9 @@ export async function GET(request: Request) {
     new URL(request.url).searchParams.get("returnTo"),
   );
   const session = await getSession();
+  if (session.sessionExpiryReason) {
+    return NextResponse.redirect(new URL("/", DASHBOARD_URL), { status: 303 });
+  }
   const identityProvider = session.oidcIdentity?.identityProvider;
 
   try {
@@ -27,6 +31,11 @@ export async function GET(request: Request) {
       });
     }
     if (result === "no-projects" || result === "no-role") {
+      return NextResponse.redirect(new URL("/", DASHBOARD_URL), {
+        status: 303,
+      });
+    }
+    if (result === "expired") {
       return NextResponse.redirect(new URL("/", DASHBOARD_URL), {
         status: 303,
       });

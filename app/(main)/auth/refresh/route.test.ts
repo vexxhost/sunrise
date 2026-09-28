@@ -60,8 +60,25 @@ describe("Keystone auth refresh route", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "https://sunrise.example.test/auth/oidc/login?idp=demo&returnTo=%2Fkubernetes%2Fclusters",
+      "https://sunrise.example.test/auth/oidc/login?idp=demo&returnTo=%2Fkubernetes%2Fclusters&continuation=1",
     );
+  });
+
+  it("does not renew an expired Sunrise session", async () => {
+    mocks.getSession.mockResolvedValue({
+      ...session(),
+      sessionExpiryReason: "absolute",
+    });
+
+    const response = await GET(
+      new Request("https://sunrise.example.test/auth/refresh"),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.refreshKeystoneSession).not.toHaveBeenCalled();
   });
 
   it("keeps no-project sessions in the signed-in recovery view", async () => {

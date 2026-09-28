@@ -63,6 +63,39 @@ describe("OIDC login route", () => {
     );
   });
 
+  it("marks interactive child-token renewal as a session continuation", async () => {
+    const session = { save: vi.fn().mockResolvedValue(undefined) };
+    mocks.getSession.mockResolvedValue(session);
+
+    await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/login?idp=demo&continuation=1",
+      ),
+    );
+
+    expect(session).toMatchObject({ oidcSessionContinuation: true });
+  });
+
+  it("does not continue token renewal after Sunrise expires", async () => {
+    const session = {
+      sessionExpiryReason: "idle",
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+    mocks.getSession.mockResolvedValue(session);
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/login?idp=demo&continuation=1",
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(session.save).not.toHaveBeenCalled();
+    expect(mocks.buildAuthorizeUrl).not.toHaveBeenCalled();
+  });
+
   it("rejects providers that are not configured", async () => {
     const response = await GET(
       new Request(

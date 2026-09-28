@@ -45,11 +45,16 @@ function session(): {
   s3OidcRefreshToken?: string;
   s3ProjectRoles: Record<string, string>;
   save: ReturnType<typeof vi.fn>;
+  sessionSignedInAt: number;
+  sessionLastActivityAt: number;
 } {
+  const now = Date.now();
   return {
     projectId: "project-1",
     s3OidcRefreshToken: "old-s3-refresh-token",
     s3ProjectRoles: { project1: "arn:aws:iam::account:role/access" },
+    sessionSignedInAt: now - 1_000,
+    sessionLastActivityAt: now - 500,
     save: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -129,5 +134,16 @@ describe("Object Storage credential renewal", () => {
       ensureActiveProjectS3Credentials(current as never),
     ).resolves.toBeUndefined();
     expect(mocks.refreshS3Tokens).not.toHaveBeenCalled();
+  });
+
+  it("does not renew STS credentials beyond the Sunrise lifetime", async () => {
+    const current = session();
+    current.sessionSignedInAt = Date.now() - 9 * 60 * 60_000;
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).resolves.toBeUndefined();
+    expect(mocks.refreshS3Tokens).not.toHaveBeenCalled();
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 });

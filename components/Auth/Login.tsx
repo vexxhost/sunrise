@@ -2,9 +2,17 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { LoaderCircle, LogIn } from "lucide-react";
+import { Clock3, LoaderCircle, LogIn } from "lucide-react";
 import { login } from "@/app/(main)/auth/login/action";
 import { AuthScene } from "@/components/Auth/AuthScene";
+import type { SessionExpiryReason } from "@/lib/session-lifetime";
+
+const expiryNotice: Record<SessionExpiryReason, string> = {
+  idle: "Your previous session expired after a period without activity.",
+  absolute: "Your previous session reached its maximum lifetime.",
+  policy:
+    "Your previous session ended so the current security policy could be applied.",
+};
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -27,8 +35,10 @@ function SubmitButton() {
 
 export default function Login({
   authorizationPrompt,
+  sessionExpiryReason,
 }: {
   authorizationPrompt?: "login" | "select_account";
+  sessionExpiryReason?: SessionExpiryReason;
 }) {
   const [state, action] = useActionState(login, undefined);
 
@@ -44,6 +54,13 @@ export default function Login({
         <p className="mt-4 text-center text-sm leading-6 text-muted-foreground">
           Sign in to continue.
         </p>
+
+        {sessionExpiryReason ? (
+          <div className="mt-6 flex gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm leading-5 text-amber-800 dark:text-amber-100">
+            <Clock3 className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <p>{expiryNotice[sessionExpiryReason]} Sign in to continue.</p>
+          </div>
+        ) : null}
 
         <form action={action} className="mt-9 space-y-5">
           {authorizationPrompt ? (

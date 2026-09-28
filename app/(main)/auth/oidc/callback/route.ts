@@ -4,8 +4,14 @@ import { stashCloudContextBootstrap } from "@/lib/cloud-context-bootstrap";
 import {
   getSession,
   normalizeProjectId,
+  saveSessionActivity,
   setS3CredentialsForProject,
+  startSessionLifetime,
 } from "@/lib/session";
+import {
+  getSessionLifetimeState,
+  SESSION_EXPIRY_NOTICE_COOKIE,
+} from "@/lib/session-lifetime";
 import {
   exchangeCodeForTokens,
   resolveOidcIdentity,
@@ -30,17 +36,19 @@ export async function GET(request: Request) {
   const state = url.searchParams.get("state");
   const errorParam = url.searchParams.get("error");
 
-  const session = await getSession();
+  const session = await getSession({ allowExpired: true });
   const expectedState = session.oidcState;
   const verifier = session.oidcVerifier;
   const idp = session.oidcIdProvider;
   const returnTo = normalizeAuthReturnTo(session.oidcReturnTo);
+  const continuation = session.oidcSessionContinuation === true;
 
   // Single-use values; clear regardless of outcome.
   session.oidcState = undefined;
   session.oidcVerifier = undefined;
   session.oidcReturnTo = undefined;
   session.oidcIdProvider = undefined;
+  session.oidcSessionContinuation = undefined;
 
   if (errorParam) {
     await session.save();
@@ -55,6 +63,14 @@ export async function GET(request: Request) {
     return new NextResponse("OIDC state mismatch", { status: 400 });
   }
 
+  if (continuation) {
+    const lifetime = getSessionLifetimeState(session);
+    if (lifetime.status !== "active" || !session.sessionId) {
+      await session.save();
+      return NextResponse.redirect(DASHBOARD_URL, { status: 303 });
+    }
+  }
+
   let tokens;
   try {
     tokens = await exchangeCodeForTokens(code, verifier);
@@ -63,6 +79,12 @@ export async function GET(request: Request) {
     const msg = e instanceof Error ? e.message : "unknown error";
     console.error("[oidc/callback] code exchange failed:", msg);
     return new NextResponse(`Login failed: ${msg}`, { status: 500 });
+  }
+
+  if (continuation && session.sessionId) {
+    await saveSessionActivity(session.sessionId);
+  } else {
+    await startSessionLifetime(session);
   }
 
   session.keycloakRefreshToken = tokens.refresh_token;
@@ -189,7 +211,12 @@ export async function GET(request: Request) {
   }
 
   await session.save();
-  return NextResponse.redirect(new URL(returnTo, DASHBOARD_URL), {
+  const response = NextResponse.redirect(new URL(returnTo, DASHBOARD_URL), {
     status: 303,
   });
+  response.cookies.set(SESSION_EXPIRY_NOTICE_COOKIE, "", {
+    expires: new Date(0),
+    path: "/",
+  });
+  return response;
 }

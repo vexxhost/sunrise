@@ -4,12 +4,18 @@ const mocks = vi.hoisted(() => {
   process.env.DASHBOARD_URL = "https://sunrise.example.test";
   return {
     getSession: vi.fn(),
+    destroySessionActivity: vi.fn(),
     buildEndSessionUrl: vi.fn(),
     refreshAccessToken: vi.fn(),
   };
 });
 
-vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
+vi.mock("@/lib/session", () => ({
+  getSession: mocks.getSession,
+  destroySessionActivity: mocks.destroySessionActivity,
+  SESSION_ACTIVITY_COOKIE_NAME: "sunrise-activity",
+  SESSION_COOKIE_NAME: "sunrise",
+}));
 vi.mock("@/lib/oidc/sunrise", () => ({
   buildEndSessionUrl: mocks.buildEndSessionUrl,
   refreshAccessToken: mocks.refreshAccessToken,
@@ -20,6 +26,7 @@ import { GET } from "./route";
 function session() {
   return {
     keycloakRefreshToken: "refresh-token",
+    oidcIdentity: { identityProvider: "demo" },
     destroy: vi.fn(),
   };
 }
@@ -28,6 +35,7 @@ describe("Sunrise logout route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mocks.destroySessionActivity.mockResolvedValue(undefined);
   });
 
   it("ends the provider session and clears the local session", async () => {
@@ -51,9 +59,31 @@ describe("Sunrise logout route", () => {
       idTokenHint: "logout-id-token",
     });
     expect(current.destroy).toHaveBeenCalledOnce();
+    expect(mocks.getSession).toHaveBeenCalledWith({ allowExpired: true });
+    expect(mocks.destroySessionActivity).toHaveBeenCalledOnce();
     const cookies = response.headers.get("set-cookie") ?? "";
     expect(cookies).toContain("sunrise=");
     expect(cookies).toContain("sunrise-auth-prompt=select_account");
+  });
+
+  it("carries an expiry notice to the next login screen", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.refreshAccessToken.mockResolvedValue({ id_token: "logout-id-token" });
+    mocks.buildEndSessionUrl.mockResolvedValue(null);
+
+    const response = await GET(
+      new Request("https://sunrise.example.test/auth/logout?reason=idle"),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/auth/oidc/login?idp=demo",
+    );
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(mocks.buildEndSessionUrl).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toContain(
+      "sunrise-session-expiry=idle",
+    );
   });
 
   it("still signs out locally when provider discovery is unavailable", async () => {
