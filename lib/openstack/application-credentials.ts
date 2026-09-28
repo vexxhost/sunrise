@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { getServiceCatalog } from "@/lib/openstack/catalog";
-import { openstack } from "@/lib/openstack/actions";
+import { openstackRequest } from "@/lib/openstack/request-server";
 import {
   parseApplicationCredential,
   parseApplicationCredentialList,
@@ -14,10 +14,7 @@ import {
 } from "@/lib/openstack/identity-api";
 import { isOpenStackNotFoundError } from "@/lib/openstack/request";
 import { getSession, normalizeProjectId } from "@/lib/session";
-import type {
-  ApplicationCredential,
-  KeystoneRole,
-} from "@/types/openstack";
+import type { ApplicationCredential, KeystoneRole } from "@/types/openstack";
 
 const SERVICE_TYPE = "identity";
 const SERVICE_NAME = "keystone";
@@ -37,7 +34,9 @@ async function currentIdentityContext() {
 
   const identity = await getUserInfo();
   if (!identity?.id || !session.projectId) {
-    throw new Error("The current Keystone user or project could not be resolved.");
+    throw new Error(
+      "The current Keystone user or project could not be resolved.",
+    );
   }
 
   return {
@@ -52,7 +51,7 @@ async function currentIdentityContext() {
 export async function listApplicationCredentialsAction(): Promise<ApplicationCredentialPageData> {
   const context = await currentIdentityContext();
   const [response, catalog] = await Promise.all([
-    openstack({
+    openstackRequest({
       regionId: context.regionId,
       serviceType: SERVICE_TYPE,
       serviceName: SERVICE_NAME,
@@ -91,7 +90,7 @@ export async function getApplicationCredentialAction(
   const context = await currentIdentityContext();
   let response: unknown;
   try {
-    response = await openstack({
+    response = await openstackRequest({
       regionId: context.regionId,
       serviceType: SERVICE_TYPE,
       serviceName: SERVICE_NAME,

@@ -1,11 +1,11 @@
-'use server';
+"use server";
 
-import { openstack } from '@/lib/openstack/actions';
-import { getSession } from '@/lib/session';
-import { rewriteNoVncUrl } from '@/lib/openstack/console-url';
+import { openstackRequest } from "@/lib/openstack/request-server";
+import { getSession } from "@/lib/session";
+import { rewriteNoVncUrl } from "@/lib/openstack/console-url";
 
-export type ConsoleProtocol = 'vnc' | 'serial';
-export type ConsoleType = 'novnc' | 'xvpvnc' | 'serial';
+export type ConsoleProtocol = "vnc" | "serial";
+export type ConsoleType = "novnc" | "xvpvnc" | "serial";
 
 export interface RemoteConsole {
   protocol: ConsoleProtocol;
@@ -17,8 +17,8 @@ export interface RemoteConsole {
 }
 
 const DEFAULTS: Record<ConsoleProtocol, ConsoleType> = {
-  vnc: 'novnc',
-  serial: 'serial',
+  vnc: "novnc",
+  serial: "serial",
 };
 
 /**
@@ -35,7 +35,7 @@ const DEFAULTS: Record<ConsoleProtocol, ConsoleType> = {
  */
 export async function getRemoteConsoleAction(
   serverId: string,
-  protocol: ConsoleProtocol = 'vnc',
+  protocol: ConsoleProtocol = "vnc",
   type?: ConsoleType,
   regionId?: string,
 ): Promise<RemoteConsole> {
@@ -43,16 +43,16 @@ export async function getRemoteConsoleAction(
   const resolvedRegion = regionId ?? session.regionId;
 
   if (!resolvedRegion) {
-    throw new Error('No region available for console request');
+    throw new Error("No region available for console request");
   }
 
-  const data = await openstack<{ remote_console: RemoteConsole }>({
+  const data = await openstackRequest<{ remote_console: RemoteConsole }>({
     regionId: resolvedRegion,
-    serviceType: 'compute',
-    serviceName: 'nova',
+    serviceType: "compute",
+    serviceName: "nova",
     path: `/servers/${serverId}/remote-consoles`,
-    method: 'POST',
-    apiVersion: 'compute 2.79',
+    method: "POST",
+    apiVersion: "compute 2.79",
     body: {
       remote_console: {
         protocol,
@@ -67,8 +67,9 @@ export async function getRemoteConsoleAction(
 
   const remote = data.remote_console;
   const rawUrl = remote.url;
-  const url = protocol === 'vnc'
-    ? rewriteNoVncUrl(rawUrl, process.env.DASHBOARD_URL)
-    : rawUrl;
+  const url =
+    protocol === "vnc"
+      ? rewriteNoVncUrl(rawUrl, process.env.DASHBOARD_URL)
+      : rawUrl;
   return { ...remote, url, rawUrl };
 }

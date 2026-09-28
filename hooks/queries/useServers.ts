@@ -4,6 +4,7 @@
 
 import { queryOptions } from "@tanstack/react-query";
 import { openstack } from "@/lib/openstack/actions";
+import { getServerConsoleOutputAction } from "@/lib/openstack/nova-actions";
 import type {
   ServerListResponse,
   ServerResponse,
@@ -14,7 +15,6 @@ import type {
   InterfaceAttachment,
   ServerActionsListResponse,
   ServerActionResponse,
-  ServerConsoleOutputResponse,
   ComputeAvailabilityZoneListResponse,
 } from "@/types/openstack";
 
@@ -324,25 +324,7 @@ export function serverConsoleOutputQueryOptions(
       length ?? "full",
     ],
     queryFn: async () => {
-      const body =
-        length === null
-          ? { "os-getConsoleOutput": {} }
-          : { "os-getConsoleOutput": { length } };
-      const data = await openstack<ServerConsoleOutputResponse>({
-        regionId: regionId!,
-        serviceType: "compute",
-        serviceName: "nova",
-        path: `/servers/${serverId}/action`,
-        method: "POST",
-        apiVersion: "compute 2.79",
-        body,
-      });
-
-      if (!data) {
-        throw new Error("Failed to fetch console log");
-      }
-
-      return data.output ?? "";
+      return getServerConsoleOutputAction(serverId, length, regionId);
     },
     enabled: !!serverId && !!regionId,
   });

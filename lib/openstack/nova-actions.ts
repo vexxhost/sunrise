@@ -1,6 +1,6 @@
 "use server";
 
-import { openstack } from "@/lib/openstack/actions";
+import { openstackRequest } from "@/lib/openstack/request-server";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import { getSession } from "@/lib/session";
 import {
@@ -19,6 +19,7 @@ import type {
   ResizeServerRequest,
   Server,
   ServerConsole,
+  ServerConsoleOutputResponse,
   VncConsoleType,
 } from "@/types/openstack";
 
@@ -77,6 +78,7 @@ const attachPortSchema = z.object({
   portId: resourceIdSchema,
   serverId: resourceIdSchema,
 });
+const consoleOutputLengthSchema = z.number().int().positive().nullable();
 
 export type LaunchServerInput = z.input<typeof launchServerSchema>;
 export type RebuildServerInput = z.input<typeof rebuildServerSchema>;
@@ -151,7 +153,7 @@ async function performInstanceAction(
 ): Promise<void> {
   const resolvedRegion = await resolveRegionId(regionId);
 
-  await openstack({
+  await openstackRequest({
     regionId: resolvedRegion,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
@@ -634,7 +636,7 @@ export async function rescueServerAction(
 ): Promise<string | undefined> {
   const resolvedRegion = await resolveRegionId(regionId);
 
-  const data = await openstack<{ adminPass?: string }>({
+  const data = await openstackRequest<{ adminPass?: string }>({
     regionId: resolvedRegion,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
@@ -669,7 +671,7 @@ export async function getVncConsoleAction(
 ): Promise<ServerConsole> {
   const resolvedRegion = await resolveRegionId(regionId);
 
-  const data = await openstack<{ console: ServerConsole }>({
+  const data = await openstackRequest<{ console: ServerConsole }>({
     regionId: resolvedRegion,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
@@ -683,4 +685,32 @@ export async function getVncConsoleAction(
     data,
     `Failed to fetch ${type} console for instance ${id}`,
   ).console;
+}
+
+export async function getServerConsoleOutputAction(
+  serverId: string,
+  length: number | null,
+  regionId?: string,
+): Promise<string> {
+  const parsedId = resourceIdSchema.safeParse(serverId);
+  const parsedLength = consoleOutputLengthSchema.safeParse(length);
+  if (!parsedId.success || !parsedLength.success) {
+    throw new Error("Invalid console output request");
+  }
+
+  const data = await openstackRequest<ServerConsoleOutputResponse>({
+    regionId: await resolveRegionId(regionId),
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(parsedId.data)}/action`,
+    method: "POST",
+    apiVersion: API_VERSION,
+    body: {
+      "os-getConsoleOutput":
+        parsedLength.data === null ? {} : { length: parsedLength.data },
+    },
+  });
+
+  if (!data) throw new Error("Failed to fetch console log");
+  return data.output ?? "";
 }
