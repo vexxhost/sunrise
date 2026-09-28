@@ -56,11 +56,15 @@ export async function refreshActiveProjectS3Credentials(
     sessionChanged = true;
   }
 
+  // Keycloak refresh-token rotation may invalidate the previous token as soon
+  // as this response is issued. Persist the replacement token and the latest
+  // role mapping before STS discovery or role assumption can fail.
+  if (sessionChanged) {
+    await session.save();
+  }
+
   const roleArn = session.s3ProjectRoles?.[projectId];
   if (!roleArn) {
-    if (sessionChanged) {
-      await session.save();
-    }
     throw new S3ProjectRoleUnavailableError(projectId);
   }
 

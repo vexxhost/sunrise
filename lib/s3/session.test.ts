@@ -83,7 +83,7 @@ describe("Object Storage credential renewal", () => {
       "arn:aws:iam::account:role/access",
     );
     expect(current.s3OidcRefreshToken).toBe("rotated-s3-refresh-token");
-    expect(current.save).toHaveBeenCalledOnce();
+    expect(current.save).toHaveBeenCalledTimes(2);
   });
 
   it("does not turn a missing project role into another SSO loop", async () => {
@@ -93,6 +93,20 @@ describe("Object Storage credential renewal", () => {
     await expect(
       ensureActiveProjectS3Credentials(current as never),
     ).rejects.toBeInstanceOf(S3ProjectRoleUnavailableError);
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("persists a rotated refresh token before a later STS failure", async () => {
+    const current = session();
+    mocks.assumeRoleWithIdToken.mockRejectedValue(
+      new Error("STS temporarily unavailable"),
+    );
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("STS temporarily unavailable");
+
+    expect(current.s3OidcRefreshToken).toBe("rotated-s3-refresh-token");
     expect(current.save).toHaveBeenCalledOnce();
   });
 

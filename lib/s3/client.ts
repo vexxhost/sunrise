@@ -3,7 +3,10 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent } from 'https';
 import { getActiveS3Credentials, getSession } from '@/lib/session';
 import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
-import { ensureActiveProjectS3Credentials } from '@/lib/s3/session';
+import {
+  ensureActiveProjectS3Credentials,
+  S3ProjectRoleUnavailableError,
+} from '@/lib/s3/session';
 
 export class S3AuthRequiredError extends Error {
   constructor() {
@@ -20,9 +23,17 @@ export async function getS3Client({
   allowCredentialRefresh = false,
 }: GetS3ClientOptions = {}): Promise<S3Client> {
   const session = await getSession();
-  const creds = allowCredentialRefresh
-    ? await ensureActiveProjectS3Credentials(session)
-    : getActiveS3Credentials(session);
+  let creds;
+  try {
+    creds = allowCredentialRefresh
+      ? await ensureActiveProjectS3Credentials(session)
+      : getActiveS3Credentials(session);
+  } catch (error) {
+    if (error instanceof S3ProjectRoleUnavailableError) {
+      throw new S3AuthRequiredError();
+    }
+    throw error;
+  }
 
   if (!creds) {
     throw new S3AuthRequiredError();
