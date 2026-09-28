@@ -3,7 +3,9 @@ import {
   isRecoveryResourceKind,
   recoveryDestination,
   recoveryPreferenceKind,
+  type ResourceRecoveryTarget,
 } from "@/lib/resource-recovery";
+import { verifyResourceRecoveryProof } from "@/lib/resource-recovery-proof";
 import { removeSavedResourcePreferences } from "@/lib/resource-preference-store";
 import { getSession } from "@/lib/session";
 
@@ -41,7 +43,26 @@ export async function GET(request: NextRequest) {
 
   if (preferenceKind) {
     const session = await getSession();
-    if (session.projectId && session.regionId) {
+    const recoveryAt = Number(
+      request.nextUrl.searchParams.get("recoveryAt") ?? Number.NaN,
+    );
+    const recoveryProof = request.nextUrl.searchParams.get("recoveryProof");
+    const target: ResourceRecoveryTarget = {
+      kind: kindValue,
+      id,
+      parentId,
+      mode,
+    };
+    if (
+      session.projectId &&
+      session.regionId &&
+      recoveryProof &&
+      verifyResourceRecoveryProof(
+        target,
+        { projectId: session.projectId, regionId: session.regionId },
+        { issuedAt: recoveryAt, signature: recoveryProof },
+      )
+    ) {
       try {
         await removeSavedResourcePreferences(
           [{ kind: preferenceKind, id }],

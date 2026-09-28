@@ -6,17 +6,34 @@ import {
   resourceRecoveryPath,
   type ResourceRecoveryTarget,
 } from "@/lib/resource-recovery";
+import { createResourceRecoveryProof } from "@/lib/resource-recovery-proof";
+import { getSession } from "@/lib/session";
 
-export function recoverMissingResource(target: ResourceRecoveryTarget): never {
-  redirect(resourceRecoveryPath(target));
+export async function recoverMissingResource(
+  target: ResourceRecoveryTarget,
+): Promise<never> {
+  const path = resourceRecoveryPath(target);
+  const session = await getSession();
+  if (!session.projectId || !session.regionId) redirect(path);
+
+  const proof = createResourceRecoveryProof(target, {
+    projectId: session.projectId,
+    regionId: session.regionId,
+  });
+  if (!proof) redirect(path);
+
+  const recoveryUrl = new URL(path, "http://sunrise.local");
+  recoveryUrl.searchParams.set("recoveryAt", String(proof.issuedAt));
+  recoveryUrl.searchParams.set("recoveryProof", proof.signature);
+  redirect(`${recoveryUrl.pathname}${recoveryUrl.search}`);
 }
 
-export function recoverMissingOpenStackResource(
+export async function recoverMissingOpenStackResource(
   error: unknown,
   target: ResourceRecoveryTarget,
-): never {
+): Promise<never> {
   if (!isOpenStackNotFoundError(error)) throw error;
-  recoverMissingResource(target);
+  return recoverMissingResource(target);
 }
 
 export async function fetchOpenStackResourceOrRecover<T>(
@@ -26,6 +43,6 @@ export async function fetchOpenStackResourceOrRecover<T>(
   try {
     return await request;
   } catch (error) {
-    recoverMissingOpenStackResource(error, target);
+    return recoverMissingOpenStackResource(error, target);
   }
 }

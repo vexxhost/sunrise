@@ -4,11 +4,15 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   removeSavedResourcePreferences: vi.fn(),
+  verifyResourceRecoveryProof: vi.fn(),
 }));
 
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/resource-preference-store", () => ({
   removeSavedResourcePreferences: mocks.removeSavedResourcePreferences,
+}));
+vi.mock("@/lib/resource-recovery-proof", () => ({
+  verifyResourceRecoveryProof: mocks.verifyResourceRecoveryProof,
 }));
 
 import { GET } from "./route";
@@ -21,12 +25,13 @@ describe("resource recovery route", () => {
       regionId: "RegionOne",
     });
     mocks.removeSavedResourcePreferences.mockResolvedValue(1);
+    mocks.verifyResourceRecoveryProof.mockReturnValue(true);
   });
 
   it("removes a definitively missing saved resource before redirecting", async () => {
     const response = await GET(
       new NextRequest(
-        "http://localhost/api/preferences/resources/recover?kind=instance&id=removed-server",
+        "http://localhost/api/preferences/resources/recover?kind=instance&id=removed-server&recoveryAt=1000&recoveryProof=valid",
       ),
     );
 
@@ -38,6 +43,40 @@ describe("resource recovery route", () => {
       [{ kind: "instance", id: "removed-server" }],
       { projectId: "project-a", regionId: "RegionOne" },
     );
+    expect(mocks.verifyResourceRecoveryProof).toHaveBeenCalledWith(
+      {
+        kind: "instance",
+        id: "removed-server",
+        parentId: undefined,
+        mode: undefined,
+      },
+      { projectId: "project-a", regionId: "RegionOne" },
+      { issuedAt: 1000, signature: "valid" },
+    );
+  });
+
+  it("does not mutate preferences for an unsigned recovery URL", async () => {
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/preferences/resources/recover?kind=instance&id=removed-server",
+      ),
+    );
+
+    expect(response.status).toBe(307);
+    expect(mocks.verifyResourceRecoveryProof).not.toHaveBeenCalled();
+    expect(mocks.removeSavedResourcePreferences).not.toHaveBeenCalled();
+  });
+
+  it("does not mutate preferences when the recovery proof is rejected", async () => {
+    mocks.verifyResourceRecoveryProof.mockReturnValue(false);
+
+    await GET(
+      new NextRequest(
+        "http://localhost/api/preferences/resources/recover?kind=instance&id=removed-server&recoveryAt=1000&recoveryProof=tampered",
+      ),
+    );
+
+    expect(mocks.removeSavedResourcePreferences).not.toHaveBeenCalled();
   });
 
   it("derives the redirect internally for direct object recovery", async () => {
@@ -61,7 +100,7 @@ describe("resource recovery route", () => {
 
     const response = await GET(
       new NextRequest(
-        "http://localhost/api/preferences/resources/recover?kind=bucket&id=removed-bucket",
+        "http://localhost/api/preferences/resources/recover?kind=bucket&id=removed-bucket&recoveryAt=1000&recoveryProof=valid",
       ),
     );
 
