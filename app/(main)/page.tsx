@@ -7,7 +7,7 @@ import { loadCloudContext } from "@/lib/cloud-context";
 import { loadOperationalFeed } from "@/lib/openstack/operational-feed";
 import { compileOperationalFeed } from "@/lib/openstack/operational";
 import { loadProjectOverview } from "@/lib/openstack/overview";
-import { listClustersAction } from "@/lib/openstack/magnum";
+import { listClusters } from "@/lib/openstack/magnum-server";
 import { resolveServiceEndpoint } from "@/lib/openstack/catalog";
 import { filterResourcePreferencesByLiveIds } from "@/lib/resource-preferences";
 
@@ -38,7 +38,7 @@ async function OverviewData() {
       projectId,
       catalog: cloud.catalog,
     }),
-    listClustersAction({}, regionId, projectId, magnumEndpoint ?? undefined)
+    listClusters({}, regionId, projectId, magnumEndpoint ?? undefined)
       .then((clusters) => ({ ok: true as const, clusters }))
       .catch(() => ({ ok: false as const, clusters: [] })),
   ]);

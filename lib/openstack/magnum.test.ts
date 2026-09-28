@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({
   openstack: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/openstack/actions", () => ({ openstack: mocks.openstack }));
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
 
 import { listClustersAction } from "@/lib/openstack/magnum";
+import { listClusters } from "@/lib/openstack/magnum-server";
 
 describe("Magnum cluster queries", () => {
   beforeEach(() => {
@@ -40,6 +42,21 @@ describe("Magnum cluster queries", () => {
 
   it("uses the detailed collection and filters to the active project", async () => {
     const result = await listClustersAction(
+      { limit: 20 },
+      "RegionOne",
+      "project-a",
+    );
+
+    expect(result.map(({ uuid }) => uuid)).toEqual(["cluster-a"]);
+    expect(
+      mocks.openstack.mock.calls.every(
+        ([options]) => options.endpointOverride === undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it("reuses a trusted catalog endpoint from server-only callers", async () => {
+    const result = await listClusters(
       { limit: 20 },
       "RegionOne",
       "project-a",
