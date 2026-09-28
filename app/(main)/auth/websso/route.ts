@@ -1,4 +1,4 @@
-import { getSession } from '@/lib/session';
+import { getSession, startSessionLifetime } from '@/lib/session';
 import {
   finalizeKeystoneSession,
   KeystoneSessionSetupError,
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    await startSessionLifetime(session);
     const resolution = await finalizeKeystoneSession(session, token);
     session.authRecovery =
       resolution.status === 'ready' ? undefined : { reason: resolution.status };

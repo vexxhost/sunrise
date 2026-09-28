@@ -16,6 +16,9 @@ export async function GET(request: Request) {
   const state = generateState();
 
   const session = await getSession();
+  if (session.sessionExpiryReason) {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
   session.s3OidcVerifier = verifier;
   session.s3OidcState = state;
   session.s3OidcReturnTo = normalizeObjectStorageReturnTo(

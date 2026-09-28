@@ -7,16 +7,19 @@ import {
 } from "@/lib/keystone/login";
 import { refreshAccessToken } from "@/lib/oidc/sunrise";
 import type { SunriseSession } from "@/lib/session";
+import { getSessionLifetimeState } from "@/lib/session-lifetime";
 
 const PROTOCOL =
   process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDER_PROTOCOL ?? "openid";
 
 export type KeystoneRenewalResult =
-  "ready" | "no-projects" | "no-role" | "reauthenticate";
+  "ready" | "no-projects" | "no-role" | "reauthenticate" | "expired";
 
 export async function refreshKeystoneSession(
   session: IronSession<SunriseSession>,
 ): Promise<KeystoneRenewalResult> {
+  if (getSessionLifetimeState(session).status !== "active") return "expired";
+
   const refreshToken = session.keycloakRefreshToken;
   const identityProvider = session.oidcIdentity?.identityProvider;
   if (!refreshToken || !identityProvider) return "reauthenticate";

@@ -23,6 +23,9 @@ export async function GET(request: Request) {
     requestUrl.searchParams.get("returnTo"),
   );
   const session = await getSession();
+  if (session.sessionExpiryReason) {
+    return NextResponse.redirect(new URL("/", DASHBOARD_URL), { status: 303 });
+  }
 
   try {
     const credentials = await refreshActiveProjectS3Credentials(session);

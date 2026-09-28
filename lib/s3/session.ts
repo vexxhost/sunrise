@@ -8,6 +8,7 @@ import {
   type S3StsCredentials,
   type SunriseSession,
 } from "@/lib/session";
+import { getSessionLifetimeState } from "@/lib/session-lifetime";
 import { refreshS3Tokens, type S3OidcRefreshResult } from "@/lib/s3/oidc";
 import { assumeRoleWithIdToken, tryExtractRgwProjectRoles } from "@/lib/s3/sts";
 
@@ -21,6 +22,8 @@ export class S3ProjectRoleUnavailableError extends Error {
 export async function refreshActiveProjectS3Credentials(
   session: IronSession<SunriseSession>,
 ): Promise<S3StsCredentials | undefined> {
+  if (getSessionLifetimeState(session).status !== "active") return undefined;
+
   const projectId = normalizeProjectId(session.projectId);
   if (!projectId) return undefined;
   if (!session.s3OidcRefreshToken) return undefined;
@@ -81,6 +84,8 @@ export async function refreshActiveProjectS3Credentials(
 export async function ensureActiveProjectS3Credentials(
   session: IronSession<SunriseSession>,
 ): Promise<S3StsCredentials | undefined> {
+  if (getSessionLifetimeState(session).status !== "active") return undefined;
+
   const current = getActiveS3Credentials(session);
   if (current) return current;
 

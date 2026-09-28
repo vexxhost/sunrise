@@ -18,10 +18,13 @@ vi.mock("@/lib/oidc/sunrise", () => ({
 import { refreshKeystoneSession } from "@/lib/keystone/renewal";
 
 function session() {
+  const now = Date.now();
   return {
     keycloakRefreshToken: "old-refresh-token",
     oidcIdentity: { identityProvider: "demo" },
     authRecovery: { reason: "session-unavailable" },
+    sessionSignedInAt: now - 1_000,
+    sessionLastActivityAt: now - 500,
     save: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -77,5 +80,15 @@ describe("Keystone session renewal", () => {
       "reauthenticate",
     );
     expect(mocks.federateOidcWithKeystone).not.toHaveBeenCalled();
+  });
+
+  it("does not renew child sessions beyond the Sunrise lifetime", async () => {
+    const current = session();
+    current.sessionSignedInAt = Date.now() - 9 * 60 * 60_000;
+
+    await expect(refreshKeystoneSession(current as never)).resolves.toBe(
+      "expired",
+    );
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
   });
 });

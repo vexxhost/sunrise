@@ -5,7 +5,17 @@ import {
   refreshAccessToken,
   type OidcAuthorizationPrompt,
 } from "@/lib/oidc/sunrise";
-import { getSession } from "@/lib/session";
+import {
+  destroySessionActivity,
+  getSession,
+  SESSION_ACTIVITY_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+} from "@/lib/session";
+import {
+  parseSessionExpiryReason,
+  SESSION_EXPIRY_NOTICE_COOKIE,
+  type SessionExpiryReason,
+} from "@/lib/session-lifetime";
 
 const KEYSTONE_API = process.env.KEYSTONE_API;
 
@@ -43,6 +53,12 @@ function dashboardUrl() {
   ).toString();
 }
 
+function oidcLoginUrl(identityProvider: string) {
+  const url = new URL("/auth/oidc/login", dashboardUrl());
+  url.searchParams.set("idp", identityProvider);
+  return url.toString();
+}
+
 async function logoutIdToken(refreshToken?: string) {
   if (!refreshToken) return undefined;
 
@@ -67,29 +83,59 @@ async function providerLogoutUrl(idTokenHint?: string) {
   }
 }
 
-async function performLogout(prompt: OidcAuthorizationPrompt) {
-  const session = await getSession();
+async function performLogout(
+  prompt: OidcAuthorizationPrompt,
+  expiryReason?: SessionExpiryReason,
+) {
+  const session = await getSession({ allowExpired: true });
   const unscoped = session.keystone_unscoped_token;
   const scoped = session.keystoneProjectToken;
   const refreshToken = session.keycloakRefreshToken;
+  const identityProvider = session.oidcIdentity?.identityProvider;
+  const reuseProviderSession = Boolean(
+    expiryReason && prompt === "login" && identityProvider,
+  );
 
-  // Resolve the provider logout hint while revoking both Keystone tokens.
+  // An expired Sunrise session may begin a fresh local session from a still
+  // valid Keycloak SSO session. Explicit sign-out and account switching still
+  // terminate the provider session.
   const [idTokenHint] = await Promise.all([
-    logoutIdToken(refreshToken),
+    reuseProviderSession
+      ? Promise.resolve(undefined)
+      : logoutIdToken(refreshToken),
     scoped && unscoped ? revokeToken(scoped, unscoped) : Promise.resolve(),
     unscoped ? revokeToken(unscoped, unscoped) : Promise.resolve(),
   ]);
-  const endSessionUrl = await providerLogoutUrl(idTokenHint);
+  const endSessionUrl = reuseProviderSession
+    ? null
+    : await providerLogoutUrl(idTokenHint);
 
   session.destroy();
+  await destroySessionActivity();
 
-  const response = NextResponse.redirect(endSessionUrl ?? dashboardUrl(), {
-    status: 303,
-  });
+  const destination =
+    reuseProviderSession && identityProvider
+      ? oidcLoginUrl(identityProvider)
+      : (endSessionUrl ?? dashboardUrl());
+  const response = NextResponse.redirect(destination, { status: 303 });
   // Defensively clear the session cookie on the redirect response itself,
   // in case iron-session's destroy() doesn't propagate through the redirect.
-  response.cookies.set("sunrise", "", {
+  response.cookies.set(SESSION_COOKIE_NAME, "", {
     expires: new Date(0),
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+  response.cookies.set(SESSION_ACTIVITY_COOKIE_NAME, "", {
+    expires: new Date(0),
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+  response.cookies.set(SESSION_EXPIRY_NOTICE_COOKIE, expiryReason ?? "", {
+    ...(expiryReason ? { maxAge: 10 * 60 } : { expires: new Date(0) }),
     path: "/",
     httpOnly: true,
     sameSite: "lax",
@@ -111,10 +157,22 @@ function requestedPrompt(request: Request) {
     : ("login" as const);
 }
 
+function requestedExpiryReason(request: Request) {
+  return parseSessionExpiryReason(
+    new URL(request.url).searchParams.get("reason"),
+  );
+}
+
 export async function GET(request: Request) {
-  return performLogout(requestedPrompt(request));
+  return performLogout(
+    requestedPrompt(request),
+    requestedExpiryReason(request),
+  );
 }
 
 export async function POST(request: Request) {
-  return performLogout(requestedPrompt(request));
+  return performLogout(
+    requestedPrompt(request),
+    requestedExpiryReason(request),
+  );
 }

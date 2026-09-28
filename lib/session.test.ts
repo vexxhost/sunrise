@@ -4,28 +4,152 @@ const mocks = vi.hoisted(() => ({
   cookieStore: {},
   cookies: vi.fn(),
   getIronSession: vi.fn(),
+  mainSession: {} as Record<string, any>,
+  activitySession: {} as Record<string, any>,
 }));
 
 vi.mock("next/headers", () => ({ cookies: mocks.cookies }));
 vi.mock("iron-session", () => ({ getIronSession: mocks.getIronSession }));
 
-import { getSession, isS3StsCredentialFresh } from "@/lib/session";
+import {
+  getSession,
+  isS3StsCredentialFresh,
+  saveSessionActivity,
+  startSessionLifetime,
+} from "@/lib/session";
 
 describe("Sunrise session", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.SESSION_IDLE_TIMEOUT_SECONDS;
+    delete process.env.SESSION_ABSOLUTE_TIMEOUT_SECONDS;
     process.env.SESSION_SECRET = "test-session-secret-at-least-32-characters";
+    mocks.mainSession = {};
+    mocks.activitySession = {
+      save: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn(),
+    };
     mocks.cookies.mockResolvedValue(mocks.cookieStore);
-    mocks.getIronSession.mockResolvedValue({});
+    mocks.getIronSession.mockImplementation(
+      (_store: unknown, options: { cookieName: string }) =>
+        Promise.resolve(
+          options.cookieName === "sunrise"
+            ? mocks.mainSession
+            : mocks.activitySession,
+        ),
+    );
   });
 
-  it("uses encrypted cookie chunks for the combined cloud session", async () => {
+  it("uses explicit encrypted cookie settings for the cloud session", async () => {
     await getSession();
 
-    expect(mocks.getIronSession).toHaveBeenCalledWith(mocks.cookieStore, {
-      cookieName: "sunrise",
-      password: "test-session-secret-at-least-32-characters",
-      chunk: true,
+    expect(mocks.getIronSession).toHaveBeenCalledWith(
+      mocks.cookieStore,
+      expect.objectContaining({
+        cookieName: "sunrise",
+        password: "test-session-secret-at-least-32-characters",
+        ttl: 28_860,
+        chunk: true,
+        cookieOptions: {
+          httpOnly: true,
+          secure: false,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 28_800,
+        },
+      }),
+    );
+  });
+
+  it("reads activity only from a matching isolated activity cookie", async () => {
+    const now = Date.now();
+    mocks.mainSession = {
+      oidcIdentity: { preferredUsername: "tadas" },
+      sessionId: "session-1",
+      sessionSignedInAt: now - 1_000,
+    };
+    mocks.activitySession = {
+      sessionId: "session-1",
+      lastActivityAt: now - 500,
+    };
+
+    const session = await getSession();
+
+    expect(session.sessionLastActivityAt).toBe(now - 500);
+    expect(session.sessionExpiryReason).toBeUndefined();
+    expect(mocks.getIronSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("denies renewable credentials after the idle limit", async () => {
+    const now = Date.now();
+    process.env.SESSION_IDLE_TIMEOUT_SECONDS = "60";
+    process.env.SESSION_ABSOLUTE_TIMEOUT_SECONDS = "600";
+    mocks.mainSession = {
+      oidcIdentity: { preferredUsername: "tadas" },
+      keycloakRefreshToken: "keycloak-refresh",
+      keystone_unscoped_token: "unscoped",
+      keystoneProjectToken: "scoped",
+      s3OidcRefreshToken: "s3-refresh",
+      s3Credentials: { project: {} },
+      sessionId: "session-1",
+      sessionSignedInAt: now - 120_000,
+    };
+    mocks.activitySession = {
+      sessionId: "session-1",
+      lastActivityAt: now - 61_000,
+    };
+
+    const session = await getSession();
+
+    expect(session.sessionExpiryReason).toBe("idle");
+    expect(session.keycloakRefreshToken).toBeUndefined();
+    expect(session.keystone_unscoped_token).toBeUndefined();
+    expect(session.keystoneProjectToken).toBeUndefined();
+    expect(session.s3OidcRefreshToken).toBeUndefined();
+    expect(session.s3Credentials).toBeUndefined();
+  });
+
+  it("retains expired credentials only for controlled logout flows", async () => {
+    const now = Date.now();
+    mocks.mainSession = {
+      oidcIdentity: { preferredUsername: "tadas" },
+      keycloakRefreshToken: "keycloak-refresh",
+      sessionId: "session-1",
+      sessionSignedInAt: now - 9 * 60 * 60_000,
+    };
+    mocks.activitySession = {
+      sessionId: "session-1",
+      lastActivityAt: now,
+    };
+
+    const session = await getSession({ allowExpired: true });
+
+    expect(session.sessionExpiryReason).toBe("absolute");
+    expect(session.keycloakRefreshToken).toBe("keycloak-refresh");
+  });
+
+  it("starts a lifetime and stores activity outside the main cookie", async () => {
+    const now = 1_000_000;
+
+    await startSessionLifetime(mocks.mainSession as never, now);
+
+    expect(mocks.mainSession.sessionId).toEqual(expect.any(String));
+    expect(mocks.mainSession.sessionSignedInAt).toBe(now);
+    expect(mocks.mainSession.sessionLastActivityAt).toBe(now);
+    expect(mocks.activitySession).toMatchObject({
+      sessionId: mocks.mainSession.sessionId,
+      lastActivityAt: now,
+    });
+    expect(mocks.activitySession.save).toHaveBeenCalledOnce();
+  });
+
+  it("updates activity without loading or saving the main session", async () => {
+    await saveSessionActivity("session-1", 1_000_000);
+
+    expect(mocks.getIronSession).toHaveBeenCalledOnce();
+    expect(mocks.activitySession).toMatchObject({
+      sessionId: "session-1",
+      lastActivityAt: 1_000_000,
     });
   });
 

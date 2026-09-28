@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => {
   process.env.DASHBOARD_URL = "https://sunrise.example.test";
   return {
     getSession: vi.fn(),
+    saveSessionActivity: vi.fn(),
+    startSessionLifetime: vi.fn(),
     exchangeCodeForTokens: vi.fn(),
     resolveOidcIdentity: vi.fn(),
     tokenExchangeForRgw: vi.fn(),
@@ -24,6 +26,8 @@ vi.mock("@/lib/cloud-context-bootstrap", () => ({
 
 vi.mock("@/lib/session", () => ({
   getSession: mocks.getSession,
+  saveSessionActivity: mocks.saveSessionActivity,
+  startSessionLifetime: mocks.startSessionLifetime,
   normalizeProjectId: (value?: string) => value?.replaceAll("-", "") ?? "",
   setS3CredentialsForProject: vi.fn(),
 }));
@@ -102,6 +106,8 @@ describe("OIDC callback recovery", () => {
     });
     mocks.getS3Endpoint.mockResolvedValue("https://s3.example.test");
     mocks.stashCloudContextBootstrap.mockReturnValue("bootstrap-id");
+    mocks.saveSessionActivity.mockResolvedValue(undefined);
+    mocks.startSessionLifetime.mockResolvedValue(undefined);
   });
 
   it("redirects an identity with zero projects to the recovery experience", async () => {
@@ -127,8 +133,53 @@ describe("OIDC callback recovery", () => {
       keycloakRefreshToken: "refresh-token",
     });
     expect(current.save).toHaveBeenCalled();
+    expect(mocks.startSessionLifetime).toHaveBeenCalledWith(current);
     expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith("access-token");
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+  });
+
+  it("preserves the absolute lifetime during interactive token renewal", async () => {
+    const now = Date.now();
+    const current = {
+      ...session(),
+      oidcSessionContinuation: true,
+      sessionId: "session-1",
+      sessionSignedInAt: now - 1_000,
+      sessionLastActivityAt: now - 500,
+    };
+    mocks.getSession.mockResolvedValue(current);
+    mocks.finalizeKeystoneSession.mockResolvedValue({ status: "no-projects" });
+
+    await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(mocks.saveSessionActivity).toHaveBeenCalledWith("session-1");
+    expect(mocks.startSessionLifetime).not.toHaveBeenCalled();
+    expect(current.sessionSignedInAt).toBe(now - 1_000);
+  });
+
+  it("rejects continuation after the absolute lifetime", async () => {
+    const current = {
+      ...session(),
+      oidcSessionContinuation: true,
+      sessionId: "session-1",
+      sessionSignedInAt: Date.now() - 9 * 60 * 60_000,
+      sessionLastActivityAt: Date.now(),
+    };
+    mocks.getSession.mockResolvedValue(current);
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(mocks.exchangeCodeForTokens).not.toHaveBeenCalled();
+    expect(mocks.saveSessionActivity).not.toHaveBeenCalled();
   });
 
   it("keeps the signed-in identity when Keystone federation fails", async () => {
