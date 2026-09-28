@@ -72,7 +72,6 @@ export function SessionLifetimeMonitor({
       }
       if (request) return request;
 
-      if (touch) lastHeartbeatAt = now;
       request = fetch("/auth/session/activity", {
         method: touch ? "POST" : "GET",
         cache: "no-store",
@@ -81,6 +80,7 @@ export function SessionLifetimeMonitor({
         .then(async (response) => {
           const body: unknown = await response.json().catch(() => undefined);
           if (response.ok && isClientSessionLifetime(body)) {
+            if (touch) lastHeartbeatAt = Date.now();
             lifetime = body;
             channel?.postMessage({
               type: "active",
