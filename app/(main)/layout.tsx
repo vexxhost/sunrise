@@ -9,6 +9,8 @@ import { CloudContextProvider } from "@/components/cloud/CloudContext";
 import { loadCloudContext } from "@/lib/cloud-context";
 import { ResourceRecoveryNotice } from "@/components/resources/ResourceRecoveryNotice";
 import { Suspense } from "react";
+import { CloudShellSkeleton } from "@/components/layout/CloudShellSkeleton";
+import { readPrefs } from "@/lib/prefs";
 
 const fontSans = FontSans({
   subsets: ["latin"],
@@ -23,14 +25,34 @@ export const metadata: Metadata = {
   description: "Modern OpenStack cloud operations",
 };
 
-export default async function RootLayout({
+async function AuthenticatedCloudShell({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const cloudContext = await loadCloudContext();
+
+  return (
+    <CloudContextProvider value={cloudContext.snapshot}>
+      <NavigationMenu />
+      <main>
+        <Suspense>
+          <ResourceRecoveryNotice />
+        </Suspense>
+        {children}
+      </main>
+    </CloudContextProvider>
+  );
+}
+
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const prefs = await readPrefs();
   const appearanceClass =
-    cloudContext.appearance === "system" ? undefined : cloudContext.appearance;
+    prefs.appearance === "system" ? undefined : prefs.appearance;
 
   return (
     <html
@@ -46,20 +68,14 @@ export default async function RootLayout({
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme={cloudContext.appearance}
+          defaultTheme={prefs.appearance ?? "system"}
           enableSystem
           disableTransitionOnChange
         >
           <Providers>
-            <CloudContextProvider value={cloudContext.snapshot}>
-              <NavigationMenu />
-              <main>
-                <Suspense>
-                  <ResourceRecoveryNotice />
-                </Suspense>
-                {children}
-              </main>
-            </CloudContextProvider>
+            <Suspense fallback={<CloudShellSkeleton />}>
+              <AuthenticatedCloudShell>{children}</AuthenticatedCloudShell>
+            </Suspense>
           </Providers>
         </ThemeProvider>
       </body>

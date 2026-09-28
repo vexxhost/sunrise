@@ -1,6 +1,7 @@
 import Login from "@/components/Auth/Login";
 import { AuthRecovery } from "@/components/Auth/AuthRecovery";
 import { SessionRefreshRedirect } from "@/components/Auth/SessionRefreshRedirect";
+import { hasFreshCloudContextBootstrap } from "@/lib/cloud-context-bootstrap";
 import {
   AUTH_PROMPT_COOKIE,
   parseOidcAuthorizationPrompt,
@@ -31,7 +32,15 @@ export default async function Provider({ children }: any) {
     return <Login authorizationPrompt={authorizationPrompt} />;
   }
 
-  const sessionState = await getKeystoneSessionState(session);
+  // The callback has just minted both Keystone tokens and hands its discovery
+  // results to this first request for at most 30 seconds. Skip the otherwise
+  // immediate duplicate token validation; a cache miss still uses the normal
+  // validation path, including when the request lands on another replica.
+  const sessionState = hasFreshCloudContextBootstrap(
+    session.cloudContextBootstrapId,
+  )
+    ? ({ status: "valid" } as const)
+    : await getKeystoneSessionState(session);
   if (sessionState.status === "missing") {
     return <Login authorizationPrompt={authorizationPrompt} />;
   }

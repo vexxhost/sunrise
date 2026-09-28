@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
+import { stashCloudContextBootstrap } from "@/lib/cloud-context-bootstrap";
 import {
   getSession,
   normalizeProjectId,
@@ -16,6 +17,7 @@ import {
   KeystoneSessionSetupError,
   type KeystoneSessionResolution,
 } from "@/lib/keystone/login";
+import { getS3Endpoint } from "@/lib/s3/endpoint";
 import { assumeRoleWithIdToken, tryExtractRgwProjectRoles } from "@/lib/s3/sts";
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "/";
@@ -69,6 +71,10 @@ export async function GET(request: Request) {
     tokens.id_token,
     idp,
   );
+  const rgwExchangePromise = tokenExchangeForRgw(tokens.access_token).then(
+    (exchanged) => ({ ok: true as const, exchanged }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
   session.oidcIdentity = undefined;
   session.authRecovery = undefined;
   session.keystone_unscoped_token = undefined;
@@ -77,6 +83,7 @@ export async function GET(request: Request) {
   session.s3ProjectRoles = undefined;
   session.s3Credentials = undefined;
   session.s3OidcRefreshToken = undefined;
+  session.cloudContextBootstrapId = undefined;
 
   // 1. Federate into Keystone.
   let unscopedToken: string;
@@ -106,12 +113,6 @@ export async function GET(request: Request) {
     if (resolution.status !== "ready") {
       session.authRecovery = { reason: resolution.status };
     }
-    // Persist now so subsequent getSession() calls in this request (used by
-    // the S3 endpoint resolver during STS exchange below) see the new
-    // regionId / project token. iron-session in-memory mutations are not
-    // visible to a second getSession() within the same request — only the
-    // saved cookie is.
-    await session.save();
   } catch (e) {
     session.authRecovery = {
       reason:
@@ -126,14 +127,27 @@ export async function GET(request: Request) {
   }
 
   if (resolution.status !== "ready") {
+    await session.save();
     return NextResponse.redirect(DASHBOARD_URL, { status: 303 });
   }
 
   session.authRecovery = undefined;
+  session.cloudContextBootstrapId = stashCloudContextBootstrap({
+    projects: resolution.projects,
+    regions: resolution.regions,
+    catalog: resolution.catalog,
+    userName:
+      session.oidcIdentity?.preferredUsername ??
+      resolution.userName ??
+      session.oidcIdentity?.displayName ??
+      undefined,
+  });
 
   // 2. Token-exchange + STS for S3.
   try {
-    const exchanged = await tokenExchangeForRgw(tokens.access_token);
+    const exchangeResult = await rgwExchangePromise;
+    if (!exchangeResult.ok) throw exchangeResult.error;
+    const exchanged = exchangeResult.exchanged;
     const rgwIdToken = exchanged.id_token ?? exchanged.access_token;
     const projectRoles = tryExtractRgwProjectRoles(
       rgwIdToken,
@@ -152,7 +166,20 @@ export async function GET(request: Request) {
     }
 
     session.s3ProjectRoles = projectRoles;
-    const creds = await assumeRoleWithIdToken(rgwIdToken, projectId, roleArn);
+    if (!session.regionId || !session.keystoneProjectToken) {
+      throw new Error("Keystone project context is incomplete");
+    }
+    const endpoint = await getS3Endpoint({
+      regionId: session.regionId,
+      token: session.keystoneProjectToken,
+      catalog: resolution.catalog,
+    });
+    const creds = await assumeRoleWithIdToken(
+      rgwIdToken,
+      projectId,
+      roleArn,
+      endpoint,
+    );
     setS3CredentialsForProject(session, creds);
   } catch (e) {
     // Non-fatal: user can still use other services. Object Storage will try

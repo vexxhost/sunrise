@@ -105,10 +105,24 @@ describe("Keystone session finalization", () => {
           if (body.auth.scope.project.id === first.id) {
             return new Response(null, { status: 403 });
           }
-          return new Response(null, {
-            status: 201,
-            headers: { "X-Subject-Token": "project-b-token" },
-          });
+          return Response.json(
+            {
+              token: {
+                user: { name: "Sunrise Operator" },
+                catalog: [
+                  {
+                    name: "s3",
+                    type: "object-storage-s3",
+                    endpoints: [],
+                  },
+                ],
+              },
+            },
+            {
+              status: 201,
+              headers: { "X-Subject-Token": "project-b-token" },
+            },
+          );
         }
         throw new Error(`Unexpected request: ${url}`);
       }),
@@ -117,7 +131,15 @@ describe("Keystone session finalization", () => {
 
     await expect(
       finalizeKeystoneSession(current, "unscoped-token"),
-    ).resolves.toEqual({ status: "ready", project: second, region });
+    ).resolves.toEqual({
+      status: "ready",
+      project: second,
+      region,
+      projects: [first, second],
+      regions: [region],
+      catalog: [{ name: "s3", type: "object-storage-s3", endpoints: [] }],
+      userName: "Sunrise Operator",
+    });
     expect(current.projectId).toBe(second.id);
     expect(current.keystoneProjectToken).toBe("project-b-token");
   });

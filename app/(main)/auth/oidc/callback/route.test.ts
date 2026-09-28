@@ -11,8 +11,16 @@ const mocks = vi.hoisted(() => {
     finalizeKeystoneSession: vi.fn(),
     assumeRoleWithIdToken: vi.fn(),
     tryExtractRgwProjectRoles: vi.fn(),
+    getS3Endpoint: vi.fn(),
+    stashCloudContextBootstrap: vi.fn(),
   };
 });
+
+vi.mock("server-only", () => ({}));
+
+vi.mock("@/lib/cloud-context-bootstrap", () => ({
+  stashCloudContextBootstrap: mocks.stashCloudContextBootstrap,
+}));
 
 vi.mock("@/lib/session", () => ({
   getSession: mocks.getSession,
@@ -41,6 +49,10 @@ vi.mock("@/lib/s3/sts", () => ({
   tryExtractRgwProjectRoles: mocks.tryExtractRgwProjectRoles,
 }));
 
+vi.mock("@/lib/s3/endpoint", () => ({
+  getS3Endpoint: mocks.getS3Endpoint,
+}));
+
 import { GET } from "./route";
 
 const identity = {
@@ -61,6 +73,18 @@ function session() {
   };
 }
 
+function readyResolution() {
+  return {
+    status: "ready" as const,
+    project: { id: "project-1", name: "Project One" },
+    region: { id: "RegionOne" },
+    projects: [{ id: "project-1", name: "Project One" }],
+    regions: [{ id: "RegionOne" }],
+    catalog: [{ name: "s3", type: "object-storage-s3", endpoints: [] }],
+    userName: "operator@example.test",
+  };
+}
+
 describe("OIDC callback recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,6 +97,11 @@ describe("OIDC callback recovery", () => {
     });
     mocks.resolveOidcIdentity.mockResolvedValue(identity);
     mocks.federateOidcWithKeystone.mockResolvedValue("unscoped-token");
+    mocks.tokenExchangeForRgw.mockResolvedValue({
+      access_token: "rgw-token",
+    });
+    mocks.getS3Endpoint.mockResolvedValue("https://s3.example.test");
+    mocks.stashCloudContextBootstrap.mockReturnValue("bootstrap-id");
   });
 
   it("redirects an identity with zero projects to the recovery experience", async () => {
@@ -98,7 +127,8 @@ describe("OIDC callback recovery", () => {
       keycloakRefreshToken: "refresh-token",
     });
     expect(current.save).toHaveBeenCalled();
-    expect(mocks.tokenExchangeForRgw).not.toHaveBeenCalled();
+    expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith("access-token");
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
   it("keeps the signed-in identity when Keystone federation fails", async () => {
@@ -130,10 +160,9 @@ describe("OIDC callback recovery", () => {
     mocks.getSession.mockResolvedValue(current);
     mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
       activeSession.projectId = "project-1";
-      return { status: "ready" };
-    });
-    mocks.tokenExchangeForRgw.mockResolvedValue({
-      access_token: "rgw-token",
+      activeSession.regionId = "RegionOne";
+      activeSession.keystoneProjectToken = "project-token";
+      return readyResolution();
     });
     mocks.tryExtractRgwProjectRoles.mockReturnValue({
       project1: "arn:aws:iam::account:role/access",
@@ -158,5 +187,65 @@ describe("OIDC callback recovery", () => {
     );
     expect(current.oidcReturnTo).toBeUndefined();
     expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith("access-token");
+    expect(mocks.getS3Endpoint).toHaveBeenCalledWith({
+      regionId: "RegionOne",
+      token: "project-token",
+      catalog: readyResolution().catalog,
+    });
+    expect(mocks.assumeRoleWithIdToken).toHaveBeenCalledWith(
+      "rgw-token",
+      "project1",
+      "arn:aws:iam::account:role/access",
+      "https://s3.example.test",
+    );
+    expect(current).toMatchObject({
+      cloudContextBootstrapId: "bootstrap-id",
+    });
+    expect(mocks.stashCloudContextBootstrap).toHaveBeenCalledWith(
+      expect.objectContaining({ userName: "operator@example.test" }),
+    );
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("starts RGW exchange while cold Keystone setup is still resolving", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    let finishKeystone!: (value: ReturnType<typeof readyResolution>) => void;
+    mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
+      activeSession.projectId = "project-1";
+      activeSession.regionId = "RegionOne";
+      activeSession.keystoneProjectToken = "project-token";
+      return await new Promise<ReturnType<typeof readyResolution>>(
+        (resolve) => {
+          finishKeystone = resolve;
+        },
+      );
+    });
+    mocks.tryExtractRgwProjectRoles.mockReturnValue({
+      project1: "arn:aws:iam::account:role/access",
+    });
+    mocks.assumeRoleWithIdToken.mockResolvedValue({
+      accessKeyId: "access-key",
+      secretAccessKey: "secret-key",
+      sessionToken: "session-token",
+      expiration: Date.now() + 3_600_000,
+      projectId: "project1",
+    });
+
+    const responsePromise = GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    await vi.waitFor(() => {
+      expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith("access-token");
+      expect(mocks.finalizeKeystoneSession).toHaveBeenCalled();
+    });
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+
+    finishKeystone(readyResolution());
+    await expect(responsePromise).resolves.toMatchObject({ status: 303 });
+    expect(mocks.assumeRoleWithIdToken).toHaveBeenCalledOnce();
   });
 });

@@ -7,7 +7,8 @@ import { loadCloudContext } from "@/lib/cloud-context";
 import { loadOperationalFeed } from "@/lib/openstack/operational-feed";
 import { compileOperationalFeed } from "@/lib/openstack/operational";
 import { loadProjectOverview } from "@/lib/openstack/overview";
-import { listClustersAction } from "@/lib/openstack/magnum";
+import { listClusters } from "@/lib/openstack/magnum-server";
+import { resolveServiceEndpoint } from "@/lib/openstack/catalog";
 import { filterResourcePreferencesByLiveIds } from "@/lib/resource-preferences";
 
 async function OverviewData() {
@@ -15,6 +16,15 @@ async function OverviewData() {
   const { snapshot } = cloud;
   const regionId = snapshot.region.id ?? undefined;
   const projectId = snapshot.project.id ?? undefined;
+  const magnumEndpoint =
+    cloud.catalog && regionId
+      ? resolveServiceEndpoint(
+          cloud.catalog,
+          regionId,
+          "container-infra",
+          "magnum",
+        )
+      : undefined;
   const [services, resourceFeed, clustersResult] = await Promise.all([
     loadProjectOverview({
       token: cloud.keystoneToken,
@@ -28,7 +38,7 @@ async function OverviewData() {
       projectId,
       catalog: cloud.catalog,
     }),
-    listClustersAction({}, regionId, projectId)
+    listClusters({}, regionId, projectId, magnumEndpoint ?? undefined)
       .then((clusters) => ({ ok: true as const, clusters }))
       .catch(() => ({ ok: false as const, clusters: [] })),
   ]);

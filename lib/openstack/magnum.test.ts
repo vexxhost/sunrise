@@ -5,10 +5,12 @@ const mocks = vi.hoisted(() => ({
   openstack: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/openstack/actions", () => ({ openstack: mocks.openstack }));
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
 
 import { listClustersAction } from "@/lib/openstack/magnum";
+import { listClusters } from "@/lib/openstack/magnum-server";
 
 describe("Magnum cluster queries", () => {
   beforeEach(() => {
@@ -46,10 +48,33 @@ describe("Magnum cluster queries", () => {
     );
 
     expect(result.map(({ uuid }) => uuid)).toEqual(["cluster-a"]);
+    expect(
+      mocks.openstack.mock.calls.every(
+        ([options]) => options.endpointOverride === undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it("reuses a trusted catalog endpoint from server-only callers", async () => {
+    const result = await listClusters(
+      { limit: 20 },
+      "RegionOne",
+      "project-a",
+      "https://magnum.example.test/v1",
+    );
+
+    expect(result.map(({ uuid }) => uuid)).toEqual(["cluster-a"]);
     expect(mocks.openstack).toHaveBeenCalledWith(
       expect.objectContaining({
         path: "/clusters/detail?limit=20",
         apiVersion: "container-infra latest",
+        endpointOverride: "https://magnum.example.test/v1",
+      }),
+    );
+    expect(mocks.openstack).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/clusters/cluster-a/nodegroups",
+        endpointOverride: "https://magnum.example.test/v1",
       }),
     );
   });
