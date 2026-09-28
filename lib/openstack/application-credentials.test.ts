@@ -6,13 +6,15 @@ const mocks = vi.hoisted(() => ({
   getServiceCatalog: vi.fn(),
   getSession: vi.fn(),
   getUserInfo: vi.fn(),
-  openstack: vi.fn(),
+  openstackRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/openstack/catalog", () => ({
   getServiceCatalog: mocks.getServiceCatalog,
 }));
-vi.mock("@/lib/openstack/actions", () => ({ openstack: mocks.openstack }));
+vi.mock("@/lib/openstack/request-server", () => ({
+  openstackRequest: mocks.openstackRequest,
+}));
 vi.mock("@/lib/openstack/keystone-actions", () => ({
   getUserInfo: mocks.getUserInfo,
 }));
@@ -48,7 +50,7 @@ describe("application credential queries", () => {
       { type: "compute", name: "nova", endpoints: [] },
       { type: "identity", name: "keystone", endpoints: [] },
     ]);
-    mocks.openstack.mockResolvedValue({
+    mocks.openstackRequest.mockResolvedValue({
       application_credentials: [
         {
           id: "credential-a",
@@ -78,7 +80,7 @@ describe("application credential queries", () => {
     expect(result.roles).toEqual([{ id: "reader-id", name: "reader" }]);
     expect(result.serviceTypes).toEqual(["compute", "identity"]);
     expect(result.authUrl).toBe("https://identity.public.test/v3");
-    expect(mocks.openstack).toHaveBeenCalledWith(
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         endpointOverride: "https://identity.example.test/v3",
         path: "/users/user-a/application_credentials",
@@ -87,19 +89,19 @@ describe("application credential queries", () => {
   });
 
   it("treats a missing credential as expected stale navigation", async () => {
-    mocks.openstack.mockRejectedValueOnce(
+    mocks.openstackRequest.mockRejectedValueOnce(
       new OpenStackRequestError(404, "Not Found"),
     );
 
     await expect(getApplicationCredentialAction("missing")).resolves.toBeNull();
-    expect(mocks.openstack).toHaveBeenCalledWith(
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
       expect.objectContaining({ errorMode: "throw" }),
     );
   });
 
   it("does not hide permission or service failures", async () => {
     const error = new OpenStackRequestError(403, "Forbidden");
-    mocks.openstack.mockRejectedValueOnce(error);
+    mocks.openstackRequest.mockRejectedValueOnce(error);
 
     await expect(getApplicationCredentialAction("denied")).rejects.toBe(error);
   });

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { openstack } from "@/lib/openstack/actions";
+import { openstackRequest } from "@/lib/openstack/request-server";
 import { getSession } from "@/lib/session";
 import type {
   MagnumCertificate,
@@ -50,7 +50,7 @@ async function magnumGet<T>(
   errorMode: "return-null" | "throw" = "return-null",
   endpointOverride?: string,
 ): Promise<T | null> {
-  return openstack<T>({
+  return openstackRequest<T>({
     regionId: await resolveRegionId(regionId),
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
@@ -149,12 +149,7 @@ export async function listClusters(
   const detailedClusters = await Promise.all(
     clusters.map(async (cluster) => {
       const [nodeGroups] = await Promise.allSettled([
-        listClusterNodeGroups(
-          cluster.uuid,
-          regionId,
-          false,
-          endpointOverride,
-        ),
+        listClusterNodeGroups(cluster.uuid, regionId, false, endpointOverride),
       ]);
 
       return {
@@ -208,11 +203,7 @@ export async function listClusterNodeGroups(
   return Promise.all(
     nodeGroups.map(async (nodeGroup) => {
       try {
-        return await getClusterNodeGroup(
-          clusterId,
-          nodeGroup.uuid,
-          regionId,
-        );
+        return await getClusterNodeGroup(clusterId, nodeGroup.uuid, regionId);
       } catch {
         return nodeGroup;
       }

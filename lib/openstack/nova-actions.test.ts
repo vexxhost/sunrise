@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   executeOpenStackMutation: vi.fn(),
+  openstackRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/openstack/mutations", () => ({
   executeOpenStackMutation: mocks.executeOpenStackMutation,
 }));
-vi.mock("@/lib/openstack/actions", () => ({ openstack: vi.fn() }));
+vi.mock("@/lib/openstack/request-server", () => ({
+  openstackRequest: mocks.openstackRequest,
+}));
 vi.mock("@/lib/session", () => ({ getSession: vi.fn() }));
 
 import {
@@ -17,6 +20,7 @@ import {
   deleteServerAction,
   deleteKeypairAction,
   detachPortAction,
+  getServerConsoleOutputAction,
   replaceServerMetadataAction,
   runServerLifecycleAction,
 } from "@/lib/openstack/nova-actions";
@@ -33,6 +37,7 @@ describe("Nova mutation actions", () => {
       message: options.successMessage,
       scope,
     }));
+    mocks.openstackRequest.mockResolvedValue({ output: "boot complete" });
   });
 
   it("encodes launch user data on the server and narrows the Nova body", async () => {
@@ -194,5 +199,29 @@ describe("Nova mutation actions", () => {
         path: "/os-keypairs/operator.key",
       }),
     );
+  });
+
+  it("retrieves console output through a constrained Nova action", async () => {
+    await expect(
+      getServerConsoleOutputAction("server-a", 200, "RegionOne"),
+    ).resolves.toBe("boot complete");
+
+    expect(mocks.openstackRequest).toHaveBeenCalledWith({
+      regionId: "RegionOne",
+      serviceType: "compute",
+      serviceName: "nova",
+      path: "/servers/server-a/action",
+      method: "POST",
+      apiVersion: "compute 2.79",
+      body: { "os-getConsoleOutput": { length: 200 } },
+    });
+  });
+
+  it("rejects invalid console output requests before contacting Nova", async () => {
+    await expect(
+      getServerConsoleOutputAction("server-a", -1, "RegionOne"),
+    ).rejects.toThrow("Invalid console output request");
+
+    expect(mocks.openstackRequest).not.toHaveBeenCalled();
   });
 });
