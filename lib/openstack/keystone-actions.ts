@@ -3,6 +3,7 @@
 import { getSession } from '@/lib/session';
 import { isKeystoneAuthFailure } from '@/lib/keystone/session';
 import { redirect } from 'next/navigation';
+import { normalizeTokenRoles } from '@/lib/openstack/application-credential-schema';
 
 /**
  * Get user information from the project-scoped token in the session
@@ -44,6 +45,14 @@ export async function getUserInfo() {
     return {
       name: data.token?.user?.name,
       id: data.token?.user?.id,
+      roles: normalizeTokenRoles(data.token?.roles),
+      project:
+        data.token?.project && typeof data.token.project === 'object'
+          ? {
+              id: data.token.project.id as string | undefined,
+              name: data.token.project.name as string | undefined,
+            }
+          : undefined,
     };
   } catch (error) {
     console.error('Error getting user info:', error);

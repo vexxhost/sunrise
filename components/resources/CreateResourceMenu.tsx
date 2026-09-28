@@ -50,6 +50,7 @@ export const createActionIcons: Record<
   "cluster-template": Settings,
   bucket: Database,
   role: ShieldPlus,
+  "application-credential": KeyRound,
 };
 
 function actionAvailable(action: CreateAction) {

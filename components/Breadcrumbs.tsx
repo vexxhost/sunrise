@@ -14,6 +14,8 @@ const serviceNames: Record<string, string> = {
   compute: "Compute",
   kubernetes: "Kubernetes",
   "object-storage": "Object Storage",
+  identity: "Identity",
+  "application-credentials": "Application Credentials",
   buckets: "Buckets",
   roles: "Roles",
   orchestration: "Orchestration",

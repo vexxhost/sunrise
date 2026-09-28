@@ -20,6 +20,17 @@ const catalog: OpenStackCatalogService[] = [
     ],
   },
   {
+    name: "keystone",
+    type: "identity",
+    endpoints: [
+      {
+        interface: "public",
+        region: "RegionOne",
+        url: "https://identity.example.test",
+      },
+    ],
+  },
+  {
     name: "s3",
     type: "object-storage-s3",
     endpoints: [
@@ -112,6 +123,7 @@ describe("create action availability", () => {
 
   it("filters service actions and validates URL intents", () => {
     expect(createActionsForService(build(), "object-storage")).toHaveLength(2);
+    expect(createActionsForService(build(), "identity")).toHaveLength(1);
     expect(isCreateActionRequested("instance", "instance")).toBe(true);
     expect(isCreateActionRequested(["volume", "instance"], "volume")).toBe(
       true,

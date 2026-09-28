@@ -25,6 +25,11 @@ const catalog: OpenStackCatalogService[] = [
     endpoints: [endpoint("RegionOne", "https://s3.example.test")],
   },
   {
+    name: "keystone",
+    type: "identity",
+    endpoints: [endpoint("RegionOne", "https://identity.example.test")],
+  },
+  {
     name: "heat",
     type: "orchestration",
     endpoints: [endpoint("RegionTwo", "https://heat.example.test")],
@@ -47,6 +52,7 @@ describe("service directory", () => {
       { id: "compute", status: "available" },
       { id: "kubernetes", status: "available" },
       { id: "object-storage", status: "available" },
+      { id: "identity", status: "available" },
       { id: "orchestration", status: "unavailable" },
       { id: "dns", status: "unavailable" },
       { id: "file-system", status: "available" },
@@ -67,7 +73,7 @@ describe("service directory", () => {
   it("provides shared navigation metadata for every supported service", () => {
     const directory = buildServiceDirectory(catalog, "RegionOne");
 
-    expect(directory).toHaveLength(6);
+    expect(directory).toHaveLength(7);
     expect(directory).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

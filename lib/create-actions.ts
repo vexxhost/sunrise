@@ -18,9 +18,14 @@ export type CreateActionId =
   | "cluster"
   | "cluster-template"
   | "bucket"
-  | "role";
+  | "role"
+  | "application-credential";
 
-export type CreateActionService = "compute" | "kubernetes" | "object-storage";
+export type CreateActionService =
+  | "compute"
+  | "kubernetes"
+  | "object-storage"
+  | "identity";
 
 export type CreateAction = {
   id: CreateActionId;
@@ -169,6 +174,17 @@ const definitions: CreateActionDefinition[] = [
         serviceType: "container-infrastructure-management",
         serviceName: "magnum",
       },
+    ],
+  },
+  {
+    id: "application-credential",
+    label: "Create application credential",
+    description: "Create a project-scoped credential for automation.",
+    href: "/identity/application-credentials?create=application-credential",
+    service: "identity",
+    group: "Identity and access",
+    catalogIdentities: [
+      { serviceType: "identity", serviceName: "keystone" },
     ],
   },
   {

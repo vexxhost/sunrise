@@ -33,3 +33,34 @@ export type Region = {
     self: string;
   };
 };
+
+export type KeystoneRole = {
+  id: string;
+  name: string;
+  domain_id?: string | null;
+};
+
+export type ApplicationCredentialAccessRule = {
+  id?: string;
+  method?: string;
+  path?: string;
+  service?: string;
+};
+
+export type ApplicationCredential = {
+  id: string;
+  name: string;
+  description: string | null;
+  project_id: string;
+  expires_at: string | null;
+  unrestricted: boolean;
+  roles: KeystoneRole[];
+  access_rules: ApplicationCredentialAccessRule[];
+  links?: {
+    self?: string;
+  };
+};
+
+export type CreatedApplicationCredential = ApplicationCredential & {
+  secret: string;
+};
