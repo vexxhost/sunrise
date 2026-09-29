@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Database,
   EthernetPort,
+  FolderPlus,
   Globe2,
   HardDrive,
   ImageUp,
@@ -51,6 +52,7 @@ export const createActionIcons: Record<
   bucket: Database,
   role: ShieldPlus,
   "application-credential": KeyRound,
+  share: FolderPlus,
 };
 
 function actionAvailable(action: CreateAction) {

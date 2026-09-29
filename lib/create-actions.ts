@@ -19,13 +19,15 @@ export type CreateActionId =
   | "cluster-template"
   | "bucket"
   | "role"
-  | "application-credential";
+  | "application-credential"
+  | "share";
 
 export type CreateActionService =
   | "compute"
   | "kubernetes"
   | "object-storage"
-  | "identity";
+  | "identity"
+  | "shared-file-system";
 
 export type CreateAction = {
   id: CreateActionId;
@@ -183,9 +185,7 @@ const definitions: CreateActionDefinition[] = [
     href: "/identity/application-credentials?create=application-credential",
     service: "identity",
     group: "Identity and access",
-    catalogIdentities: [
-      { serviceType: "identity", serviceName: "keystone" },
-    ],
+    catalogIdentities: [{ serviceType: "identity", serviceName: "keystone" }],
   },
   {
     id: "bucket",
@@ -210,6 +210,18 @@ const definitions: CreateActionDefinition[] = [
       { serviceType: "object-storage-s3", serviceName: "s3" },
     ],
     requiresObjectStorageCredentials: true,
+  },
+  {
+    id: "share",
+    label: "Create share",
+    description: "Provision a mountable shared file system with Manila.",
+    href: "/shared-file-systems/shares?create=share",
+    service: "shared-file-system",
+    group: "Shared File System",
+    catalogIdentities: [
+      { serviceType: "sharev2", serviceName: "manilav2" },
+      { serviceType: "shared-file-system", serviceName: "manila" },
+    ],
   },
 ];
 

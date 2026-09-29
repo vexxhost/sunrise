@@ -6,6 +6,7 @@ export const resourceKinds = [
   "image",
   "cluster",
   "bucket",
+  "share",
 ] as const;
 
 export type ResourceKind = (typeof resourceKinds)[number];
@@ -281,6 +282,8 @@ export function resourcePreferenceHref(
       return `/kubernetes/clusters/${id}/overview`;
     case "bucket":
       return `/object-storage/buckets/${id}`;
+    case "share":
+      return `/shared-file-systems/shares/${id}`;
   }
 }
 
@@ -291,5 +294,6 @@ export function resourceKindLabel(kind: ResourceKind) {
     image: "Image",
     cluster: "Kubernetes cluster",
     bucket: "Bucket",
+    share: "Share",
   }[kind];
 }

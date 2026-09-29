@@ -89,8 +89,8 @@ const serviceDefinitions: ServiceDefinition[] = [
   },
   {
     id: "shared-file-system",
-    label: "Shared file systems",
-    href: "/file-system",
+    label: "Shared File System",
+    href: "/shared-file-systems",
     serviceType: "sharev2",
     serviceName: "manilav2",
     path: (projectId) => `/${projectId}/quota-sets/${projectId}/detail`,

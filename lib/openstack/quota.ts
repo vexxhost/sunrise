@@ -246,13 +246,19 @@ export function parseManilaQuotaDetails(payload: unknown): QuotaMetric[] {
   );
 
   return [
-    detailedMetric(quotaSet, "Manila", "shares", "Shares", "/file-system"),
+    detailedMetric(
+      quotaSet,
+      "Manila",
+      "shares",
+      "Shares",
+      "/shared-file-systems/shares",
+    ),
     detailedMetric(
       quotaSet,
       "Manila",
       "gigabytes",
       "Share storage",
-      "/file-system",
+      "/shared-file-systems/shares",
       { unit: "GiB" },
     ),
     detailedMetric(
@@ -260,14 +266,14 @@ export function parseManilaQuotaDetails(payload: unknown): QuotaMetric[] {
       "Manila",
       "snapshots",
       "Share snapshots",
-      "/file-system",
+      "/shared-file-systems",
     ),
     detailedMetric(
       quotaSet,
       "Manila",
       "snapshot_gigabytes",
       "Share snapshot storage",
-      "/file-system",
+      "/shared-file-systems",
       { unit: "GiB" },
     ),
     detailedMetric(
@@ -275,7 +281,7 @@ export function parseManilaQuotaDetails(payload: unknown): QuotaMetric[] {
       "Manila",
       "share_networks",
       "Share networks",
-      "/file-system",
+      "/shared-file-systems",
     ),
   ];
 }

@@ -17,6 +17,8 @@ export const recoveryResourceKinds = [
   "node-group",
   "bucket",
   "object",
+  "share",
+  "share-network",
 ] as const;
 
 export type RecoveryResourceKind = (typeof recoveryResourceKinds)[number];
@@ -47,6 +49,8 @@ const recoveryLabels: Record<RecoveryResourceKind, string> = {
   "node-group": "node group",
   bucket: "bucket",
   object: "object",
+  share: "share",
+  "share-network": "share network",
 };
 
 const preferenceKinds: Partial<Record<RecoveryResourceKind, ResourceKind>> = {
@@ -55,6 +59,7 @@ const preferenceKinds: Partial<Record<RecoveryResourceKind, ResourceKind>> = {
   volume: "volume",
   cluster: "cluster",
   bucket: "bucket",
+  share: "share",
 };
 
 export function isRecoveryResourceKind(
@@ -121,6 +126,10 @@ export function recoveryDestination({
             mode === "direct" ? "/direct" : ""
           }`
         : "/object-storage/buckets";
+    case "share":
+      return "/shared-file-systems/shares";
+    case "share-network":
+      return "/shared-file-systems/share-networks";
   }
 }
 

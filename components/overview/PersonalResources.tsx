@@ -5,6 +5,7 @@ import { useState, useTransition, type ComponentType } from "react";
 import {
   Container,
   Database,
+  FolderTree,
   HardDrive,
   ImageIcon,
   Pin,
@@ -33,6 +34,7 @@ const resourceIcons: Record<
   image: ImageIcon,
   cluster: Container,
   bucket: Database,
+  share: FolderTree,
 };
 
 function ResourceList({

@@ -51,6 +51,7 @@ const resourceIcons: Record<
   image: ImageIcon,
   cluster: Container,
   bucket: Database,
+  share: FolderTree,
 };
 
 const serviceIcons: Record<
@@ -63,7 +64,7 @@ const serviceIcons: Record<
   identity: KeyRound,
   orchestration: Layers,
   dns: Globe,
-  "file-system": FolderTree,
+  "shared-file-system": FolderTree,
 };
 
 function ResourceItem({

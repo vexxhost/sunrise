@@ -31,9 +31,10 @@ type OpenStackSearchSource = {
   label: string;
   serviceType: string;
   serviceName: string;
-  path: string;
+  path: string | ((projectId: string) => string);
   responseKey: string;
   apiVersion?: string;
+  apiVersionHeader?: string;
 };
 
 const openStackSources: OpenStackSearchSource[] = [
@@ -63,6 +64,17 @@ const openStackSources: OpenStackSearchSource[] = [
     path: `/v2/images?limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
     responseKey: "images",
   },
+  {
+    kind: "share",
+    label: "Shares",
+    serviceType: "sharev2",
+    serviceName: "manilav2",
+    path: (projectId) =>
+      `/${encodeURIComponent(projectId)}/shares/detail?all_tenants=0&limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
+    responseKey: "shares",
+    apiVersion: "2.51",
+    apiVersionHeader: "X-OpenStack-Manila-API-Version",
+  },
 ];
 
 async function loadOpenStackSource({
@@ -70,11 +82,13 @@ async function loadOpenStackSource({
   catalog,
   regionId,
   token,
+  projectId,
 }: {
   source: OpenStackSearchSource;
   catalog: NonNullable<Awaited<ReturnType<typeof getServiceCatalog>>>;
   regionId: string;
   token: string;
+  projectId: string;
 }): Promise<LoadedSource> {
   const endpoint = resolveServiceEndpoint(
     catalog,
@@ -92,12 +106,21 @@ async function loadOpenStackSource({
 
   const headers: Record<string, string> = { "X-Auth-Token": token };
   if (source.apiVersion) {
-    headers["OpenStack-API-Version"] = source.apiVersion;
+    headers[source.apiVersionHeader ?? "OpenStack-API-Version"] =
+      source.apiVersion;
   }
 
   try {
     const payload = asRecord(
-      await requestJson(serviceUrl(endpoint, source.path), headers),
+      await requestJson(
+        serviceUrl(
+          endpoint,
+          typeof source.path === "function"
+            ? source.path(projectId)
+            : source.path,
+        ),
+        headers,
+      ),
       `${source.label} search`,
     );
     const items = payload[source.responseKey];
@@ -138,12 +161,19 @@ export async function loadGlobalSearchIndex(): Promise<GlobalSearchIndex> {
   if (!regionId || !session.projectId) {
     return { resources: [], unavailableSources: [] };
   }
+  const projectId = session.projectId;
 
   const catalog = await getServiceCatalog(token);
   const loadedSources = await Promise.all([
     ...(catalog
       ? openStackSources.map((source) =>
-          loadOpenStackSource({ source, catalog, regionId, token }),
+          loadOpenStackSource({
+            source,
+            catalog,
+            regionId,
+            token,
+            projectId,
+          }),
         )
       : openStackSources.map((source): LoadedSource => ({
           kind: source.kind,
