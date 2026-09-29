@@ -266,7 +266,7 @@ export function parseManilaQuotaDetails(payload: unknown): QuotaMetric[] {
       "Manila",
       "snapshots",
       "Share snapshots",
-      "/shared-file-systems/share-networks",
+      "/shared-file-systems",
     ),
     detailedMetric(
       quotaSet,

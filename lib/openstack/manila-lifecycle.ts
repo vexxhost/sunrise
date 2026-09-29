@@ -16,7 +16,8 @@ export function formatManilaStatus(status: string | null | undefined) {
 }
 
 export function isShareTransitioning(share: Pick<ManilaShare, "status">) {
-  return !STABLE_SHARE_STATUSES.has(normalizeManilaStatus(share.status));
+  const status = normalizeManilaStatus(share.status);
+  return !STABLE_SHARE_STATUSES.has(status) && !status.endsWith("_error");
 }
 
 export function canEditShare(share: Pick<ManilaShare, "status">) {

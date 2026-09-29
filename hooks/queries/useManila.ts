@@ -17,7 +17,7 @@ export function sharesQueryOptions(
 ) {
   return queryOptions({
     queryKey: [regionId, projectId, "manila", "shares"],
-    queryFn: listSharesAction,
+    queryFn: () => listSharesAction(),
     enabled: !!regionId && !!projectId,
   });
 }
@@ -40,7 +40,7 @@ export function shareNetworksQueryOptions(
 ) {
   return queryOptions({
     queryKey: [regionId, projectId, "manila", "share-networks"],
-    queryFn: listShareNetworksAction,
+    queryFn: () => listShareNetworksAction(),
     enabled: !!regionId && !!projectId,
   });
 }
@@ -63,7 +63,7 @@ export function shareTypesQueryOptions(
 ) {
   return queryOptions({
     queryKey: [regionId, projectId, "manila", "share-types"],
-    queryFn: listShareTypesAction,
+    queryFn: () => listShareTypesAction(),
     enabled: !!regionId && !!projectId,
   });
 }
@@ -74,7 +74,7 @@ export function manilaAvailabilityZonesQueryOptions(
 ) {
   return queryOptions({
     queryKey: [regionId, projectId, "manila", "availability-zones"],
-    queryFn: listManilaAvailabilityZonesAction,
+    queryFn: () => listManilaAvailabilityZonesAction(),
     enabled: !!regionId && !!projectId,
   });
 }

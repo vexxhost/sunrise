@@ -4,18 +4,19 @@ import { z } from "zod";
 
 import { guardMutationContext } from "@/lib/mutation-context";
 import {
+  mutationErrorForStatus,
   mutationFailure,
   type MutationResult,
   type MutationScope,
 } from "@/lib/mutations";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
-import { getShare, MANILA_API_VERSION } from "@/lib/openstack/manila-server";
+import {
+  getShare,
+  MANILA_API_VERSION,
+  MANILA_SERVICE,
+} from "@/lib/openstack/manila-server";
 import type { ManilaShare, ManilaShareAccessRule } from "@/types/openstack";
 
-const MANILA_SERVICE = {
-  serviceType: "sharev2",
-  serviceName: "manilav2",
-} as const;
 const MANILA_HEADERS = {
   "X-OpenStack-Manila-API-Version": MANILA_API_VERSION,
 } as const;
@@ -95,6 +96,40 @@ function shareFromPayload(payload: unknown) {
     throw new Error("Manila did not return the share");
   }
   return (payload as { share: ManilaShare }).share;
+}
+
+function resizePreflightFailure(error: unknown, scope: MutationScope) {
+  const record =
+    error && typeof error === "object"
+      ? (error as { name?: unknown; status?: unknown })
+      : undefined;
+  if (
+    record?.name === "OpenStackRequestError" &&
+    typeof record.status === "number"
+  ) {
+    return mutationFailure(
+      mutationErrorForStatus(record.status, "read this share"),
+      scope,
+    );
+  }
+  if (record?.name === "OpenStackConnectionError") {
+    return mutationFailure(
+      {
+        code: "network-error",
+        message: "Manila could not be reached. Try again shortly.",
+        retryable: true,
+      },
+      scope,
+    );
+  }
+  return mutationFailure(
+    {
+      code: "service-error",
+      message: "The share could not be read before resizing. Try again shortly.",
+      retryable: true,
+    },
+    scope,
+  );
 }
 
 export async function createShareAction(
@@ -184,7 +219,12 @@ export async function resizeShareAction(
   const parsed = parseInput(resizeShareSchema, input, guarded.context.scope);
   if (!parsed.ok) return parsed.result;
 
-  const share = await getShare(parsedId.value);
+  let share: ManilaShare;
+  try {
+    share = await getShare(parsedId.value);
+  } catch (error) {
+    return resizePreflightFailure(error, guarded.context.scope);
+  }
   if (parsed.value.newSize === share.size) {
     return validationFailure(
       guarded.context.scope,

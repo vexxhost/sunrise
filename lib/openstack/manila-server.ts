@@ -13,9 +13,9 @@ import type {
 
 export const MANILA_API_VERSION = "2.51";
 
-const MANILA_SERVICE = {
+export const MANILA_SERVICE = {
   serviceType: "sharev2",
-  serviceName: "manilav2",
+  serviceName: "manila",
 } as const;
 
 function resourceId(value: string, label: string) {

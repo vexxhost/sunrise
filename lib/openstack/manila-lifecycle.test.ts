@@ -21,6 +21,8 @@ describe("Manila share lifecycle", () => {
     expect(isShareTransitioning({ status: "shrinking" })).toBe(true);
     expect(isShareTransitioning({ status: "available" })).toBe(false);
     expect(isShareTransitioning({ status: "error" })).toBe(false);
+    expect(isShareTransitioning({ status: "shrinking_error" })).toBe(false);
+    expect(isShareTransitioning({ status: "extending_error" })).toBe(false);
   });
 
   it("limits mutable operations to available shares", () => {

@@ -15,6 +15,7 @@ vi.mock("@/lib/mutation-context", () => ({
 vi.mock("@/lib/openstack/manila-server", () => ({
   getShare: mocks.getShare,
   MANILA_API_VERSION: "2.51",
+  MANILA_SERVICE: { serviceType: "sharev2", serviceName: "manila" },
 }));
 
 import {
@@ -94,6 +95,23 @@ describe("Manila mutation actions", () => {
         body: { shrink: { new_size: 8 } },
       }),
     );
+  });
+
+  it("returns a mutation failure when the resize preflight read fails", async () => {
+    mocks.getShare.mockRejectedValueOnce(
+      Object.assign(new Error("Not Found"), {
+        name: "OpenStackRequestError",
+        status: 404,
+      }),
+    );
+
+    const result = await resizeShareAction(scope, "share-a", { newSize: "8" });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "not-found" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("maps access grants to Manila's share action API", async () => {
