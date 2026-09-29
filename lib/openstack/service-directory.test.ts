@@ -55,7 +55,7 @@ describe("service directory", () => {
       { id: "identity", status: "available" },
       { id: "orchestration", status: "unavailable" },
       { id: "dns", status: "unavailable" },
-      { id: "file-system", status: "available" },
+      { id: "shared-file-system", status: "available" },
     ]);
   });
 

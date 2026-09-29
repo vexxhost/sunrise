@@ -85,7 +85,7 @@ const serviceDirectoryIcons: Record<
   identity: KeyRound,
   orchestration: Layers,
   dns: Globe2,
-  "file-system": FolderTree,
+  "shared-file-system": FolderTree,
 };
 
 function formatValue(value: number, unit?: string) {
@@ -283,7 +283,9 @@ function OperationalFeedSection({ feed }: { feed: OperationalFeed }) {
                     </span>
                   </span>
                   <span className="flex items-center gap-2 pl-12 text-xs text-muted-foreground sm:pl-0">
-                    {time ? <span className="whitespace-nowrap">{time}</span> : null}
+                    {time ? (
+                      <span className="whitespace-nowrap">{time}</span>
+                    ) : null}
                     <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
                   </span>
                 </Link>
@@ -315,14 +317,16 @@ function OperationalFeedSection({ feed }: { feed: OperationalFeed }) {
         <div className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           {unavailableSources.length > 0 ? (
             <span>
-              Checks unavailable: {unavailableSources.map((source) => source.label).join(", ")}
+              Checks unavailable:{" "}
+              {unavailableSources.map((source) => source.label).join(", ")}
             </span>
           ) : (
             <span />
           )}
           {hiddenSignals > 0 ? (
             <span>
-              {hiddenSignals} more {hiddenSignals === 1 ? "issue" : "issues"} available in service views
+              {hiddenSignals} more {hiddenSignals === 1 ? "issue" : "issues"}{" "}
+              available in service views
             </span>
           ) : null}
         </div>

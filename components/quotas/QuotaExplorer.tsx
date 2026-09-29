@@ -113,7 +113,7 @@ const serviceOptions: Array<{
   { value: "compute", label: "Compute" },
   { value: "storage", label: "Block storage" },
   { value: "network", label: "Network" },
-  { value: "shared-file-system", label: "Shared file systems" },
+  { value: "shared-file-system", label: "Shared File System" },
   { value: "container-infra", label: "Kubernetes" },
   { value: "load-balancing", label: "Load balancing" },
 ];
@@ -309,7 +309,7 @@ export function QuotaExplorer({ services }: { services: OverviewService[] }) {
                 <TabsTrigger value="storage">Block storage</TabsTrigger>
                 <TabsTrigger value="network">Network</TabsTrigger>
                 <TabsTrigger value="shared-file-system">
-                  Shared file systems
+                  Shared File System
                 </TabsTrigger>
                 <TabsTrigger value="container-infra">Kubernetes</TabsTrigger>
                 <TabsTrigger value="load-balancing">Load balancing</TabsTrigger>

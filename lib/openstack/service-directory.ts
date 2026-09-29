@@ -10,7 +10,7 @@ export type ServiceDirectoryId =
   | "identity"
   | "orchestration"
   | "dns"
-  | "file-system";
+  | "shared-file-system";
 
 export type ServiceDirectoryStatus = "available" | "unavailable" | "unknown";
 
@@ -88,10 +88,10 @@ const serviceDirectoryDefinitions: ServiceDirectoryDefinition[] = [
     catalogIdentities: [{ serviceType: "dns", serviceName: "designate" }],
   },
   {
-    id: "file-system",
-    label: "File System",
+    id: "shared-file-system",
+    label: "Shared File System",
     description: "Create and manage shared file systems with Manila.",
-    href: "/file-system",
+    href: "/shared-file-systems",
     catalogIdentities: [
       { serviceType: "sharev2", serviceName: "manilav2" },
       { serviceType: "shared-file-system", serviceName: "manila" },

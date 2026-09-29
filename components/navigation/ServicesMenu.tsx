@@ -44,7 +44,7 @@ const serviceIcons: Record<
   identity: KeyRound,
   orchestration: Layers,
   dns: Globe,
-  "file-system": FolderTree,
+  "shared-file-system": FolderTree,
 };
 
 const servicePathPrefixes: Record<ServiceDirectoryId, string> = {
@@ -54,7 +54,7 @@ const servicePathPrefixes: Record<ServiceDirectoryId, string> = {
   identity: "/identity",
   orchestration: "/orchestration",
   dns: "/dns",
-  "file-system": "/file-system",
+  "shared-file-system": "/shared-file-systems",
 };
 
 function ServiceItem({
@@ -194,7 +194,9 @@ export function ServicesMenu() {
                   <ServiceItem
                     key={service.id}
                     service={service}
-                    active={pathname.startsWith(servicePathPrefixes[service.id])}
+                    active={pathname.startsWith(
+                      servicePathPrefixes[service.id],
+                    )}
                   />
                 ))}
               </ul>

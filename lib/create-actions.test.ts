@@ -41,6 +41,17 @@ const catalog: OpenStackCatalogService[] = [
       },
     ],
   },
+  {
+    name: "manilav2",
+    type: "sharev2",
+    endpoints: [
+      {
+        interface: "public",
+        region: "RegionOne",
+        url: "https://manila.example.test",
+      },
+    ],
+  },
 ];
 
 function build(
@@ -116,8 +127,12 @@ describe("create action availability", () => {
     expect(actions[0]?.capability.message).toContain("RegionTwo");
   });
 
-  it("does not advertise create flows that have no implemented CRUD", () => {
-    expect(build().map(({ id }) => id)).not.toContain("share");
+  it("advertises implemented share creation but not missing CRUD", () => {
+    const actions = build();
+
+    expect(actions.find(({ id }) => id === "share")?.capability.status).toBe(
+      "available",
+    );
     expect(build().map(({ id }) => id)).not.toContain("load-balancer");
   });
 
@@ -138,9 +153,7 @@ describe("create action availability", () => {
       ),
     ).toBe("/compute/instances?filter=active#servers");
     expect(
-      createActionIntentClearedHref(
-        "/compute/instances?filter=active#servers",
-      ),
+      createActionIntentClearedHref("/compute/instances?filter=active#servers"),
     ).toBeNull();
   });
 });

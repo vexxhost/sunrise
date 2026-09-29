@@ -54,6 +54,7 @@ const recentResourceIcons: Record<ResourceKind, LandingIcon> = {
   image: ImageIcon,
   cluster: Container,
   bucket: Database,
+  share: Database,
 };
 
 export function ServiceLandingPage({
