@@ -142,7 +142,7 @@ export function RolesClient({
           row.original,
           <button
             type="button"
-            className="flex max-w-72 items-center gap-2 text-left text-primary underline-offset-2 hover:underline"
+            className="flex max-w-72 items-center gap-2 text-left underline-offset-2 hover:underline focus-visible:underline"
             title={row.original.name}
           >
             <span className="truncate">{row.original.name}</span>
@@ -260,8 +260,8 @@ export function RolesClient({
       {error && !deleteTarget ? <MutationAlert>{error}</MutationAlert> : null}
 
       {data.accessDenied && (
-        <div className="flex gap-2 rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-600" />
+        <div className="flex gap-2 rounded-md border border-status-warning-border bg-status-warning-soft p-3 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
           <div>
             <div className="font-medium">Role listing not permitted</div>
             <div className="text-muted-foreground">

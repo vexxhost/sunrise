@@ -58,9 +58,9 @@ export function ProjectContextHeader({
               className={cn(
                 "inline-flex items-center gap-1.5",
                 service.status === "available" &&
-                  "text-emerald-700 dark:text-emerald-400",
+                  "text-status-success",
                 service.status === "unavailable" &&
-                  "text-rose-700 dark:text-rose-400",
+                  "text-status-danger",
               )}
               title={service.message}
             >

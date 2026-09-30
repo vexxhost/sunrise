@@ -17,9 +17,9 @@ export default async function ObjectStorageAuthUnavailablePage({
     <div className="mx-auto flex min-h-[55vh] w-full max-w-xl flex-col justify-center py-12">
       <AlertTriangle
         aria-hidden="true"
-        className="size-8 text-amber-600 dark:text-amber-300"
+        className="size-8 text-status-warning"
       />
-      <p className="mt-5 text-sm font-medium text-amber-700 dark:text-amber-200">
+      <p className="mt-5 text-sm font-medium text-status-warning">
         Object Storage session unavailable
       </p>
       <h1 className="mt-2 text-2xl font-semibold text-foreground">

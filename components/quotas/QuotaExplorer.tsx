@@ -60,6 +60,7 @@ import {
   isAttentionLevel,
   type QuotaStatusFilter,
 } from "@/lib/openstack/quota-view";
+import { quotaToneBarClasses } from "@/lib/ui-color-tokens";
 
 const serviceDetails = {
   compute: {
@@ -145,9 +146,9 @@ function LevelBadge({ level }: { level: QuotaLevel }) {
       variant={level === "critical" ? "destructive" : "outline"}
       className={cn(
         level === "warning" &&
-          "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+          "border-status-warning-border bg-status-warning-soft text-status-warning",
         level === "unlimited" &&
-          "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+          "border-status-success-border bg-status-success-soft text-status-success",
       )}
     >
       {levelLabels[level]}
@@ -161,7 +162,7 @@ function ServiceAvailability({ service }: { service: OverviewService }) {
   const available = service.status === "available";
 
   return (
-    <div className="min-w-0 rounded-md border bg-card/30 p-4">
+    <div className="min-w-0 rounded-md border bg-surface p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
@@ -253,7 +254,7 @@ export function QuotaExplorer({ services }: { services: OverviewService[] }) {
           {attentionCount > 0 ? (
             <Badge
               variant="outline"
-              className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+              className="border-status-warning-border bg-status-warning-soft text-status-warning"
             >
               <CircleAlert />
               {attentionCount} need attention
@@ -425,7 +426,7 @@ export function QuotaExplorer({ services }: { services: OverviewService[] }) {
                             className={cn(
                               "mt-2 h-1.5 overflow-hidden rounded-full bg-muted",
                               row.level === "unlimited" &&
-                                "border-y border-dashed border-emerald-500/50 bg-emerald-500/5",
+                                "border-y border-dashed border-status-success-border bg-status-success-soft",
                             )}
                             role={
                               percentage === null ? undefined : "progressbar"
@@ -444,10 +445,7 @@ export function QuotaExplorer({ services }: { services: OverviewService[] }) {
                             <div
                               className={cn(
                                 "h-full rounded-full",
-                                row.level === "normal" && "bg-sky-500",
-                                row.level === "warning" && "bg-amber-500",
-                                row.level === "critical" && "bg-rose-600",
-                                row.level === "unlimited" && "bg-emerald-500",
+                                quotaToneBarClasses[row.level],
                               )}
                               style={{ width: `${percentage ?? 0}%` }}
                             />

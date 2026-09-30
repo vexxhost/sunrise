@@ -16,7 +16,7 @@ export function SessionRefreshRedirect() {
 
   return (
     <div className="flex min-h-[40vh] items-center justify-center gap-2 text-sm text-muted-foreground">
-      <LoaderCircle className="size-4 animate-spin text-sky-400" aria-hidden />
+      <LoaderCircle className="size-4 animate-spin text-status-info" aria-hidden />
       <span>Refreshing your cloud session...</span>
     </div>
   );

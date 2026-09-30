@@ -64,7 +64,7 @@ export function IDCell({ value, isSelected, linkPath }: IDCellProps) {
         onClick={handleCopy}
       >
         {copied ? (
-          <Check className="h-3 w-3 text-green-500" />
+          <Check className="h-3 w-3 text-status-success" />
         ) : (
           <Copy className="h-3 w-3" />
         )}

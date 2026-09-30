@@ -27,6 +27,7 @@ import {
   type ResourceKind,
   type ResourcePreference,
 } from "@/lib/resource-preferences";
+import { quotaToneBarClasses } from "@/lib/ui-color-tokens";
 
 type LandingIcon = ComponentType<{ className?: string }>;
 
@@ -102,14 +103,10 @@ export function ServiceLandingPage({
         {metrics.map((metric) => {
           const Icon = metric.icon;
           const utilizationColor = metric.utilization
-            ? {
-                normal: "bg-sky-500 dark:bg-sky-400",
-                warning: "bg-amber-500 dark:bg-amber-400",
-                critical: "bg-rose-600 dark:bg-rose-400",
-              }[metric.utilization.level]
+            ? quotaToneBarClasses[metric.utilization.level]
             : null;
           return (
-            <div key={metric.label} className="min-w-0 bg-background p-4">
+            <div key={metric.label} className="min-w-0 bg-surface p-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Icon className="size-4 shrink-0" aria-hidden="true" />
                 <span className="truncate">{metric.label}</span>
@@ -217,8 +214,8 @@ export function ServiceAvailabilityPage({
             className={cn(
               "mt-0.5 size-5 shrink-0",
               status === "available" &&
-                "text-emerald-700 dark:text-emerald-400",
-              status === "unavailable" && "text-rose-700 dark:text-rose-400",
+                "text-status-success",
+              status === "unavailable" && "text-status-danger",
               status === "unknown" && "text-muted-foreground",
             )}
             aria-hidden="true"

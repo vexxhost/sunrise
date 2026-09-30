@@ -18,14 +18,14 @@ export function ProgressStatusBadge({
       title={title}
       data-slot="badge"
       className={cn(
-        "relative isolate inline-flex w-fit shrink-0 items-center justify-center overflow-visible whitespace-nowrap rounded-full bg-transparent px-2 py-0.5 text-xs font-medium text-sky-700 shadow-[0_0_0_1px_rgba(14,165,233,0.32)] dark:text-sky-100 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.24)]",
+        "relative isolate inline-flex w-fit shrink-0 items-center justify-center overflow-visible whitespace-nowrap rounded-full bg-transparent px-2 py-0.5 text-xs font-medium text-status-info ring-1 ring-inset ring-status-info-border",
         className,
       )}
     >
-      <span className="absolute inset-[2px] z-0 rounded-full bg-sky-50 dark:bg-sky-500/10" />
+      <span className="absolute inset-[2px] z-0 rounded-full bg-status-info-soft" />
       <svg
         aria-hidden
-        className="pointer-events-none absolute inset-[-1px] z-10 h-[calc(100%+2px)] w-[calc(100%+2px)] overflow-visible text-sky-400"
+        className="pointer-events-none absolute inset-[-1px] z-10 h-[calc(100%+2px)] w-[calc(100%+2px)] overflow-visible text-status-info"
         preserveAspectRatio="none"
         viewBox="0 0 100 24"
       >
