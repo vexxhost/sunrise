@@ -6,6 +6,7 @@ import {
   parseBarbicanOrder,
   parseBarbicanQuotas,
   parseBarbicanSecret,
+  parseBarbicanSecretStore,
   parseBarbicanTransportKeys,
 } from "./barbican-schema";
 
@@ -116,6 +117,28 @@ describe("Barbican response parsing", () => {
         },
       ],
       total: 1,
+    });
+  });
+
+  it("parses documented secret-store references", () => {
+    expect(
+      parseBarbicanSecretStore({
+        secret_store_ref:
+          "https://barbican.example/v1/secret-stores/55555555-5555-4555-8555-555555555555",
+        name: "Software Only Crypto",
+        status: "ACTIVE",
+        global_default: true,
+        crypto_plugin: "simple_crypto",
+        secret_store_plugin: "store_crypto",
+        created: "2026-09-30T00:00:00Z",
+        updated: "2026-09-30T00:00:00Z",
+      }),
+    ).toMatchObject({
+      id: "55555555-5555-4555-8555-555555555555",
+      secret_store_ref:
+        "https://barbican.example/v1/secret-stores/55555555-5555-4555-8555-555555555555",
+      name: "Software Only Crypto",
+      global_default: true,
     });
   });
 });

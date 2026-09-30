@@ -21,9 +21,28 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-function safeFilename(value: string) {
-  const normalized = value.replace(/[\\/\r\n"\x00-\x1f]/g, "-").trim();
-  return (normalized || "barbican-secret").slice(0, 120);
+function normalizedFilename(value: string) {
+  const normalized = value
+    .toWellFormed()
+    .replace(/[\\/\r\n"\x00-\x1f]/g, "-")
+    .trim();
+  return Array.from(normalized || "barbican-secret").slice(0, 120).join("");
+}
+
+function encodeRfc5987(value: string) {
+  return encodeURIComponent(value)
+    .replace(/['()]/g, (character) =>
+      `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    )
+    .replace(/\*/g, "%2A");
+}
+
+function contentDisposition(disposition: "attachment" | "inline", value: string) {
+  const filename = normalizedFilename(value);
+  const fallback = Array.from(filename, (character) =>
+    /^[\x20-\x7e]$/.test(character) ? character : "_",
+  ).join("");
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encodeRfc5987(filename)}`;
 }
 
 function requestId(response: Response) {
@@ -164,7 +183,10 @@ export async function GET(request: Request, { params }: RouteContext) {
       status: 200,
       headers: {
         "Cache-Control": "no-store, max-age=0",
-        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${safeFilename(secret.name ?? secret.id)}"`,
+        "Content-Disposition": contentDisposition(
+          inline ? "inline" : "attachment",
+          secret.name ?? secret.id,
+        ),
         "Content-Type": contentType,
         "Cross-Origin-Resource-Policy": "same-origin",
         Expires: "0",

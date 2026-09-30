@@ -36,10 +36,10 @@ function revealRequest(projectId = scope.projectId) {
   );
 }
 
-function secretMetadata() {
+function secretMetadata(name = "test-secret") {
   return {
     secret_ref: `https://barbican.example/v1/secrets/${secretId}`,
-    name: "test-secret",
+    name,
     status: "ACTIVE",
     secret_type: "opaque",
     content_types: { default: "text/plain" },
@@ -196,10 +196,26 @@ describe("Barbican payload retrieval route", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store, max-age=0");
     expect(response.headers.get("content-disposition")).toBe(
-      'inline; filename="test-secret"',
+      `inline; filename="test-secret"; filename*=UTF-8''test-secret`,
     );
     expect(response.headers.get("cross-origin-resource-policy")).toBe(
       "same-origin",
+    );
+    expect(await response.text()).toBe("protected value");
+  });
+
+  it("encodes non-ASCII secret names without breaking payload retrieval", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json(secretMetadata("API key 🔐")))
+      .mockResolvedValueOnce(new Response("protected value"));
+
+    const response = await GET(revealRequest(), {
+      params: Promise.resolve({ id: secretId }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toBe(
+      `inline; filename="API key _"; filename*=UTF-8''API%20key%20%F0%9F%94%90`,
     );
     expect(await response.text()).toBe("protected value");
   });
