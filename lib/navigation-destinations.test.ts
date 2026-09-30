@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildNavigationDestinations,
   commandPaletteFilter,
@@ -103,5 +103,21 @@ describe("navigation destinations", () => {
         "virtual vm",
       ),
     ).toBeGreaterThan(0);
+  });
+
+  it("uses locale-independent case folding", () => {
+    const localeLowerCase = vi
+      .spyOn(String.prototype, "toLocaleLowerCase")
+      .mockImplementation(function (this: string) {
+        return this.replaceAll("I", "ı").toLowerCase();
+      });
+
+    try {
+      expect(commandPaletteFilter("Instances Active", "instances active"))
+        .toBeGreaterThan(0);
+      expect(localeLowerCase).not.toHaveBeenCalled();
+    } finally {
+      localeLowerCase.mockRestore();
+    }
   });
 });

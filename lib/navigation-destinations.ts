@@ -406,7 +406,7 @@ function normalizeSearchText(value: string) {
   return value
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase();
+    .toLowerCase();
 }
 
 export function commandPaletteFilter(value: string, search: string) {
