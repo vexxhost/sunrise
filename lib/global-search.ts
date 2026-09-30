@@ -17,6 +17,18 @@ export type GlobalSearchIndex = {
   unavailableSources: string[];
 };
 
+const resourceSearchTerms: Record<ResourceKind, string[]> = {
+  instance: ["server", "virtual machine", "vm", "nova", "ec2"],
+  volume: ["disk", "block storage", "cinder", "ebs"],
+  image: ["glance", "boot image", "machine image", "ami"],
+  cluster: ["kubernetes", "k8s", "magnum", "capi", "eks", "gke"],
+  bucket: ["s3", "rgw", "object storage", "blob storage"],
+  share: ["manila", "nfs", "shared file system"],
+  secret: ["barbican", "key vault", "secret manager", "kms"],
+  "secret-container": ["barbican", "certificate", "secret group"],
+  "secret-order": ["barbican", "generate key", "certificate request"],
+};
+
 type ResourceSource = {
   kind: ResourceKind;
   items: unknown;
@@ -108,4 +120,16 @@ export function globalSearchResourceDescription(
   if (resource.status) parts.push(resource.status);
   parts.push(resource.id);
   return parts.join(" · ");
+}
+
+export function globalSearchResourceValue(resource: GlobalSearchResource) {
+  return [
+    resource.name,
+    resource.kind,
+    resource.id,
+    resource.status,
+    ...resourceSearchTerms[resource.kind],
+  ]
+    .filter(Boolean)
+    .join(" ");
 }

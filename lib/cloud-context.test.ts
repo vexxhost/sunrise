@@ -116,6 +116,7 @@ describe("cloud context snapshot", () => {
           resource("other"),
           resource("current", normalizedProjectTwo),
         ],
+        favoriteDestinations: ["compute.instances", "compute.volumes"],
       },
     );
 
@@ -131,6 +132,10 @@ describe("cloud context snapshot", () => {
     expect(snapshot.role.arn).toContain("RGW22222222222222222");
     expect(snapshot.personalResources.pinned.map(({ id }) => id)).toEqual([
       "current",
+    ]);
+    expect(snapshot.favoriteDestinations).toEqual([
+      "compute.instances",
+      "compute.volumes",
     ]);
   });
 

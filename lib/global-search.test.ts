@@ -3,6 +3,7 @@ import {
   buildGlobalSearchResources,
   excludeKnownGlobalSearchResources,
   globalSearchResourceDescription,
+  globalSearchResourceValue,
   resourcePreferenceToSearchResource,
 } from "@/lib/global-search";
 
@@ -114,5 +115,6 @@ describe("global search resources", () => {
     expect(globalSearchResourceDescription(resource)).toBe(
       "Kubernetes cluster · cluster-id",
     );
+    expect(globalSearchResourceValue(resource)).toContain("k8s");
   });
 });

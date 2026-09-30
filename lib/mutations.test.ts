@@ -35,6 +35,8 @@ function cloudContext(
         message: "Available in RegionOne",
       },
     ],
+    destinations: [],
+    favoriteDestinations: [],
     createActions: [],
     personalResources: { pinned: [], recent: [] },
     ...overrides,

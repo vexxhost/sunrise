@@ -10,6 +10,10 @@ import {
   parseSunriseAppearance,
   type SunriseAppearance,
 } from '@/lib/theme-preference';
+import {
+  parseFavoriteDestinationIds,
+  type NavigationDestinationId,
+} from '@/lib/navigation-destinations';
 
 const PREFS_COOKIE = 'sunrise_prefs';
 const PREFS_MAX_AGE_DAYS = 365;
@@ -22,6 +26,7 @@ export type SunrisePrefs = {
   projectName?: string;
   recentResources?: ResourcePreference[];
   pinnedResources?: ResourcePreference[];
+  favoriteDestinations?: NavigationDestinationId[];
 };
 
 export async function readPrefs(): Promise<SunrisePrefs> {
@@ -43,6 +48,9 @@ export async function readPrefs(): Promise<SunrisePrefs> {
             : undefined,
         recentResources: parseResourcePreferences(parsed.recentResources),
         pinnedResources: parseResourcePreferences(parsed.pinnedResources),
+        favoriteDestinations: parseFavoriteDestinationIds(
+          parsed.favoriteDestinations,
+        ),
       };
     }
   } catch {
@@ -58,17 +66,22 @@ export async function writePrefs(patch: Partial<SunrisePrefs>): Promise<void> {
     ...next,
     recentResources: serializeResourcePreferences(next.recentResources),
     pinnedResources: serializeResourcePreferences(next.pinnedResources),
+    favoriteDestinations: parseFavoriteDestinationIds(
+      next.favoriteDestinations,
+    ),
   };
 
   const recent = serialized.recentResources;
   const pinned = serialized.pinnedResources;
+  const favorites = serialized.favoriteDestinations;
   let value = JSON.stringify(serialized);
   while (
     encodeURIComponent(value).length > PREFS_COOKIE_SAFE_LENGTH &&
-    (recent.length > 0 || pinned.length > 0)
+    (recent.length > 0 || pinned.length > 0 || favorites.length > 0)
   ) {
     if (recent.length > 0) recent.pop();
-    else pinned.pop();
+    else if (pinned.length > 0) pinned.pop();
+    else favorites.pop();
     value = JSON.stringify(serialized);
   }
 
