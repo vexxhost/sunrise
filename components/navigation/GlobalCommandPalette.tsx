@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ComponentType,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Cable,
+  Camera,
   Container,
+  Cpu,
   Database,
   FolderTree,
   Gauge,
+  GitBranch,
   Globe,
   HardDrive,
   Home,
@@ -15,15 +25,25 @@ import {
   KeyRound,
   LoaderCircle,
   RefreshCw,
+  Route,
   Search,
   Server,
+  Share2,
+  Shield,
+  Star,
   Vault,
+  Warehouse,
   Package,
   ScrollText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCloudContext } from "@/components/cloud/CloudContext";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   CommandDialog,
   CommandEmpty,
@@ -38,12 +58,22 @@ import { createActionIcons } from "@/components/resources/CreateResourceMenu";
 import {
   excludeKnownGlobalSearchResources,
   globalSearchResourceDescription,
+  globalSearchResourceValue,
   resourcePreferenceToSearchResource,
   type GlobalSearchResource,
 } from "@/lib/global-search";
 import { loadGlobalSearchIndex } from "@/lib/global-search-actions";
+import {
+  commandPaletteFilter,
+  createActionSearchTerms,
+  serviceDirectorySearchTerms,
+  type NavigationDestination,
+  type NavigationDestinationIcon,
+  type NavigationDestinationId,
+} from "@/lib/navigation-destinations";
 import type { ServiceDirectoryId } from "@/lib/openstack/service-directory";
 import type { ResourceKind } from "@/lib/resource-preferences";
+import { cn } from "@/lib/utils";
 
 const resourceIcons: Record<
   ResourceKind,
@@ -74,6 +104,35 @@ const serviceIcons: Record<
   "key-manager": Vault,
 };
 
+const destinationIcons: Record<
+  NavigationDestinationIcon,
+  ComponentType<{ className?: string }>
+> = {
+  "application-credential": KeyRound,
+  bucket: Database,
+  cluster: Container,
+  "cluster-template": Layers,
+  container: Package,
+  flavor: Cpu,
+  "floating-ip": Globe,
+  image: ImageIcon,
+  instance: Server,
+  "key-pair": KeyRound,
+  network: GitBranch,
+  order: ScrollText,
+  port: Cable,
+  role: KeyRound,
+  router: Route,
+  secret: Vault,
+  "secret-store": Warehouse,
+  "security-group": Shield,
+  share: FolderTree,
+  "share-network": Share2,
+  snapshot: Camera,
+  topology: GitBranch,
+  volume: HardDrive,
+};
+
 function ResourceItem({
   resource,
   onSelect,
@@ -84,7 +143,7 @@ function ResourceItem({
   const Icon = resourceIcons[resource.kind];
   return (
     <CommandItem
-      value={`${resource.name} ${resource.kind} ${resource.id} ${resource.status ?? ""}`}
+      value={globalSearchResourceValue(resource)}
       onSelect={() => onSelect(resource.href)}
     >
       <Icon className="size-4" aria-hidden="true" />
@@ -98,9 +157,76 @@ function ResourceItem({
   );
 }
 
+function DestinationItem({
+  destination,
+  favorite,
+  favoritePending,
+  onSelect,
+  onToggleFavorite,
+}: {
+  destination: NavigationDestination;
+  favorite: boolean;
+  favoritePending: boolean;
+  onSelect: (href: string) => void;
+  onToggleFavorite: (id: NavigationDestinationId) => void;
+}) {
+  const Icon = destinationIcons[destination.icon];
+  const unavailable = destination.status === "unavailable";
+  const favoriteLabel = favorite
+    ? `Remove ${destination.label} from favorites`
+    : `Add ${destination.label} to favorites`;
+
+  return (
+    <CommandItem
+      value={`${destination.label} ${destination.description} ${destination.group} ${destination.keywords.join(" ")}`}
+      aria-disabled={unavailable}
+      className={cn(unavailable && "opacity-50")}
+      onSelect={() => !unavailable && onSelect(destination.href)}
+    >
+      <Icon className="size-4" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium">{destination.label}</span>
+        <span className="block truncate text-xs text-muted-foreground">
+          {unavailable ? destination.message : destination.description}
+        </span>
+      </span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="-my-2 -mr-1"
+            disabled={favoritePending}
+            aria-label={favoriteLabel}
+            aria-pressed={favorite}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleFavorite(destination.id);
+            }}
+          >
+            <Star
+              className={cn("size-4", favorite && "fill-current text-primary")}
+              aria-hidden="true"
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="left">{favoriteLabel}</TooltipContent>
+      </Tooltip>
+    </CommandItem>
+  );
+}
+
 export function GlobalCommandPalette() {
   const {
     services,
+    destinations,
+    favoriteDestinations: initialFavoriteDestinations,
     personalResources: { pinned: pinnedResources, recent: recentResources },
     createActions,
     region,
@@ -110,6 +236,11 @@ export function GlobalCommandPalette() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [favoriteDestinations, setFavoriteDestinations] = useState(
+    initialFavoriteDestinations,
+  );
+  const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  const [favoritePending, startFavoriteTransition] = useTransition();
   const regionId = region.id ?? undefined;
   const projectId = project.id ?? undefined;
   const hasContext = Boolean(regionId && projectId);
@@ -154,6 +285,23 @@ export function GlobalCommandPalette() {
     searchIndex.data?.resources ?? [],
     [...pinned, ...recent],
   );
+  const favoriteDestinationSet = useMemo(
+    () => new Set(favoriteDestinations),
+    [favoriteDestinations],
+  );
+  const favoriteDestinationItems = useMemo(
+    () =>
+      favoriteDestinations
+        .map((id) => destinations.find((destination) => destination.id === id))
+        .filter((destination): destination is NavigationDestination =>
+          Boolean(destination),
+        ),
+    [destinations, favoriteDestinations],
+  );
+  const otherDestinations = useMemo(
+    () => destinations.filter(({ id }) => !favoriteDestinationSet.has(id)),
+    [destinations, favoriteDestinationSet],
+  );
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
@@ -169,6 +317,28 @@ export function GlobalCommandPalette() {
     handleOpenChange(false);
     void queryClient.invalidateQueries();
     router.refresh();
+  }
+
+  function toggleFavorite(destinationId: NavigationDestinationId) {
+    startFavoriteTransition(async () => {
+      setFavoriteError(null);
+      try {
+        const response = await fetch("/api/preferences/favorites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ destinationId }),
+          credentials: "same-origin",
+        });
+        if (!response.ok) throw new Error("Favorite update failed");
+
+        const next = (await response.json()) as {
+          favoriteDestinations: NavigationDestinationId[];
+        };
+        setFavoriteDestinations(next.favoriteDestinations);
+      } catch {
+        setFavoriteError("Favorites could not be updated.");
+      }
+    });
   }
 
   return (
@@ -191,17 +361,36 @@ export function GlobalCommandPalette() {
         onOpenChange={handleOpenChange}
         title="Search Sunrise"
         description="Search resources and services, or run a common action."
-        className="sm:max-w-2xl"
+        className="sm:max-w-3xl"
+        filter={commandPaletteFilter}
       >
         <CommandInput
-          placeholder="Search resources, services, and actions..."
+          placeholder="Search pages, resources, services, and actions..."
           value={search}
           onValueChange={setSearch}
         />
         <CommandList className="max-h-[min(65vh,30rem)]">
           <CommandEmpty>
-            No matching resources, services, or actions.
+            No matching pages, resources, services, or actions.
           </CommandEmpty>
+
+          {favoriteDestinationItems.length > 0 && (
+            <>
+              <CommandGroup heading="Favorite pages">
+                {favoriteDestinationItems.map((destination) => (
+                  <DestinationItem
+                    key={destination.id}
+                    destination={destination}
+                    favorite
+                    favoritePending={favoritePending}
+                    onSelect={navigate}
+                    onToggleFavorite={toggleFavorite}
+                  />
+                ))}
+              </CommandGroup>
+              <CommandSeparator />
+            </>
+          )}
 
           <CommandGroup heading="Actions">
             <CommandItem
@@ -225,6 +414,20 @@ export function GlobalCommandPalette() {
           </CommandGroup>
 
           <CommandSeparator />
+          <CommandGroup heading="Pages">
+            {otherDestinations.map((destination) => (
+              <DestinationItem
+                key={destination.id}
+                destination={destination}
+                favorite={false}
+                favoritePending={favoritePending}
+                onSelect={navigate}
+                onToggleFavorite={toggleFavorite}
+              />
+            ))}
+          </CommandGroup>
+
+          <CommandSeparator />
           <CommandGroup heading="Create resources">
             {createActions.map((action) => {
               const Icon = createActionIcons[action.id];
@@ -232,7 +435,7 @@ export function GlobalCommandPalette() {
               return (
                 <CommandItem
                   key={action.id}
-                  value={`${action.label} ${action.description} ${action.group}`}
+                  value={`${action.label} ${action.description} ${action.group} ${createActionSearchTerms[action.id].join(" ")}`}
                   disabled={!available}
                   onSelect={() => available && navigate(action.href)}
                 >
@@ -258,7 +461,7 @@ export function GlobalCommandPalette() {
               return (
                 <CommandItem
                   key={service.id}
-                  value={`${service.label} ${service.description}`}
+                  value={`${service.label} ${service.description} ${serviceDirectorySearchTerms[service.id].join(" ")}`}
                   disabled={unavailable}
                   onSelect={() => navigate(service.href)}
                 >
@@ -323,14 +526,16 @@ export function GlobalCommandPalette() {
           </CommandGroup>
 
           {(searchIndex.isError ||
+            favoriteError ||
             (searchIndex.data?.unavailableSources.length ?? 0) > 0) && (
             <div
               className="border-t px-4 py-2 text-xs text-muted-foreground"
               role="status"
             >
-              {searchIndex.isError
-                ? "Resource search is temporarily unavailable."
-                : `Some sources are unavailable: ${searchIndex.data?.unavailableSources.join(", ")}.`}
+              {favoriteError ??
+                (searchIndex.isError
+                  ? "Resource search is temporarily unavailable."
+                  : `Some sources are unavailable: ${searchIndex.data?.unavailableSources.join(", ")}.`)}
             </div>
           )}
         </CommandList>

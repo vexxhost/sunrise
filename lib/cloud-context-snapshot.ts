@@ -4,6 +4,12 @@ import {
   buildServiceDirectory,
   type ServiceDirectoryItem,
 } from "@/lib/openstack/service-directory";
+import {
+  buildNavigationDestinations,
+  parseFavoriteDestinationIds,
+  type NavigationDestination,
+  type NavigationDestinationId,
+} from "@/lib/navigation-destinations";
 import type { SunrisePrefs } from "@/lib/prefs";
 import {
   visibleResourcePreferences,
@@ -45,6 +51,8 @@ export type CloudContextSnapshot = {
   projects: Project[];
   regions: Region[];
   services: ServiceDirectoryItem[];
+  destinations: NavigationDestination[];
+  favoriteDestinations: NavigationDestinationId[];
   createActions: CreateAction[];
   personalResources: {
     pinned: ResourcePreference[];
@@ -182,6 +190,10 @@ export function buildCloudContextSnapshot({
     projects,
     regions,
     services: buildServiceDirectory(catalog, session.regionId),
+    destinations: buildNavigationDestinations(catalog, session.regionId),
+    favoriteDestinations: parseFavoriteDestinationIds(
+      prefs.favoriteDestinations,
+    ),
     createActions: buildCreateActions({
       catalog,
       catalogStatus: catalogStatus.status,
