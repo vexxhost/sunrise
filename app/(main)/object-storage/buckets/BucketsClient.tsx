@@ -82,7 +82,7 @@ export function BucketsClient({
       cell: ({ row }) => (
         <Link
           href={`/object-storage/buckets/${encodeURIComponent(row.original.name)}`}
-          className="text-primary hover:underline"
+          className="underline-offset-2 hover:underline focus-visible:underline"
         >
           {row.original.name}
         </Link>

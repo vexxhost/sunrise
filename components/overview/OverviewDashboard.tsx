@@ -35,25 +35,55 @@ import type {
   ServiceDirectoryItem,
 } from "@/lib/openstack/service-directory";
 import type { ResourcePreference } from "@/lib/resource-preferences";
+import {
+  quotaToneBarClasses,
+  serviceAccentClasses,
+  type ServiceAccent,
+} from "@/lib/ui-color-tokens";
 
 const quickAccess = [
-  { label: "Instances", href: "/compute/instances", icon: Server, tone: "sky" },
+  {
+    label: "Instances",
+    href: "/compute/instances",
+    icon: Server,
+    accent: "compute",
+  },
   {
     label: "Volumes",
     href: "/compute/volumes",
     icon: HardDrive,
-    tone: "emerald",
+    accent: "storage",
   },
-  { label: "Networks", href: "/compute/networks", icon: Network, tone: "cyan" },
-  { label: "Images", href: "/compute/images", icon: ImageIcon, tone: "amber" },
-  { label: "Kubernetes", href: "/kubernetes", icon: Container, tone: "rose" },
+  {
+    label: "Networks",
+    href: "/compute/networks",
+    icon: Network,
+    accent: "network",
+  },
+  {
+    label: "Images",
+    href: "/compute/images",
+    icon: ImageIcon,
+    accent: "image",
+  },
+  {
+    label: "Kubernetes",
+    href: "/kubernetes",
+    icon: Container,
+    accent: "kubernetes",
+  },
   {
     label: "Buckets",
     href: "/object-storage/buckets",
     icon: Database,
-    tone: "violet",
+    accent: "object-storage",
   },
-] as const;
+] satisfies Array<{
+  label: string;
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  accent: ServiceAccent;
+}>;
 
 const serviceIcons: Record<
   OverviewService["id"],
@@ -67,15 +97,6 @@ const serviceIcons: Record<
   "load-balancing": Waypoints,
   "key-manager": Vault,
 };
-
-const toneClasses = {
-  sky: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  emerald: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  cyan: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
-  amber: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  rose: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  violet: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
-} as const;
 
 const serviceDirectoryIcons: Record<
   ServiceDirectoryId,
@@ -102,12 +123,7 @@ function QuotaBar({ metric }: { metric: QuotaMetric }) {
   const percentage = quotaPercentage(metric);
   const limitLabel =
     metric.limit < 0 ? "Unlimited" : formatValue(metric.limit, metric.unit);
-  const color = {
-    normal: "bg-sky-500 dark:bg-sky-400",
-    warning: "bg-amber-500 dark:bg-amber-400",
-    critical: "bg-rose-600 dark:bg-rose-400",
-    unlimited: "bg-emerald-500 dark:bg-emerald-400",
-  }[metric.level];
+  const color = quotaToneBarClasses[metric.level];
 
   return (
     <Link
@@ -130,7 +146,7 @@ function QuotaBar({ metric }: { metric: QuotaMetric }) {
         className={cn(
           "mt-2 h-1.5 overflow-hidden rounded-full bg-muted",
           metric.level === "unlimited" &&
-            "border-y border-dashed border-emerald-500/50 bg-emerald-500/5",
+            "border-y border-dashed border-status-success-border bg-status-success-soft",
         )}
         role={percentage === null ? undefined : "progressbar"}
         aria-label={`${metric.label} quota usage`}
@@ -266,8 +282,8 @@ function OperationalFeedSection({ feed }: { feed: OperationalFeed }) {
                     className={cn(
                       "flex size-9 items-center justify-center rounded-md",
                       signal.severity === "critical"
-                        ? "bg-rose-500/10 text-rose-700 dark:text-rose-300"
-                        : "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                        ? "bg-status-danger-soft text-status-danger"
+                        : "bg-status-warning-soft text-status-warning",
                     )}
                   >
                     <Icon className="size-4" />
@@ -297,7 +313,7 @@ function OperationalFeedSection({ feed }: { feed: OperationalFeed }) {
           </div>
         ) : (
           <div className="flex items-start gap-3 px-2 py-5">
-            <span className="flex size-9 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
+            <span className="flex size-9 items-center justify-center rounded-md bg-status-success-soft text-status-success">
               <CheckCircle2 className="size-4" />
             </span>
             <div>
@@ -368,16 +384,16 @@ export function OverviewDashboard({
           Quick access
         </h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-          {quickAccess.map(({ label, href, icon: Icon, tone }) => (
+          {quickAccess.map(({ label, href, icon: Icon, accent }) => (
             <Link
               key={href}
               href={href}
-              className="group flex h-16 items-center gap-3 rounded-md border bg-background px-3 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="group flex h-16 items-center gap-3 rounded-md border bg-surface px-3 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span
                 className={cn(
                   "flex size-9 items-center justify-center rounded-md",
-                  toneClasses[tone],
+                  serviceAccentClasses[accent],
                 )}
               >
                 <Icon className="size-4" />
@@ -409,7 +425,7 @@ export function OverviewDashboard({
               Usage reported by OpenStack services
             </p>
           </div>
-          <div className="overflow-hidden rounded-md border bg-card/30">
+          <div className="overflow-hidden rounded-md border bg-surface">
             {services.map((service) => (
               <ResourceGroup key={service.id} service={service} />
             ))}
@@ -448,7 +464,7 @@ export function OverviewDashboard({
             {services.map((service) => (
               <div
                 key={service.id}
-                className="min-w-0 rounded-md border bg-card/30 p-3"
+                className="min-w-0 rounded-md border bg-surface p-3"
               >
                 <div className="flex h-8 items-center justify-between px-2">
                   <h3 className="text-xs font-semibold uppercase text-muted-foreground">

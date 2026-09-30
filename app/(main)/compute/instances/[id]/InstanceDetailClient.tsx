@@ -178,7 +178,7 @@ export function InstanceDetailClient({
         />
       </div>
       <Tabs value={selectedTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="flex w-full justify-start overflow-x-auto">
+        <TabsList className="flex w-full justify-start overflow-x-auto overflow-y-hidden">
           <TabsTrigger className="min-w-28 flex-1 whitespace-nowrap" value="overview">
             Overview
           </TabsTrigger>

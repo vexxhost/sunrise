@@ -6,7 +6,7 @@ export function NavigationSkeleton() {
   return (
     <div
       aria-label="Loading cloud navigation"
-      className="sticky top-0 z-50 w-full border-b bg-background/95"
+      className="sticky top-0 z-50 w-full border-b bg-surface/95"
     >
       <div className="flex h-14 w-full items-center justify-between gap-2 px-3 sm:px-6">
         <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">

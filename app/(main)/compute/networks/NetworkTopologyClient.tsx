@@ -106,20 +106,32 @@ const KIND_META: Record<
   { color: string; icon: typeof Network; label: string }
 > = {
   "external-network": {
-    color: "#0ea5e9",
+    color: "var(--status-info)",
     icon: Cloud,
     label: "External network",
   },
   "floating-ip": {
-    color: "#f59e0b",
+    color: "var(--status-warning)",
     icon: Globe2,
     label: "Floating IP",
   },
-  instance: { color: "#22c55e", icon: Server, label: "Instance" },
-  network: { color: "#6366f1", icon: Network, label: "Network" },
-  port: { color: "#8b5cf6", icon: EthernetPort, label: "Port" },
-  router: { color: "#ec4899", icon: RouterIcon, label: "Router" },
-  subnet: { color: "#14b8a6", icon: GitBranch, label: "Subnet" },
+  instance: {
+    color: "var(--service-compute)",
+    icon: Server,
+    label: "Instance",
+  },
+  network: {
+    color: "var(--service-network)",
+    icon: Network,
+    label: "Network",
+  },
+  port: { color: "var(--chart-5)", icon: EthernetPort, label: "Port" },
+  router: { color: "var(--chart-4)", icon: RouterIcon, label: "Router" },
+  subnet: {
+    color: "var(--service-storage)",
+    icon: GitBranch,
+    label: "Subnet",
+  },
 };
 
 const INITIAL_VISIBILITY: Record<TopologyResourceKind, boolean> = {
@@ -976,7 +988,7 @@ export function NetworkTopologyClient({
                       fill="none"
                       strokeDasharray="2 12"
                       strokeLinecap="round"
-                      className="stroke-sky-400/80"
+                      className="stroke-status-info"
                       strokeWidth="2.5"
                       vectorEffect="non-scaling-stroke"
                       pointerEvents="none"

@@ -214,7 +214,7 @@ function ApiEndpointTile({
             variant="ghost"
           >
             {copied ? (
-              <Check className="size-3.5 text-emerald-500" />
+              <Check className="size-3.5 text-status-success" />
             ) : (
               <Copy className="size-3.5" />
             )}
@@ -241,7 +241,7 @@ function HealthPanel({ cluster }: { cluster: MagnumCluster }) {
           ? "overflow-hidden rounded-md border bg-muted/20"
           : unhealthy
             ? "overflow-hidden rounded-md border border-destructive/40 bg-destructive/5"
-            : "overflow-hidden rounded-md border border-emerald-500/30 bg-emerald-500/5"
+            : "overflow-hidden rounded-md border border-status-success-border bg-status-success-soft"
       }
     >
       <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -251,7 +251,7 @@ function HealthPanel({ cluster }: { cluster: MagnumCluster }) {
           ) : unhealthy ? (
             <TriangleAlert className="mt-0.5 size-5 text-destructive" />
           ) : (
-            <CheckCircle2 className="mt-0.5 size-5 text-emerald-600 dark:text-emerald-400" />
+            <CheckCircle2 className="mt-0.5 size-5 text-status-success" />
           )}
           <div>
             <h2 className="text-sm font-semibold">

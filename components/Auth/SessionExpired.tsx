@@ -37,7 +37,7 @@ export function SessionExpired({
   return (
     <AuthScene>
       <div className="max-w-sm">
-        <div className="flex size-10 items-center justify-center rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200">
+        <div className="flex size-10 items-center justify-center rounded-md border border-status-warning-border bg-status-warning-soft text-status-warning">
           <Clock3 className="size-5" aria-hidden="true" />
         </div>
         <h1 className="mt-5 text-3xl font-semibold text-foreground">

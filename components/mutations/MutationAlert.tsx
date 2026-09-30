@@ -29,9 +29,9 @@ export function MutationAlert({
         variant === "error" &&
           "border-destructive/40 bg-destructive/10 text-destructive",
         variant === "warning" &&
-          "border-yellow-500/40 bg-yellow-500/10 text-foreground",
+          "border-status-warning-border bg-status-warning-soft text-foreground",
         variant === "success" &&
-          "border-emerald-500/40 bg-emerald-500/10 text-foreground",
+          "border-status-success-border bg-status-success-soft text-foreground",
         className,
       )}
     >

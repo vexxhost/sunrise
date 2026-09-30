@@ -56,7 +56,7 @@ export function AuthRecovery({
   return (
     <AuthScene>
       <div className="max-w-sm">
-        <p className="text-sm font-medium text-amber-700 dark:text-amber-200">
+        <p className="text-sm font-medium text-status-warning">
           {content.eyebrow}
         </p>
         <h1 className="mt-3 text-3xl font-semibold text-foreground">

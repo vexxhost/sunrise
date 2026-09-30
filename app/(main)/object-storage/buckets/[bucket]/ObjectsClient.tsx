@@ -436,7 +436,7 @@ export function ObjectsClient({
           return (
             <Link
               href={`?${params.toString()}`}
-              className="flex items-center gap-2 text-primary hover:underline"
+              className="flex items-center gap-2 underline-offset-2 hover:underline focus-visible:underline"
             >
               <Folder className="h-4 w-4" />
               <span>{r.name}/</span>
@@ -448,7 +448,7 @@ export function ObjectsClient({
             href={`/object-storage/buckets/${encodeURIComponent(
               bucket,
             )}/object/${encodeURIComponent(r.fullPath)}`}
-            className="flex items-center gap-2 text-primary hover:underline"
+            className="flex items-center gap-2 underline-offset-2 hover:underline focus-visible:underline"
           >
             <FileText className="h-4 w-4" />
             <span>{r.name}</span>
@@ -757,8 +757,8 @@ export function ObjectsClient({
       />
 
       {data.accessDenied && (
-        <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 flex gap-2 text-sm">
-          <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0 mt-0.5" />
+        <div className="flex gap-2 rounded-md border border-status-warning-border bg-status-warning-soft p-3 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
           <div>
             <div className="font-medium">Access denied</div>
             <div className="text-muted-foreground">

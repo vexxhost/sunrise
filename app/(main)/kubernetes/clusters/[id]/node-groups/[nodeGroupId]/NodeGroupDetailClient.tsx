@@ -204,7 +204,7 @@ export function NodeGroupDetailClient({
       </div>
 
       {nodeGroup.status_reason ? (
-        <div className="border-y border-sky-500/35 bg-sky-500/5 px-1 py-3 text-sm">
+        <div className="border-y border-status-info-border bg-status-info-soft px-1 py-3 text-sm">
           <p className="font-semibold">Latest lifecycle update</p>
           <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
             {nodeGroup.status_reason}

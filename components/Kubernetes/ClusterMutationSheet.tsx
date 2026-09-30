@@ -523,8 +523,8 @@ export function ClusterMutationSheet({
                         </div>
                       </div>
                       {!selectedTemplateReady ? (
-                        <div className="flex gap-2 border-y border-amber-500/40 bg-amber-500/5 px-1 py-3 text-sm">
-                          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                        <div className="flex gap-2 border-y border-status-warning-border bg-status-warning-soft px-1 py-3 text-sm">
+                          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-status-warning" />
                           <p>
                             This legacy template is missing an external network
                             required by the current CAPI driver. Edit the
@@ -852,8 +852,8 @@ export function ClusterMutationSheet({
                   </div>
                   {!effectiveLoadBalancer &&
                   Number(form.controlPlaneCount) !== 1 ? (
-                    <div className="flex gap-3 border-y border-amber-500/40 bg-amber-500/10 px-1 py-3 text-sm">
-                      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div className="flex gap-3 border-y border-status-warning-border bg-status-warning-soft px-1 py-3 text-sm">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-status-warning" />
                       <p>
                         Magnum requires exactly one control-plane node when the
                         API load balancer is disabled.
@@ -1166,8 +1166,8 @@ export function ClusterMutationSheet({
               </TabsContent>
 
               <TabsContent className="space-y-5 pt-4" value="review">
-                <div className="flex gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="flex gap-3 rounded-md border border-status-warning-border bg-status-warning-soft p-4 text-sm">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-status-warning" />
                   <p>
                     Creating a cluster allocates compute, network,
                     load-balancer, and storage resources. Provisioning continues

@@ -460,7 +460,7 @@ export function DirectClient({
           return (
             <Link
               href={`?${params.toString()}`}
-              className="flex items-center gap-2 text-primary hover:underline"
+              className="flex items-center gap-2 underline-offset-2 hover:underline focus-visible:underline"
             >
               <Folder className="h-4 w-4" />
               <span>{item.name}/</span>
@@ -470,7 +470,7 @@ export function DirectClient({
         return (
           <Link
             href={directObjectPath(bucket, item.fullPath)}
-            className="flex items-center gap-2 text-primary hover:underline"
+            className="flex items-center gap-2 underline-offset-2 hover:underline focus-visible:underline"
           >
             <FileText className="h-4 w-4" />
             <span>{item.name}</span>
@@ -557,7 +557,7 @@ export function DirectClient({
 
   if (credsError) {
     return (
-      <div className="rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm">
+      <div className="rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm">
         Failed to obtain STS credentials: {credsError}
       </div>
     );
@@ -570,7 +570,7 @@ export function DirectClient({
   }
 
   const directNotice = (
-    <div className="rounded-md border border-blue-500/50 bg-blue-500/10 p-3 text-sm">
+    <div className="rounded-md border border-status-info-border bg-status-info-soft p-3 text-sm">
       <div className="font-medium">Direct browser mode</div>
       <div className="text-muted-foreground">
         S3 operations on this page go from your browser straight to{" "}
@@ -625,7 +625,7 @@ export function DirectClient({
           <div className="text-sm text-muted-foreground">Loading metadata</div>
         )}
         {headQuery.error && !isBrowserObjectNotFound(headQuery.error) && (
-          <div className="rounded-md border border-red-500/50 bg-red-500/10 p-3 text-sm text-destructive">
+          <div className="rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm text-destructive">
             {describeBrowserS3Error(headQuery.error)}
           </div>
         )}
@@ -864,8 +864,8 @@ export function DirectClient({
         <div
           className={`rounded-md border p-3 text-sm flex gap-2 ${
             isBrowserAccessDenied(listQuery.error)
-              ? "border-yellow-500/50 bg-yellow-500/10"
-              : "border-red-500/50 bg-red-500/10"
+              ? "border-status-warning-border bg-status-warning-soft"
+              : "border-status-danger-border bg-status-danger-soft"
           }`}
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />

@@ -39,7 +39,7 @@ export function ServiceLayout({ children, sidebarSections }: ServiceLayoutProps)
 
   return (
     <SidebarProvider>
-      <div className="sticky top-14 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="sticky top-14 z-40 w-full border-b bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/85">
         <div className="flex items-center gap-3 px-4 h-12">
           <SidebarTrigger />
           <Breadcrumbs />

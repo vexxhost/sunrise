@@ -75,9 +75,9 @@ export function UserMenu() {
                         className={cn(
                           "size-1.5 rounded-full",
                           role.status === "active"
-                            ? "bg-emerald-500"
+                            ? "bg-status-success"
                             : role.status === "authentication-required"
-                              ? "bg-amber-500"
+                              ? "bg-status-warning"
                               : "bg-muted-foreground/50",
                         )}
                         aria-hidden="true"

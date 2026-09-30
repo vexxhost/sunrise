@@ -15,7 +15,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 export function NavigationMenu() {
   return (
-    <div className="w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+    <div className="sticky top-0 z-50 w-full border-b bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/85">
       <div className="flex h-14 w-full items-center justify-between gap-2 px-3 sm:px-6">
         {/* Left side: Logo + Services Menu */}
         <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-3">
