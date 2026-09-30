@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   Search,
   Server,
+  Vault,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -45,6 +46,7 @@ const serviceIcons: Record<
   orchestration: Layers,
   dns: Globe,
   "shared-file-system": FolderTree,
+  "key-manager": Vault,
 };
 
 const servicePathPrefixes: Record<ServiceDirectoryId, string> = {
@@ -55,6 +57,7 @@ const servicePathPrefixes: Record<ServiceDirectoryId, string> = {
   orchestration: "/orchestration",
   dns: "/dns",
   "shared-file-system": "/shared-file-systems",
+  "key-manager": "/key-manager",
 };
 
 function ServiceItem({

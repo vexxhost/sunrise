@@ -39,6 +39,11 @@ const catalog: OpenStackCatalogService[] = [
     type: "sharev2",
     endpoints: [endpoint("RegionOne", "https://manila.example.test")],
   },
+  {
+    name: "barbican",
+    type: "key-manager",
+    endpoints: [endpoint("RegionOne", "https://barbican.example.test")],
+  },
 ];
 
 describe("service directory", () => {
@@ -56,6 +61,7 @@ describe("service directory", () => {
       { id: "orchestration", status: "unavailable" },
       { id: "dns", status: "unavailable" },
       { id: "shared-file-system", status: "available" },
+      { id: "key-manager", status: "available" },
     ]);
   });
 
@@ -73,7 +79,7 @@ describe("service directory", () => {
   it("provides shared navigation metadata for every supported service", () => {
     const directory = buildServiceDirectory(catalog, "RegionOne");
 
-    expect(directory).toHaveLength(7);
+    expect(directory).toHaveLength(8);
     expect(directory).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -85,6 +91,11 @@ describe("service directory", () => {
           label: "Object Storage",
           href: "/object-storage",
           description: "Browse buckets, objects, and S3 access roles.",
+        }),
+        expect.objectContaining({
+          id: "key-manager",
+          label: "Key Manager",
+          href: "/key-manager",
         }),
       ]),
     );

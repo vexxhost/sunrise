@@ -11,6 +11,9 @@ import {
   ImageIcon,
   Plus,
   Server,
+  Vault,
+  Package,
+  ScrollText,
 } from "lucide-react";
 import { ProjectContextHeader } from "@/components/overview/ProjectContextHeader";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +58,9 @@ const recentResourceIcons: Record<ResourceKind, LandingIcon> = {
   cluster: Container,
   bucket: Database,
   share: Database,
+  secret: Vault,
+  "secret-container": Package,
+  "secret-order": ScrollText,
 };
 
 export function ServiceLandingPage({

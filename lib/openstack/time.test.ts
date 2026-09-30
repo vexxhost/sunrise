@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatAge, normalizeOpenStackTimestamp } from "./time";
+import {
+  formatAge,
+  formatUtcTimestamp,
+  normalizeOpenStackTimestamp,
+} from "./time";
 
 describe("normalizeOpenStackTimestamp", () => {
   it("marks naive OpenStack timestamps as UTC", () => {
@@ -30,4 +34,20 @@ describe("formatAge", () => {
       expect(formatAge(value, now)).toBe("-");
     },
   );
+});
+
+describe("formatUtcTimestamp", () => {
+  it("renders a stable UTC date and time", () => {
+    expect(formatUtcTimestamp("2026-09-29T20:34:07.123456")).toBe(
+      "2026-09-29 20:34:07 UTC",
+    );
+  });
+
+  it.each([null, undefined, ""])("returns a dash for %s", (value) => {
+    expect(formatUtcTimestamp(value)).toBe("-");
+  });
+
+  it("preserves invalid values for diagnostics", () => {
+    expect(formatUtcTimestamp("not-a-date")).toBe("not-a-date");
+  });
 });

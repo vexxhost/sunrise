@@ -13,6 +13,7 @@ import {
   Search,
   Server,
   Waypoints,
+  Vault,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +92,11 @@ const serviceDetails = {
     description:
       "Octavia limits logical load balancers and their configuration in this project.",
   },
+  "key-manager": {
+    icon: Vault,
+    description:
+      "Barbican limits stored secrets, secret containers, and key-generation orders.",
+  },
 } satisfies Record<
   OverviewServiceId,
   { icon: typeof Server; description: string }
@@ -116,6 +122,7 @@ const serviceOptions: Array<{
   { value: "shared-file-system", label: "Shared File System" },
   { value: "container-infra", label: "Kubernetes" },
   { value: "load-balancing", label: "Load balancing" },
+  { value: "key-manager", label: "Key Manager" },
 ];
 
 const levelLabels: Record<QuotaLevel, string> = {
@@ -313,6 +320,7 @@ export function QuotaExplorer({ services }: { services: OverviewService[] }) {
                 </TabsTrigger>
                 <TabsTrigger value="container-infra">Kubernetes</TabsTrigger>
                 <TabsTrigger value="load-balancing">Load balancing</TabsTrigger>
+                <TabsTrigger value="key-manager">Key Manager</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>

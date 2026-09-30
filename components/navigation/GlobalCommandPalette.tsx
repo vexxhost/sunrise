@@ -17,6 +17,9 @@ import {
   RefreshCw,
   Search,
   Server,
+  Vault,
+  Package,
+  ScrollText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCloudContext } from "@/components/cloud/CloudContext";
@@ -52,6 +55,9 @@ const resourceIcons: Record<
   cluster: Container,
   bucket: Database,
   share: FolderTree,
+  secret: Vault,
+  "secret-container": Package,
+  "secret-order": ScrollText,
 };
 
 const serviceIcons: Record<
@@ -65,6 +71,7 @@ const serviceIcons: Record<
   orchestration: Layers,
   dns: Globe,
   "shared-file-system": FolderTree,
+  "key-manager": Vault,
 };
 
 function ResourceItem({

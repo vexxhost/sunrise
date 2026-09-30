@@ -21,6 +21,12 @@ export type OctaviaQuotaUsage = {
   l7rule: number;
 };
 
+export type BarbicanQuotaUsage = {
+  secrets: number;
+  containers: number;
+  orders: number;
+};
+
 type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown, name: string): UnknownRecord {
@@ -304,6 +310,29 @@ export function parseMagnumQuota(
       "/kubernetes/clusters",
     ),
   ];
+}
+
+export function parseBarbicanQuotaDetails(
+  payload: unknown,
+  usage: BarbicanQuotaUsage,
+): QuotaMetric[] {
+  const quotas = asRecord(
+    asRecord(payload, "Barbican").quotas,
+    "Barbican quotas",
+  );
+  const definitions = [
+    ["secrets", "Secrets", "/key-manager/secrets"],
+    ["containers", "Secret containers", "/key-manager/containers"],
+    ["orders", "Key orders", "/key-manager/orders"],
+  ] as const;
+
+  return definitions.map(([id, label, href]) => {
+    const used = usage[id];
+    if (!Number.isInteger(used) || used < 0) {
+      throw new Error(`Invalid Barbican ${id} usage`);
+    }
+    return metric(id, label, used, numberValue(quotas, id), href);
+  });
 }
 
 export function parseOctaviaQuotaDetails(
