@@ -15,6 +15,9 @@ export type SortDirection = "asc" | "desc";
 // Service-specific Types
 // ============================================================================
 
+// Barbican (Key Manager)
+export * from "./barbican";
+
 // Cinder (Block Storage)
 export * from "./cinder";
 

@@ -18,3 +18,19 @@ export function formatAge(value: unknown, now: Date | number = Date.now()) {
 
   return formatDistance(timestamp, now);
 }
+
+/**
+ * Render an OpenStack timestamp identically during server rendering and browser
+ * hydration. An explicit UTC representation avoids locale and timezone drift.
+ */
+export function formatUtcTimestamp(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "-";
+
+  const timestamp = new Date(normalizeOpenStackTimestamp(value));
+  if (Number.isNaN(timestamp.getTime())) return value;
+
+  return timestamp
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, " UTC");
+}

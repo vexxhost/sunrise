@@ -17,6 +17,7 @@ import {
   serviceUrl,
 } from "@/lib/openstack/request";
 import type { ResourceKind } from "@/lib/resource-preferences";
+import { barbicanIdFromRef } from "@/lib/openstack/barbican-schema";
 import { listBuckets } from "@/lib/s3/actions";
 import { getSession } from "@/lib/session";
 
@@ -35,6 +36,7 @@ type OpenStackSearchSource = {
   responseKey: string;
   apiVersion?: string;
   apiVersionHeader?: string;
+  normalize?: (item: unknown) => unknown;
 };
 
 const openStackSources: OpenStackSearchSource[] = [
@@ -74,6 +76,61 @@ const openStackSources: OpenStackSearchSource[] = [
     responseKey: "shares",
     apiVersion: "2.51",
     apiVersionHeader: "X-OpenStack-Manila-API-Version",
+  },
+  {
+    kind: "secret",
+    label: "Secrets",
+    serviceType: "key-manager",
+    serviceName: "barbican",
+    path: `/v1/secrets?limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}&sort=created:desc`,
+    responseKey: "secrets",
+    apiVersion: "key-manager 1.1",
+    normalize: (item) => {
+      const record = asRecord(item, "Barbican secret");
+      const ref = String(record.secret_ref ?? "");
+      return {
+        id: barbicanIdFromRef(ref, "secret"),
+        name: record.name,
+        status: record.status,
+      };
+    },
+  },
+  {
+    kind: "secret-container",
+    label: "Secret containers",
+    serviceType: "key-manager",
+    serviceName: "barbican",
+    path: `/v1/containers?limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
+    responseKey: "containers",
+    apiVersion: "key-manager 1.1",
+    normalize: (item) => {
+      const record = asRecord(item, "Barbican container");
+      const ref = String(record.container_ref ?? "");
+      return {
+        id: barbicanIdFromRef(ref, "container"),
+        name: record.name,
+        status: record.status,
+      };
+    },
+  },
+  {
+    kind: "secret-order",
+    label: "Key orders",
+    serviceType: "key-manager",
+    serviceName: "barbican",
+    path: `/v1/orders?limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
+    responseKey: "orders",
+    apiVersion: "key-manager 1.1",
+    normalize: (item) => {
+      const record = asRecord(item, "Barbican order");
+      const meta = asRecord(record.meta ?? {}, "Barbican order metadata");
+      const ref = String(record.order_ref ?? "");
+      return {
+        id: barbicanIdFromRef(ref, "order"),
+        name: typeof meta.name === "string" ? meta.name : record.type,
+        status: record.status,
+      };
+    },
   },
 ];
 
@@ -125,7 +182,10 @@ async function loadOpenStackSource({
     );
     const items = payload[source.responseKey];
     if (!Array.isArray(items)) throw new Error("Invalid list response");
-    return { kind: source.kind, items };
+    return {
+      kind: source.kind,
+      items: source.normalize ? items.map(source.normalize) : items,
+    };
   } catch (error) {
     if (error instanceof OpenStackRequestError && error.status === 401) {
       redirect("/auth/refresh");

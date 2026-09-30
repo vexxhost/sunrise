@@ -11,6 +11,9 @@ import {
   Pin,
   PinOff,
   Server,
+  Vault,
+  Package,
+  ScrollText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +38,9 @@ const resourceIcons: Record<
   cluster: Container,
   bucket: Database,
   share: FolderTree,
+  secret: Vault,
+  "secret-container": Package,
+  "secret-order": ScrollText,
 };
 
 function ResourceList({

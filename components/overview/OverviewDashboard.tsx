@@ -18,6 +18,7 @@ import {
   Server,
   TriangleAlert,
   Waypoints,
+  Vault,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PersonalResources } from "@/components/overview/PersonalResources";
@@ -64,6 +65,7 @@ const serviceIcons: Record<
   "shared-file-system": FolderTree,
   "container-infra": Container,
   "load-balancing": Waypoints,
+  "key-manager": Vault,
 };
 
 const toneClasses = {
@@ -86,6 +88,7 @@ const serviceDirectoryIcons: Record<
   orchestration: Layers,
   dns: Globe2,
   "shared-file-system": FolderTree,
+  "key-manager": Vault,
 };
 
 function formatValue(value: number, unit?: string) {

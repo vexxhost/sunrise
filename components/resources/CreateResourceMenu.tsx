@@ -19,6 +19,9 @@ import {
   Settings,
   ShieldCheck,
   ShieldPlus,
+  Vault,
+  PackagePlus,
+  ScrollText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -53,6 +56,9 @@ export const createActionIcons: Record<
   role: ShieldPlus,
   "application-credential": KeyRound,
   share: FolderPlus,
+  secret: Vault,
+  "secret-container": PackagePlus,
+  "secret-order": ScrollText,
 };
 
 function actionAvailable(action: CreateAction) {

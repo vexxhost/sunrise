@@ -8,12 +8,14 @@ import {
 } from "@/lib/openstack/catalog";
 import {
   parseCinderQuotaDetails,
+  parseBarbicanQuotaDetails,
   parseMagnumQuota,
   parseManilaQuotaDetails,
   parseNeutronLimits,
   parseNovaQuotaDetails,
   parseOctaviaQuotaDetails,
   type OctaviaQuotaUsage,
+  type BarbicanQuotaUsage,
   type QuotaMetric,
 } from "@/lib/openstack/quota";
 import {
@@ -31,7 +33,8 @@ export type OverviewServiceId =
   | "network"
   | "shared-file-system"
   | "container-infra"
-  | "load-balancing";
+  | "load-balancing"
+  | "key-manager";
 export type OverviewServiceStatus =
   "available" | "forbidden" | "unavailable" | "error";
 
@@ -54,7 +57,7 @@ type ServiceDefinition = {
   apiVersion?: string;
   apiVersionHeader?: string;
   parse?: (payload: unknown) => QuotaMetric[];
-  kind?: "magnum" | "octavia";
+  kind?: "magnum" | "octavia" | "barbican";
 };
 
 const serviceDefinitions: ServiceDefinition[] = [
@@ -116,6 +119,16 @@ const serviceDefinitions: ServiceDefinition[] = [
     serviceName: "octavia",
     path: (projectId) => `/v2/lbaas/quotas/${projectId}`,
     kind: "octavia",
+  },
+  {
+    id: "key-manager",
+    label: "Key Manager",
+    href: "/key-manager",
+    serviceType: "key-manager",
+    serviceName: "barbican",
+    path: () => "/v1/quotas",
+    apiVersion: "key-manager 1.1",
+    kind: "barbican",
   },
 ];
 
@@ -270,6 +283,42 @@ async function loadOctaviaMetrics(
   return parseOctaviaQuotaDetails(projectQuota, defaultQuota, usage);
 }
 
+async function loadBarbicanTotal(
+  endpoint: string,
+  headers: Record<string, string>,
+  collection: keyof BarbicanQuotaUsage,
+) {
+  const payload = asRecord(
+    await requestJson(
+      serviceUrl(endpoint, `/v1/${collection}?limit=1&offset=0`),
+      headers,
+    ),
+    `Barbican ${collection} list`,
+  );
+  if (
+    typeof payload.total !== "number" ||
+    !Number.isInteger(payload.total) ||
+    payload.total < 0
+  ) {
+    throw new OpenStackPayloadError(`Invalid Barbican ${collection} usage`);
+  }
+  return payload.total;
+}
+
+async function loadBarbicanMetrics(
+  definition: ServiceDefinition,
+  endpoint: string,
+  headers: Record<string, string>,
+) {
+  const [quota, secrets, containers, orders] = await Promise.all([
+    requestJson(serviceUrl(endpoint, definition.path("")), headers),
+    loadBarbicanTotal(endpoint, headers, "secrets"),
+    loadBarbicanTotal(endpoint, headers, "containers"),
+    loadBarbicanTotal(endpoint, headers, "orders"),
+  ]);
+  return parseBarbicanQuotaDetails(quota, { secrets, containers, orders });
+}
+
 async function loadMetrics(
   definition: ServiceDefinition,
   endpoint: string,
@@ -286,6 +335,9 @@ async function loadMetrics(
   }
   if (definition.kind === "octavia") {
     return loadOctaviaMetrics(definition, endpoint, headers, projectId);
+  }
+  if (definition.kind === "barbican") {
+    return loadBarbicanMetrics(definition, endpoint, headers);
   }
 
   if (!definition.parse) {

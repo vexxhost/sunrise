@@ -10,7 +10,8 @@ export type ServiceDirectoryId =
   | "identity"
   | "orchestration"
   | "dns"
-  | "shared-file-system";
+  | "shared-file-system"
+  | "key-manager";
 
 export type ServiceDirectoryStatus = "available" | "unavailable" | "unknown";
 
@@ -95,6 +96,15 @@ const serviceDirectoryDefinitions: ServiceDirectoryDefinition[] = [
     catalogIdentities: [
       { serviceType: "sharev2", serviceName: "manilav2" },
       { serviceType: "shared-file-system", serviceName: "manila" },
+    ],
+  },
+  {
+    id: "key-manager",
+    label: "Key Manager",
+    description: "Secure secrets, keys, certificates, and access policies.",
+    href: "/key-manager",
+    catalogIdentities: [
+      { serviceType: "key-manager", serviceName: "barbican" },
     ],
   },
 ];

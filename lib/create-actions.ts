@@ -20,14 +20,18 @@ export type CreateActionId =
   | "bucket"
   | "role"
   | "application-credential"
-  | "share";
+  | "share"
+  | "secret"
+  | "secret-container"
+  | "secret-order";
 
 export type CreateActionService =
   | "compute"
   | "kubernetes"
   | "object-storage"
   | "identity"
-  | "shared-file-system";
+  | "shared-file-system"
+  | "key-manager";
 
 export type CreateAction = {
   id: CreateActionId;
@@ -221,6 +225,40 @@ const definitions: CreateActionDefinition[] = [
     catalogIdentities: [
       { serviceType: "sharev2", serviceName: "manilav2" },
       { serviceType: "shared-file-system", serviceName: "manila" },
+    ],
+  },
+  {
+    id: "secret",
+    label: "Create secret",
+    description: "Store encrypted key material or another protected value.",
+    href: "/key-manager/secrets?create=secret",
+    service: "key-manager",
+    group: "Key Manager",
+    catalogIdentities: [
+      { serviceType: "key-manager", serviceName: "barbican" },
+    ],
+  },
+  {
+    id: "secret-container",
+    label: "Create container",
+    description: "Group related secrets into a typed Barbican container.",
+    href: "/key-manager/containers?create=secret-container",
+    service: "key-manager",
+    group: "Key Manager",
+    catalogIdentities: [
+      { serviceType: "key-manager", serviceName: "barbican" },
+    ],
+  },
+  {
+    id: "secret-order",
+    label: "Generate key",
+    description:
+      "Ask Barbican to generate symmetric or asymmetric key material.",
+    href: "/key-manager/orders?create=secret-order",
+    service: "key-manager",
+    group: "Key Manager",
+    catalogIdentities: [
+      { serviceType: "key-manager", serviceName: "barbican" },
     ],
   },
 ];

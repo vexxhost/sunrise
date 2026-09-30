@@ -88,6 +88,17 @@ const catalog: OpenStackCatalogService[] = [
       },
     ],
   },
+  {
+    name: "barbican",
+    type: "key-manager",
+    endpoints: [
+      {
+        interface: "public",
+        region: "RegionOne",
+        url: "https://barbican.example.test/",
+      },
+    ],
+  },
 ];
 
 const successfulPayloads: Record<string, unknown> = {
@@ -187,6 +198,27 @@ const successfulPayloads: Record<string, unknown> = {
         { id: "l7policy-1", rules: [{ id: "rule-1" }, { id: "rule-2" }] },
       ],
     },
+  "https://barbican.example.test/v1/quotas": {
+    quotas: {
+      secrets: -1,
+      containers: 10,
+      orders: 20,
+      consumers: -1,
+      cas: 0,
+    },
+  },
+  "https://barbican.example.test/v1/secrets?limit=1&offset=0": {
+    secrets: [],
+    total: 2,
+  },
+  "https://barbican.example.test/v1/containers?limit=1&offset=0": {
+    containers: [],
+    total: 1,
+  },
+  "https://barbican.example.test/v1/orders?limit=1&offset=0": {
+    orders: [],
+    total: 3,
+  },
 };
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -206,7 +238,7 @@ describe("project overview loading", () => {
   it("returns selection guidance without requesting the catalog", async () => {
     const services = await loadProjectOverview({});
 
-    expect(services).toHaveLength(6);
+    expect(services).toHaveLength(7);
     expect(services.every((service) => service.status === "unavailable")).toBe(
       true,
     );
@@ -223,7 +255,7 @@ describe("project overview loading", () => {
       projectId: "project-id",
     });
 
-    expect(services).toHaveLength(6);
+    expect(services).toHaveLength(7);
     expect(
       services.every(
         (service) =>
@@ -288,7 +320,7 @@ describe("project overview loading", () => {
       projectId: "project-id",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(13);
+    expect(fetchMock).toHaveBeenCalledTimes(17);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://octavia.example.test/v2/lbaas/quotas/project-id/default",
       expect.objectContaining({
@@ -303,6 +335,7 @@ describe("project overview loading", () => {
       { id: "shared-file-system", status: "available" },
       { id: "container-infra", status: "available" },
       { id: "load-balancing", status: "available" },
+      { id: "key-manager", status: "available" },
     ]);
     expect(services[0].metrics[2]).toMatchObject({
       id: "ram",
@@ -321,6 +354,13 @@ describe("project overview loading", () => {
         expect.objectContaining({ id: "listener", used: 2, limit: -1 }),
         expect.objectContaining({ id: "member", used: 3, limit: -1 }),
         expect.objectContaining({ id: "l7rule", used: 2, limit: -1 }),
+      ]),
+    );
+    expect(services[6].metrics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "secrets", used: 2, limit: -1 }),
+        expect.objectContaining({ id: "containers", used: 1, limit: 10 }),
+        expect.objectContaining({ id: "orders", used: 3, limit: 20 }),
       ]),
     );
   });
