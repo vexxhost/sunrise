@@ -1,23 +1,20 @@
 "use client";
 
-import { useMemo } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { Pencil } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ShareNetworkMutationDialog } from "@/components/SharedFileSystem/ShareNetworkMutationDialog";
+import { Button } from "@/components/ui/button";
 import { shareNetworkQueryOptions } from "@/hooks/queries/useManila";
-import { normalizeOpenStackTimestamp } from "@/lib/openstack/time";
+import { formatUtcTimestamp } from "@/lib/openstack/time";
 
 function emptyToDash(value: unknown) {
   return value === null || value === undefined || value === ""
     ? "-"
     : String(value);
-}
-
-function formatTimestamp(value?: string | null) {
-  if (!value) return "-";
-  const timestamp = new Date(normalizeOpenStackTimestamp(value));
-  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString();
 }
 
 export function ShareNetworkDetailClient({
@@ -29,22 +26,46 @@ export function ShareNetworkDetailClient({
   projectId?: string;
   regionId?: string;
 }) {
+  const queryClient = useQueryClient();
   const query = useMemo(
     () => shareNetworkQueryOptions(regionId, projectId, networkId),
     [networkId, projectId, regionId],
   );
   const { data: network } = useSuspenseQuery(query);
   const subnets = network.share_network_subnets ?? [];
+  const [editing, setEditing] = useState(false);
+  const scope = useMemo(
+    () => (projectId ? { projectId, regionId } : null),
+    [projectId, regionId],
+  );
+  const refreshNetwork = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: query.queryKey });
+    await queryClient.invalidateQueries({
+      queryKey: [regionId, projectId, "manila", "share-networks"],
+    });
+  }, [projectId, query.queryKey, queryClient, regionId]);
 
   return (
     <div className="max-w-screen-xl space-y-4">
-      <div className="space-y-1">
-        <h1 className="truncate text-2xl font-semibold">
-          {network.name || "Unnamed share network"}
-        </h1>
-        <p className="truncate font-mono text-sm text-muted-foreground">
-          {network.id}
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <h1 className="truncate text-2xl font-semibold">
+            {network.name || "Unnamed share network"}
+          </h1>
+          <p className="truncate font-mono text-sm text-muted-foreground">
+            {network.id}
+          </p>
+        </div>
+        <Button
+          size="icon"
+          variant="outline"
+          title="Edit share network"
+          disabled={!scope}
+          onClick={() => setEditing(true)}
+        >
+          <Pencil className="size-4" aria-hidden="true" />
+          <span className="sr-only">Edit share network</span>
+        </Button>
       </div>
 
       <div className="space-y-6 rounded-md border bg-card p-4 text-card-foreground">
@@ -60,10 +81,10 @@ export function ShareNetworkDetailClient({
             {emptyToDash(network.project_id)}
           </DetailField>
           <DetailField label="Created">
-            {formatTimestamp(network.created_at)}
+            {formatUtcTimestamp(network.created_at)}
           </DetailField>
           <DetailField label="Updated">
-            {formatTimestamp(network.updated_at)}
+            {formatUtcTimestamp(network.updated_at)}
           </DetailField>
         </DetailSection>
 
@@ -117,6 +138,15 @@ export function ShareNetworkDetailClient({
           )}
         </DetailSection>
       </div>
+
+      {editing && scope ? (
+        <ShareNetworkMutationDialog
+          network={network}
+          onComplete={refreshNetwork}
+          onOpenChange={() => setEditing(false)}
+          scope={scope}
+        />
+      ) : null}
     </div>
   );
 }

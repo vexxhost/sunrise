@@ -97,8 +97,8 @@ describe("OpenStack quota parsing", () => {
       reserved: 10,
       unit: "GiB",
     });
-    expect(metrics[2]?.href).toBe("/shared-file-systems");
-    expect(metrics[3]?.href).toBe("/shared-file-systems");
+    expect(metrics[2]?.href).toBe("/shared-file-systems/snapshots");
+    expect(metrics[3]?.href).toBe("/shared-file-systems/snapshots");
   });
 
   it("combines the Magnum hard limit with paginated cluster usage", () => {

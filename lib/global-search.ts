@@ -24,6 +24,7 @@ const resourceSearchTerms: Record<ResourceKind, string[]> = {
   cluster: ["kubernetes", "k8s", "magnum", "capi", "eks", "gke"],
   bucket: ["s3", "rgw", "object storage", "blob storage"],
   share: ["manila", "nfs", "shared file system"],
+  "share-snapshot": ["manila", "share snapshot", "shared file system backup"],
   secret: ["barbican", "key vault", "secret manager", "kms"],
   "secret-container": ["barbican", "certificate", "secret group"],
   "secret-order": ["barbican", "generate key", "certificate request"],

@@ -1,11 +1,12 @@
-import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
-import { ObjectDetailClient } from './ObjectDetailClient';
-import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
-import { objectMetadataQueryOptions } from '@/hooks/queries/useObjects';
-import { headObjectForRender } from '@/lib/s3/actions';
-import { makeQueryClient } from '@/lib/query-client';
-import { getSession, normalizeProjectId } from '@/lib/session';
-import { recoverMissingResource } from '@/lib/resource-recovery-server';
+import { ObjectDetailClient } from "./ObjectDetailClient";
+import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
+import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
+import { objectMetadataQueryOptions } from "@/hooks/queries/useObjects";
+import { dehydrateQueryClient } from "@/lib/query-hydration";
+import { headObjectForRender } from "@/lib/s3/actions";
+import { makeQueryClient } from "@/lib/query-client";
+import { getSession, normalizeProjectId } from "@/lib/session";
+import { recoverMissingResource } from "@/lib/resource-recovery-server";
 
 interface PageProps {
   params: Promise<{ bucket: string; key: string[] }>;
@@ -14,7 +15,7 @@ interface PageProps {
 export default async function Page({ params }: PageProps) {
   const { bucket: rawBucket, key: rawKeyParts } = await params;
   const bucket = decodeURIComponent(rawBucket);
-  const objectKey = rawKeyParts.map((p) => decodeURIComponent(p)).join('/');
+  const objectKey = rawKeyParts.map((p) => decodeURIComponent(p)).join("/");
   const session = await getSession();
   const activeProjectId = normalizeProjectId(session.projectId);
 
@@ -24,7 +25,7 @@ export default async function Page({ params }: PageProps) {
   }
   if (!probe.ok && probe.notFound) {
     await recoverMissingResource({
-      kind: 'object',
+      kind: "object",
       id: objectKey,
       parentId: bucket,
     });
@@ -35,16 +36,17 @@ export default async function Page({ params }: PageProps) {
 
   const queryClient = makeQueryClient();
   queryClient.prefetchQuery(
-    objectMetadataQueryOptions(activeProjectId, bucket, objectKey)
+    objectMetadataQueryOptions(activeProjectId, bucket, objectKey),
   );
+  const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
 
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
+    <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <ObjectDetailClient
         activeProjectId={activeProjectId}
         bucket={bucket}
         objectKey={objectKey}
       />
-    </HydrationBoundary>
+    </QueryHydrationBoundary>
   );
 }

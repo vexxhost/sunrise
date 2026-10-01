@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition, type ComponentType } from "react";
 import {
+  Camera,
   Container,
   Database,
   FolderTree,
@@ -38,6 +39,7 @@ const resourceIcons: Record<
   cluster: Container,
   bucket: Database,
   share: FolderTree,
+  "share-snapshot": Camera,
   secret: Vault,
   "secret-container": Package,
   "secret-order": ScrollText,

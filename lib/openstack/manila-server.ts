@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSession } from "@/lib/session";
+import { OpenStackRequestError } from "@/lib/openstack/request";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import type {
   ManilaAvailabilityZone,
@@ -8,7 +9,10 @@ import type {
   ManilaShare,
   ManilaShareAccessRule,
   ManilaShareNetwork,
+  ManilaShareSnapshot,
   ManilaShareType,
+  Network,
+  Subnet,
 } from "@/types/openstack";
 
 export const MANILA_API_VERSION = "2.51";
@@ -33,7 +37,8 @@ async function activeManilaContext() {
   }
 
   return {
-    projectId: encodeURIComponent(session.projectId),
+    projectId: session.projectId,
+    projectPathId: encodeURIComponent(session.projectId),
     regionId: session.regionId,
   };
 }
@@ -49,78 +54,164 @@ async function manilaRequest<T>(path: string) {
   });
 }
 
+function normalizeProjectId(value: string) {
+  return value.replace(/-/g, "").toLowerCase();
+}
+
+function assertActiveProject(
+  resourceProjectId: string | undefined,
+  activeProjectId: string,
+) {
+  if (
+    resourceProjectId &&
+    normalizeProjectId(resourceProjectId) !==
+      normalizeProjectId(activeProjectId)
+  ) {
+    throw new OpenStackRequestError(404, "Not Found");
+  }
+}
+
 export async function listShares() {
-  const { projectId } = await activeManilaContext();
+  const { projectId, projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{ shares?: ManilaShare[] }>(
-    `/${projectId}/shares/detail?all_tenants=0`,
+    `/${projectPathId}/shares/detail?all_tenants=0`,
   );
-  return payload?.shares ?? [];
+  return (payload?.shares ?? []).filter(
+    (share) =>
+      !share.project_id ||
+      normalizeProjectId(share.project_id) === normalizeProjectId(projectId),
+  );
 }
 
 export async function getShare(id: string) {
-  const { projectId } = await activeManilaContext();
+  const { projectId, projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{ share?: ManilaShare }>(
-    `/${projectId}/shares/${resourceId(id, "share ID")}`,
+    `/${projectPathId}/shares/${resourceId(id, "share ID")}`,
   );
   if (!payload?.share) throw new Error("Manila did not return the share");
+  assertActiveProject(payload.share.project_id, projectId);
   return payload.share;
 }
 
 export async function listShareNetworks() {
-  const { projectId } = await activeManilaContext();
+  const { projectId, projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{
     share_networks?: ManilaShareNetwork[];
-  }>(`/${projectId}/share-networks/detail?all_tenants=0`);
+  }>(`/${projectPathId}/share-networks/detail?all_tenants=0`);
   return (payload?.share_networks ?? []).filter(
     (network) =>
       !network.project_id ||
-      network.project_id === decodeURIComponent(projectId),
+      normalizeProjectId(network.project_id) === normalizeProjectId(projectId),
   );
 }
 
 export async function getShareNetwork(id: string) {
-  const { projectId } = await activeManilaContext();
+  const { projectId, projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{ share_network?: ManilaShareNetwork }>(
-    `/${projectId}/share-networks/${resourceId(id, "share network ID")}`,
+    `/${projectPathId}/share-networks/${resourceId(id, "share network ID")}`,
   );
   if (!payload?.share_network) {
     throw new Error("Manila did not return the share network");
   }
+  assertActiveProject(payload.share_network.project_id, projectId);
   return payload.share_network;
 }
 
+export async function assertShareNetworkPlacement(
+  neutronNetworkId: string,
+  neutronSubnetId: string,
+) {
+  const { projectId, regionId } = await activeManilaContext();
+  const [networkPayload, subnetPayload] = await Promise.all([
+    openstackRequest<{ network?: Network }>({
+      serviceType: "network",
+      serviceName: "neutron",
+      regionId,
+      path: `/v2.0/networks/${resourceId(neutronNetworkId, "network ID")}`,
+      errorMode: "throw",
+    }),
+    openstackRequest<{ subnet?: Subnet }>({
+      serviceType: "network",
+      serviceName: "neutron",
+      regionId,
+      path: `/v2.0/subnets/${resourceId(neutronSubnetId, "subnet ID")}`,
+      errorMode: "throw",
+    }),
+  ]);
+  if (!networkPayload?.network || !subnetPayload?.subnet) {
+    throw new Error("Neutron did not return the selected network placement");
+  }
+
+  const network = networkPayload.network;
+  const subnet = subnetPayload.subnet;
+  assertActiveProject(network.project_id || network.tenant_id, projectId);
+  assertActiveProject(subnet.project_id || subnet.tenant_id, projectId);
+  if (subnet.network_id !== network.id) {
+    throw new OpenStackRequestError(
+      400,
+      "The selected subnet does not belong to the selected network",
+    );
+  }
+}
+
+export async function listShareSnapshots() {
+  const { projectId, projectPathId } = await activeManilaContext();
+  const payload = await manilaRequest<{ snapshots?: ManilaShareSnapshot[] }>(
+    `/${projectPathId}/snapshots/detail?all_tenants=0`,
+  );
+  return (payload?.snapshots ?? []).filter(
+    (snapshot) =>
+      !snapshot.project_id ||
+      normalizeProjectId(snapshot.project_id) === normalizeProjectId(projectId),
+  );
+}
+
+export async function getShareSnapshot(id: string) {
+  const { projectId, projectPathId } = await activeManilaContext();
+  const payload = await manilaRequest<{ snapshot?: ManilaShareSnapshot }>(
+    `/${projectPathId}/snapshots/${resourceId(id, "share snapshot ID")}`,
+  );
+  if (!payload?.snapshot) {
+    throw new Error("Manila did not return the share snapshot");
+  }
+  assertActiveProject(payload.snapshot.project_id, projectId);
+  return payload.snapshot;
+}
+
 export async function listShareTypes() {
-  const { projectId } = await activeManilaContext();
+  const { projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{
     share_types?: ManilaShareType[];
     volume_types?: ManilaShareType[];
-  }>(`/${projectId}/types?is_public=all`);
+  }>(`/${projectPathId}/types?is_public=all`);
   return payload?.share_types ?? payload?.volume_types ?? [];
 }
 
 export async function listManilaAvailabilityZones() {
-  const { projectId } = await activeManilaContext();
+  const { projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{
     availability_zones?: ManilaAvailabilityZone[];
-  }>(`/${projectId}/availability-zones`);
+  }>(`/${projectPathId}/availability-zones`);
   return payload?.availability_zones ?? [];
 }
 
 export async function listShareExportLocations(shareId: string) {
-  const { projectId } = await activeManilaContext();
+  await getShare(shareId);
+  const { projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{
     export_locations?: ManilaExportLocation[];
   }>(
-    `/${projectId}/shares/${resourceId(shareId, "share ID")}/export_locations`,
+    `/${projectPathId}/shares/${resourceId(shareId, "share ID")}/export_locations`,
   );
   return payload?.export_locations ?? [];
 }
 
 export async function listShareAccessRules(shareId: string) {
-  const { projectId } = await activeManilaContext();
+  await getShare(shareId);
+  const { projectPathId } = await activeManilaContext();
   const query = new URLSearchParams({ share_id: shareId });
   const payload = await manilaRequest<{
     access_list?: ManilaShareAccessRule[];
-  }>(`/${projectId}/share-access-rules?${query}`);
+  }>(`/${projectPathId}/share-access-rules?${query}`);
   return payload?.access_list ?? [];
 }

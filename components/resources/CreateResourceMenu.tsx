@@ -22,6 +22,7 @@ import {
   Vault,
   PackagePlus,
   ScrollText,
+  Share2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,8 @@ export const createActionIcons: Record<
   role: ShieldPlus,
   "application-credential": KeyRound,
   share: FolderPlus,
+  "share-network": Share2,
+  "share-snapshot": Camera,
   secret: Vault,
   "secret-container": PackagePlus,
   "secret-order": ScrollText,

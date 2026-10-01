@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   canDeleteShare,
+  canDeleteShareSnapshot,
+  canCreateShareSnapshot,
+  canEditShareSnapshot,
   canEditShare,
   canManageShareAccess,
   canResizeShare,
   formatManilaStatus,
   isShareTransitioning,
+  isShareSnapshotTransitioning,
   shareStatusVariant,
 } from "@/lib/openstack/manila-lifecycle";
 
@@ -48,5 +52,28 @@ describe("Manila share lifecycle", () => {
     expect(shareStatusVariant("error")).toBe("destructive");
     expect(shareStatusVariant("shrinking_error")).toBe("destructive");
     expect(shareStatusVariant("available")).toBe("default");
+  });
+
+  it("only snapshots an available share with snapshot support", () => {
+    expect(
+      canCreateShareSnapshot({ status: "available", snapshot_support: true }),
+    ).toBe(true);
+    expect(canCreateShareSnapshot({ status: "available" })).toBe(true);
+    expect(
+      canCreateShareSnapshot({ status: "available", snapshot_support: false }),
+    ).toBe(false);
+    expect(
+      canCreateShareSnapshot({ status: "creating", snapshot_support: true }),
+    ).toBe(false);
+  });
+
+  it("polls and gates share snapshot operations by status", () => {
+    expect(isShareSnapshotTransitioning({ status: "creating" })).toBe(true);
+    expect(isShareSnapshotTransitioning({ status: "available" })).toBe(false);
+    expect(canEditShareSnapshot({ status: "available" })).toBe(true);
+    expect(canEditShareSnapshot({ status: "error" })).toBe(false);
+    expect(canDeleteShareSnapshot({ status: "available" })).toBe(true);
+    expect(canDeleteShareSnapshot({ status: "error" })).toBe(true);
+    expect(canDeleteShareSnapshot({ status: "deleting" })).toBe(false);
   });
 });

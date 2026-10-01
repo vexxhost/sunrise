@@ -138,6 +138,9 @@ describe("resource preferences", () => {
     expect(resourcePreferenceHref(resource("bucket/name", 1, "bucket"))).toBe(
       "/object-storage/buckets/bucket%2Fname",
     );
+    expect(
+      resourcePreferenceHref(resource("share snapshot", 1, "share-snapshot")),
+    ).toBe("/shared-file-systems/snapshots/share%20snapshot");
   });
 
   it("round-trips compact cookie tuples", () => {

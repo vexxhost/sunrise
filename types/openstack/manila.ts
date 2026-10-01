@@ -20,6 +20,8 @@ export interface ManilaShareNetwork {
   neutron_subnet_id?: string | null;
   share_network_subnets?: ManilaShareNetworkSubnet[];
   status?: string;
+  security_service_update_support?: boolean;
+  network_allocation_update_support?: boolean;
   created_at?: string;
   updated_at?: string | null;
 }
@@ -53,6 +55,24 @@ export interface ManilaShare {
   mount_snapshot_support?: boolean;
   has_replicas?: boolean;
   replication_type?: string | null;
+}
+
+export interface ManilaShareSnapshot {
+  id: string;
+  name?: string | null;
+  description?: string | null;
+  size: number;
+  status: string;
+  progress?: string | null;
+  share_id: string;
+  share_name?: string | null;
+  share_proto?: string | null;
+  share_size?: number | null;
+  project_id?: string;
+  user_id?: string | null;
+  created_at?: string;
+  updated_at?: string | null;
+  provider_location?: string | null;
 }
 
 export interface ManilaShareType {

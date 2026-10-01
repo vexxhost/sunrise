@@ -36,6 +36,7 @@ type OpenStackSearchSource = {
   responseKey: string;
   apiVersion?: string;
   apiVersionHeader?: string;
+  projectIdField?: string;
   normalize?: (item: unknown) => unknown;
 };
 
@@ -76,6 +77,19 @@ const openStackSources: OpenStackSearchSource[] = [
     responseKey: "shares",
     apiVersion: "2.51",
     apiVersionHeader: "X-OpenStack-Manila-API-Version",
+    projectIdField: "project_id",
+  },
+  {
+    kind: "share-snapshot",
+    label: "Share snapshots",
+    serviceType: "sharev2",
+    serviceName: "manilav2",
+    path: (projectId) =>
+      `/${encodeURIComponent(projectId)}/snapshots/detail?all_tenants=0&limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
+    responseKey: "snapshots",
+    apiVersion: "2.51",
+    apiVersionHeader: "X-OpenStack-Manila-API-Version",
+    projectIdField: "project_id",
   },
   {
     kind: "secret",
@@ -180,8 +194,19 @@ async function loadOpenStackSource({
       ),
       `${source.label} search`,
     );
-    const items = payload[source.responseKey];
-    if (!Array.isArray(items)) throw new Error("Invalid list response");
+    const responseItems = payload[source.responseKey];
+    if (!Array.isArray(responseItems)) throw new Error("Invalid list response");
+    const items = source.projectIdField
+      ? responseItems.filter((item) => {
+          const record = asRecord(item, `${source.label} item`);
+          const owner = record[source.projectIdField as string];
+          return (
+            typeof owner !== "string" ||
+            owner.replace(/-/g, "").toLowerCase() ===
+              projectId.replace(/-/g, "").toLowerCase()
+          );
+        })
+      : responseItems;
     return {
       kind: source.kind,
       items: source.normalize ? items.map(source.normalize) : items,

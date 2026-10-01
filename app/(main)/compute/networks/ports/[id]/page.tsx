@@ -1,4 +1,4 @@
-import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
 import {
   networkQueryOptions,
   portQueryOptions,
@@ -6,6 +6,7 @@ import {
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import { makeQueryClient } from "@/lib/query-client";
+import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { PortDetailClient } from "./PortDetailClient";
 import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
@@ -34,13 +35,14 @@ export default async function Page({
       serversQueryOptions(session.regionId, session.projectId),
     ),
   ]);
+  const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
+    <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <PortDetailClient
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}
       />
-    </HydrationBoundary>
+    </QueryHydrationBoundary>
   );
 }

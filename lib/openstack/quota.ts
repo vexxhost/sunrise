@@ -272,14 +272,14 @@ export function parseManilaQuotaDetails(payload: unknown): QuotaMetric[] {
       "Manila",
       "snapshots",
       "Share snapshots",
-      "/shared-file-systems",
+      "/shared-file-systems/snapshots",
     ),
     detailedMetric(
       quotaSet,
       "Manila",
       "snapshot_gigabytes",
       "Share snapshot storage",
-      "/shared-file-systems",
+      "/shared-file-systems/snapshots",
       { unit: "GiB" },
     ),
     detailedMetric(

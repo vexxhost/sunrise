@@ -3,10 +3,12 @@ import { queryOptions } from "@tanstack/react-query";
 import {
   getShareAction,
   getShareNetworkAction,
+  getShareSnapshotAction,
   listManilaAvailabilityZonesAction,
   listShareAccessRulesAction,
   listShareExportLocationsAction,
   listShareNetworksAction,
+  listShareSnapshotsAction,
   listSharesAction,
   listShareTypesAction,
 } from "@/lib/openstack/manila";
@@ -54,6 +56,29 @@ export function shareNetworkQueryOptions(
     queryKey: [regionId, projectId, "manila", "share-network", networkId],
     queryFn: () => getShareNetworkAction(networkId),
     enabled: !!regionId && !!projectId && !!networkId,
+  });
+}
+
+export function shareSnapshotsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "manila", "share-snapshots"],
+    queryFn: () => listShareSnapshotsAction(),
+    enabled: !!regionId && !!projectId,
+  });
+}
+
+export function shareSnapshotQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  snapshotId: string,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "manila", "share-snapshot", snapshotId],
+    queryFn: () => getShareSnapshotAction(snapshotId),
+    enabled: !!regionId && !!projectId && !!snapshotId,
   });
 }
 

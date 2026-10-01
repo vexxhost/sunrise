@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ComponentType, ReactNode } from "react";
 import {
   ArrowRight,
+  Camera,
   CircleCheck,
   CircleHelp,
   CircleX,
@@ -59,6 +60,7 @@ const recentResourceIcons: Record<ResourceKind, LandingIcon> = {
   cluster: Container,
   bucket: Database,
   share: Database,
+  "share-snapshot": Camera,
   secret: Vault,
   "secret-container": Package,
   "secret-order": ScrollText,
@@ -213,8 +215,7 @@ export function ServiceAvailabilityPage({
           <StatusIcon
             className={cn(
               "mt-0.5 size-5 shrink-0",
-              status === "available" &&
-                "text-status-success",
+              status === "available" && "text-status-success",
               status === "unavailable" && "text-status-danger",
               status === "unknown" && "text-muted-foreground",
             )}

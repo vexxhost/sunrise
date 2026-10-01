@@ -1,4 +1,4 @@
-import { FolderTree, Gauge, Network, Share2 } from "lucide-react";
+import { Camera, FolderTree, Gauge, Network, Share2 } from "lucide-react";
 
 import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import {
@@ -10,14 +10,19 @@ import {
 } from "@/components/service-landing/ServiceLanding";
 import { loadCloudContext } from "@/lib/cloud-context";
 import { createActionsForService } from "@/lib/create-actions";
-import { listShareNetworks, listShares } from "@/lib/openstack/manila-server";
+import {
+  listShareNetworks,
+  listShareSnapshots,
+  listShares,
+} from "@/lib/openstack/manila-server";
 
 export const dynamic = "force-dynamic";
 
 export default async function SharedFileSystemPage() {
-  const [{ snapshot }, shares, networks] = await Promise.all([
+  const [{ snapshot }, shares, snapshots, networks] = await Promise.all([
     loadCloudContext(),
     listShares(),
+    listShareSnapshots(),
     listShareNetworks(),
   ]);
   const resources = [
@@ -33,6 +38,9 @@ export default async function SharedFileSystemPage() {
     "shared-file-system",
   );
   const createShare = createActions.find(({ id }) => id === "share");
+  const createSnapshot = createActions.find(
+    ({ id }) => id === "share-snapshot",
+  );
   const metrics: ServiceLandingMetric[] = [
     {
       icon: FolderTree,
@@ -45,6 +53,12 @@ export default async function SharedFileSystemPage() {
       label: "Provisioned capacity",
       value: `${capacity} GiB`,
       detail: "Capacity requested across visible shares",
+    },
+    {
+      icon: Camera,
+      label: "Snapshots",
+      value: String(snapshots.length),
+      detail: "Point-in-time share copies",
     },
     {
       icon: Network,
@@ -81,6 +95,16 @@ export default async function SharedFileSystemPage() {
               createAction: createShare,
             },
             {
+              name: "Share snapshots",
+              href: "/shared-file-systems/snapshots",
+              icon: Camera,
+              description:
+                "Create and manage point-in-time copies of shared file systems.",
+              meta: `${snapshots.length} visible`,
+              badge: "Project scoped",
+              createAction: createSnapshot,
+            },
+            {
               name: "Share networks",
               href: "/shared-file-systems/share-networks",
               icon: Share2,
@@ -95,8 +119,8 @@ export default async function SharedFileSystemPage() {
 
       <ServiceRecentResources
         resources={resources}
-        kinds={["share"]}
-        emptyMessage="No pinned or recently viewed shares in this project."
+        kinds={["share", "share-snapshot"]}
+        emptyMessage="No pinned or recently viewed shared-storage resources in this project."
       />
     </ServiceLandingPage>
   );
