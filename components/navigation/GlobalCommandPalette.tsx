@@ -85,6 +85,7 @@ const resourceIcons: Record<
   cluster: Container,
   bucket: Database,
   share: FolderTree,
+  "share-snapshot": Camera,
   secret: Vault,
   "secret-container": Package,
   "secret-order": ScrollText,

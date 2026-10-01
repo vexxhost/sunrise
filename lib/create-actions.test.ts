@@ -127,12 +127,15 @@ describe("create action availability", () => {
     expect(actions[0]?.capability.message).toContain("RegionTwo");
   });
 
-  it("advertises implemented share creation but not missing CRUD", () => {
+  it("advertises implemented Shared File System creation", () => {
     const actions = build();
 
     expect(actions.find(({ id }) => id === "share")?.capability.status).toBe(
       "available",
     );
+    expect(
+      actions.find(({ id }) => id === "share-network")?.capability.status,
+    ).toBe("available");
     expect(build().map(({ id }) => id)).not.toContain("load-balancer");
   });
 

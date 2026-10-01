@@ -18,6 +18,7 @@ export const recoveryResourceKinds = [
   "bucket",
   "object",
   "share",
+  "share-snapshot",
   "share-network",
   "secret",
   "secret-container",
@@ -53,6 +54,7 @@ const recoveryLabels: Record<RecoveryResourceKind, string> = {
   bucket: "bucket",
   object: "object",
   share: "share",
+  "share-snapshot": "share snapshot",
   "share-network": "share network",
   secret: "secret",
   "secret-container": "secret container",
@@ -66,6 +68,7 @@ const preferenceKinds: Partial<Record<RecoveryResourceKind, ResourceKind>> = {
   cluster: "cluster",
   bucket: "bucket",
   share: "share",
+  "share-snapshot": "share-snapshot",
   secret: "secret",
   "secret-container": "secret-container",
   "secret-order": "secret-order",
@@ -137,6 +140,8 @@ export function recoveryDestination({
         : "/object-storage/buckets";
     case "share":
       return "/shared-file-systems/shares";
+    case "share-snapshot":
+      return "/shared-file-systems/snapshots";
     case "share-network":
       return "/shared-file-systems/share-networks";
     case "secret":

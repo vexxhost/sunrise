@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Share2 } from "lucide-react";
+import { Pencil, Share2 } from "lucide-react";
 
 import { DataTable } from "@/components/DataTable";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ShareNetworkMutationDialog } from "@/components/SharedFileSystem/ShareNetworkMutationDialog";
 import { shareNetworksQueryOptions } from "@/hooks/queries/useManila";
 import type { ManilaShareNetwork } from "@/types/openstack";
 
@@ -58,20 +59,58 @@ export function ShareNetworksClient({
   projectId?: string;
   regionId?: string;
 }) {
+  const queryClient = useQueryClient();
   const query = useMemo(
     () => shareNetworksQueryOptions(regionId, projectId),
     [projectId, regionId],
   );
   const { data, isRefetching, refetch } = useSuspenseQuery(query);
+  const [target, setTarget] = useState<ManilaShareNetwork | null>(null);
+  const scope = useMemo(
+    () => (projectId ? { projectId, regionId } : null),
+    [projectId, regionId],
+  );
+  const refreshAfterEdit = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: query.queryKey });
+    if (target) {
+      await queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "manila", "share-network", target.id],
+      });
+    }
+  }, [projectId, query.queryKey, queryClient, regionId, target]);
+  const rowActions = useMemo(
+    () => [
+      {
+        label: "Edit",
+        icon: Pencil,
+        onClick: (rows: ManilaShareNetwork[]) => setTarget(rows[0] ?? null),
+        isDisabled: (rows: ManilaShareNetwork[]) => rows.length !== 1,
+      },
+    ],
+    [],
+  );
 
   return (
-    <DataTable
-      columns={columns}
-      data={data}
-      emptyIcon={Share2}
-      isRefetching={isRefetching}
-      refetch={refetch}
-      resourceName="share network"
-    />
+    <>
+      <DataTable
+        columns={columns}
+        data={data}
+        emptyIcon={Share2}
+        getRowId={(network) => network.id}
+        isRefetching={isRefetching}
+        refetch={refetch}
+        resourceName="share network"
+        rowActions={rowActions}
+      />
+      {target && scope ? (
+        <ShareNetworkMutationDialog
+          key={target.id}
+          network={target}
+          onComplete={refreshAfterEdit}
+          onOpenChange={() => setTarget(null)}
+          scope={scope}
+        />
+      ) : null}
+    </>
   );
 }

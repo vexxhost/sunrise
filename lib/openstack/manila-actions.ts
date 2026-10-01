@@ -11,11 +11,19 @@ import {
 } from "@/lib/mutations";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import {
+  assertShareNetworkPlacement,
   getShare,
+  getShareNetwork,
+  getShareSnapshot,
   MANILA_API_VERSION,
   MANILA_SERVICE,
 } from "@/lib/openstack/manila-server";
-import type { ManilaShare, ManilaShareAccessRule } from "@/types/openstack";
+import type {
+  ManilaShare,
+  ManilaShareAccessRule,
+  ManilaShareNetwork,
+  ManilaShareSnapshot,
+} from "@/types/openstack";
 
 const MANILA_HEADERS = {
   "X-OpenStack-Manila-API-Version": MANILA_API_VERSION,
@@ -53,11 +61,48 @@ const grantAccessSchema = z.object({
   accessTo: z.string().trim().min(1).max(255),
   accessLevel: z.enum(["rw", "ro"]),
 });
+const createShareSnapshotSchema = z.object({
+  shareId: resourceIdSchema,
+  name: z.string().trim().min(1).max(255),
+  description: optionalText,
+});
+const updateShareSnapshotSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(255).default(""),
+});
+const createShareNetworkSchema = z
+  .object({
+    name: z.string().trim().min(1).max(255),
+    description: z.string().trim().max(255).default(""),
+    neutronNetworkId: optionalText,
+    neutronSubnetId: optionalText,
+    availabilityZone: optionalText,
+  })
+  .refine(
+    (value) =>
+      Boolean(value.neutronNetworkId) === Boolean(value.neutronSubnetId),
+    {
+      message: "Select both a Neutron network and one of its subnets.",
+      path: ["neutronSubnetId"],
+    },
+  );
+const updateShareNetworkSchema = z.object({
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(255).default(""),
+});
 
 export type CreateShareInput = z.input<typeof createShareSchema>;
 export type UpdateShareInput = z.input<typeof updateShareSchema>;
 export type ResizeShareInput = z.input<typeof resizeShareSchema>;
 export type GrantShareAccessInput = z.input<typeof grantAccessSchema>;
+export type CreateShareSnapshotInput = z.input<
+  typeof createShareSnapshotSchema
+>;
+export type UpdateShareSnapshotInput = z.input<
+  typeof updateShareSnapshotSchema
+>;
+export type CreateShareNetworkInput = z.input<typeof createShareNetworkSchema>;
+export type UpdateShareNetworkInput = z.input<typeof updateShareNetworkSchema>;
 
 function validationFailure(scope: MutationScope, message: string) {
   return mutationFailure(
@@ -98,7 +143,29 @@ function shareFromPayload(payload: unknown) {
   return (payload as { share: ManilaShare }).share;
 }
 
-function resizePreflightFailure(error: unknown, scope: MutationScope) {
+function shareSnapshotFromPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object" || !("snapshot" in payload)) {
+    throw new Error("Manila did not return the share snapshot");
+  }
+  return (payload as { snapshot: ManilaShareSnapshot }).snapshot;
+}
+
+function shareNetworkFromPayload(payload: unknown) {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("share_network" in payload)
+  ) {
+    throw new Error("Manila did not return the share network");
+  }
+  return (payload as { share_network: ManilaShareNetwork }).share_network;
+}
+
+function resourcePreflightFailure(
+  error: unknown,
+  scope: MutationScope,
+  resourceLabel: string,
+) {
   const record =
     error && typeof error === "object"
       ? (error as { name?: unknown; status?: unknown })
@@ -108,7 +175,7 @@ function resizePreflightFailure(error: unknown, scope: MutationScope) {
     typeof record.status === "number"
   ) {
     return mutationFailure(
-      mutationErrorForStatus(record.status, "read this share"),
+      mutationErrorForStatus(record.status, `read this ${resourceLabel}`),
       scope,
     );
   }
@@ -125,11 +192,26 @@ function resizePreflightFailure(error: unknown, scope: MutationScope) {
   return mutationFailure(
     {
       code: "service-error",
-      message: "The share could not be read before resizing. Try again shortly.",
+      message: `The ${resourceLabel} could not be read before applying this change. Try again shortly.`,
       retryable: true,
     },
     scope,
   );
+}
+
+async function readMutationResource<T>(
+  read: () => Promise<T>,
+  scope: MutationScope,
+  resourceLabel: string,
+) {
+  try {
+    return { ok: true, value: await read() } as const;
+  } catch (error) {
+    return {
+      ok: false,
+      result: resourcePreflightFailure(error, scope, resourceLabel),
+    } as const;
+  }
 }
 
 export async function createShareAction(
@@ -168,6 +250,110 @@ export async function createShareAction(
   });
 }
 
+export async function createShareNetworkAction(
+  scope: MutationScope,
+  input: CreateShareNetworkInput,
+): Promise<MutationResult<ManilaShareNetwork>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsed = parseInput(
+    createShareNetworkSchema,
+    input,
+    guarded.context.scope,
+  );
+  if (!parsed.ok) return parsed.result;
+  const value = parsed.value;
+
+  if (value.neutronNetworkId && value.neutronSubnetId) {
+    const placement = await readMutationResource(
+      () =>
+        assertShareNetworkPlacement(
+          value.neutronNetworkId!,
+          value.neutronSubnetId!,
+        ),
+      guarded.context.scope,
+      "network placement",
+    );
+    if (!placement.ok) return placement.result;
+  }
+
+  return executeOpenStackMutation<ManilaShareNetwork>({
+    actionLabel: "create a share network",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(guarded.context.scope.projectId, "share-networks"),
+    method: "POST",
+    headers: MANILA_HEADERS,
+    body: {
+      share_network: {
+        name: value.name,
+        description: value.description || undefined,
+        neutron_net_id: value.neutronNetworkId || undefined,
+        neutron_subnet_id: value.neutronSubnetId || undefined,
+        availability_zone: value.availabilityZone || undefined,
+      },
+    },
+    invalidates: [
+      "/shared-file-systems",
+      "/shared-file-systems/share-networks",
+    ],
+    successMessage: `Share network ${value.name} is being created.`,
+    transform: shareNetworkFromPayload,
+  });
+}
+
+export async function updateShareNetworkAction(
+  scope: MutationScope,
+  shareNetworkId: string,
+  input: UpdateShareNetworkInput,
+): Promise<MutationResult<ManilaShareNetwork>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedId = parseInput(
+    resourceIdSchema,
+    shareNetworkId,
+    guarded.context.scope,
+  );
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parseInput(
+    updateShareNetworkSchema,
+    input,
+    guarded.context.scope,
+  );
+  if (!parsed.ok) return parsed.result;
+  const existing = await readMutationResource(
+    () => getShareNetwork(parsedId.value),
+    guarded.context.scope,
+    "share network",
+  );
+  if (!existing.ok) return existing.result;
+
+  return executeOpenStackMutation<ManilaShareNetwork>({
+    actionLabel: "edit this share network",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `share-networks/${encodeURIComponent(parsedId.value)}`,
+    ),
+    method: "PUT",
+    headers: MANILA_HEADERS,
+    body: {
+      share_network: {
+        name: parsed.value.name,
+        description: parsed.value.description,
+      },
+    },
+    invalidates: [
+      "/shared-file-systems",
+      "/shared-file-systems/share-networks",
+      `/shared-file-systems/share-networks/${parsedId.value}`,
+    ],
+    successMessage: "Share network details updated.",
+    transform: shareNetworkFromPayload,
+  });
+}
+
 export async function updateShareAction(
   scope: MutationScope,
   shareId: string,
@@ -179,6 +365,12 @@ export async function updateShareAction(
   if (!parsedId.ok) return parsedId.result;
   const parsed = parseInput(updateShareSchema, input, guarded.context.scope);
   if (!parsed.ok) return parsed.result;
+  const existing = await readMutationResource(
+    () => getShare(parsedId.value),
+    guarded.context.scope,
+    "share",
+  );
+  if (!existing.ok) return existing.result;
 
   return executeOpenStackMutation<ManilaShare>({
     actionLabel: "edit this share",
@@ -219,12 +411,13 @@ export async function resizeShareAction(
   const parsed = parseInput(resizeShareSchema, input, guarded.context.scope);
   if (!parsed.ok) return parsed.result;
 
-  let share: ManilaShare;
-  try {
-    share = await getShare(parsedId.value);
-  } catch (error) {
-    return resizePreflightFailure(error, guarded.context.scope);
-  }
+  const existing = await readMutationResource(
+    () => getShare(parsedId.value),
+    guarded.context.scope,
+    "share",
+  );
+  if (!existing.ok) return existing.result;
+  const share = existing.value;
   if (parsed.value.newSize === share.size) {
     return validationFailure(
       guarded.context.scope,
@@ -261,6 +454,12 @@ export async function deleteShareAction(
   if (!guarded.ok) return guarded.result;
   const parsedId = parseInput(resourceIdSchema, shareId, guarded.context.scope);
   if (!parsedId.ok) return parsedId.result;
+  const existing = await readMutationResource(
+    () => getShare(parsedId.value),
+    guarded.context.scope,
+    "share",
+  );
+  if (!existing.ok) return existing.result;
 
   return executeOpenStackMutation({
     actionLabel: "delete this share",
@@ -293,6 +492,12 @@ export async function grantShareAccessAction(
   if (!parsedId.ok) return parsedId.result;
   const parsed = parseInput(grantAccessSchema, input, guarded.context.scope);
   if (!parsed.ok) return parsed.result;
+  const existing = await readMutationResource(
+    () => getShare(parsedId.value),
+    guarded.context.scope,
+    "share",
+  );
+  if (!existing.ok) return existing.result;
 
   return executeOpenStackMutation<ManilaShareAccessRule>({
     actionLabel: "grant access to this share",
@@ -341,6 +546,12 @@ export async function revokeShareAccessAction(
     guarded.context.scope,
   );
   if (!parsedAccessId.ok) return parsedAccessId.result;
+  const existing = await readMutationResource(
+    () => getShare(parsedShareId.value),
+    guarded.context.scope,
+    "share",
+  );
+  if (!existing.ok) return existing.result;
 
   return executeOpenStackMutation({
     actionLabel: "revoke access to this share",
@@ -355,5 +566,152 @@ export async function revokeShareAccessAction(
     body: { deny_access: { access_id: parsedAccessId.value } },
     invalidates: [`/shared-file-systems/shares/${parsedShareId.value}`],
     successMessage: "Share access is being revoked.",
+  });
+}
+
+export async function createShareSnapshotAction(
+  scope: MutationScope,
+  input: CreateShareSnapshotInput,
+): Promise<MutationResult<ManilaShareSnapshot>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsed = parseInput(
+    createShareSnapshotSchema,
+    input,
+    guarded.context.scope,
+  );
+  if (!parsed.ok) return parsed.result;
+  const source = await readMutationResource(
+    () => getShare(parsed.value.shareId),
+    guarded.context.scope,
+    "share",
+  );
+  if (!source.ok) return source.result;
+  if (source.value.status.toLowerCase() !== "available") {
+    return validationFailure(
+      guarded.context.scope,
+      "Wait until the source share is available before creating a snapshot.",
+    );
+  }
+  if (source.value.snapshot_support === false) {
+    return validationFailure(
+      guarded.context.scope,
+      "The source share does not support snapshots.",
+    );
+  }
+
+  return executeOpenStackMutation<ManilaShareSnapshot>({
+    actionLabel: "create a share snapshot",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(guarded.context.scope.projectId, "snapshots"),
+    method: "POST",
+    headers: MANILA_HEADERS,
+    body: {
+      snapshot: {
+        share_id: parsed.value.shareId,
+        force: false,
+        name: parsed.value.name,
+        description: parsed.value.description || undefined,
+      },
+    },
+    invalidates: [
+      "/shared-file-systems",
+      "/shared-file-systems/snapshots",
+      `/shared-file-systems/shares/${parsed.value.shareId}`,
+    ],
+    successMessage: `Snapshot ${parsed.value.name} is being created.`,
+    transform: shareSnapshotFromPayload,
+  });
+}
+
+export async function updateShareSnapshotAction(
+  scope: MutationScope,
+  snapshotId: string,
+  input: UpdateShareSnapshotInput,
+): Promise<MutationResult<ManilaShareSnapshot>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedId = parseInput(
+    resourceIdSchema,
+    snapshotId,
+    guarded.context.scope,
+  );
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parseInput(
+    updateShareSnapshotSchema,
+    input,
+    guarded.context.scope,
+  );
+  if (!parsed.ok) return parsed.result;
+  const existing = await readMutationResource(
+    () => getShareSnapshot(parsedId.value),
+    guarded.context.scope,
+    "share snapshot",
+  );
+  if (!existing.ok) return existing.result;
+
+  return executeOpenStackMutation<ManilaShareSnapshot>({
+    actionLabel: "edit this share snapshot",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `snapshots/${encodeURIComponent(parsedId.value)}`,
+    ),
+    method: "PUT",
+    headers: MANILA_HEADERS,
+    body: {
+      snapshot: {
+        display_name: parsed.value.name,
+        display_description: parsed.value.description,
+      },
+    },
+    invalidates: [
+      "/shared-file-systems",
+      "/shared-file-systems/snapshots",
+      `/shared-file-systems/snapshots/${parsedId.value}`,
+    ],
+    successMessage: "Share snapshot details updated.",
+    transform: shareSnapshotFromPayload,
+  });
+}
+
+export async function deleteShareSnapshotAction(
+  scope: MutationScope,
+  snapshotId: string,
+): Promise<MutationResult<null>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedId = parseInput(
+    resourceIdSchema,
+    snapshotId,
+    guarded.context.scope,
+  );
+  if (!parsedId.ok) return parsedId.result;
+  const existing = await readMutationResource(
+    () => getShareSnapshot(parsedId.value),
+    guarded.context.scope,
+    "share snapshot",
+  );
+  if (!existing.ok) return existing.result;
+
+  return executeOpenStackMutation({
+    actionLabel: "delete this share snapshot",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `snapshots/${encodeURIComponent(parsedId.value)}`,
+    ),
+    method: "DELETE",
+    headers: MANILA_HEADERS,
+    removedResource: { kind: "share-snapshot", id: parsedId.value },
+    invalidates: [
+      "/shared-file-systems",
+      "/shared-file-systems/snapshots",
+      `/shared-file-systems/snapshots/${parsedId.value}`,
+    ],
+    successMessage: "Share snapshot deletion requested.",
   });
 }

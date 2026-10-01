@@ -1,9 +1,10 @@
-import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
 import {
   projectNetworksQueryOptions,
   subnetsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { makeQueryClient } from "@/lib/query-client";
+import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { NetworksTableClient } from "../NetworkingTablesClient";
 import { isCreateActionRequested } from "@/lib/create-actions";
@@ -28,14 +29,15 @@ export default async function Page({
       subnetsQueryOptions(session.regionId, session.projectId),
     ),
   ]);
+  const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
+    <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <NetworksTableClient
         key={createRequested ? "create" : "idle"}
         regionId={session.regionId}
         projectId={session.projectId}
         initiallyOpen={createRequested}
       />
-    </HydrationBoundary>
+    </QueryHydrationBoundary>
   );
 }

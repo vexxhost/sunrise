@@ -13,6 +13,11 @@ const sharedFileSystemSidebarSections = [
         icon: "FolderTree",
       },
       {
+        name: "Snapshots",
+        href: "/shared-file-systems/snapshots",
+        icon: "Camera",
+      },
+      {
         name: "Share Networks",
         href: "/shared-file-systems/share-networks",
         icon: "Share2",

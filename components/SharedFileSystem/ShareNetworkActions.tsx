@@ -1,0 +1,422 @@
+"use client";
+
+import { useMemo, useState, useTransition } from "react";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ArrowRight, Plus, Share2 } from "lucide-react";
+
+import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
+import {
+  projectNetworksQueryOptions,
+  subnetsQueryOptions,
+} from "@/hooks/queries/useNetworks";
+import { manilaAvailabilityZonesQueryOptions } from "@/hooks/queries/useManila";
+import { createShareNetworkAction } from "@/lib/openstack/manila-actions";
+
+const steps = ["details", "placement", "review"] as const;
+type Step = (typeof steps)[number];
+
+const initialForm = {
+  name: "",
+  description: "",
+  networkId: "none",
+  subnetId: "none",
+  availabilityZone: "default",
+};
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1 border-b px-3 py-2 last:border-b-0 sm:grid-cols-[10rem_minmax(0,1fr)]">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="min-w-0 break-words text-sm">{value}</span>
+    </div>
+  );
+}
+
+export function ShareNetworkActions({
+  initiallyOpen = false,
+  projectId,
+  regionId,
+}: {
+  initiallyOpen?: boolean;
+  projectId?: string;
+  regionId?: string;
+}) {
+  const queryClient = useQueryClient();
+  const clearCreateActionIntent = useClearCreateActionIntent();
+  const [open, setOpen] = useState(initiallyOpen);
+  const [step, setStep] = useState<Step>("details");
+  const [form, setForm] = useState(initialForm);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const [networks, subnets, zones] = useQueries({
+    queries: [
+      {
+        ...projectNetworksQueryOptions(regionId, projectId),
+        enabled: open && Boolean(regionId && projectId),
+      },
+      {
+        ...subnetsQueryOptions(regionId, projectId),
+        enabled: open && Boolean(regionId && projectId),
+      },
+      {
+        ...manilaAvailabilityZonesQueryOptions(regionId, projectId),
+        enabled: open && Boolean(regionId && projectId),
+      },
+    ],
+  });
+  const availableNetworks = useMemo(
+    () =>
+      (networks.data ?? []).filter((network) => !network["router:external"]),
+    [networks.data],
+  );
+  const availableSubnets = useMemo(
+    () =>
+      form.networkId === "none"
+        ? []
+        : (subnets.data ?? []).filter(
+            (subnet) => subnet.network_id === form.networkId,
+          ),
+    [form.networkId, subnets.data],
+  );
+  const selectedNetwork = availableNetworks.find(
+    (network) => network.id === form.networkId,
+  );
+  const selectedSubnet = availableSubnets.find(
+    (subnet) => subnet.id === form.subnetId,
+  );
+  const placementValid = form.networkId === "none" || form.subnetId !== "none";
+  const valid = Boolean(form.name.trim()) && placementValid;
+  const stepIndex = steps.indexOf(step);
+
+  const update = <K extends keyof typeof form>(
+    key: K,
+    value: (typeof form)[K],
+  ) => setForm((current) => ({ ...current, [key]: value }));
+
+  const setNetwork = (networkId: string) => {
+    setForm((current) => ({
+      ...current,
+      networkId,
+      subnetId: "none",
+    }));
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (pending) return;
+    setOpen(nextOpen);
+    setError(null);
+    if (!nextOpen) {
+      setStep("details");
+      setForm(initialForm);
+      clearCreateActionIntent();
+    }
+  };
+
+  const create = () => {
+    if (!projectId || !regionId || !valid) return;
+    startTransition(async () => {
+      setError(null);
+      const result = await createShareNetworkAction(
+        { projectId, regionId },
+        {
+          name: form.name,
+          description: form.description,
+          neutronNetworkId:
+            form.networkId === "none" ? undefined : form.networkId,
+          neutronSubnetId: form.subnetId === "none" ? undefined : form.subnetId,
+          availabilityZone:
+            form.availabilityZone === "default"
+              ? undefined
+              : form.availabilityZone,
+        },
+      );
+      if (!result.ok) {
+        setError(result.error.message);
+        return;
+      }
+      await queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "manila", "share-networks"],
+      });
+      handleOpenChange(false);
+    });
+  };
+
+  return (
+    <>
+      <Button
+        className="h-10 gap-2"
+        disabled={!projectId || !regionId}
+        onClick={() => setOpen(true)}
+      >
+        <Plus className="size-4" aria-hidden="true" />
+        Create share network
+      </Button>
+
+      <Sheet open={open} onOpenChange={handleOpenChange}>
+        <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-3xl">
+          <SheetHeader className="border-b px-5 py-4">
+            <SheetTitle className="flex items-center gap-2">
+              <Share2 className="size-5" aria-hidden="true" />
+              Create share network
+            </SheetTitle>
+            <SheetDescription>
+              Define the project network context Manila will use for share
+              servers. You can also let Manila create a service-managed default
+              subnet.
+            </SheetDescription>
+          </SheetHeader>
+
+          <Tabs
+            value={step}
+            onValueChange={(value) => setStep(value as Step)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="border-b px-5 py-3">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="details">Details</TabsTrigger>
+                <TabsTrigger value="placement">Placement</TabsTrigger>
+                <TabsTrigger value="review">Review</TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <TabsContent value="details" className="mt-0 space-y-5">
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-network-name">Name</Label>
+                  <Input
+                    id="share-network-name"
+                    autoFocus
+                    maxLength={255}
+                    value={form.name}
+                    onChange={(event) => update("name", event.target.value)}
+                    placeholder="team-share-network"
+                    disabled={pending}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-network-description">Description</Label>
+                  <Textarea
+                    id="share-network-description"
+                    maxLength={255}
+                    value={form.description}
+                    onChange={(event) =>
+                      update("description", event.target.value)
+                    }
+                    placeholder="Network placement for team file shares"
+                    disabled={pending}
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="placement" className="mt-0 space-y-5">
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-network-neutron-network">
+                    Neutron network
+                  </Label>
+                  <Select
+                    value={form.networkId}
+                    onValueChange={setNetwork}
+                    disabled={pending || networks.isLoading}
+                  >
+                    <SelectTrigger id="share-network-neutron-network">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        Service-managed default
+                      </SelectItem>
+                      {availableNetworks.map((network) => (
+                        <SelectItem key={network.id} value={network.id}>
+                          {network.name || network.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Choose a private network owned by this project, or leave the
+                    placement automatic for a default subnet without a Neutron
+                    allocation.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-network-neutron-subnet">
+                    Neutron subnet
+                  </Label>
+                  <Select
+                    value={form.subnetId}
+                    onValueChange={(value) => update("subnetId", value)}
+                    disabled={
+                      pending || subnets.isLoading || form.networkId === "none"
+                    }
+                  >
+                    <SelectTrigger id="share-network-neutron-subnet">
+                      <SelectValue
+                        placeholder={
+                          form.networkId === "none"
+                            ? "Select a network first"
+                            : "Choose a subnet"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableSubnets.map((subnet) => (
+                        <SelectItem key={subnet.id} value={subnet.id}>
+                          {subnet.name || subnet.cidr} · {subnet.cidr}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {form.networkId !== "none" &&
+                  !subnets.isLoading &&
+                  availableSubnets.length === 0 ? (
+                    <p className="text-xs text-destructive">
+                      The selected network has no project subnets available to
+                      Manila.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="share-network-zone">Availability zone</Label>
+                  <Select
+                    value={form.availabilityZone}
+                    onValueChange={(value) => update("availabilityZone", value)}
+                    disabled={pending || zones.isLoading}
+                  >
+                    <SelectTrigger id="share-network-zone">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">All storage zones</SelectItem>
+                      {(zones.data ?? []).map((zone) => (
+                        <SelectItem
+                          key={zone.id || zone.name}
+                          value={zone.name}
+                        >
+                          {zone.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Blank creates the single default subnet across Manila
+                    storage availability zones.
+                  </p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="review" className="mt-0 space-y-4">
+                <div className="overflow-hidden rounded-md border">
+                  <ReviewRow label="Name" value={form.name || "-"} />
+                  <ReviewRow
+                    label="Description"
+                    value={form.description || "-"}
+                  />
+                  <ReviewRow
+                    label="Neutron network"
+                    value={
+                      selectedNetwork?.name ||
+                      selectedNetwork?.id ||
+                      "Service-managed default"
+                    }
+                  />
+                  <ReviewRow
+                    label="Neutron subnet"
+                    value={
+                      selectedSubnet
+                        ? `${selectedSubnet.name || selectedSubnet.id} (${selectedSubnet.cidr})`
+                        : "Service-managed default"
+                    }
+                  />
+                  <ReviewRow
+                    label="Availability zone"
+                    value={
+                      form.availabilityZone === "default"
+                        ? "All storage zones"
+                        : form.availabilityZone
+                    }
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Manila creates an initial share-network subnet with this
+                  placement. Additional availability-zone subnets can be added
+                  in a later lifecycle iteration.
+                </p>
+              </TabsContent>
+
+              {error ? <MutationAlert>{error}</MutationAlert> : null}
+            </div>
+
+            <SheetFooter className="border-t px-5 py-4">
+              <div className="flex w-full items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleOpenChange(false)}
+                  disabled={pending}
+                >
+                  Cancel
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={pending || stepIndex === 0}
+                    onClick={() => setStep(steps[stepIndex - 1])}
+                  >
+                    <ArrowLeft className="size-4" aria-hidden="true" />
+                    Back
+                  </Button>
+                  {step !== "review" ? (
+                    <Button
+                      type="button"
+                      disabled={
+                        pending ||
+                        (step === "details" && !form.name.trim()) ||
+                        (step === "placement" && !placementValid)
+                      }
+                      onClick={() => setStep(steps[stepIndex + 1])}
+                    >
+                      Next
+                      <ArrowRight className="size-4" aria-hidden="true" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      disabled={pending || !valid}
+                      onClick={create}
+                    >
+                      {pending ? "Creating" : "Create share network"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </SheetFooter>
+          </Tabs>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}

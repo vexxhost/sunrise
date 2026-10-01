@@ -1,4 +1,4 @@
-import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
 
 import {
   networkQueryOptions,
@@ -7,6 +7,7 @@ import {
   routersQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { makeQueryClient } from "@/lib/query-client";
+import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { NetworkDetailClient } from "./NetworkDetailClient";
 import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
@@ -24,10 +25,10 @@ export default async function Page({
     session.projectId,
     id,
   );
-  await fetchOpenStackResourceOrRecover(
-    queryClient.fetchQuery(networkQuery),
-    { kind: "network", id },
-  );
+  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(networkQuery), {
+    kind: "network",
+    id,
+  });
   await Promise.all([
     queryClient.prefetchQuery(
       networkSubnetsQueryOptions(session.regionId, session.projectId, id),
@@ -39,13 +40,14 @@ export default async function Page({
       portsQueryOptions(session.regionId, session.projectId),
     ),
   ]);
+  const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
+    <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <NetworkDetailClient
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}
       />
-    </HydrationBoundary>
+    </QueryHydrationBoundary>
   );
 }

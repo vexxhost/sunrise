@@ -26,6 +26,7 @@ export type NavigationDestinationId =
   | "object-storage.roles"
   | "identity.application-credentials"
   | "shared-file-system.shares"
+  | "shared-file-system.snapshots"
   | "shared-file-system.share-networks"
   | "key-manager.secrets"
   | "key-manager.containers"
@@ -308,6 +309,17 @@ const definitions: NavigationDestinationDefinition[] = [
     catalogIdentities: manila,
   },
   {
+    id: "shared-file-system.snapshots",
+    label: "Share snapshots",
+    description: "Point-in-time copies of shared file systems.",
+    href: "/shared-file-systems/snapshots",
+    service: "shared-file-system",
+    group: "Shared File System",
+    icon: "snapshot",
+    keywords: ["manila", "nfs", "share snapshot", "backup"],
+    catalogIdentities: manila,
+  },
+  {
     id: "shared-file-system.share-networks",
     label: "Share networks",
     description: "Network context used by shared file systems.",
@@ -397,6 +409,8 @@ export const createActionSearchTerms: Record<CreateActionId, string[]> = {
   role: ["s3", "rgw", "iam", "sts"],
   "application-credential": ["keystone", "api credential", "automation"],
   share: ["manila", "nfs", "shared file system"],
+  "share-network": ["manila", "neutron", "nfs", "share network"],
+  "share-snapshot": ["manila", "nfs", "share snapshot", "backup"],
   secret: ["barbican", "key vault", "secret manager", "kms"],
   "secret-container": ["barbican", "certificate", "secret group"],
   "secret-order": ["barbican", "generate key", "certificate request"],

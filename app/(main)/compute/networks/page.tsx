@@ -1,5 +1,5 @@
 import { getSession } from "@/lib/session";
-import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
+import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
 import {
   externalNetworksQueryOptions,
   floatingIpsQueryOptions,
@@ -10,6 +10,7 @@ import {
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import { makeQueryClient } from "@/lib/query-client";
+import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { NetworkTopologyClient } from "./NetworkTopologyClient";
 
 export default async function Page() {
@@ -31,10 +32,11 @@ export default async function Page() {
     queryClient.prefetchQuery(floatingIpsQueryOptions(regionId, projectId)),
     queryClient.prefetchQuery(serversQueryOptions(regionId, projectId)),
   ]);
+  const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
 
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
+    <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <NetworkTopologyClient regionId={regionId} projectId={projectId} />
-    </HydrationBoundary>
+    </QueryHydrationBoundary>
   );
 }

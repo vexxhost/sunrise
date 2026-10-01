@@ -21,6 +21,8 @@ export type CreateActionId =
   | "role"
   | "application-credential"
   | "share"
+  | "share-network"
+  | "share-snapshot"
   | "secret"
   | "secret-container"
   | "secret-order";
@@ -220,6 +222,30 @@ const definitions: CreateActionDefinition[] = [
     label: "Create share",
     description: "Provision a mountable shared file system with Manila.",
     href: "/shared-file-systems/shares?create=share",
+    service: "shared-file-system",
+    group: "Shared File System",
+    catalogIdentities: [
+      { serviceType: "sharev2", serviceName: "manilav2" },
+      { serviceType: "shared-file-system", serviceName: "manila" },
+    ],
+  },
+  {
+    id: "share-snapshot",
+    label: "Create share snapshot",
+    description: "Capture a point-in-time copy of a Manila share.",
+    href: "/shared-file-systems/snapshots?create=share-snapshot",
+    service: "shared-file-system",
+    group: "Shared File System",
+    catalogIdentities: [
+      { serviceType: "sharev2", serviceName: "manilav2" },
+      { serviceType: "shared-file-system", serviceName: "manila" },
+    ],
+  },
+  {
+    id: "share-network",
+    label: "Create share network",
+    description: "Define Neutron placement for Manila share servers.",
+    href: "/shared-file-systems/share-networks?create=share-network",
     service: "shared-file-system",
     group: "Shared File System",
     catalogIdentities: [

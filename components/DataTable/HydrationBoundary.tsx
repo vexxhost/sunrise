@@ -1,9 +1,10 @@
-import { makeQueryClient } from '@/lib/query-client';
-import { HydrationBoundary, dehydrate } from '@tanstack/react-query';
-import { ReactNode, Suspense } from 'react';
-import { DataTableHeader } from './Header';
-import { DataTableToolbar } from './Toolbar';
-import { DataTableRowAction } from '../DataTable';
+import { makeQueryClient } from "@/lib/query-client";
+import { ReactNode, Suspense } from "react";
+import { dehydrateQueryClient, hydrateQueries } from "@/lib/query-hydration";
+import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
+import { DataTableHeader } from "./Header";
+import { DataTableToolbar } from "./Toolbar";
+import { DataTableRowAction } from "../DataTable";
 
 interface DataTableHydrationBoundaryProps {
   resourceName: string;
@@ -21,22 +22,27 @@ export async function DataTableHydrationBoundary({
   rowActions = [],
 }: DataTableHydrationBoundaryProps) {
   const queryClient = makeQueryClient();
-  await Promise.all(queries.map((query) => queryClient.prefetchQuery(query)));
+  await hydrateQueries(queryClient, queries);
+  const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
 
-  return <HydrationBoundary state={dehydrate(queryClient)}>
-    <DataTableHeader resourceName={resourceName} actions={actions} />
-      <Suspense fallback={
-        <>
-          <DataTableToolbar
-            resourceName={resourceName}
-            rowActions={rowActions}
-          />
-          <div className="rounded-md border flex items-center justify-center h-64">
-            <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-          </div>
-        </>
-      }>
+  return (
+    <QueryHydrationBoundary key={cacheIdentity} state={state}>
+      <DataTableHeader resourceName={resourceName} actions={actions} />
+      <Suspense
+        fallback={
+          <>
+            <DataTableToolbar
+              resourceName={resourceName}
+              rowActions={rowActions}
+            />
+            <div className="rounded-md border flex items-center justify-center h-64">
+              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+            </div>
+          </>
+        }
+      >
         {children}
       </Suspense>
-    </HydrationBoundary>;
+    </QueryHydrationBoundary>
+  );
 }

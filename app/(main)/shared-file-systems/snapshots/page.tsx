@@ -1,11 +1,11 @@
 import { DataTableHydrationBoundary } from "@/components/DataTable/HydrationBoundary";
-import { ShareNetworkActions } from "@/components/SharedFileSystem/ShareNetworkActions";
-import { shareNetworksQueryOptions } from "@/hooks/queries/useManila";
+import { ShareSnapshotActions } from "@/components/SharedFileSystem/ShareSnapshotActions";
+import { shareSnapshotsQueryOptions } from "@/hooks/queries/useManila";
 import { isCreateActionRequested } from "@/lib/create-actions";
 import { getSession } from "@/lib/session";
-import { ShareNetworksClient } from "./ShareNetworksClient";
+import { ShareSnapshotsClient } from "./ShareSnapshotsClient";
 
-export default async function ShareNetworksPage({
+export default async function ShareSnapshotsPage({
   searchParams,
 }: {
   searchParams: Promise<{ create?: string | string[] }>;
@@ -13,23 +13,25 @@ export default async function ShareNetworksPage({
   const session = await getSession();
   const createRequested = isCreateActionRequested(
     (await searchParams).create,
-    "share-network",
+    "share-snapshot",
   );
 
   return (
     <DataTableHydrationBoundary
-      resourceName="share network"
+      resourceName="share snapshot"
       actions={
-        <ShareNetworkActions
+        <ShareSnapshotActions
           key={createRequested ? "create" : "idle"}
           initiallyOpen={createRequested}
           projectId={session.projectId}
           regionId={session.regionId}
         />
       }
-      queries={[shareNetworksQueryOptions(session.regionId, session.projectId)]}
+      queries={[
+        shareSnapshotsQueryOptions(session.regionId, session.projectId),
+      ]}
     >
-      <ShareNetworksClient
+      <ShareSnapshotsClient
         projectId={session.projectId}
         regionId={session.regionId}
       />

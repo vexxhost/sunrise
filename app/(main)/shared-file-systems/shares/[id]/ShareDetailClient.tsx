@@ -21,6 +21,7 @@ import {
   ShareMutationDialog,
   type ShareMutationKind,
 } from "@/components/SharedFileSystem/ShareMutationDialog";
+import { ShareSnapshotActions } from "@/components/SharedFileSystem/ShareSnapshotActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +36,7 @@ import {
   shareAccessRulesQueryOptions,
   shareExportLocationsQueryOptions,
   shareQueryOptions,
+  shareSnapshotsQueryOptions,
 } from "@/hooks/queries/useManila";
 import {
   canDeleteShare,
@@ -45,19 +47,13 @@ import {
   isShareTransitioning,
   shareStatusVariant,
 } from "@/lib/openstack/manila-lifecycle";
-import { normalizeOpenStackTimestamp } from "@/lib/openstack/time";
+import { formatUtcTimestamp } from "@/lib/openstack/time";
 import type { ManilaShareAccessRule } from "@/types/openstack";
 
 function emptyToDash(value: unknown) {
   return value === null || value === undefined || value === ""
     ? "-"
     : String(value);
-}
-
-function formatTimestamp(value?: string | null) {
-  if (!value) return "-";
-  const timestamp = new Date(normalizeOpenStackTimestamp(value));
-  return Number.isNaN(timestamp.getTime()) ? value : timestamp.toLocaleString();
 }
 
 export function ShareDetailClient({
@@ -93,6 +89,11 @@ export function ShareDetailClient({
       )
         ? 5_000
         : false,
+  });
+  const snapshotsQuery = useQuery({
+    ...shareSnapshotsQueryOptions(regionId, projectId),
+    select: (snapshots) =>
+      snapshots.filter((snapshot) => snapshot.share_id === shareId),
   });
   const [action, setAction] = useState<ShareMutationKind | null>(null);
   const [granting, setGranting] = useState(false);
@@ -145,6 +146,11 @@ export function ShareDetailClient({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <ShareSnapshotActions
+            initialShareId={share.id}
+            projectId={projectId}
+            regionId={regionId}
+          />
           <Button
             variant="outline"
             disabled={!scope || !canManageShareAccess(share)}
@@ -220,7 +226,7 @@ export function ShareDetailClient({
             {share.is_public ? "Public" : "Project only"}
           </DetailField>
           <DetailField label="Created">
-            {formatTimestamp(share.created_at)}
+            {formatUtcTimestamp(share.created_at)}
           </DetailField>
         </DetailSection>
 
@@ -247,7 +253,15 @@ export function ShareDetailClient({
             {emptyToDash(share.share_group_id)}
           </DetailField>
           <DetailField label="Source Snapshot ID" className="font-mono text-xs">
-            {emptyToDash(share.snapshot_id)}
+            {share.snapshot_id ? (
+              <ResourceLink
+                href={`/shared-file-systems/snapshots/${encodeURIComponent(share.snapshot_id)}`}
+              >
+                {share.snapshot_id}
+              </ResourceLink>
+            ) : (
+              "-"
+            )}
           </DetailField>
         </DetailSection>
 
@@ -287,6 +301,65 @@ export function ShareDetailClient({
           )}
         </DetailSection>
       </div>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold">Snapshots</h2>
+          <p className="text-sm text-muted-foreground">
+            Point-in-time copies created from this share.
+          </p>
+        </div>
+        <div className="overflow-hidden rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Size</TableHead>
+                <TableHead>Created</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {snapshotsQuery.isError ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-muted-foreground">
+                    Snapshots are unavailable for the current role.
+                  </TableCell>
+                </TableRow>
+              ) : snapshotsQuery.isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-muted-foreground">
+                    Loading snapshots
+                  </TableCell>
+                </TableRow>
+              ) : snapshotsQuery.data?.length ? (
+                snapshotsQuery.data.map((snapshot) => (
+                  <TableRow key={snapshot.id}>
+                    <TableCell>
+                      <ResourceLink
+                        href={`/shared-file-systems/snapshots/${encodeURIComponent(snapshot.id)}`}
+                      >
+                        {snapshot.name || snapshot.id}
+                      </ResourceLink>
+                    </TableCell>
+                    <TableCell>{formatManilaStatus(snapshot.status)}</TableCell>
+                    <TableCell>{snapshot.size} GiB</TableCell>
+                    <TableCell>
+                      {formatUtcTimestamp(snapshot.created_at)}
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-muted-foreground">
+                    No snapshots have been created from this share.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
 
       <section className="space-y-3">
         <div>
