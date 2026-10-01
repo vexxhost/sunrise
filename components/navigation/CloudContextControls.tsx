@@ -20,7 +20,7 @@ export function CloudContextControls() {
 
       {hasProject ? (
         <>
-          <NavigationMenuItem className="hidden list-none sm:block">
+          <NavigationMenuItem className="hidden list-none lg:block">
             <div className="h-6 w-px bg-border" />
           </NavigationMenuItem>
           <NavigationMenuItem>

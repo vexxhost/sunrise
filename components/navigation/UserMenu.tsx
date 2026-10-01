@@ -25,20 +25,17 @@ export function UserMenu() {
 
   return (
     <>
-      <NavigationMenuItem className="hidden list-none sm:block">
+      <NavigationMenuItem className="hidden list-none lg:block">
         <div className="h-6 w-px bg-border" />
       </NavigationMenuItem>
 
       <NavigationMenuItem>
         <NavigationMenuTrigger
-          className="h-9 gap-2 bg-muted/50 px-2.5 text-xs hover:bg-muted data-[state=open]:bg-muted sm:px-3"
+          className="h-9 w-11 gap-0 bg-muted/50 px-2 text-xs hover:bg-muted data-[state=open]:bg-muted"
           aria-label={userName}
           title={userName}
         >
           <User className="h-3.5 w-3.5 shrink-0" />
-          <span className="hidden max-w-[100px] truncate leading-none sm:inline">
-            {userName}
-          </span>
         </NavigationMenuTrigger>
         <NavigationMenuContent className="right-0 left-auto">
           <div className="w-72 p-2">

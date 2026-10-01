@@ -32,8 +32,8 @@ export function ProjectSelector() {
       icon={FolderKanban}
       displayKey="name"
       onSelect={handleSelect}
-      listClassName="min-w-[200px] max-h-[400px] overflow-y-auto"
-      collapseLabelOnMobile
+      listClassName="min-w-[240px] max-w-[min(22rem,calc(100vw-2rem))] max-h-[400px] overflow-y-auto"
+      iconOnly
     />
   );
 }

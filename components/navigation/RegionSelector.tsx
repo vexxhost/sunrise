@@ -29,9 +29,9 @@ export function RegionSelector() {
       icon={MapPin}
       displayKey="id"
       onSelect={handleSelect}
-      listClassName="min-w-[120px]"
+      listClassName="min-w-[160px] max-w-[min(20rem,calc(100vw-2rem))]"
       buttonClassName="font-mono"
-      collapseLabelOnMobile
+      iconOnly
     />
   );
 }
