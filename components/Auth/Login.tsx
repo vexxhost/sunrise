@@ -24,9 +24,9 @@ function SubmitButton() {
       className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-wait disabled:opacity-70"
     >
       {pending ? (
-        <LoaderCircle className="size-4 animate-spin" />
+        <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
       ) : (
-        <LogIn className="size-4" />
+        <LogIn className="size-4" aria-hidden="true" />
       )}
       {pending ? "Connecting..." : "Continue"}
     </button>
@@ -45,10 +45,7 @@ export default function Login({
   return (
     <AuthScene>
       <div>
-        <p className="text-center text-sm font-medium text-status-info">
-          Cloud console
-        </p>
-        <h1 className="mt-3 text-center text-3xl font-semibold text-foreground sm:text-4xl">
+        <h1 className="text-center text-3xl font-semibold text-foreground sm:text-4xl">
           Welcome back
         </h1>
         <p className="mt-4 text-center text-sm leading-6 text-muted-foreground">
@@ -85,7 +82,7 @@ export default function Login({
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
-              className="h-11 w-full rounded-md border border-input bg-background/70 px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20 dark:bg-white/5"
+              className="h-11 w-full rounded-md border border-input bg-background/70 px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
               placeholder="Enter your provider ID"
             />
 

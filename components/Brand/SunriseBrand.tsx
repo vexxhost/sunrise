@@ -16,7 +16,10 @@ export function SunriseBrand({
         viewBox="0 0 48 48"
         className={cn("shrink-0", compact ? "size-8" : "size-10")}
       >
-        <path d="M15 27a9 9 0 0 1 18 0H15Z" fill="#fb7185" />
+        <path
+          d="M15 27a9 9 0 0 1 18 0H15Z"
+          fill="var(--brand-sun)"
+        />
         <path
           d="M7 29h34"
           fill="none"
@@ -27,7 +30,7 @@ export function SunriseBrand({
         <path
           d="M12 36h24"
           fill="none"
-          stroke="#38bdf8"
+          stroke="var(--brand-accent)"
           strokeLinecap="round"
           strokeWidth="3"
         />
