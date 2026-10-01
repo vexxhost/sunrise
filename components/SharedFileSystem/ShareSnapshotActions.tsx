@@ -57,6 +57,9 @@ export function ShareSnapshotActions({
     enabled: open && Boolean(projectId && regionId),
   });
   const eligibleShares = (shares.data ?? []).filter(canCreateShareSnapshot);
+  const selectedShareIsEligible = eligibleShares.some(
+    (share) => share.id === shareId,
+  );
 
   const setDialogOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -71,7 +74,15 @@ export function ShareSnapshotActions({
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!projectId || !regionId || !shareId || !name.trim() || pending) return;
+    if (
+      !projectId ||
+      !regionId ||
+      !selectedShareIsEligible ||
+      !name.trim() ||
+      pending
+    ) {
+      return;
+    }
 
     startTransition(async () => {
       setError(null);
@@ -183,7 +194,7 @@ export function ShareSnapshotActions({
               </Button>
               <Button
                 type="submit"
-                disabled={!shareId || !name.trim() || pending}
+                disabled={!selectedShareIsEligible || !name.trim() || pending}
               >
                 {pending ? "Creating" : "Create snapshot"}
               </Button>

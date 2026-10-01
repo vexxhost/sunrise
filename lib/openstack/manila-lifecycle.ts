@@ -16,9 +16,17 @@ export function formatManilaStatus(status: string | null | undefined) {
     .join(" ");
 }
 
+function isManilaErrorStatus(status: string) {
+  return (
+    status === "error" ||
+    status.startsWith("error_") ||
+    status.endsWith("_error")
+  );
+}
+
 export function isShareTransitioning(share: Pick<ManilaShare, "status">) {
   const status = normalizeManilaStatus(share.status);
-  return !STABLE_SHARE_STATUSES.has(status) && !status.endsWith("_error");
+  return !STABLE_SHARE_STATUSES.has(status) && !isManilaErrorStatus(status);
 }
 
 export function canEditShare(share: Pick<ManilaShare, "status">) {
@@ -58,7 +66,7 @@ export function isShareSnapshotTransitioning(
   snapshot: Pick<ManilaShareSnapshot, "status">,
 ) {
   const status = normalizeManilaStatus(snapshot.status);
-  return !STABLE_SNAPSHOT_STATUSES.has(status) && !status.endsWith("_error");
+  return !STABLE_SNAPSHOT_STATUSES.has(status) && !isManilaErrorStatus(status);
 }
 
 export function canEditShareSnapshot(

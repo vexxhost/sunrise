@@ -27,6 +27,7 @@ describe("Manila share lifecycle", () => {
     expect(isShareTransitioning({ status: "error" })).toBe(false);
     expect(isShareTransitioning({ status: "shrinking_error" })).toBe(false);
     expect(isShareTransitioning({ status: "extending_error" })).toBe(false);
+    expect(isShareTransitioning({ status: "error_deleting" })).toBe(false);
   });
 
   it("limits mutable operations to available shares", () => {
@@ -70,6 +71,9 @@ describe("Manila share lifecycle", () => {
   it("polls and gates share snapshot operations by status", () => {
     expect(isShareSnapshotTransitioning({ status: "creating" })).toBe(true);
     expect(isShareSnapshotTransitioning({ status: "available" })).toBe(false);
+    expect(isShareSnapshotTransitioning({ status: "error_deleting" })).toBe(
+      false,
+    );
     expect(canEditShareSnapshot({ status: "available" })).toBe(true);
     expect(canEditShareSnapshot({ status: "error" })).toBe(false);
     expect(canDeleteShareSnapshot({ status: "available" })).toBe(true);
