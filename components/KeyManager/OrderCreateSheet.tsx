@@ -13,14 +13,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardDialogTitle,
+  WizardReviewRow,
+  WizardReviewStatus,
+} from "@/components/ui/wizard-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { createOrderAction } from "@/lib/openstack/barbican-actions";
 import { createOrderSchema } from "@/lib/openstack/barbican-input";
@@ -38,6 +41,7 @@ export function OrderCreateSheet({
   scope: MutationScope;
 }) {
   const [type, setType] = useState<"key" | "asymmetric">("key");
+  const [activeTab, setActiveTab] = useState("details");
   const [name, setName] = useState("");
   const [algorithm, setAlgorithm] = useState("aes");
   const [bitLength, setBitLength] = useState("256");
@@ -57,6 +61,24 @@ export function OrderCreateSheet({
     [algorithm, bitLength, expiration, mode, name, type],
   );
   const validation = createOrderSchema.safeParse(input);
+  const reviewIssues = validation.success
+    ? []
+    : Array.from(
+        new Set(
+          validation.error.issues.map((issue) => {
+            switch (issue.path[0]) {
+              case "name":
+                return "Enter a generated resource name.";
+              case "algorithm":
+                return "Enter a key algorithm.";
+              case "bitLength":
+                return "Enter a positive whole-number bit length.";
+              default:
+                return issue.message;
+            }
+          }),
+        ),
+      );
 
   const reset = () => {
     setType("key");
@@ -65,6 +87,7 @@ export function OrderCreateSheet({
     setBitLength("256");
     setMode("cbc");
     setExpiration("");
+    setActiveTab("details");
     setError(null);
   };
   const changeOpen = (nextOpen: boolean) => {
@@ -85,7 +108,7 @@ export function OrderCreateSheet({
     }
   };
   const create = async () => {
-    if (pending || !validation.success) return;
+    if (pending || activeTab !== "review" || !validation.success) return;
     setPending(true);
     setError(null);
     const result = await createOrderAction(scope, validation.data);
@@ -99,98 +122,143 @@ export function OrderCreateSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={changeOpen}>
-      <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-2xl">
-        <SheetHeader className="border-b px-5 py-4">
-          <SheetTitle>Generate key material</SheetTitle>
-          <SheetDescription>
+    <WizardDialog open={open} onOpenChange={changeOpen}>
+      <WizardDialogContent className="sm:max-w-2xl">
+        <WizardDialogHeader>
+          <WizardDialogTitle>Generate key material</WizardDialogTitle>
+          <WizardDialogDescription>
             Submit a Barbican order. Symmetric orders create a secret;
             asymmetric orders create a key-pair container.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4">
-          <div className="grid gap-5 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Order type</Label>
-              <Select
-                value={type}
-                onValueChange={(value) =>
-                  changeType(value as "key" | "asymmetric")
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="key">Symmetric key</SelectItem>
-                  <SelectItem value="asymmetric">
-                    Asymmetric key pair
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="barbican-order-name">
-                Generated resource name
-              </Label>
-              <Input
-                id="barbican-order-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="service-encryption-key"
-              />
-            </div>
+          </WizardDialogDescription>
+        </WizardDialogHeader>
+        <Tabs
+          className="flex min-h-0 flex-1 flex-col px-5 pt-4"
+          value={activeTab}
+          onValueChange={setActiveTab}
+        >
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="review">Review</TabsTrigger>
+          </TabsList>
+          <div className="min-h-0 flex-1 overflow-y-auto pb-5">
+            <TabsContent className="space-y-5 pt-3" value="details">
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Order type</Label>
+                  <Select
+                    value={type}
+                    onValueChange={(value) =>
+                      changeType(value as "key" | "asymmetric")
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="key">Symmetric key</SelectItem>
+                      <SelectItem value="asymmetric">
+                        Asymmetric key pair
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="barbican-order-name">
+                    Generated resource name
+                  </Label>
+                  <Input
+                    id="barbican-order-name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="service-encryption-key"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-5 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="barbican-order-algorithm">Algorithm</Label>
+                  <Input
+                    id="barbican-order-algorithm"
+                    value={algorithm}
+                    onChange={(event) => setAlgorithm(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="barbican-order-bits">Bit length</Label>
+                  <Input
+                    id="barbican-order-bits"
+                    type="number"
+                    min={1}
+                    value={bitLength}
+                    onChange={(event) => setBitLength(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="barbican-order-mode">Mode</Label>
+                  <Input
+                    id="barbican-order-mode"
+                    value={mode}
+                    onChange={(event) => setMode(event.target.value)}
+                    disabled={type === "asymmetric"}
+                    placeholder={type === "key" ? "cbc" : "Not used"}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="barbican-order-expiration">Expiration</Label>
+                <Input
+                  id="barbican-order-expiration"
+                  type="datetime-local"
+                  value={expiration}
+                  onChange={(event) => setExpiration(event.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optional expiration for generated secret material.
+                </p>
+              </div>
+              <div className="rounded-md border bg-muted/20 px-4 py-3 text-sm">
+                Barbican will generate <strong>{algorithm || "-"}</strong>{" "}
+                material at <strong>{bitLength || "-"} bits</strong>. Sunrise
+                never receives the generated payload in this workflow.
+              </div>
+              {error ? <MutationAlert>{error}</MutationAlert> : null}
+            </TabsContent>
+            <TabsContent className="space-y-5 pt-3" value="review">
+              <WizardReviewStatus issues={reviewIssues} />
+              <div>
+                <h3 className="text-sm font-semibold">Review order</h3>
+                <p className="text-xs text-muted-foreground">
+                  Barbican generates the key material after this order is
+                  submitted. Sunrise never receives the generated payload here.
+                </p>
+              </div>
+              <dl className="rounded-md border px-4">
+                <WizardReviewRow
+                  label="Order type"
+                  value={
+                    type === "key" ? "Symmetric key" : "Asymmetric key pair"
+                  }
+                />
+                <WizardReviewRow label="Resource name" value={name || "-"} />
+                <WizardReviewRow label="Algorithm" value={algorithm || "-"} />
+                <WizardReviewRow label="Bit length" value={bitLength || "-"} />
+                <WizardReviewRow
+                  label="Mode"
+                  value={mode || "Not applicable"}
+                />
+                <WizardReviewRow
+                  label="Expiration"
+                  value={
+                    expiration
+                      ? new Date(expiration).toLocaleString()
+                      : "No expiration"
+                  }
+                />
+              </dl>
+            </TabsContent>
           </div>
-          <div className="grid gap-5 md:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="barbican-order-algorithm">Algorithm</Label>
-              <Input
-                id="barbican-order-algorithm"
-                value={algorithm}
-                onChange={(event) => setAlgorithm(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="barbican-order-bits">Bit length</Label>
-              <Input
-                id="barbican-order-bits"
-                type="number"
-                min={1}
-                value={bitLength}
-                onChange={(event) => setBitLength(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="barbican-order-mode">Mode</Label>
-              <Input
-                id="barbican-order-mode"
-                value={mode}
-                onChange={(event) => setMode(event.target.value)}
-                disabled={type === "asymmetric"}
-                placeholder={type === "key" ? "cbc" : "Not used"}
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="barbican-order-expiration">Expiration</Label>
-            <Input
-              id="barbican-order-expiration"
-              type="datetime-local"
-              value={expiration}
-              onChange={(event) => setExpiration(event.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Optional expiration for generated secret material.
-            </p>
-          </div>
-          <div className="rounded-md border bg-muted/20 px-4 py-3 text-sm">
-            Barbican will generate <strong>{algorithm || "-"}</strong> material
-            at <strong>{bitLength || "-"} bits</strong>. Sunrise never receives
-            the generated payload in this workflow.
-          </div>
-          {error ? <MutationAlert>{error}</MutationAlert> : null}
-        </div>
-        <SheetFooter className="border-t px-5 py-4 sm:flex-row sm:justify-end">
+        </Tabs>
+        <WizardDialogFooter>
           <Button
             type="button"
             variant="outline"
@@ -199,21 +267,26 @@ export function OrderCreateSheet({
           >
             Cancel
           </Button>
-          <Button
-            type="button"
-            disabled={pending || !validation.success}
-            title={
-              validation.success
-                ? undefined
-                : validation.error.issues[0]?.message
-            }
-            onClick={create}
-          >
-            {pending ? <Spinner /> : null}
-            {pending ? "Submitting" : "Submit order"}
-          </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+          {activeTab === "review" ? (
+            <Button
+              type="button"
+              disabled={pending || reviewIssues.length > 0}
+              onClick={create}
+            >
+              {pending ? <Spinner /> : null}
+              {pending ? "Creating" : "Create key order"}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => setActiveTab("review")}
+            >
+              Review key order
+            </Button>
+          )}
+        </WizardDialogFooter>
+      </WizardDialogContent>
+    </WizardDialog>
   );
 }

@@ -8,14 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardDialogTitle,
+  WizardDialogTrigger,
+} from "@/components/ui/wizard-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -91,27 +91,27 @@ export function SecretPayloadUploadSheet({
   };
 
   return (
-    <Sheet
+    <WizardDialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) setError(null);
       }}
     >
-      <SheetTrigger asChild>
+      <WizardDialogTrigger asChild>
         <Button variant="outline">
           <Upload className="size-4" />
           Add payload
         </Button>
-      </SheetTrigger>
-      <SheetContent className="w-full sm:max-w-xl">
-        <SheetHeader className="border-b px-5 py-4">
-          <SheetTitle>Add secret payload</SheetTitle>
-          <SheetDescription>
+      </WizardDialogTrigger>
+      <WizardDialogContent className="sm:max-w-xl">
+        <WizardDialogHeader>
+          <WizardDialogTitle>Add secret payload</WizardDialogTitle>
+          <WizardDialogDescription>
             A Barbican secret accepts payload data once. It cannot be replaced
             after upload.
-          </SheetDescription>
-        </SheetHeader>
+          </WizardDialogDescription>
+        </WizardDialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           <Tabs
             value={mode}
@@ -163,13 +163,13 @@ export function SecretPayloadUploadSheet({
             <MutationAlert className="mt-4">{error}</MutationAlert>
           ) : null}
         </div>
-        <SheetFooter className="border-t px-5 py-4 sm:flex-row sm:justify-end">
+        <WizardDialogFooter>
           <Button disabled={pending || invalid} onClick={upload}>
             {pending ? <Spinner /> : <Upload className="size-4" />}
             {pending ? "Adding payload" : "Add payload"}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </WizardDialogFooter>
+      </WizardDialogContent>
+    </WizardDialog>
   );
 }

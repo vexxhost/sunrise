@@ -15,13 +15,15 @@ import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardReviewStatus,
+  WizardDialogTitle,
+  WizardReviewRow,
+} from "@/components/ui/wizard-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -142,6 +144,7 @@ export function InstanceActions({
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [isOpen, setIsOpen] = useState(initiallyOpen);
+  const [activeTab, setActiveTab] = useState("details");
   const [form, setForm] = useState<LaunchFormState>(INITIAL_FORM);
   const [nextMetadataId, setNextMetadataId] = useState(1);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -163,15 +166,16 @@ export function InstanceActions({
     () => projectSecurityGroups(securityGroups, projectId),
     [projectId, securityGroups],
   );
-  const isSubmitDisabled = useMemo(() => {
+  const reviewIssues = useMemo(() => {
     const count = Number(form.count);
-    return (
-      !form.name.trim() ||
-      !form.flavorRef ||
-      !form.imageRef ||
-      !Number.isInteger(count) ||
-      count < 1
-    );
+    const issues: string[] = [];
+    if (!form.name.trim()) issues.push("Enter an instance name.");
+    if (!form.imageRef) issues.push("Select a source image.");
+    if (!form.flavorRef) issues.push("Select an instance flavor.");
+    if (!Number.isInteger(count) || count < 1) {
+      issues.push("Enter an instance count of at least 1.");
+    }
+    return issues;
   }, [form.count, form.flavorRef, form.imageRef, form.name]);
 
   const loadOptions = useCallback(async () => {
@@ -226,6 +230,7 @@ export function InstanceActions({
     (open: boolean) => {
       if (!open) {
         setErrorMessage(null);
+        setActiveTab("details");
         setIsOpen(false);
         clearCreateActionIntent();
         return;
@@ -233,6 +238,7 @@ export function InstanceActions({
 
       setIsOpen(open);
       setForm(INITIAL_FORM);
+      setActiveTab("details");
       setNextMetadataId(1);
       setErrorMessage(null);
       setOptionsLoading(true);
@@ -276,7 +282,11 @@ export function InstanceActions({
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!projectId || !regionId) return;
+    if (activeTab !== "review") {
+      setActiveTab("review");
+      return;
+    }
+    if (reviewIssues.length || !projectId || !regionId) return;
 
     startTransition(async () => {
       setErrorMessage(null);
@@ -311,6 +321,15 @@ export function InstanceActions({
     });
   };
 
+  const selectedImage = images.find(({ id }) => id === form.imageRef);
+  const selectedFlavor = flavors.find(
+    ({ id }) => String(id) === form.flavorRef,
+  );
+  const selectedNetworkNames = visibleNetworks
+    .filter(({ id }) => form.networkIds.includes(id))
+    .map(({ id, name }) => name || id);
+  const configuredMetadata = form.metadata.filter(({ key }) => key.trim());
+
   return (
     <>
       <Button
@@ -327,33 +346,35 @@ export function InstanceActions({
         Launch instance
       </Button>
 
-      <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-        <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-4xl">
+      <WizardDialog open={isOpen} onOpenChange={handleOpenChange}>
+        <WizardDialogContent>
           <form
             className="flex min-h-0 flex-1 flex-col"
             onSubmit={handleSubmit}
           >
-            <SheetHeader className="border-b pr-12">
-              <SheetTitle className="flex items-center gap-2">
+            <WizardDialogHeader>
+              <WizardDialogTitle className="flex items-center gap-2">
                 <Server className="size-5" />
                 Launch instance
-              </SheetTitle>
-              <SheetDescription>
+              </WizardDialogTitle>
+              <WizardDialogDescription>
                 Configure identity, source, capacity, and project connectivity.
-              </SheetDescription>
-            </SheetHeader>
+              </WizardDialogDescription>
+            </WizardDialogHeader>
 
             <Tabs
               className="flex min-h-0 flex-1 flex-col px-4 pt-4"
-              defaultValue="details"
+              value={activeTab}
+              onValueChange={setActiveTab}
             >
-              <TabsList className="grid h-auto w-full grid-cols-2 md:grid-cols-4">
+              <TabsList className="grid h-auto w-full grid-cols-2 md:grid-cols-5">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="source">Source</TabsTrigger>
                 <TabsTrigger value="networking">
                   Network &amp; security
                 </TabsTrigger>
                 <TabsTrigger value="advanced">Advanced</TabsTrigger>
+                <TabsTrigger value="review">Review</TabsTrigger>
               </TabsList>
 
               <div className="min-h-0 flex-1 overflow-y-auto pb-6">
@@ -757,6 +778,70 @@ export function InstanceActions({
                     </label>
                   </section>
                 </TabsContent>
+
+                <TabsContent className="space-y-5 pt-3" value="review">
+                  <WizardReviewStatus issues={reviewIssues} />
+                  <div>
+                    <h3 className="text-sm font-semibold">Review instance</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Confirm the instance configuration before asking Nova to
+                      create resources.
+                    </p>
+                  </div>
+                  <dl className="rounded-md border px-4">
+                    <WizardReviewRow label="Name" value={form.name || "-"} />
+                    <WizardReviewRow
+                      label="Instance count"
+                      value={form.count || "-"}
+                    />
+                    <WizardReviewRow
+                      label="Image"
+                      value={selectedImage?.name || form.imageRef || "-"}
+                    />
+                    <WizardReviewRow
+                      label="Flavor"
+                      value={
+                        selectedFlavor
+                          ? formatFlavorCapacity(selectedFlavor)
+                          : form.flavorRef || "-"
+                      }
+                    />
+                    <WizardReviewRow
+                      label="Availability zone"
+                      value={form.availabilityZone || "Scheduler default"}
+                    />
+                    <WizardReviewRow
+                      label="Networks"
+                      value={selectedNetworkNames.join(", ") || "None"}
+                    />
+                    <WizardReviewRow
+                      label="Security groups"
+                      value={form.securityGroupNames.join(", ") || "None"}
+                    />
+                    <WizardReviewRow
+                      label="Key pair"
+                      value={
+                        form.keyName === "none" ? "No key pair" : form.keyName
+                      }
+                    />
+                    <WizardReviewRow
+                      label="Metadata"
+                      value={
+                        configuredMetadata.length
+                          ? `${configuredMetadata.length} entr${configuredMetadata.length === 1 ? "y" : "ies"}`
+                          : "None"
+                      }
+                    />
+                    <WizardReviewRow
+                      label="User data"
+                      value={form.userData ? "Configured" : "Not configured"}
+                    />
+                    <WizardReviewRow
+                      label="Config drive"
+                      value={form.configDrive ? "Enabled" : "Disabled"}
+                    />
+                  </dl>
+                </TabsContent>
               </div>
             </Tabs>
 
@@ -766,7 +851,7 @@ export function InstanceActions({
               </div>
             ) : null}
 
-            <SheetFooter className="border-t bg-background sm:flex-row sm:justify-end">
+            <WizardDialogFooter>
               <Button
                 type="button"
                 variant="outline"
@@ -775,13 +860,26 @@ export function InstanceActions({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitDisabled || isPending}>
-                {isPending ? "Launching" : "Launch instance"}
-              </Button>
-            </SheetFooter>
+              {activeTab === "review" ? (
+                <Button
+                  type="submit"
+                  disabled={reviewIssues.length > 0 || isPending}
+                >
+                  {isPending ? "Creating" : "Create instance"}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => setActiveTab("review")}
+                >
+                  Review instance
+                </Button>
+              )}
+            </WizardDialogFooter>
           </form>
-        </SheetContent>
-      </Sheet>
+        </WizardDialogContent>
+      </WizardDialog>
     </>
   );
 }

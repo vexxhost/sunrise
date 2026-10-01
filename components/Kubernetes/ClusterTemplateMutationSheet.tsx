@@ -22,13 +22,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardDialogTitle,
+  WizardReviewRow,
+  WizardReviewStatus,
+} from "@/components/ui/wizard-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
@@ -386,6 +388,7 @@ export function ClusterTemplateMutationSheet({
     enabled: open && Boolean(regionId && projectId),
   });
   const [form, setForm] = useState(() => initialState(template));
+  const [activeTab, setActiveTab] = useState("essentials");
   const [customLabels, setCustomLabels] = useState(() =>
     initialCustomLabels(template),
   );
@@ -448,6 +451,7 @@ export function ClusterTemplateMutationSheet({
   const close = () => {
     if (isPending) return;
     setError(null);
+    setActiveTab("essentials");
     onOpenChange(false);
   };
 
@@ -568,6 +572,13 @@ export function ClusterTemplateMutationSheet({
       customLabels: Object.fromEntries(customLabelEntries),
     };
 
+    if (activeTab !== "review") {
+      setError(null);
+      setActiveTab("review");
+      return;
+    }
+    if (reviewIssues.length > 0) return;
+
     startTransition(async () => {
       setError(null);
       const scope = { projectId, regionId };
@@ -603,29 +614,62 @@ export function ClusterTemplateMutationSheet({
     type.id,
     type.name,
   ]);
+  const selectedImage = imageOptions.find(({ id }) => id === form.imageId);
+  const selectedWorkerFlavor = flavorOptions.find(
+    ({ id }) => id === form.workerFlavorId,
+  );
+  const selectedControlPlaneFlavor = flavorOptions.find(
+    ({ id }) => id === form.controlPlaneFlavorId,
+  );
+  const selectedExternalNetwork = externalNetworkOptions.find(
+    ({ id }) => id === form.externalNetworkId,
+  );
+  const selectedFixedNetwork = networkOptions.find(
+    ({ id }) => id === form.fixedNetwork,
+  );
+  const customLabelKeys = customLabels
+    .map(({ key }) => key.trim())
+    .filter(Boolean);
+  const reviewIssues = [
+    ...(!form.name.trim() ? ["Enter a cluster template name."] : []),
+    ...(!/^\d+\.\d+\.\d+$/.test(form.kubernetesVersion.trim())
+      ? ["Enter a Kubernetes version in major.minor.patch format."]
+      : []),
+    ...(!form.imageId ? ["Select a node image."] : []),
+    ...(!form.workerFlavorId ? ["Select a worker flavor."] : []),
+    ...(!form.controlPlaneFlavorId ? ["Select a control plane flavor."] : []),
+    ...(new Set(customLabelKeys).size !== customLabelKeys.length
+      ? ["Custom label keys must be unique."]
+      : []),
+    ...(customLabelKeys.some((key) => CONTROLLED_LABELS.has(key))
+      ? ["Remove custom labels managed by another template setting."]
+      : []),
+  ];
 
   return (
-    <Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
-      <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-4xl">
+    <WizardDialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
+      <WizardDialogContent>
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
-          <SheetHeader className="border-b pr-12">
-            <SheetTitle>
+          <WizardDialogHeader>
+            <WizardDialogTitle>
               {editing ? "Edit cluster template" : "Create cluster template"}
-            </SheetTitle>
-            <SheetDescription>
+            </WizardDialogTitle>
+            <WizardDialogDescription>
               Define a reusable Kubernetes configuration for Magnum Cluster API.
-            </SheetDescription>
-          </SheetHeader>
+            </WizardDialogDescription>
+          </WizardDialogHeader>
 
           <Tabs
             className="flex min-h-0 flex-1 flex-col px-4 pt-4"
-            defaultValue="essentials"
+            value={activeTab}
+            onValueChange={setActiveTab}
           >
-            <TabsList className="grid h-auto w-full grid-cols-2 md:grid-cols-4">
+            <TabsList className="grid h-auto w-full grid-cols-2 md:grid-cols-5">
               <TabsTrigger value="essentials">Essentials</TabsTrigger>
               <TabsTrigger value="networking">Networking</TabsTrigger>
               <TabsTrigger value="platform">Platform</TabsTrigger>
               <TabsTrigger value="advanced">Advanced</TabsTrigger>
+              <TabsTrigger value="review">Review</TabsTrigger>
             </TabsList>
 
             <div className="min-h-0 flex-1 overflow-y-auto pb-6">
@@ -1563,10 +1607,97 @@ export function ClusterTemplateMutationSheet({
                   </div>
                 </Section>
               </TabsContent>
+
+              <TabsContent className="space-y-5 pt-3" value="review">
+                <WizardReviewStatus issues={reviewIssues} />
+                <div>
+                  <h3 className="text-sm font-semibold">
+                    Review cluster template
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Confirm the reusable defaults before saving them in Magnum.
+                    Individual clusters can override supported settings later.
+                  </p>
+                </div>
+                <dl className="rounded-md border px-4">
+                  <WizardReviewRow label="Name" value={form.name || "-"} />
+                  <WizardReviewRow
+                    label="Kubernetes version"
+                    value={form.kubernetesVersion || "-"}
+                  />
+                  <WizardReviewRow
+                    label="Node image"
+                    value={selectedImage?.name || form.imageId || "-"}
+                  />
+                  <WizardReviewRow
+                    label="Worker flavor"
+                    value={
+                      selectedWorkerFlavor
+                        ? formatFlavorCapacity(selectedWorkerFlavor)
+                        : form.workerFlavorId || "-"
+                    }
+                  />
+                  <WizardReviewRow
+                    label="Control plane flavor"
+                    value={
+                      selectedControlPlaneFlavor
+                        ? formatFlavorCapacity(selectedControlPlaneFlavor)
+                        : form.controlPlaneFlavorId || "-"
+                    }
+                  />
+                  <WizardReviewRow
+                    label="Network driver"
+                    value={form.networkDriver}
+                  />
+                  <WizardReviewRow
+                    label="Fixed network"
+                    value={
+                      selectedFixedNetwork?.name ||
+                      form.fixedNetwork ||
+                      "Created automatically"
+                    }
+                  />
+                  <WizardReviewRow
+                    label="External network"
+                    value={
+                      selectedExternalNetwork?.name ||
+                      form.externalNetworkId ||
+                      "Not configured"
+                    }
+                  />
+                  <WizardReviewRow
+                    label="API access"
+                    value={
+                      form.apiFloatingIpEnabled
+                        ? "Floating IP enabled"
+                        : "Private endpoint"
+                    }
+                  />
+                  <WizardReviewRow
+                    label="Template visibility"
+                    value={form.public ? "Public" : "Private"}
+                  />
+                  <WizardReviewRow
+                    label="Cluster Autoscaler"
+                    value={form.autoScalingEnabled ? "Enabled" : "Disabled"}
+                  />
+                  <WizardReviewRow
+                    label="Auto-healing"
+                    value={form.autoHealingEnabled ? "Enabled" : "Disabled"}
+                  />
+                  <WizardReviewRow
+                    label="Custom labels"
+                    value={
+                      customLabels.filter(({ key }) => key.trim()).length ||
+                      "None"
+                    }
+                  />
+                </dl>
+              </TabsContent>
             </div>
           </Tabs>
 
-          <SheetFooter className="border-t bg-background">
+          <WizardDialogFooter className="items-center sm:justify-between">
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             <div className="flex justify-end gap-2">
               <Button
@@ -1577,19 +1708,34 @@ export function ClusterTemplateMutationSheet({
               >
                 Cancel
               </Button>
-              <Button disabled={isPending} type="submit">
-                {isPending
-                  ? editing
-                    ? "Saving"
-                    : "Creating"
-                  : editing
-                    ? "Save changes"
-                    : "Create template"}
-              </Button>
+              {activeTab === "review" ? (
+                <Button
+                  disabled={isPending || reviewIssues.length > 0}
+                  type="submit"
+                >
+                  {isPending
+                    ? editing
+                      ? "Saving"
+                      : "Creating"
+                    : editing
+                      ? "Save changes"
+                      : "Create cluster template"}
+                </Button>
+              ) : (
+                <Button
+                  disabled={isPending}
+                  onClick={() => setActiveTab("review")}
+                  type="button"
+                >
+                  {editing
+                    ? "Review cluster template changes"
+                    : "Review cluster template"}
+                </Button>
+              )}
             </div>
-          </SheetFooter>
+          </WizardDialogFooter>
         </form>
-      </SheetContent>
-    </Sheet>
+      </WizardDialogContent>
+    </WizardDialog>
   );
 }

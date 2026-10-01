@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, FolderPlus, Plus } from "lucide-react";
+import { FolderPlus, Plus } from "lucide-react";
 
 import { JsonEditor } from "@/components/JsonEditor";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
@@ -18,13 +18,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardDialogTitle,
+  WizardReviewStatus,
+} from "@/components/ui/wizard-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
@@ -119,16 +120,17 @@ export function ShareActions({
     ],
   });
   const metadata = useMemo(() => parseMetadata(form.metadata), [form.metadata]);
-  const stepIndex = steps.indexOf(step);
   const selectedType = types.data?.find(({ id }) => id === form.shareType);
   const selectedNetwork = networks.data?.find(
     ({ id }) => id === form.shareNetworkId,
   );
-  const valid =
-    Boolean(form.name.trim()) &&
-    Number.isInteger(Number(form.size)) &&
-    Number(form.size) > 0 &&
-    metadata.errors.length === 0;
+  const reviewIssues = [
+    ...(!form.name.trim() ? ["Enter a share name."] : []),
+    ...(!Number.isInteger(Number(form.size)) || Number(form.size) <= 0
+      ? ["Enter a positive whole-number capacity."]
+      : []),
+    ...metadata.errors,
+  ];
 
   const update = <K extends keyof typeof form>(
     key: K,
@@ -147,7 +149,13 @@ export function ShareActions({
   };
 
   const create = () => {
-    if (!projectId || !valid || !metadata.value) return;
+    if (
+      step !== "review" ||
+      !projectId ||
+      reviewIssues.length > 0 ||
+      !metadata.value
+    )
+      return;
     startTransition(async () => {
       setError(null);
       const result = await createShareAction(
@@ -191,18 +199,18 @@ export function ShareActions({
         Create share
       </Button>
 
-      <Sheet open={open} onOpenChange={handleOpenChange}>
-        <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-4xl">
-          <SheetHeader className="border-b px-5 py-4">
-            <SheetTitle className="flex items-center gap-2">
+      <WizardDialog open={open} onOpenChange={handleOpenChange}>
+        <WizardDialogContent>
+          <WizardDialogHeader>
+            <WizardDialogTitle className="flex items-center gap-2">
               <FolderPlus className="size-5" />
               Create share
-            </SheetTitle>
-            <SheetDescription>
+            </WizardDialogTitle>
+            <WizardDialogDescription>
               Provision a Manila share in the active project. Review the
               placement and access-sensitive settings before creation.
-            </SheetDescription>
-          </SheetHeader>
+            </WizardDialogDescription>
+          </WizardDialogHeader>
 
           <Tabs
             value={step}
@@ -386,6 +394,7 @@ export function ShareActions({
               </TabsContent>
 
               <TabsContent value="review" className="mt-0 space-y-4">
+                <WizardReviewStatus issues={reviewIssues} />
                 <div className="overflow-hidden rounded-md border">
                   <ReviewRow label="Name" value={form.name || "-"} />
                   <ReviewRow
@@ -421,20 +430,19 @@ export function ShareActions({
               {error ? <MutationAlert>{error}</MutationAlert> : null}
             </div>
 
-            <SheetFooter className="border-t px-5 py-4 sm:justify-between">
+            <WizardDialogFooter>
               <Button
                 type="button"
                 variant="outline"
-                disabled={pending || stepIndex === 0}
-                onClick={() => setStep(steps[stepIndex - 1])}
+                disabled={pending}
+                onClick={() => handleOpenChange(false)}
               >
-                <ArrowLeft className="size-4" />
-                Back
+                Cancel
               </Button>
               {step === "review" ? (
                 <Button
                   type="button"
-                  disabled={pending || !valid}
+                  disabled={pending || reviewIssues.length > 0}
                   onClick={create}
                 >
                   {pending ? "Creating" : "Create share"}
@@ -442,19 +450,16 @@ export function ShareActions({
               ) : (
                 <Button
                   type="button"
-                  disabled={
-                    pending || (step === "details" && !form.name.trim())
-                  }
-                  onClick={() => setStep(steps[stepIndex + 1])}
+                  disabled={pending}
+                  onClick={() => setStep("review")}
                 >
-                  Next
-                  <ArrowRight className="size-4" />
+                  Review share
                 </Button>
               )}
-            </SheetFooter>
+            </WizardDialogFooter>
           </Tabs>
-        </SheetContent>
-      </Sheet>
+        </WizardDialogContent>
+      </WizardDialog>
     </>
   );
 }

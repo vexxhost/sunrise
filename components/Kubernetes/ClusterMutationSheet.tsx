@@ -29,13 +29,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardDialogTitle,
+  WizardReviewStatus,
+} from "@/components/ui/wizard-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { clusterTemplatesQueryOptions } from "@/hooks/queries/useMagnum";
 import { loadBalancerAvailabilityZonesQueryOptions } from "@/hooks/queries/useLoadBalancers";
@@ -308,7 +309,7 @@ export function ClusterMutationSheet({
   };
 
   const createCluster = () => {
-    if (activeTab !== "review") return;
+    if (activeTab !== "review" || reviewIssues.length > 0) return;
     if (!projectId || !regionId) {
       setError("Select a project and region before creating a cluster.");
       return;
@@ -406,31 +407,51 @@ export function ClusterMutationSheet({
     form.workerFlavorId === INHERIT
       ? undefined
       : flavorsById.get(form.workerFlavorId);
-  const canSubmit =
-    Boolean(form.name.trim()) &&
-    Boolean(form.clusterTemplateId) &&
-    selectedTemplateReady &&
-    Number(form.controlPlaneCount) >= 1 &&
-    Number(form.controlPlaneCount) % 2 === 1 &&
-    (effectiveLoadBalancer || Number(form.controlPlaneCount) === 1) &&
-    Number(form.workerCount) >= 0 &&
-    Number(form.createTimeout) >= 0 &&
-    (!effectiveManilaCsi || Boolean(form.manilaCsiShareNetworkId)) &&
-    (!form.oidcIssuerUrl.trim() || Boolean(form.oidcClientId.trim()));
+  const controlPlaneCount = Number(form.controlPlaneCount);
+  const workerCount = Number(form.workerCount);
+  const createTimeout = Number(form.createTimeout);
+  const reviewIssues = [
+    ...(!form.name.trim() ? ["Enter a cluster name."] : []),
+    ...(!form.clusterTemplateId ? ["Select a cluster template."] : []),
+    ...(form.clusterTemplateId && !selectedTemplateReady
+      ? ["Select a template with an external network."]
+      : []),
+    ...(!Number.isInteger(controlPlaneCount) || controlPlaneCount < 1
+      ? ["Enter a control plane count of at least 1."]
+      : []),
+    ...(Number.isInteger(controlPlaneCount) && controlPlaneCount % 2 === 0
+      ? ["Use an odd control plane count."]
+      : []),
+    ...(!effectiveLoadBalancer && controlPlaneCount !== 1
+      ? ["Use one control plane node when the API load balancer is disabled."]
+      : []),
+    ...(!Number.isInteger(workerCount) || workerCount < 0
+      ? ["Enter a non-negative whole-number worker count."]
+      : []),
+    ...(!Number.isInteger(createTimeout) || createTimeout < 0
+      ? ["Enter a non-negative whole-number creation timeout."]
+      : []),
+    ...(effectiveManilaCsi && !form.manilaCsiShareNetworkId
+      ? ["Select a Manila share network or disable Manila CSI."]
+      : []),
+    ...(form.oidcIssuerUrl.trim() && !form.oidcClientId.trim()
+      ? ["Enter an OpenID Connect client ID."]
+      : []),
+  ];
 
   return (
-    <Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
-      <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-4xl">
+    <WizardDialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
+      <WizardDialogContent>
         <form
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={handleFormSubmit}
         >
-          <SheetHeader className="border-b pr-12">
-            <SheetTitle>Create Kubernetes cluster</SheetTitle>
-            <SheetDescription>
+          <WizardDialogHeader>
+            <WizardDialogTitle>Create Kubernetes cluster</WizardDialogTitle>
+            <WizardDialogDescription>
               Launch a Magnum cluster from a reusable Cluster API template.
-            </SheetDescription>
-          </SheetHeader>
+            </WizardDialogDescription>
+          </WizardDialogHeader>
 
           <Tabs
             className="flex min-h-0 flex-1 flex-col px-4 pt-4"
@@ -1166,6 +1187,7 @@ export function ClusterMutationSheet({
               </TabsContent>
 
               <TabsContent className="space-y-5 pt-4" value="review">
+                <WizardReviewStatus issues={reviewIssues} />
                 <div className="flex gap-3 rounded-md border border-status-warning-border bg-status-warning-soft p-4 text-sm">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0 text-status-warning" />
                   <p>
@@ -1309,7 +1331,7 @@ export function ClusterMutationSheet({
               <MutationAlert>{error}</MutationAlert>
             </div>
           ) : null}
-          <SheetFooter className="border-t bg-background sm:flex-row sm:justify-end">
+          <WizardDialogFooter>
             <Button
               disabled={isPending}
               onClick={close}
@@ -1320,7 +1342,7 @@ export function ClusterMutationSheet({
             </Button>
             {activeTab === "review" ? (
               <Button
-                disabled={!canSubmit || isPending}
+                disabled={reviewIssues.length > 0 || isPending}
                 onClick={createCluster}
                 type="button"
               >
@@ -1335,9 +1357,9 @@ export function ClusterMutationSheet({
                 Review cluster
               </Button>
             )}
-          </SheetFooter>
+          </WizardDialogFooter>
         </form>
-      </SheetContent>
-    </Sheet>
+      </WizardDialogContent>
+    </WizardDialog>
   );
 }
