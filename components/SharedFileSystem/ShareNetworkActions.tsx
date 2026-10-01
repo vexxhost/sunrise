@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Plus, Share2 } from "lucide-react";
+import { Plus, Share2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
@@ -16,13 +16,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardDialogTitle,
+  WizardReviewStatus,
+} from "@/components/ui/wizard-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
@@ -106,8 +107,12 @@ export function ShareNetworkActions({
     (subnet) => subnet.id === form.subnetId,
   );
   const placementValid = form.networkId === "none" || form.subnetId !== "none";
-  const valid = Boolean(form.name.trim()) && placementValid;
-  const stepIndex = steps.indexOf(step);
+  const reviewIssues = [
+    ...(!form.name.trim() ? ["Enter a share network name."] : []),
+    ...(!placementValid
+      ? ["Select a subnet for the chosen Neutron network."]
+      : []),
+  ];
 
   const update = <K extends keyof typeof form>(
     key: K,
@@ -134,7 +139,8 @@ export function ShareNetworkActions({
   };
 
   const create = () => {
-    if (!projectId || !regionId || !valid) return;
+    if (step !== "review" || !projectId || !regionId || reviewIssues.length > 0)
+      return;
     startTransition(async () => {
       setError(null);
       const result = await createShareNetworkAction(
@@ -173,19 +179,19 @@ export function ShareNetworkActions({
         Create share network
       </Button>
 
-      <Sheet open={open} onOpenChange={handleOpenChange}>
-        <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-3xl">
-          <SheetHeader className="border-b px-5 py-4">
-            <SheetTitle className="flex items-center gap-2">
+      <WizardDialog open={open} onOpenChange={handleOpenChange}>
+        <WizardDialogContent className="sm:max-w-3xl">
+          <WizardDialogHeader>
+            <WizardDialogTitle className="flex items-center gap-2">
               <Share2 className="size-5" aria-hidden="true" />
               Create share network
-            </SheetTitle>
-            <SheetDescription>
+            </WizardDialogTitle>
+            <WizardDialogDescription>
               Define the project network context Manila will use for share
               servers. You can also let Manila create a service-managed default
               subnet.
-            </SheetDescription>
-          </SheetHeader>
+            </WizardDialogDescription>
+          </WizardDialogHeader>
 
           <Tabs
             value={step}
@@ -328,6 +334,7 @@ export function ShareNetworkActions({
               </TabsContent>
 
               <TabsContent value="review" className="mt-0 space-y-4">
+                <WizardReviewStatus issues={reviewIssues} />
                 <div className="overflow-hidden rounded-md border">
                   <ReviewRow label="Name" value={form.name || "-"} />
                   <ReviewRow
@@ -369,7 +376,7 @@ export function ShareNetworkActions({
               {error ? <MutationAlert>{error}</MutationAlert> : null}
             </div>
 
-            <SheetFooter className="border-t px-5 py-4">
+            <WizardDialogFooter>
               <div className="flex w-full items-center justify-between gap-3">
                 <Button
                   type="button"
@@ -380,32 +387,18 @@ export function ShareNetworkActions({
                   Cancel
                 </Button>
                 <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={pending || stepIndex === 0}
-                    onClick={() => setStep(steps[stepIndex - 1])}
-                  >
-                    <ArrowLeft className="size-4" aria-hidden="true" />
-                    Back
-                  </Button>
                   {step !== "review" ? (
                     <Button
                       type="button"
-                      disabled={
-                        pending ||
-                        (step === "details" && !form.name.trim()) ||
-                        (step === "placement" && !placementValid)
-                      }
-                      onClick={() => setStep(steps[stepIndex + 1])}
+                      disabled={pending}
+                      onClick={() => setStep("review")}
                     >
-                      Next
-                      <ArrowRight className="size-4" aria-hidden="true" />
+                      Review share network
                     </Button>
                   ) : (
                     <Button
                       type="button"
-                      disabled={pending || !valid}
+                      disabled={pending || reviewIssues.length > 0}
                       onClick={create}
                     >
                       {pending ? "Creating" : "Create share network"}
@@ -413,10 +406,10 @@ export function ShareNetworkActions({
                   )}
                 </div>
               </div>
-            </SheetFooter>
+            </WizardDialogFooter>
           </Tabs>
-        </SheetContent>
-      </Sheet>
+        </WizardDialogContent>
+      </WizardDialog>
     </>
   );
 }

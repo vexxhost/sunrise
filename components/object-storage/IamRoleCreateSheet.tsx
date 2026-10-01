@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Plus, ShieldPlus, Trash2 } from "lucide-react";
+import { Plus, ShieldPlus, Trash2 } from "lucide-react";
 import { JsonEditor } from "@/components/JsonEditor";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardDialogTitle,
+  WizardReviewStatus,
+} from "@/components/ui/wizard-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -87,14 +88,15 @@ export function IamRoleCreateSheet({
     tags.map((tag) => ({ key: tag.key.trim(), value: tag.value.trim() })),
   );
   const trustValidation = validateIamTrustPolicyJson(trustPolicy);
-  const validationError =
-    validateIamRoleName(name.trim()) ??
-    pathError ??
-    descriptionError ??
-    durationError ??
-    tagError ??
-    (trustValidation.ok ? null : trustValidation.errors.join(" "));
-  const stepIndex = steps.indexOf(step);
+  const reviewIssues = [
+    validateIamRoleName(name.trim()),
+    pathError,
+    descriptionError,
+    durationError,
+    tagError,
+    ...(trustValidation.ok ? [] : trustValidation.errors),
+  ].filter((issue): issue is string => Boolean(issue));
+  const validationError = reviewIssues[0] ?? null;
 
   const reset = () => {
     setStep("details");
@@ -140,15 +142,15 @@ export function IamRoleCreateSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-4xl">
-        <SheetHeader className="border-b px-5 py-4">
-          <SheetTitle>Create IAM role</SheetTitle>
-          <SheetDescription>
+    <WizardDialog open={open} onOpenChange={handleOpenChange}>
+      <WizardDialogContent>
+        <WizardDialogHeader>
+          <WizardDialogTitle>Create IAM role</WizardDialogTitle>
+          <WizardDialogDescription>
             Create an assumable role in the active RGW account. Permissions are
             added after the role is created.
-          </SheetDescription>
-        </SheetHeader>
+          </WizardDialogDescription>
+        </WizardDialogHeader>
 
         <Tabs
           value={step}
@@ -354,6 +356,7 @@ export function IamRoleCreateSheet({
             </TabsContent>
 
             <TabsContent value="review" className="mt-0 space-y-4">
+              <WizardReviewStatus issues={reviewIssues} />
               <div>
                 <h3 className="font-medium">Review role</h3>
                 <p className="text-sm text-muted-foreground">
@@ -384,17 +387,12 @@ export function IamRoleCreateSheet({
                 errors={trustValidation.ok ? [] : trustValidation.errors}
                 height="300px"
               />
-              {validationError ? (
-                <MutationAlert title="Role is not ready">
-                  {validationError}
-                </MutationAlert>
-              ) : null}
               {error ? <MutationAlert>{error}</MutationAlert> : null}
             </TabsContent>
           </div>
         </Tabs>
 
-        <SheetFooter className="flex-row items-center justify-between border-t px-5 py-4">
+        <WizardDialogFooter className="flex-row items-center justify-between">
           <Button
             type="button"
             variant="outline"
@@ -404,39 +402,27 @@ export function IamRoleCreateSheet({
             Cancel
           </Button>
           <div className="flex items-center gap-2">
-            {stepIndex > 0 ? (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={pending}
-                onClick={() => setStep(steps[stepIndex - 1])}
-              >
-                <ArrowLeft className="size-4" />
-                Back
-              </Button>
-            ) : null}
             {step !== "review" ? (
               <Button
                 type="button"
                 disabled={pending}
-                onClick={() => setStep(steps[stepIndex + 1])}
+                onClick={() => setStep("review")}
               >
-                Next
-                <ArrowRight className="size-4" />
+                Review IAM role
               </Button>
             ) : (
               <Button
                 type="button"
-                disabled={pending || !!validationError}
+                disabled={pending || reviewIssues.length > 0}
                 onClick={() => void handleCreate()}
               >
                 {pending ? <Spinner /> : <ShieldPlus className="size-4" />}
-                {pending ? "Creating role" : "Create role"}
+                {pending ? "Creating" : "Create IAM role"}
               </Button>
             )}
           </div>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </WizardDialogFooter>
+      </WizardDialogContent>
+    </WizardDialog>
   );
 }

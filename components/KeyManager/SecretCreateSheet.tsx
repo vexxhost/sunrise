@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
@@ -15,13 +15,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  WizardDialog,
+  WizardDialogContent,
+  WizardDialogDescription,
+  WizardDialogFooter,
+  WizardDialogHeader,
+  WizardDialogTitle,
+  WizardReviewStatus,
+} from "@/components/ui/wizard-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -95,7 +96,22 @@ export function SecretCreateSheet({
   const validationError = validation.success
     ? null
     : (validation.error.issues[0]?.message ?? "Review the secret details.");
-  const stepIndex = steps.indexOf(step);
+  const reviewIssues = validation.success
+    ? []
+    : Array.from(
+        new Set(
+          validation.error.issues.map((issue) => {
+            switch (issue.path[0]) {
+              case "name":
+                return "Enter a secret name.";
+              case "contentType":
+                return "Enter a content type.";
+              default:
+                return issue.message;
+            }
+          }),
+        ),
+      );
 
   const reset = () => {
     setStep("details");
@@ -119,7 +135,7 @@ export function SecretCreateSheet({
   };
 
   const create = async () => {
-    if (pending || !validation.success) return;
+    if (pending || step !== "review" || !validation.success) return;
     setPending(true);
     setError(null);
     try {
@@ -152,16 +168,16 @@ export function SecretCreateSheet({
   };
 
   return (
-    <Sheet open={open} onOpenChange={changeOpen}>
-      <SheetContent className="w-full gap-0 max-sm:!w-full max-sm:!max-w-none sm:max-w-4xl">
-        <SheetHeader className="border-b px-5 py-4">
-          <SheetTitle>Create secret</SheetTitle>
-          <SheetDescription>
+    <WizardDialog open={open} onOpenChange={changeOpen}>
+      <WizardDialogContent>
+        <WizardDialogHeader>
+          <WizardDialogTitle>Create secret</WizardDialogTitle>
+          <WizardDialogDescription>
             Store protected material in Barbican. Payload values are sent
             directly through a dedicated API route and are never retained by
             Sunrise.
-          </SheetDescription>
-        </SheetHeader>
+          </WizardDialogDescription>
+        </WizardDialogHeader>
         <Tabs
           value={step}
           onValueChange={(value) => setStep(value as Step)}
@@ -332,6 +348,7 @@ export function SecretCreateSheet({
               </p>
             </TabsContent>
             <TabsContent value="review" className="mt-0 space-y-4">
+              <WizardReviewStatus issues={reviewIssues} />
               <div className="overflow-hidden rounded-md border">
                 <ReviewRow label="Name" value={name || "-"} />
                 <ReviewRow label="Type" value={secretType} />
@@ -362,45 +379,40 @@ export function SecretCreateSheet({
                 After creation, a payload can be viewed on demand or downloaded.
                 Metadata-only secrets accept payload data once.
               </p>
+              {error ? <MutationAlert>{error}</MutationAlert> : null}
             </TabsContent>
           </div>
         </Tabs>
-        <SheetFooter className="border-t px-5 py-4 sm:flex-row sm:justify-between">
+        <WizardDialogFooter>
           <Button
             type="button"
             variant="outline"
-            disabled={pending || stepIndex === 0}
-            onClick={() => setStep(steps[stepIndex - 1]!)}
+            disabled={pending}
+            onClick={() => changeOpen(false)}
           >
-            <ArrowLeft className="size-4" />
-            Back
+            Cancel
           </Button>
-          <div className="flex items-center gap-2">
-            {error ? (
-              <MutationAlert className="mr-2">{error}</MutationAlert>
-            ) : null}
-            {step !== "review" ? (
-              <Button
-                type="button"
-                onClick={() => setStep(steps[stepIndex + 1]!)}
-              >
-                Next
-                <ArrowRight className="size-4" />
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                disabled={pending || Boolean(validationError)}
-                title={validationError ?? undefined}
-                onClick={create}
-              >
-                {pending ? <Spinner /> : null}
-                {pending ? "Creating" : "Create secret"}
-              </Button>
-            )}
-          </div>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+          {step === "review" ? (
+            <Button
+              type="button"
+              disabled={pending || reviewIssues.length > 0}
+              title={validationError ?? undefined}
+              onClick={create}
+            >
+              {pending ? <Spinner /> : null}
+              {pending ? "Creating" : "Create secret"}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => setStep("review")}
+            >
+              Review secret
+            </Button>
+          )}
+        </WizardDialogFooter>
+      </WizardDialogContent>
+    </WizardDialog>
   );
 }
