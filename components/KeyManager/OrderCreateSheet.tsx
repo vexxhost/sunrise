@@ -221,7 +221,6 @@ export function OrderCreateSheet({
                 material at <strong>{bitLength || "-"} bits</strong>. Sunrise
                 never receives the generated payload in this workflow.
               </div>
-              {error ? <MutationAlert>{error}</MutationAlert> : null}
             </TabsContent>
             <TabsContent className="space-y-5 pt-3" value="review">
               <WizardReviewStatus issues={reviewIssues} />
@@ -258,6 +257,11 @@ export function OrderCreateSheet({
             </TabsContent>
           </div>
         </Tabs>
+        {error ? (
+          <div className="shrink-0 px-5 pb-4">
+            <MutationAlert>{error}</MutationAlert>
+          </div>
+        ) : null}
         <WizardDialogFooter>
           <Button
             type="button"

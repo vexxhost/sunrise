@@ -638,6 +638,7 @@ export function ClusterTemplateMutationSheet({
     ...(!form.imageId ? ["Select a node image."] : []),
     ...(!form.workerFlavorId ? ["Select a worker flavor."] : []),
     ...(!form.controlPlaneFlavorId ? ["Select a control plane flavor."] : []),
+    ...(!form.externalNetworkId ? ["Select an external network."] : []),
     ...(new Set(customLabelKeys).size !== customLabelKeys.length
       ? ["Custom label keys must be unique."]
       : []),
