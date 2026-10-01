@@ -138,6 +138,18 @@
   --sidebar-selection-foreground: #17242d;
   --shadow-control: 0 1px 2px rgb(20 35 45 / 6%);
   --shadow-overlay: 0 16px 42px -20px rgb(20 35 45 / 28%), 0 2px 8px rgb(20 35 45 / 8%);
+  --brand-sun: #df5367;
+  --brand-accent: #1e7ca5;
+  --sunrise-auth-sky: #e8f2f5;
+  --sunrise-auth-sun-halo: #f5c5bd;
+  --sunrise-auth-sun: #df5367;
+  --sunrise-auth-horizon: #c98231;
+  --sunrise-auth-accent: #1e7ca5;
+  --sunrise-auth-cloud-back: #d4e4e9;
+  --sunrise-auth-cloud-mid: #bed7df;
+  --sunrise-auth-cloud-front: #a6c8d3;
+  --sunrise-auth-cloud-floor: #8fb9c7;
+  --sunrise-auth-overlay: rgb(255 255 255 / 8%);
 
   --background: var(--canvas);
   --foreground: var(--text);
@@ -229,6 +241,18 @@
   --sidebar-selection-foreground: #eef8fb;
   --shadow-control: 0 1px 2px rgb(0 0 0 / 24%);
   --shadow-overlay: 0 18px 48px -18px rgb(0 0 0 / 64%), 0 0 0 1px rgb(255 255 255 / 3%);
+  --brand-sun: #ec7688;
+  --brand-accent: #69c5e8;
+  --sunrise-auth-sky: #09141d;
+  --sunrise-auth-sun-halo: #5a303b;
+  --sunrise-auth-sun: #ec7688;
+  --sunrise-auth-horizon: #cf9b59;
+  --sunrise-auth-accent: #69c5e8;
+  --sunrise-auth-cloud-back: #183241;
+  --sunrise-auth-cloud-mid: #122936;
+  --sunrise-auth-cloud-front: #0e202b;
+  --sunrise-auth-cloud-floor: #0b1922;
+  --sunrise-auth-overlay: rgb(4 11 16 / 18%);
 }
 
 :root[data-color-palette="vexxhost"] {
@@ -251,6 +275,18 @@
   --sidebar-selection-foreground: #24222c;
   --shadow-control: 0 1px 2px rgb(28 22 48 / 5%);
   --shadow-overlay: 0 16px 44px -18px rgb(28 22 48 / 24%), 0 2px 8px rgb(28 22 48 / 6%);
+  --brand-sun: #765da8;
+  --brand-accent: #6d28d9;
+  --sunrise-auth-sky: #f1f0f6;
+  --sunrise-auth-sun-halo: #ddd2f0;
+  --sunrise-auth-sun: #765da8;
+  --sunrise-auth-horizon: #8d7aa8;
+  --sunrise-auth-accent: #6d28d9;
+  --sunrise-auth-cloud-back: #dedce7;
+  --sunrise-auth-cloud-mid: #d2cfdd;
+  --sunrise-auth-cloud-front: #c2becf;
+  --sunrise-auth-cloud-floor: #aaa4bc;
+  --sunrise-auth-overlay: rgb(255 255 255 / 10%);
 }
 
 :root.dark[data-color-palette="vexxhost"] {
@@ -308,6 +344,18 @@
   --sidebar-selection-foreground: #f0eafa;
   --shadow-control: 0 1px 2px rgb(0 0 0 / 28%);
   --shadow-overlay: 0 18px 48px -16px rgb(0 0 0 / 62%), 0 0 0 1px rgb(255 255 255 / 3%);
+  --brand-sun: #a98ce9;
+  --brand-accent: #b89af9;
+  --sunrise-auth-sky: #111116;
+  --sunrise-auth-sun-halo: #312948;
+  --sunrise-auth-sun: #8b74c1;
+  --sunrise-auth-horizon: #6f608d;
+  --sunrise-auth-accent: #b89af9;
+  --sunrise-auth-cloud-back: #24232d;
+  --sunrise-auth-cloud-mid: #1e1d26;
+  --sunrise-auth-cloud-front: #19181f;
+  --sunrise-auth-cloud-floor: #15151a;
+  --sunrise-auth-overlay: rgb(9 9 12 / 18%);
 }
 
 @layer base {
@@ -322,28 +370,6 @@
     background: var(--selection);
     color: var(--selection-foreground);
   }
-}
-
-.sunrise-auth-scene {
-  --sunrise-auth-sky: #eef5f8;
-  --sunrise-auth-sun: #f43f5e;
-  --sunrise-auth-horizon: #f59e0b;
-  --sunrise-auth-accent: #0284c7;
-  --sunrise-auth-cloud-back: #d8e7ed;
-  --sunrise-auth-cloud-mid: #c3d9e2;
-  --sunrise-auth-cloud-front: #abc8d5;
-  --sunrise-auth-overlay: rgb(255 255 255 / 12%);
-}
-
-.dark .sunrise-auth-scene {
-  --sunrise-auth-sky: #07111b;
-  --sunrise-auth-sun: #fb7185;
-  --sunrise-auth-horizon: #fdba74;
-  --sunrise-auth-accent: #38bdf8;
-  --sunrise-auth-cloud-back: #173144;
-  --sunrise-auth-cloud-mid: #102738;
-  --sunrise-auth-cloud-front: #0a1b28;
-  --sunrise-auth-overlay: rgb(7 17 27 / 28%);
 }
 
 @keyframes sunrise-parallax-slow {
@@ -398,11 +424,16 @@
   animation: sunrise-parallax-fast 17s ease-in-out infinite alternate;
 }
 
+.sunrise-parallax-floor {
+  animation: sunrise-parallax-medium 24s ease-in-out infinite alternate-reverse;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sunrise-parallax-sun,
   .sunrise-parallax-back,
   .sunrise-parallax-mid,
-  .sunrise-parallax-front {
+  .sunrise-parallax-front,
+  .sunrise-parallax-floor {
     animation: none;
   }
 }
