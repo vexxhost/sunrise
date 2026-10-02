@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  defaultSecurityGroupRulesQueryOptions,
   externalNetworksQueryOptions,
   networksQueryOptions,
   portsQueryOptions,
@@ -787,11 +788,28 @@ export function CreateSecurityGroupAction({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const defaultRules = useQuery({
+    ...defaultSecurityGroupRulesQueryOptions(regionId, projectId),
+    enabled: open,
+  });
+  const defaultRuleCount = (defaultRules.data ?? []).filter(
+    ({ used_in_non_default_sg }) => used_in_non_default_sg,
+  ).length;
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
     regionId,
-    requests: [{ metricId: "security_group", requested: 1 }],
+    requests: [
+      { metricId: "security_group", requested: 1 },
+      ...(defaultRules.data && defaultRuleCount > 0
+        ? [
+            {
+              metricId: "security_group_rule",
+              requested: defaultRuleCount,
+            },
+          ]
+        : []),
+    ],
     serviceId: "network",
   });
   const setDialogOpen = (next: boolean) => {
@@ -861,8 +879,13 @@ export function CreateSecurityGroupAction({
             </div>
             <QuotaImpactPreview
               impacts={quota.impacts}
-              loading={quota.loading}
+              loading={quota.loading || defaultRules.isLoading}
               unavailableMessage={quota.unavailableMessage}
+              description={
+                defaultRuleCount > 0
+                  ? `Creating this custom group also creates ${defaultRuleCount} Neutron default ${defaultRuleCount === 1 ? "rule" : "rules"}. Both quotas are projected.`
+                  : "Projected usage includes resources already reserved by operations in progress."
+              }
             />
             <FormError error={error} />
             {quota.issues.length ? (

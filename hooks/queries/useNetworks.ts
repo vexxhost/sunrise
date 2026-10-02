@@ -13,6 +13,12 @@ import type {
   Subnet,
 } from "@/types/openstack";
 
+type DefaultSecurityGroupRule = {
+  id: string;
+  used_in_default_sg: boolean;
+  used_in_non_default_sg: boolean;
+};
+
 function withQuery(path: string, values: Record<string, string | undefined>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
@@ -392,6 +398,28 @@ export function securityGroupsQueryOptions(
       }
 
       return data.security_groups;
+    },
+    enabled: !!regionId && !!projectId,
+  });
+}
+
+export function defaultSecurityGroupRulesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "default-security-group-rules"],
+    queryFn: async () => {
+      const data = await openstack<{
+        default_security_group_rules: DefaultSecurityGroupRule[];
+      }>({
+        regionId: regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: "/v2.0/default-security-group-rules",
+      });
+
+      return data?.default_security_group_rules ?? [];
     },
     enabled: !!regionId && !!projectId,
   });

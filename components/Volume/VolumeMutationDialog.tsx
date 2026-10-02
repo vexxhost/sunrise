@@ -117,7 +117,6 @@ export function VolumeMutationDialog({
     quota.data?.status === "available" ? quota.data.metrics : [];
   const quotaImpacts = cinderSnapshotQuotaImpacts(
     quotaMetrics,
-    volume?.size ?? 0,
     volume?.volume_type,
   );
   const quotaIssues = quotaImpactIssues(quotaImpacts);
@@ -300,7 +299,7 @@ export function VolumeMutationDialog({
               impacts={quotaImpacts}
               loading={quota.isLoading}
               unavailableMessage={quotaUnavailableMessage}
-              description="Snapshots consume snapshot count and storage quota equal to the source volume size."
+              description="Snapshot count quotas are projected. Cinder validates storage quota because operators can configure snapshots not to consume gigabyte quota."
             />
           ) : null}
 

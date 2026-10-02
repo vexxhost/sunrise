@@ -172,7 +172,7 @@ describe("creation quota impact", () => {
     expect(impacts[0]).toMatchObject({ projected: 10, exceeds: false });
   });
 
-  it("accounts for aggregate and type-specific snapshot storage", () => {
+  it("checks snapshot counts without assuming deployment storage accounting", () => {
     const impacts = cinderSnapshotQuotaImpacts(
       [
         metric("snapshots", 1, 10),
@@ -180,16 +180,13 @@ describe("creation quota impact", () => {
         metric("snapshots_fast", 1, 4),
         metric("gigabytes_fast", 480, 500, 0, "GiB"),
       ],
-      25,
       "fast",
     );
 
     expect(impacts.map(({ metric: item }) => item.id)).toEqual([
       "snapshots",
-      "gigabytes",
       "snapshots_fast",
-      "gigabytes_fast",
     ]);
-    expect(impacts.at(-1)?.exceeds).toBe(true);
+    expect(impacts.every(({ exceeds }) => !exceeds)).toBe(true);
   });
 });

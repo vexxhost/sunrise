@@ -126,23 +126,12 @@ export function cinderVolumeQuotaImpacts(
 
 export function cinderSnapshotQuotaImpacts(
   metrics: QuotaMetric[],
-  sizeGiB: number,
   volumeTypeName?: string,
 ) {
-  const normalizedSize = Number.isInteger(sizeGiB) && sizeGiB > 0 ? sizeGiB : 0;
-  const requests: QuotaRequest[] = [
-    { metricId: "snapshots", requested: 1 },
-    { metricId: "gigabytes", requested: normalizedSize },
-  ];
+  const requests: QuotaRequest[] = [{ metricId: "snapshots", requested: 1 }];
 
   if (volumeTypeName) {
-    requests.push(
-      { metricId: `snapshots_${volumeTypeName}`, requested: 1 },
-      {
-        metricId: `gigabytes_${volumeTypeName}`,
-        requested: normalizedSize,
-      },
-    );
+    requests.push({ metricId: `snapshots_${volumeTypeName}`, requested: 1 });
   }
 
   return quotaRequestImpacts(metrics, requests);
