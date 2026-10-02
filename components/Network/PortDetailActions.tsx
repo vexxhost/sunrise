@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link2, Link2Off, Pencil, Trash2 } from "lucide-react";
+import { Link2, Link2Off, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -175,13 +176,7 @@ export function PortDetailActions({
             <Link2 className="size-4" /> Attach to instance
           </Button>
         )}
-        <Button
-          variant="outline"
-          className="h-9 gap-2"
-          onClick={() => open("edit")}
-        >
-          <Pencil className="size-4" /> Edit
-        </Button>
+        <EditActionButton label="Edit port" onClick={() => open("edit")} />
         {!computeAttached ? (
           <Button
             variant="outline"

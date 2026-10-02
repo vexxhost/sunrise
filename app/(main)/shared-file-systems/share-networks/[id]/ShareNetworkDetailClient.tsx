@@ -2,12 +2,11 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ShareNetworkMutationDialog } from "@/components/SharedFileSystem/ShareNetworkMutationDialog";
-import { Button } from "@/components/ui/button";
 import { shareNetworkQueryOptions } from "@/hooks/queries/useManila";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 
@@ -56,16 +55,11 @@ export function ShareNetworkDetailClient({
             {network.id}
           </p>
         </div>
-        <Button
-          size="icon"
-          variant="outline"
-          title="Edit share network"
+        <EditActionButton
+          label="Edit share network"
           disabled={!scope}
           onClick={() => setEditing(true)}
-        >
-          <Pencil className="size-4" aria-hidden="true" />
-          <span className="sr-only">Edit share network</span>
-        </Button>
+        />
       </div>
 
       <div className="space-y-6 rounded-md border bg-card p-4 text-card-foreground">

@@ -3,9 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -145,14 +146,10 @@ export function SecurityGroupDetailActions({
           <Plus className="size-4" />
           Add rule
         </Button>
-        <Button
-          variant="outline"
-          className="h-9 gap-2"
+        <EditActionButton
+          label="Edit security group"
           onClick={() => open("edit")}
-        >
-          <Pencil className="size-4" />
-          Edit
-        </Button>
+        />
         <Button
           variant="outline"
           className="h-9 gap-2 text-destructive hover:text-destructive"
@@ -402,17 +399,9 @@ export function SecurityGroupRuleActions({
   return (
     <>
       <div className="flex items-center justify-end">
+        <EditActionButton compact label="Edit rule" onClick={openEdit} />
         <Button
-          size="icon"
-          variant="ghost"
-          title="Edit rule"
-          onClick={openEdit}
-        >
-          <Pencil className="size-4" />
-          <span className="sr-only">Edit rule</span>
-        </Button>
-        <Button
-          size="icon"
+          size="icon-sm"
           variant="ghost"
           title="Delete rule"
           onClick={() => {

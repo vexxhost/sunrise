@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useMemo, useState, useTransition, type ComponentType } from "react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Cloud, Network, Pencil, Settings, Trash2 } from "lucide-react";
+import { Cloud, Network, Settings, Trash2 } from "lucide-react";
 import { ClusterTemplateMutationSheet } from "@/components/Kubernetes/ClusterTemplateMutationSheet";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/DataTable";
@@ -287,14 +288,12 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
         cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
           row.original.project_id === projectId ? (
             <div className="flex items-center justify-end gap-1">
-              <Button
+              <EditActionButton
+                compact
                 aria-label={`Edit ${row.original.name}`}
+                label="Edit cluster template"
                 onClick={() => setEditingTemplate(row.original)}
-                size="icon"
-                variant="ghost"
-              >
-                <Pencil className="size-4" />
-              </Button>
+              />
               <Button
                 aria-label={`Delete ${row.original.name}`}
                 className="text-destructive hover:text-destructive"
@@ -302,7 +301,7 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
                   setDeleteError(null);
                   setDeletingTemplate(row.original);
                 }}
-                size="icon"
+                size="icon-sm"
                 variant="ghost"
               >
                 <Trash2 className="size-4" />

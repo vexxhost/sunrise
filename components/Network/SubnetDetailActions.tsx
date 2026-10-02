@@ -3,11 +3,12 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Router as RouterIcon, Trash2, Unplug } from "lucide-react";
+import { Router as RouterIcon, Trash2, Unplug } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { SubnetAddressFields } from "@/components/Network/SubnetAddressFields";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -197,19 +198,12 @@ export function SubnetDetailActions({
           </TooltipTrigger>
           <TooltipContent>Router attachment</TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={`Edit subnet ${subnet.name || subnet.cidr}`}
-              onClick={() => open("edit")}
-            >
-              <Pencil className="size-4" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Edit subnet</TooltipContent>
-        </Tooltip>
+        <EditActionButton
+          compact
+          aria-label={`Edit subnet ${subnet.name || subnet.cidr}`}
+          label="Edit subnet"
+          onClick={() => open("edit")}
+        />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

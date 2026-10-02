@@ -3,9 +3,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { ResourceLink } from "@/components/resources/ResourceLink";
@@ -90,16 +91,11 @@ export function ShareSnapshotDetailClient({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            size="icon"
-            variant="outline"
-            title="Edit share snapshot"
+          <EditActionButton
+            label="Edit share snapshot"
             disabled={!scope || !canEditShareSnapshot(snapshot)}
             onClick={() => setAction("edit")}
-          >
-            <Pencil className="size-4" />
-            <span className="sr-only">Edit share snapshot</span>
-          </Button>
+          />
           <Button
             size="icon"
             variant="outline"

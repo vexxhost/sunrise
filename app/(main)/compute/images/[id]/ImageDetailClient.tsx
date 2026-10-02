@@ -3,11 +3,12 @@
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Pencil, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import bytes from "bytes";
 import { imageQueryOptions } from "@/hooks/queries/useImages";
 import type { Image } from "@/types/openstack";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Badge } from "@/components/ui/badge";
@@ -127,15 +128,12 @@ export function ImageDetailClient({
           <p className="truncate font-mono text-sm text-muted-foreground">{image.id}</p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="h-10 gap-2"
+          <EditActionButton
+            className="h-10"
+            label="Edit image"
             disabled={!canEditImage(image, projectId)}
             onClick={() => setAction("edit")}
-          >
-            <Pencil className="size-4" />
-            Edit
-          </Button>
+          />
           <Button
             variant="outline"
             size="icon"
