@@ -7,6 +7,7 @@ import { GitBranch, Plus, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { SubnetAddressFields } from "@/components/Network/SubnetAddressFields";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
   updateNetworkAction,
 } from "@/lib/openstack/neutron-actions";
 import type { AllocationPool, Network } from "@/types/openstack";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 
 interface NetworkDetailActionsProps {
   network: Network;
@@ -59,6 +61,13 @@ export function NetworkDetailActions({
   const [enableDhcp, setEnableDhcp] = useState(true);
   const [allocationPools, setAllocationPools] = useState<AllocationPool[]>([]);
   const [dnsNameservers, setDnsNameservers] = useState<string[]>([]);
+  const subnetQuota = useProjectQuotaImpact({
+    enabled: dialog === "subnet",
+    projectId,
+    regionId,
+    requests: [{ metricId: "subnet", requested: 1 }],
+    serviceId: "network",
+  });
 
   const openDialog = (next: typeof dialog) => {
     setError(null);
@@ -247,7 +256,7 @@ export function NetworkDetailActions({
         open={dialog === "subnet"}
         onOpenChange={(open) => !open && setDialog(null)}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submitSubnet}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -314,7 +323,15 @@ export function NetworkDetailActions({
                 onDnsNameserversChange={setDnsNameservers}
               />
             </div>
+            <QuotaImpactPreview
+              impacts={subnetQuota.impacts}
+              loading={subnetQuota.loading}
+              unavailableMessage={subnetQuota.unavailableMessage}
+            />
             {error ? <MutationAlert>{error}</MutationAlert> : null}
+            {subnetQuota.issues.length ? (
+              <MutationAlert>{subnetQuota.issues.join(" ")}</MutationAlert>
+            ) : null}
             <DialogFooter>
               <Button
                 type="button"
@@ -326,7 +343,12 @@ export function NetworkDetailActions({
               </Button>
               <Button
                 type="submit"
-                disabled={pending || !subnetName.trim() || !cidr.trim()}
+                disabled={
+                  pending ||
+                  !subnetName.trim() ||
+                  !cidr.trim() ||
+                  subnetQuota.issues.length > 0
+                }
               >
                 {pending ? "Creating" : "Add subnet"}
               </Button>

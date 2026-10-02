@@ -6,6 +6,7 @@ import { FolderPlus, Plus } from "lucide-react";
 
 import { JsonEditor } from "@/components/JsonEditor";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -29,6 +30,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import {
   manilaAvailabilityZonesQueryOptions,
   shareNetworksQueryOptions,
@@ -124,12 +126,23 @@ export function ShareActions({
   const selectedNetwork = networks.data?.find(
     ({ id }) => id === form.shareNetworkId,
   );
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [
+      { metricId: "shares", requested: 1 },
+      { metricId: "gigabytes", requested: Number(form.size) },
+    ],
+    serviceId: "shared-file-system",
+  });
   const reviewIssues = [
     ...(!form.name.trim() ? ["Enter a share name."] : []),
     ...(!Number.isInteger(Number(form.size)) || Number(form.size) <= 0
       ? ["Enter a positive whole-number capacity."]
       : []),
     ...metadata.errors,
+    ...quota.issues,
   ];
 
   const update = <K extends keyof typeof form>(
@@ -183,6 +196,9 @@ export function ShareActions({
       }
       await queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "manila", "shares"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "project-quotas", "shared-file-system"],
       });
       handleOpenChange(false);
     });
@@ -304,6 +320,11 @@ export function ShareActions({
                     </span>
                   </label>
                 </div>
+                <QuotaImpactPreview
+                  impacts={quota.impacts}
+                  loading={quota.loading}
+                  unavailableMessage={quota.unavailableMessage}
+                />
               </TabsContent>
 
               <TabsContent value="placement" className="mt-0 space-y-5">
@@ -425,6 +446,11 @@ export function ShareActions({
                     value={form.isPublic ? "Public" : "Project only"}
                   />
                 </div>
+                <QuotaImpactPreview
+                  impacts={quota.impacts}
+                  loading={quota.loading}
+                  unavailableMessage={quota.unavailableMessage}
+                />
               </TabsContent>
 
               {error ? <MutationAlert>{error}</MutationAlert> : null}

@@ -113,7 +113,7 @@ function WizardReviewStatus({ issues }: { issues: string[] }) {
           <p className="text-sm font-medium">
             {complete
               ? "Required settings complete"
-              : "Missing required settings"}
+              : "Resolve before creating"}
           </p>
           {complete ? (
             <p className="mt-1 text-sm text-muted-foreground">

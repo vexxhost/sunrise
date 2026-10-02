@@ -7,6 +7,7 @@ import { Camera, Plus } from "lucide-react";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { sharesQueryOptions } from "@/hooks/queries/useManila";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +29,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { createShareSnapshotAction } from "@/lib/openstack/manila-actions";
 import { canCreateShareSnapshot } from "@/lib/openstack/manila-lifecycle";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 
 export function ShareSnapshotActions({
   initiallyOpen = false,
@@ -57,9 +59,21 @@ export function ShareSnapshotActions({
     enabled: open && Boolean(projectId && regionId),
   });
   const eligibleShares = (shares.data ?? []).filter(canCreateShareSnapshot);
-  const selectedShareIsEligible = eligibleShares.some(
-    (share) => share.id === shareId,
-  );
+  const selectedShare = eligibleShares.find((share) => share.id === shareId);
+  const selectedShareIsEligible = Boolean(selectedShare);
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [
+      { metricId: "snapshots", requested: 1 },
+      {
+        metricId: "snapshot_gigabytes",
+        requested: selectedShare?.size ?? 0,
+      },
+    ],
+    serviceId: "shared-file-system",
+  });
 
   const setDialogOpen = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -97,6 +111,9 @@ export function ShareSnapshotActions({
       await queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "manila", "share-snapshots"],
       });
+      await queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "project-quotas", "shared-file-system"],
+      });
       setDialogOpen(false);
     });
   };
@@ -116,7 +133,7 @@ export function ShareSnapshotActions({
         open={open}
         onOpenChange={(next) => !pending && setDialogOpen(next)}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -181,7 +198,17 @@ export function ShareSnapshotActions({
               />
             </div>
 
+            <QuotaImpactPreview
+              impacts={quota.impacts}
+              loading={quota.loading}
+              unavailableMessage={quota.unavailableMessage}
+              description="Share snapshots consume snapshot count and storage quota equal to the source share size."
+            />
+
             {error ? <MutationAlert>{error}</MutationAlert> : null}
+            {quota.issues.length ? (
+              <MutationAlert>{quota.issues.join(" ")}</MutationAlert>
+            ) : null}
 
             <DialogFooter>
               <Button
@@ -194,7 +221,12 @@ export function ShareSnapshotActions({
               </Button>
               <Button
                 type="submit"
-                disabled={!selectedShareIsEligible || !name.trim() || pending}
+                disabled={
+                  !selectedShareIsEligible ||
+                  !name.trim() ||
+                  quota.issues.length > 0 ||
+                  pending
+                }
               >
                 {pending ? "Creating" : "Create snapshot"}
               </Button>
