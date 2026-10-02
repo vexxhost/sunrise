@@ -95,7 +95,7 @@ export function RouterDetailClient({ id, projectId, regionId }: Props) {
             <p className="mt-2 truncate text-sm font-medium">
               {gatewayNetwork ? (
                 <ResourceLink
-                  href={`/compute/networks/resources/${encodeURIComponent(gatewayNetwork.id)}`}
+                  href={`/networking/networks/${encodeURIComponent(gatewayNetwork.id)}`}
                 >
                   {gatewayNetwork.name || gatewayNetwork.id}
                 </ResourceLink>
@@ -202,7 +202,7 @@ export function RouterDetailClient({ id, projectId, regionId }: Props) {
                   </span>
                   <span className="truncate font-mono text-xs">
                     <ResourceLink
-                      href={`/compute/networks/ports/${encodeURIComponent(port.id)}`}
+                      href={`/networking/ports/${encodeURIComponent(port.id)}`}
                     >
                       {port.id}
                     </ResourceLink>

@@ -247,16 +247,16 @@ function resourceHref(data: TopologyNodeData) {
     return `/compute/instances/${data.resource.id}/overview`;
   }
   if (data.kind === "network" || data.kind === "external-network") {
-    return `/compute/networks/resources/${data.resource.id}`;
+    return `/networking/networks/${data.resource.id}`;
   }
   if (data.kind === "router") {
-    return `/compute/networks/routers/${data.resource.id}`;
+    return `/networking/routers/${data.resource.id}`;
   }
   if (data.kind === "port") {
-    return `/compute/networks/ports/${data.resource.id}`;
+    return `/networking/ports/${data.resource.id}`;
   }
   if (data.kind === "floating-ip") {
-    return `/compute/networks/floating-ips/${data.resource.id}`;
+    return `/networking/floating-ips/${data.resource.id}`;
   }
   return null;
 }

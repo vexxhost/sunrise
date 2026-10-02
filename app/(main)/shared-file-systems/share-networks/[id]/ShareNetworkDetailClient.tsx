@@ -97,7 +97,7 @@ export function ShareNetworkDetailClient({
                     </span>
                     {subnet.neutron_net_id ? (
                       <ResourceLink
-                        href={`/compute/networks/resources/${encodeURIComponent(subnet.neutron_net_id)}`}
+                        href={`/networking/networks/${encodeURIComponent(subnet.neutron_net_id)}`}
                         className="font-mono text-xs"
                       >
                         {subnet.neutron_net_id}

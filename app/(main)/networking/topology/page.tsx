@@ -11,7 +11,7 @@ import {
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import { makeQueryClient } from "@/lib/query-client";
 import { dehydrateQueryClient } from "@/lib/query-hydration";
-import { NetworkTopologyClient } from "./NetworkTopologyClient";
+import { NetworkTopologyClient } from "../NetworkTopologyClient";
 
 export default async function Page() {
   const session = await getSession();

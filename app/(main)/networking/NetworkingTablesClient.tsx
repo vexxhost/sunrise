@@ -97,7 +97,7 @@ export function NetworksTableClient({
         header: "Name",
         cell: ({ row }) => (
           <NameLink
-            href={`/compute/networks/resources/${row.original.id}`}
+            href={`/networking/networks/${row.original.id}`}
             name={row.original.name}
             id={row.original.id}
           />
@@ -223,7 +223,7 @@ export function RoutersTableClient({
         header: "Name",
         cell: ({ row }) => (
           <NameLink
-            href={`/compute/networks/routers/${row.original.id}`}
+            href={`/networking/routers/${row.original.id}`}
             name={row.original.name}
             id={row.original.id}
           />
@@ -259,7 +259,7 @@ export function RoutersTableClient({
           const gatewayNetwork = externalById.get(gateway.network_id);
           return (
             <ResourceLink
-              href={`/compute/networks/resources/${encodeURIComponent(gateway.network_id)}`}
+              href={`/networking/networks/${encodeURIComponent(gateway.network_id)}`}
             >
               {gatewayNetwork?.name || gateway.network_id}
             </ResourceLink>
@@ -338,7 +338,7 @@ export function PortsTableClient({
         header: "Name",
         cell: ({ row }) => (
           <NameLink
-            href={`/compute/networks/ports/${row.original.id}`}
+            href={`/networking/ports/${row.original.id}`}
             name={row.original.name}
             id={row.original.id}
           />
@@ -357,7 +357,7 @@ export function PortsTableClient({
         header: "Network",
         cell: ({ row }) => (
           <ResourceLink
-            href={`/compute/networks/resources/${encodeURIComponent(row.original.network_id)}`}
+            href={`/networking/networks/${encodeURIComponent(row.original.network_id)}`}
           >
             {networkById.get(row.original.network_id)?.name ||
               row.original.network_id}
@@ -448,7 +448,7 @@ export function FloatingIpsTableClient({
         header: "Floating IP",
         cell: ({ row }) => (
           <NameLink
-            href={`/compute/networks/floating-ips/${row.original.id}`}
+            href={`/networking/floating-ips/${row.original.id}`}
             name={row.original.floating_ip_address}
             id={row.original.id}
           />
@@ -477,7 +477,7 @@ export function FloatingIpsTableClient({
         cell: ({ row }) =>
           row.original.fixed_ip_address && row.original.port_id ? (
             <ResourceLink
-              href={`/compute/networks/ports/${encodeURIComponent(row.original.port_id)}`}
+              href={`/networking/ports/${encodeURIComponent(row.original.port_id)}`}
               className="font-mono text-xs"
             >
               {row.original.fixed_ip_address}
@@ -493,7 +493,7 @@ export function FloatingIpsTableClient({
         cell: ({ row }) =>
           row.original.port_id ? (
             <ResourceLink
-              href={`/compute/networks/ports/${encodeURIComponent(row.original.port_id)}`}
+              href={`/networking/ports/${encodeURIComponent(row.original.port_id)}`}
               className="font-mono text-xs"
             >
               {row.original.port_id}
@@ -554,7 +554,7 @@ export function SecurityGroupsTableClient({
         header: "Name",
         cell: ({ row }) => (
           <NameLink
-            href={`/compute/networks/security-groups/${row.original.id}`}
+            href={`/networking/security-groups/${row.original.id}`}
             name={row.original.name}
             id={row.original.id}
           />

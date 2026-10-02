@@ -171,7 +171,7 @@ export function RouterDetailActions({
         return;
       }
       setDialog(null);
-      router.replace("/compute/networks/routers");
+      router.replace("/networking/routers");
     });
   };
 

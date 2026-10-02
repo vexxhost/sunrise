@@ -352,7 +352,7 @@ export function ClusterTemplateDetailClient({
                 <ResourceLink
                   href={
                     externalNetwork
-                      ? `/compute/networks/resources/${externalNetwork.id}`
+                      ? `/networking/networks/${externalNetwork.id}`
                       : undefined
                   }
                 >
@@ -363,7 +363,7 @@ export function ClusterTemplateDetailClient({
                 <ResourceLink
                   href={
                     fixedNetwork
-                      ? `/compute/networks/resources/${fixedNetwork.id}`
+                      ? `/networking/networks/${fixedNetwork.id}`
                       : undefined
                   }
                 >

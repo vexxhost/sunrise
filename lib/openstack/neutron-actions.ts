@@ -187,7 +187,7 @@ function transformResource<T>(key: string) {
   };
 }
 
-const networkingInvalidates = ["/compute", "/compute/networks"];
+const networkingInvalidates = ["/networking", "/networking/topology"];
 
 export async function createNetworkAction(
   scope: MutationScope,
@@ -242,7 +242,7 @@ export async function updateNetworkAction(
     },
     invalidates: [
       ...networkingInvalidates,
-      `/compute/networks/${parsedId.value}`,
+      `/networking/networks/${parsedId.value}`,
     ],
     successMessage: "Network updated.",
     transform: transformResource<Network>("network"),

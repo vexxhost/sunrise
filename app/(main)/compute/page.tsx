@@ -4,9 +4,7 @@ import {
   HardDrive,
   ImageIcon,
   KeyRound,
-  Network,
   Server,
-  Shield,
 } from "lucide-react";
 import {
   ServiceLandingPage,
@@ -79,23 +77,20 @@ export default async function ComputePage() {
     regionId: snapshot.region.id ?? undefined,
     projectId: snapshot.project.id ?? undefined,
     catalog: cloud.catalog,
-    serviceIds: ["compute", "storage", "network"],
+    serviceIds: ["compute", "storage"],
   });
   const serviceById = new Map(services.map((service) => [service.id, service]));
   const compute = serviceById.get("compute");
   const storage = serviceById.get("storage");
-  const network = serviceById.get("network");
   const instances = metricSummary(compute, "instances");
   const volumes = metricSummary(storage, "volumes");
-  const networks = metricSummary(network, "network");
-  const securityGroups = metricSummary(network, "security_group");
   const keyPairs = metricSummary(compute, "key_pairs");
   const snapshots = metricSummary(storage, "snapshots");
   const metrics: ServiceLandingMetric[] = [
     { label: "Instances", icon: Server, ...instances },
     { label: "Volumes", icon: HardDrive, ...volumes },
-    { label: "Networks", icon: Network, ...networks },
-    { label: "Security groups", icon: Shield, ...securityGroups },
+    { label: "Snapshots", icon: Camera, ...snapshots },
+    { label: "Key pairs", icon: KeyRound, ...keyPairs },
   ];
   const createActions = createActionsForService(
     snapshot.createActions,
@@ -108,7 +103,7 @@ export default async function ComputePage() {
   return (
     <ServiceLandingPage
       title="Compute"
-      description="Operate virtual machines and the images, storage, networking, and access resources that support them."
+      description="Operate virtual machines and the images, block storage, and access credentials that support them."
       context={snapshot}
       serviceId="compute"
       actions={<CreateResourceMenu actions={createActions} />}
@@ -145,6 +140,14 @@ export default async function ComputePage() {
               description: "Compare virtual CPU, memory, and disk profiles.",
               meta: "Nova flavor catalog",
             },
+            {
+              name: "Key pairs",
+              href: "/compute/key-pairs",
+              icon: KeyRound,
+              description: "Review SSH public keys registered with Nova.",
+              meta: currentMeta(keyPairs),
+              createAction: createById.get("key-pair"),
+            },
           ]}
         />
       </ServiceLandingSection>
@@ -171,41 +174,6 @@ export default async function ComputePage() {
               description: "Browse reusable point-in-time volume snapshots.",
               meta: currentMeta(snapshots),
               createAction: createById.get("snapshot"),
-            },
-          ]}
-        />
-      </ServiceLandingSection>
-
-      <ServiceLandingSection
-        title="Network and security"
-        description="Inspect tenant networking and credentials used by instances."
-      >
-        <ServiceResourceGrid
-          resources={[
-            {
-              name: "Networks",
-              href: "/compute/networks",
-              icon: Network,
-              description:
-                "Review tenant networks, subnets, and connected resources.",
-              meta: currentMeta(networks),
-              createAction: createById.get("network"),
-            },
-            {
-              name: "Security groups",
-              href: "/compute/networks/security-groups",
-              icon: Shield,
-              description: "Review ingress and egress policy applied to ports.",
-              meta: currentMeta(securityGroups),
-              createAction: createById.get("security-group"),
-            },
-            {
-              name: "Key pairs",
-              href: "/compute/key-pairs",
-              icon: KeyRound,
-              description: "Review SSH public keys registered with Nova.",
-              meta: currentMeta(keyPairs),
-              createAction: createById.get("key-pair"),
             },
           ]}
         />

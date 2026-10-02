@@ -24,11 +24,8 @@ const computeSidebarSections = [
     ],
   },
   {
-    title: "Network & Security",
-    items: [
-      { name: "Networking", href: "/compute/networks", icon: "Network" },
-      { name: "Key Pairs", href: "/compute/key-pairs", icon: "Key" },
-    ],
+    title: "Access",
+    items: [{ name: "Key Pairs", href: "/compute/key-pairs", icon: "Key" }],
   },
 ];
 

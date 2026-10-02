@@ -113,15 +113,15 @@ export function recoveryDestination({
     case "snapshot":
       return "/compute/snapshots";
     case "network":
-      return "/compute/networks/resources";
+      return "/networking/networks";
     case "router":
-      return "/compute/networks/routers";
+      return "/networking/routers";
     case "port":
-      return "/compute/networks/ports";
+      return "/networking/ports";
     case "floating-ip":
-      return "/compute/networks/floating-ips";
+      return "/networking/floating-ips";
     case "security-group":
-      return "/compute/networks/security-groups";
+      return "/networking/security-groups";
     case "cluster":
       return "/kubernetes/clusters";
     case "cluster-template":

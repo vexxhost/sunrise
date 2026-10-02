@@ -156,7 +156,7 @@ export function PortDetailActions({
         return;
       }
       setDialog(null);
-      router.replace("/compute/networks/ports");
+      router.replace("/networking/ports");
     });
   };
 

@@ -84,7 +84,7 @@ const serviceDefinitions: ServiceDefinition[] = [
   {
     id: "network",
     label: "Network",
-    href: "/compute/networks",
+    href: "/networking",
     serviceType: "network",
     serviceName: "neutron",
     path: (projectId) => `/v2.0/quotas/${projectId}/details.json`,

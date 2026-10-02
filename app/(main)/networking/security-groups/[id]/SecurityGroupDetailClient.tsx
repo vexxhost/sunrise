@@ -97,7 +97,7 @@ export function SecurityGroupDetailClient({
                 <span className="truncate font-mono text-xs">
                   {rule.remote_group_id ? (
                     <ResourceLink
-                      href={`/compute/networks/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
+                      href={`/networking/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
                     >
                       {groupById.get(rule.remote_group_id)?.name ||
                         rule.remote_group_id}

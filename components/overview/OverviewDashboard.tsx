@@ -56,7 +56,7 @@ const quickAccess = [
   },
   {
     label: "Networks",
-    href: "/compute/networks",
+    href: "/networking/networks",
     icon: Network,
     accent: "network",
   },
@@ -103,6 +103,7 @@ const serviceDirectoryIcons: Record<
   ComponentType<{ className?: string }>
 > = {
   compute: Server,
+  networking: Network,
   kubernetes: Container,
   "object-storage": Database,
   identity: KeyRound,

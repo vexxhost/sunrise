@@ -379,12 +379,16 @@ export function parseOctaviaQuotaDetails(
 export function parseNeutronLimits(payload: unknown): QuotaMetric[] {
   const quota = asRecord(asRecord(payload, "Neutron").quota, "Neutron quota");
   const definitions = [
-    ["network", "Networks", "/compute/networks"],
-    ["port", "Ports", "/compute/networks"],
-    ["router", "Routers", "/compute/networks"],
-    ["floatingip", "Floating IPs", "/compute/networks"],
-    ["security_group", "Security groups", "/compute/networks"],
-    ["security_group_rule", "Security group rules", "/compute/networks"],
+    ["network", "Networks", "/networking/networks"],
+    ["port", "Ports", "/networking/ports"],
+    ["router", "Routers", "/networking/routers"],
+    ["floatingip", "Floating IPs", "/networking/floating-ips"],
+    ["security_group", "Security groups", "/networking/security-groups"],
+    [
+      "security_group_rule",
+      "Security group rules",
+      "/networking/security-groups",
+    ],
   ] as const;
 
   return definitions.flatMap(([id, label, href]) => {

@@ -135,7 +135,7 @@ export function NetworkDetailActions({
         return;
       }
       setDialog(null);
-      router.replace("/compute/networks/resources");
+      router.replace("/networking/networks");
     });
   };
 

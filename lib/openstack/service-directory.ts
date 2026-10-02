@@ -5,6 +5,7 @@ import {
 
 export type ServiceDirectoryId =
   | "compute"
+  | "networking"
   | "kubernetes"
   | "object-storage"
   | "identity"
@@ -40,9 +41,16 @@ const serviceDirectoryDefinitions: ServiceDirectoryDefinition[] = [
   {
     id: "compute",
     label: "Compute",
-    description: "Virtual machines, images, networks, and block storage.",
+    description: "Virtual machines, images, block storage, and SSH keys.",
     href: "/compute",
     catalogIdentities: [{ serviceType: "compute", serviceName: "nova" }],
+  },
+  {
+    id: "networking",
+    label: "Networking",
+    description: "Networks, routing, public addresses, and traffic security.",
+    href: "/networking",
+    catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
   {
     id: "kubernetes",

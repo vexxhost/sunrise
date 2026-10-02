@@ -43,8 +43,15 @@ describe("navigation destinations", () => {
       destinations.find(({ id }) => id === "compute.volumes")?.status,
     ).toBe("available");
     expect(
-      destinations.find(({ id }) => id === "compute.networks")?.status,
+      destinations.find(({ id }) => id === "networking.networks")?.status,
     ).toBe("unavailable");
+    expect(
+      destinations.find(({ id }) => id === "networking.networks"),
+    ).toMatchObject({
+      href: "/networking/networks",
+      service: "networking",
+      group: "Networking",
+    });
   });
 
   it("keeps destinations usable when catalog availability is unknown", () => {
@@ -70,6 +77,16 @@ describe("navigation destinations", () => {
       ]),
     ).toEqual(["compute.instances", "compute.volumes"]);
     expect(parseFavoriteDestinationIds(many)).toHaveLength(2);
+  });
+
+  it("migrates saved networking favorites from their former Compute IDs", () => {
+    expect(
+      parseFavoriteDestinationIds([
+        "compute.networks",
+        "compute.topology",
+        "networking.networks",
+      ]),
+    ).toEqual(["networking.networks", "networking.topology"]);
   });
 
   it("adds the newest favorite first and toggles existing favorites off", () => {

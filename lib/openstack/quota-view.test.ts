@@ -35,7 +35,7 @@ const services: OverviewService[] = [
   {
     id: 'network',
     label: 'Network',
-    href: '/compute/networks',
+    href: '/networking',
     status: 'available',
     metrics: [
       {
@@ -44,7 +44,7 @@ const services: OverviewService[] = [
         used: 9,
         limit: 500,
         reserved: 1,
-        href: '/compute/networks',
+        href: '/networking/ports',
         level: 'normal',
       },
     ],
