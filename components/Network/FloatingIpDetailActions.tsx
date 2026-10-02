@@ -127,7 +127,7 @@ export function FloatingIpDetailActions({
         return;
       }
       setDialog(null);
-      router.replace("/compute/networks/floating-ips");
+      router.replace("/networking/floating-ips");
     });
   };
   return (

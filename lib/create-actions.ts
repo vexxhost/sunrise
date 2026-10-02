@@ -29,6 +29,7 @@ export type CreateActionId =
 
 export type CreateActionService =
   | "compute"
+  | "networking"
   | "kubernetes"
   | "object-storage"
   | "identity"
@@ -111,45 +112,45 @@ const definitions: CreateActionDefinition[] = [
     id: "network",
     label: "Create network",
     description: "Create isolated project network infrastructure.",
-    href: "/compute/networks/resources?create=network",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/networks?create=network",
+    service: "networking",
+    group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
   {
     id: "router",
     label: "Create router",
     description: "Connect project subnets and external gateways.",
-    href: "/compute/networks/routers?create=router",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/routers?create=router",
+    service: "networking",
+    group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
   {
     id: "port",
     label: "Create port",
     description: "Reserve and configure a network interface.",
-    href: "/compute/networks/ports?create=port",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/ports?create=port",
+    service: "networking",
+    group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
   {
     id: "floating-ip",
     label: "Allocate floating IP",
     description: "Allocate a public address and optionally associate it.",
-    href: "/compute/networks/floating-ips?create=floating-ip",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/floating-ips?create=floating-ip",
+    service: "networking",
+    group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
   {
     id: "security-group",
     label: "Create security group",
     description: "Create a reusable stateful firewall policy.",
-    href: "/compute/networks/security-groups?create=security-group",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/security-groups?create=security-group",
+    service: "networking",
+    group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
   {

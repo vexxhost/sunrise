@@ -38,7 +38,7 @@ export function FloatingIpDetailClient({
       "Port",
       associatedPort ? (
         <ResourceLink
-          href={`/compute/networks/ports/${encodeURIComponent(associatedPort.id)}`}
+          href={`/networking/ports/${encodeURIComponent(associatedPort.id)}`}
         >
           {associatedPort.name || associatedPort.id}
         </ResourceLink>
@@ -50,7 +50,7 @@ export function FloatingIpDetailClient({
       "Port ID",
       floatingIp.data.port_id ? (
         <ResourceLink
-          href={`/compute/networks/ports/${encodeURIComponent(floatingIp.data.port_id)}`}
+          href={`/networking/ports/${encodeURIComponent(floatingIp.data.port_id)}`}
           className="font-mono text-xs"
         >
           {floatingIp.data.port_id}
@@ -63,7 +63,7 @@ export function FloatingIpDetailClient({
       "Router ID",
       floatingIp.data.router_id ? (
         <ResourceLink
-          href={`/compute/networks/routers/${encodeURIComponent(floatingIp.data.router_id)}`}
+          href={`/networking/routers/${encodeURIComponent(floatingIp.data.router_id)}`}
           className="font-mono text-xs"
         >
           {floatingIp.data.router_id}
@@ -76,7 +76,7 @@ export function FloatingIpDetailClient({
       "External network ID",
       <ResourceLink
         key="external-network"
-        href={`/compute/networks/resources/${encodeURIComponent(floatingIp.data.floating_network_id)}`}
+        href={`/networking/networks/${encodeURIComponent(floatingIp.data.floating_network_id)}`}
         className="font-mono text-xs"
       >
         {floatingIp.data.floating_network_id}

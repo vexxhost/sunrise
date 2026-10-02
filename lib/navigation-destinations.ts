@@ -14,12 +14,12 @@ export type NavigationDestinationId =
   | "compute.key-pairs"
   | "compute.volumes"
   | "compute.snapshots"
-  | "compute.networks"
-  | "compute.topology"
-  | "compute.routers"
-  | "compute.ports"
-  | "compute.floating-ips"
-  | "compute.security-groups"
+  | "networking.networks"
+  | "networking.topology"
+  | "networking.routers"
+  | "networking.ports"
+  | "networking.floating-ips"
+  | "networking.security-groups"
   | "kubernetes.clusters"
   | "kubernetes.templates"
   | "object-storage.buckets"
@@ -177,67 +177,67 @@ const definitions: NavigationDestinationDefinition[] = [
     catalogIdentities: cinder,
   },
   {
-    id: "compute.networks",
+    id: "networking.networks",
     label: "Networks",
     description: "Project networks and their subnets.",
-    href: "/compute/networks/resources",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/networks",
+    service: "networking",
+    group: "Networking",
     icon: "network",
     keywords: ["neutron", "vpc", "subnets", "private networks"],
     catalogIdentities: neutron,
   },
   {
-    id: "compute.topology",
+    id: "networking.topology",
     label: "Network topology",
     description: "Interactive map of project network relationships.",
-    href: "/compute/networks",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/topology",
+    service: "networking",
+    group: "Networking",
     icon: "topology",
     keywords: ["neutron", "map", "diagram", "visualizer"],
     catalogIdentities: neutron,
   },
   {
-    id: "compute.routers",
+    id: "networking.routers",
     label: "Routers",
     description: "Connect project subnets and external gateways.",
-    href: "/compute/networks/routers",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/routers",
+    service: "networking",
+    group: "Networking",
     icon: "router",
     keywords: ["neutron", "gateway", "routing", "vpc router"],
     catalogIdentities: neutron,
   },
   {
-    id: "compute.ports",
+    id: "networking.ports",
     label: "Ports",
     description: "Virtual network interfaces and addresses.",
-    href: "/compute/networks/ports",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/ports",
+    service: "networking",
+    group: "Networking",
     icon: "port",
     keywords: ["neutron", "interfaces", "nic", "network adapters"],
     catalogIdentities: neutron,
   },
   {
-    id: "compute.floating-ips",
+    id: "networking.floating-ips",
     label: "Floating IPs",
     description: "Public addresses allocated to project resources.",
-    href: "/compute/networks/floating-ips",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/floating-ips",
+    service: "networking",
+    group: "Networking",
     icon: "floating-ip",
     keywords: ["neutron", "public ip", "elastic ip", "eip"],
     catalogIdentities: neutron,
   },
   {
-    id: "compute.security-groups",
+    id: "networking.security-groups",
     label: "Security groups",
     description: "Stateful firewall policies for project resources.",
-    href: "/compute/networks/security-groups",
-    service: "compute",
-    group: "Network and security",
+    href: "/networking/security-groups",
+    service: "networking",
+    group: "Networking",
     icon: "security-group",
     keywords: ["neutron", "firewall", "rules", "network acl"],
     catalogIdentities: neutron,
@@ -380,9 +380,19 @@ const definitionIds = new Set<NavigationDestinationId>(
   definitions.map(({ id }) => id),
 );
 
+const legacyDestinationIds: Record<string, NavigationDestinationId> = {
+  "compute.networks": "networking.networks",
+  "compute.topology": "networking.topology",
+  "compute.routers": "networking.routers",
+  "compute.ports": "networking.ports",
+  "compute.floating-ips": "networking.floating-ips",
+  "compute.security-groups": "networking.security-groups",
+};
+
 export const serviceDirectorySearchTerms: Record<ServiceDirectoryId, string[]> =
   {
-    compute: ["nova", "glance", "cinder", "neutron", "virtual machines"],
+    compute: ["nova", "glance", "cinder", "virtual machines"],
+    networking: ["neutron", "networks", "routers", "ports", "firewall"],
     kubernetes: ["magnum", "k8s", "capi", "containers"],
     "object-storage": ["s3", "rgw", "buckets", "iam"],
     identity: ["keystone", "application credentials", "access"],
@@ -453,10 +463,14 @@ export function parseFavoriteDestinationIds(
 ): NavigationDestinationId[] {
   if (!Array.isArray(value)) return [];
 
-  return [...new Set(value.filter(isNavigationDestinationId))].slice(
-    0,
-    MAX_FAVORITE_DESTINATIONS,
-  );
+  const normalized = value.flatMap((candidate) => {
+    if (isNavigationDestinationId(candidate)) return [candidate];
+    if (typeof candidate !== "string") return [];
+    const migrated = legacyDestinationIds[candidate];
+    return migrated ? [migrated] : [];
+  });
+
+  return [...new Set(normalized)].slice(0, MAX_FAVORITE_DESTINATIONS);
 }
 
 export function toggleFavoriteDestination(

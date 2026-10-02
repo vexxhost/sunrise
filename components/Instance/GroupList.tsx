@@ -42,7 +42,7 @@ export default function SecurityGroupListByNames({
         secGroups.map((secGroup) => (
           <DetailField key={secGroup.id} label="Security group">
             <ResourceLink
-              href={`/compute/networks/security-groups/${encodeURIComponent(secGroup.id)}`}
+              href={`/networking/security-groups/${encodeURIComponent(secGroup.id)}`}
             >
               {secGroup.name}
             </ResourceLink>
@@ -63,7 +63,7 @@ export default function SecurityGroupListByNames({
                       {` ${rule.remote_group_id ? "from" : "to"} `}
                       {rule.remote_group_id ? (
                         <ResourceLink
-                          href={`/compute/networks/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
+                          href={`/networking/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
                         >
                           {getGroupNameFromId(
                             rule.remote_group_id,

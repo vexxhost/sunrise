@@ -412,7 +412,7 @@ describe("Neutron mutation actions", () => {
       expect.objectContaining({
         method: "DELETE",
         path: "/v2.0/subnets/subnet-a",
-        invalidates: ["/compute", "/compute/networks"],
+        invalidates: ["/networking", "/networking/topology"],
       }),
     );
   });

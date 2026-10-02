@@ -16,7 +16,7 @@ export const columns: ColumnDef<Port>[] = [
       <IDCell
         value={row.original.id}
         isSelected={row.getIsSelected()}
-        linkPath="/compute/networks/ports"
+        linkPath="/networking/ports"
       />
     ),
     meta: {
@@ -31,7 +31,7 @@ export const columns: ColumnDef<Port>[] = [
     cell: ({ row }) =>
       row.original.name ? (
         <ResourceLink
-          href={`/compute/networks/ports/${encodeURIComponent(row.original.id)}`}
+          href={`/networking/ports/${encodeURIComponent(row.original.id)}`}
         >
           {row.original.name}
         </ResourceLink>
@@ -48,7 +48,7 @@ export const columns: ColumnDef<Port>[] = [
     header: "Network",
     cell: ({ row }) => (
       <ResourceLink
-        href={`/compute/networks/resources/${encodeURIComponent(row.original.network_id)}`}
+        href={`/networking/networks/${encodeURIComponent(row.original.network_id)}`}
         className={row.original.network_name ? undefined : "font-mono text-xs"}
       >
         {row.original.network_name || row.original.network_id}

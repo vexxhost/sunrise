@@ -26,7 +26,7 @@ const services: OverviewService[] = [
   {
     id: "network",
     label: "Network",
-    href: "/compute/networks",
+    href: "/networking",
     status: "error",
     metrics: [],
     message: "Temporarily unreachable",

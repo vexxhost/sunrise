@@ -136,7 +136,7 @@ export function SecurityGroupDetailActions({
         return;
       }
       setDialog(null);
-      router.replace("/compute/networks/security-groups");
+      router.replace("/networking/security-groups");
     });
   };
   return (

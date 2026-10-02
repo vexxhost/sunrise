@@ -10,6 +10,7 @@ import {
   KeyRound,
   Layers,
   LayoutGrid,
+  Network,
   Search,
   Server,
   Vault,
@@ -40,6 +41,7 @@ const serviceIcons: Record<
   ComponentType<{ className?: string }>
 > = {
   compute: Server,
+  networking: Network,
   kubernetes: Container,
   "object-storage": Database,
   identity: KeyRound,
@@ -51,6 +53,7 @@ const serviceIcons: Record<
 
 const servicePathPrefixes: Record<ServiceDirectoryId, string> = {
   compute: "/compute",
+  networking: "/networking",
   kubernetes: "/kubernetes",
   "object-storage": "/object-storage",
   identity: "/identity",

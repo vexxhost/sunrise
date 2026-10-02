@@ -24,6 +24,7 @@ import {
   Layers,
   KeyRound,
   LoaderCircle,
+  Network,
   RefreshCw,
   Route,
   Search,
@@ -96,6 +97,7 @@ const serviceIcons: Record<
   ComponentType<{ className?: string }>
 > = {
   compute: Server,
+  networking: Network,
   kubernetes: Container,
   "object-storage": Database,
   identity: KeyRound,

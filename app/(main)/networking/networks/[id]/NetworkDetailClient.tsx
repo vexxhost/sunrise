@@ -171,7 +171,7 @@ export function NetworkDetailClient({
                           <Fragment key={router.id}>
                             {index > 0 ? ", " : null}
                             <ResourceLink
-                              href={`/compute/networks/routers/${encodeURIComponent(router.id)}`}
+                              href={`/networking/routers/${encodeURIComponent(router.id)}`}
                             >
                               {router.name || router.id}
                             </ResourceLink>

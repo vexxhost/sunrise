@@ -187,7 +187,14 @@ describe("OpenStack quota parsing", () => {
       used: 8,
       limit: 500,
       reserved: 2,
+      href: "/networking/ports",
     });
+    expect(metrics.find((item) => item.id === "network")?.href).toBe(
+      "/networking/networks",
+    );
+    expect(metrics.find((item) => item.id === "security_group")?.href).toBe(
+      "/networking/security-groups",
+    );
   });
 
   it("includes reservations in Neutron saturation and severity", () => {

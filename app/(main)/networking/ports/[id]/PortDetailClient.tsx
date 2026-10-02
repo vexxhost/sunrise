@@ -61,7 +61,7 @@ export function PortDetailClient({
   const attachmentHref = server
     ? `/compute/instances/${encodeURIComponent(server.id)}/interfaces`
     : routerOwned
-      ? `/compute/networks/routers/${encodeURIComponent(port.data.device_id)}`
+      ? `/networking/routers/${encodeURIComponent(port.data.device_id)}`
       : undefined;
   const attachmentLabel = server
     ? server.name || server.id
@@ -106,7 +106,7 @@ export function PortDetailClient({
             label="Network"
             value={
               <ResourceLink
-                href={`/compute/networks/resources/${encodeURIComponent(network.data.id)}`}
+                href={`/networking/networks/${encodeURIComponent(network.data.id)}`}
               >
                 {network.data.name || network.data.id}
               </ResourceLink>
@@ -185,7 +185,7 @@ export function PortDetailClient({
               port.data.security_groups.map((groupId) => (
                 <div key={groupId} className="px-3 py-2.5 text-sm">
                   <ResourceLink
-                    href={`/compute/networks/security-groups/${encodeURIComponent(groupId)}`}
+                    href={`/networking/security-groups/${encodeURIComponent(groupId)}`}
                   >
                     {groupById.get(groupId)?.name || groupId}
                   </ResourceLink>

@@ -142,6 +142,23 @@ describe("create action availability", () => {
   it("filters service actions and validates URL intents", () => {
     expect(createActionsForService(build(), "object-storage")).toHaveLength(2);
     expect(createActionsForService(build(), "identity")).toHaveLength(1);
+    expect(
+      createActionsForService(build(), "networking").map(
+        ({ service, href }) => ({ service, href }),
+      ),
+    ).toEqual([
+      { service: "networking", href: "/networking/networks?create=network" },
+      { service: "networking", href: "/networking/routers?create=router" },
+      { service: "networking", href: "/networking/ports?create=port" },
+      {
+        service: "networking",
+        href: "/networking/floating-ips?create=floating-ip",
+      },
+      {
+        service: "networking",
+        href: "/networking/security-groups?create=security-group",
+      },
+    ]);
     expect(isCreateActionRequested("instance", "instance")).toBe(true);
     expect(isCreateActionRequested(["volume", "instance"], "volume")).toBe(
       true,
