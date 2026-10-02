@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -252,17 +253,9 @@ export function RouterRouteRowActions({
   return (
     <>
       <div className="flex items-center justify-end">
+        <EditActionButton compact label="Edit route" onClick={openEdit} />
         <Button
-          size="icon"
-          variant="ghost"
-          title="Edit route"
-          onClick={openEdit}
-        >
-          <Pencil className="size-4" />
-          <span className="sr-only">Edit route</span>
-        </Button>
-        <Button
-          size="icon"
+          size="icon-sm"
           variant="ghost"
           title="Remove route"
           onClick={() => {

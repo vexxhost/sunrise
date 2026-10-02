@@ -3,11 +3,12 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { GitBranch, Pencil, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Plus, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { SubnetAddressFields } from "@/components/Network/SubnetAddressFields";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -145,14 +146,10 @@ export function NetworkDetailActions({
           <Plus className="size-4" />
           Add subnet
         </Button>
-        <Button
-          variant="outline"
-          className="h-9 gap-2"
+        <EditActionButton
+          label="Edit network"
           onClick={() => openDialog("edit")}
-        >
-          <Pencil className="size-4" />
-          Edit
-        </Button>
+        />
         <Button
           variant="outline"
           className="h-9 gap-2 text-destructive hover:text-destructive"

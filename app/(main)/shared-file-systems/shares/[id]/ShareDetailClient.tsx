@@ -7,9 +7,10 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { Pencil, Plus, Scaling, ShieldMinus, Trash2 } from "lucide-react";
+import { Plus, Scaling, ShieldMinus, Trash2 } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { ResourceLink } from "@/components/resources/ResourceLink";
@@ -159,16 +160,11 @@ export function ShareDetailClient({
             <Plus className="size-4" />
             Grant access
           </Button>
-          <Button
-            size="icon"
-            variant="outline"
-            title="Edit share"
+          <EditActionButton
+            label="Edit share"
             disabled={!scope || !canEditShare(share)}
             onClick={() => setAction("edit")}
-          >
-            <Pencil className="size-4" />
-            <span className="sr-only">Edit share</span>
-          </Button>
+          />
           <Button
             size="icon"
             variant="outline"

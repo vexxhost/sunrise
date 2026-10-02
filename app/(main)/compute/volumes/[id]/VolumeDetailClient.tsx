@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Camera, Link2, Link2Off, Pencil, Trash2 } from "lucide-react";
+import { Camera, Link2, Link2Off, Trash2 } from "lucide-react";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import type { Volume } from "@/types/openstack";
 import { statuses as volumeStatusDescriptions } from "@/types/openstack/cinder";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Badge } from "@/components/ui/badge";
@@ -191,17 +192,12 @@ export function VolumeDetailClient({
             <Camera className="size-4" />
             <span className="hidden sm:inline">Snapshot</span>
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="size-10"
-            aria-label="Edit volume"
-            title="Edit volume"
+          <EditActionButton
+            className="h-10"
+            label="Edit volume"
             disabled={!canEditVolume(volume)}
             onClick={() => setAction("edit")}
-          >
-            <Pencil className="size-4" />
-          </Button>
+          />
           <Button
             variant="outline"
             size="icon"

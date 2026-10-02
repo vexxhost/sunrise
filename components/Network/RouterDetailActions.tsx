@@ -3,10 +3,11 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Cable, Pencil, Plug, Trash2, Unplug } from "lucide-react";
+import { Cable, Plug, Trash2, Unplug } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -193,14 +194,10 @@ export function RouterDetailActions({
           <Cable className="size-4" />
           Gateway
         </Button>
-        <Button
-          variant="outline"
-          className="h-9 gap-2"
+        <EditActionButton
+          label="Edit router"
           onClick={() => openDialog("edit")}
-        >
-          <Pencil className="size-4" />
-          Edit
-        </Button>
+        />
         <Button
           variant="outline"
           className="h-9 gap-2 text-destructive hover:text-destructive"

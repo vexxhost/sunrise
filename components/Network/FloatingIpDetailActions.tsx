@@ -3,9 +3,10 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Pencil, Trash2 } from "lucide-react";
+import { Link2, Trash2 } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -136,14 +137,10 @@ export function FloatingIpDetailActions({
           <Link2 className="size-4" />
           {floatingIp.port_id ? "Change association" : "Associate"}
         </Button>
-        <Button
-          variant="outline"
-          className="h-9 gap-2"
+        <EditActionButton
+          label="Edit floating IP"
           onClick={() => open("edit")}
-        >
-          <Pencil className="size-4" />
-          Edit
-        </Button>
+        />
         <Button
           variant="outline"
           className="h-9 gap-2 text-destructive hover:text-destructive"

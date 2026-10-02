@@ -7,13 +7,13 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { Boxes, Cloud, Eye, Gauge, Pencil } from "lucide-react";
+import { Boxes, Cloud, Eye, Gauge } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { ClusterTemplateMutationSheet } from "@/components/Kubernetes/ClusterTemplateMutationSheet";
 import { DriverConfigurationTable } from "@/components/Kubernetes/DriverConfigurationTable";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { clusterTemplateQueryOptions } from "@/hooks/queries/useMagnum";
@@ -199,10 +199,10 @@ export function ClusterTemplateDetailClient({
           </p>
         </div>
         {editable ? (
-          <Button variant="outline" onClick={() => setEditing(true)}>
-            <Pencil className="size-4" />
-            Edit
-          </Button>
+          <EditActionButton
+            label="Edit cluster template"
+            onClick={() => setEditing(true)}
+          />
         ) : null}
       </div>
 
