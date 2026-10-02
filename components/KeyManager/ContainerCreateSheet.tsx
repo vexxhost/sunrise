@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 
 import { SecretPicker } from "@/components/KeyManager/SecretPicker";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +33,7 @@ import { createContainerAction } from "@/lib/openstack/barbican-actions";
 import { createContainerSchema } from "@/lib/openstack/barbican-input";
 import type { MutationScope } from "@/lib/mutations";
 import type { BarbicanSecret } from "@/types/openstack";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 
 type ContainerType = "generic" | "rsa" | "certificate";
 type SecretSelection = { name: string; secretId: string };
@@ -58,6 +61,7 @@ export function ContainerCreateSheet({
   scope: MutationScope;
   secrets: BarbicanSecret[];
 }) {
+  const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [activeTab, setActiveTab] = useState("contents");
   const [type, setType] = useState<ContainerType>("generic");
@@ -87,7 +91,7 @@ export function ContainerCreateSheet({
       : type === "certificate"
         ? !refs.find((ref) => ref.name === "certificate")?.secretId
         : false;
-  const reviewIssues = validation.success
+  const validationIssues = validation.success
     ? []
     : Array.from(
         new Set(
@@ -98,6 +102,18 @@ export function ContainerCreateSheet({
           ),
         ),
       );
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId: scope.projectId,
+    regionId: scope.regionId,
+    requests: [{ metricId: "containers", requested: 1 }],
+    serviceId: "key-manager",
+  });
+  const reviewIssues = [
+    ...validationIssues,
+    ...(requiredMissing ? ["Select every required secret."] : []),
+    ...quota.issues,
+  ];
 
   const reset = () => {
     setName("");
@@ -143,6 +159,14 @@ export function ContainerCreateSheet({
       return;
     }
     await onCreated(result.message);
+    await queryClient.invalidateQueries({
+      queryKey: [
+        scope.regionId,
+        scope.projectId,
+        "project-quotas",
+        "key-manager",
+      ],
+    });
     changeOpen(false);
   };
 
@@ -328,6 +352,11 @@ export function ContainerCreateSheet({
                     />
                   ))}
               </dl>
+              <QuotaImpactPreview
+                impacts={quota.impacts}
+                loading={quota.loading}
+                unavailableMessage={quota.unavailableMessage}
+              />
             </TabsContent>
           </div>
         </Tabs>

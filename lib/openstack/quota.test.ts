@@ -48,6 +48,9 @@ describe("OpenStack quota parsing", () => {
         backups: { in_use: 1, limit: 10, reserved: 0 },
         backup_gigabytes: { in_use: 40, limit: 1000, reserved: 0 },
         groups: { in_use: 1, limit: 10, reserved: 0 },
+        per_volume_gigabytes: { in_use: 0, limit: 250, reserved: 0 },
+        volumes_fast: { in_use: 1, limit: 4, reserved: 1 },
+        gigabytes_fast: { in_use: 80, limit: 500, reserved: 20 },
       },
     });
 
@@ -58,12 +61,28 @@ describe("OpenStack quota parsing", () => {
       "backups",
       "backup_gigabytes",
       "groups",
+      "per_volume_gigabytes",
+      "gigabytes_fast",
+      "volumes_fast",
     ]);
     expect(metrics[0]).toMatchObject({ used: 2, limit: 10, reserved: 1 });
     expect(metrics[2]).toMatchObject({
       used: 120,
       limit: 1000,
       reserved: 20,
+      unit: "GiB",
+    });
+    expect(
+      metrics.find(({ id }) => id === "per_volume_gigabytes"),
+    ).toMatchObject({ limit: 250, unit: "GiB" });
+    expect(metrics.find(({ id }) => id === "volumes_fast")).toMatchObject({
+      label: "fast volumes",
+      used: 1,
+      reserved: 1,
+      limit: 4,
+    });
+    expect(metrics.find(({ id }) => id === "gigabytes_fast")).toMatchObject({
+      label: "fast storage",
       unit: "GiB",
     });
   });
@@ -175,6 +194,7 @@ describe("OpenStack quota parsing", () => {
     const metrics = parseNeutronLimits({
       quota: {
         network: detail(2, 100),
+        subnet: detail(3, 100),
         port: detail(8, 500, 2),
         router: detail(1, 10),
         floatingip: detail(1, 50),
@@ -192,6 +212,11 @@ describe("OpenStack quota parsing", () => {
     expect(metrics.find((item) => item.id === "network")?.href).toBe(
       "/networking/networks",
     );
+    expect(metrics.find((item) => item.id === "subnet")).toMatchObject({
+      used: 3,
+      limit: 100,
+      href: "/networking/networks",
+    });
     expect(metrics.find((item) => item.id === "security_group")?.href).toBe(
       "/networking/security-groups",
     );

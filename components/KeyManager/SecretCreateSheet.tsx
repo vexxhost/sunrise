@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { createSecretSchema } from "@/lib/openstack/barbican-input";
 import type { MutationScope } from "@/lib/mutations";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 
 const steps = ["details", "payload", "advanced", "review"] as const;
 type Step = (typeof steps)[number];
@@ -52,6 +55,7 @@ export function SecretCreateSheet({
   open: boolean;
   scope: MutationScope;
 }) {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>("details");
   const [name, setName] = useState("");
   const [secretType, setSecretType] = useState("opaque");
@@ -96,7 +100,7 @@ export function SecretCreateSheet({
   const validationError = validation.success
     ? null
     : (validation.error.issues[0]?.message ?? "Review the secret details.");
-  const reviewIssues = validation.success
+  const validationIssues = validation.success
     ? []
     : Array.from(
         new Set(
@@ -112,6 +116,14 @@ export function SecretCreateSheet({
           }),
         ),
       );
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId: scope.projectId,
+    regionId: scope.regionId,
+    requests: [{ metricId: "secrets", requested: 1 }],
+    serviceId: "key-manager",
+  });
+  const reviewIssues = [...validationIssues, ...quota.issues];
 
   const reset = () => {
     setStep("details");
@@ -159,6 +171,14 @@ export function SecretCreateSheet({
         return;
       }
       await onCreated(result.message ?? `Secret ${name} was created.`);
+      await queryClient.invalidateQueries({
+        queryKey: [
+          scope.regionId,
+          scope.projectId,
+          "project-quotas",
+          "key-manager",
+        ],
+      });
       changeOpen(false);
     } catch {
       setError("Key Manager could not be reached. Try again shortly.");
@@ -375,6 +395,11 @@ export function SecretCreateSheet({
                   }
                 />
               </div>
+              <QuotaImpactPreview
+                impacts={quota.impacts}
+                loading={quota.loading}
+                unavailableMessage={quota.unavailableMessage}
+              />
               <p className="text-sm text-muted-foreground">
                 After creation, a payload can be viewed on demand or downloaded.
                 Metadata-only secrets accept payload data once.

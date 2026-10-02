@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -27,20 +28,24 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import {
+  projectQuotaQueryOptions,
+  quotaQueryUnavailableMessage,
+} from "@/hooks/queries/useQuotas";
+import {
   attachVolumeAction,
   createSnapshotAction,
   deleteVolumeAction,
   detachVolumeAction,
   updateVolumeAction,
 } from "@/lib/openstack/cinder-actions";
+import {
+  cinderSnapshotQuotaImpacts,
+  quotaImpactIssues,
+} from "@/lib/openstack/quota-impact";
 import type { Server, Volume } from "@/types/openstack";
 
 export type VolumeMutationKind =
-  | "attach"
-  | "delete"
-  | "detach"
-  | "edit"
-  | "snapshot";
+  "attach" | "delete" | "detach" | "edit" | "snapshot";
 
 interface VolumeMutationDialogProps {
   action: VolumeMutationKind | null;
@@ -74,6 +79,7 @@ export function VolumeMutationDialog({
   regionId,
   volumes,
 }: VolumeMutationDialogProps) {
+  const queryClient = useQueryClient();
   const volume = volumes[0];
   const attachments = volume?.attachments ?? [];
   const servers = useQuery({
@@ -103,6 +109,22 @@ export function VolumeMutationDialog({
   const [tag, setTag] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const quota = useQuery({
+    ...projectQuotaQueryOptions(regionId, projectId, "storage"),
+    enabled: action === "snapshot" && Boolean(regionId && projectId),
+  });
+  const quotaMetrics =
+    quota.data?.status === "available" ? quota.data.metrics : [];
+  const quotaImpacts = cinderSnapshotQuotaImpacts(
+    quotaMetrics,
+    volume?.size ?? 0,
+    volume?.volume_type,
+  );
+  const quotaIssues = quotaImpactIssues(quotaImpacts);
+  const quotaUnavailableMessage = quotaQueryUnavailableMessage(
+    quota,
+    "Block Storage quotas are unavailable. Cinder will validate the request when it is submitted.",
+  );
 
   if (!action || !volume) return null;
 
@@ -111,7 +133,9 @@ export function VolumeMutationDialog({
     onOpenChange(false);
   };
 
-  const run = (callback: () => Promise<{ ok: boolean; error?: { message: string } }>) => {
+  const run = (
+    callback: () => Promise<{ ok: boolean; error?: { message: string } }>,
+  ) => {
     if (!projectId || !regionId) {
       setError("Select a project and region before changing volumes.");
       return;
@@ -121,11 +145,18 @@ export function VolumeMutationDialog({
       setError(null);
       const result = await callback();
       if (!result.ok) {
-        setError(result.error?.message ?? "The operation could not be completed.");
+        setError(
+          result.error?.message ?? "The operation could not be completed.",
+        );
         return;
       }
       close();
       void onComplete();
+      if (action === "snapshot") {
+        void queryClient.invalidateQueries({
+          queryKey: [regionId, projectId, "project-quotas", "storage"],
+        });
+      }
       if (action === "delete") void onDeleteSuccess?.();
     });
   };
@@ -220,15 +251,18 @@ export function VolumeMutationDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
         <form className="space-y-5" onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>
-              {action === "attach" && "Connect this block device to a project instance."}
-              {action === "detach" && "Disconnect the selected attachment cleanly through Nova."}
+              {action === "attach" &&
+                "Connect this block device to a project instance."}
+              {action === "detach" &&
+                "Disconnect the selected attachment cleanly through Nova."}
               {action === "edit" && "Change the display name and description."}
-              {action === "snapshot" && "Capture a point-in-time copy of this volume."}
+              {action === "snapshot" &&
+                "Capture a point-in-time copy of this volume."}
             </DialogDescription>
           </DialogHeader>
 
@@ -261,14 +295,31 @@ export function VolumeMutationDialog({
             </>
           )}
 
+          {action === "snapshot" ? (
+            <QuotaImpactPreview
+              impacts={quotaImpacts}
+              loading={quota.isLoading}
+              unavailableMessage={quotaUnavailableMessage}
+              description="Snapshots consume snapshot count and storage quota equal to the source volume size."
+            />
+          ) : null}
+
           {action === "attach" && (
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="volume-server">Instance</Label>
-                <Select value={serverId} onValueChange={setServerId} disabled={isPending}>
+                <Select
+                  value={serverId}
+                  onValueChange={setServerId}
+                  disabled={isPending}
+                >
                   <SelectTrigger id="volume-server">
                     <SelectValue
-                      placeholder={servers.isLoading ? "Loading instances" : "Choose an instance"}
+                      placeholder={
+                        servers.isLoading
+                          ? "Loading instances"
+                          : "Choose an instance"
+                      }
                     />
                   </SelectTrigger>
                   <SelectContent>
@@ -294,7 +345,9 @@ export function VolumeMutationDialog({
               <label className="flex cursor-pointer items-center gap-2 text-sm">
                 <Checkbox
                   checked={deleteOnTermination}
-                  onCheckedChange={(value) => setDeleteOnTermination(Boolean(value))}
+                  onCheckedChange={(value) =>
+                    setDeleteOnTermination(Boolean(value))
+                  }
                   disabled={isPending}
                 />
                 Delete this volume when the instance is deleted
@@ -319,7 +372,8 @@ export function VolumeMutationDialog({
                       key={attachment.attachment_id || attachment.server_id}
                       value={attachment.server_id}
                     >
-                      {attachment.server_id} · {attachment.device || "device pending"}
+                      {attachment.server_id} ·{" "}
+                      {attachment.device || "device pending"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -328,9 +382,17 @@ export function VolumeMutationDialog({
           )}
 
           {error ? <MutationAlert>{error}</MutationAlert> : null}
+          {action === "snapshot" && quotaIssues.length ? (
+            <MutationAlert>{quotaIssues.join(" ")}</MutationAlert>
+          ) : null}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={close} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={close}
+              disabled={isPending}
+            >
               Cancel
             </Button>
             <Button
@@ -338,7 +400,9 @@ export function VolumeMutationDialog({
               variant={action === "detach" ? "destructive" : "default"}
               disabled={
                 isPending ||
-                ((action === "edit" || action === "snapshot") && !name.trim()) ||
+                ((action === "edit" || action === "snapshot") &&
+                  !name.trim()) ||
+                (action === "snapshot" && quotaIssues.length > 0) ||
                 (action === "attach" && !serverId) ||
                 (action === "detach" && !attachmentServerId)
               }

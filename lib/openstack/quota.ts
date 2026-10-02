@@ -197,7 +197,7 @@ export function parseCinderQuotaDetails(payload: unknown): QuotaMetric[] {
     "Cinder quota set",
   );
 
-  return [
+  const aggregateMetrics = [
     detailedMetric(
       quotaSet,
       "Cinder",
@@ -242,7 +242,44 @@ export function parseCinderQuotaDetails(payload: unknown): QuotaMetric[] {
       "Volume groups",
       "/compute/volumes",
     ),
+    ...optionalDetailedMetric(
+      quotaSet,
+      "Cinder",
+      "per_volume_gigabytes",
+      "Maximum volume size",
+      "/compute/volumes",
+      { unit: "GiB" },
+    ),
   ];
+
+  const typeQuotaPattern = /^(volumes|gigabytes|snapshots)_(.+)$/;
+  const typeMetrics = Object.keys(quotaSet)
+    .flatMap((id) => {
+      const match = typeQuotaPattern.exec(id);
+      if (!match || quotaSet[id] === undefined || quotaSet[id] === null) {
+        return [];
+      }
+      const [, resource, volumeType] = match;
+      const resourceLabel =
+        resource === "volumes"
+          ? "volumes"
+          : resource === "snapshots"
+            ? "snapshots"
+            : "storage";
+      return [
+        detailedMetric(
+          quotaSet,
+          "Cinder",
+          id,
+          `${volumeType} ${resourceLabel}`,
+          resource === "snapshots" ? "/compute/snapshots" : "/compute/volumes",
+          resource === "gigabytes" ? { unit: "GiB" } : {},
+        ),
+      ];
+    })
+    .sort((left, right) => left.label.localeCompare(right.label));
+
+  return [...aggregateMetrics, ...typeMetrics];
 }
 
 export function parseManilaQuotaDetails(payload: unknown): QuotaMetric[] {
@@ -380,6 +417,7 @@ export function parseNeutronLimits(payload: unknown): QuotaMetric[] {
   const quota = asRecord(asRecord(payload, "Neutron").quota, "Neutron quota");
   const definitions = [
     ["network", "Networks", "/networking/networks"],
+    ["subnet", "Subnets", "/networking/networks"],
     ["port", "Ports", "/networking/ports"],
     ["router", "Routers", "/networking/routers"],
     ["floatingip", "Floating IPs", "/networking/floating-ips"],

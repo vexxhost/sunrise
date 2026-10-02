@@ -5,6 +5,7 @@ import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Plus, Share2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +28,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import {
   projectNetworksQueryOptions,
   subnetsQueryOptions,
@@ -107,11 +109,19 @@ export function ShareNetworkActions({
     (subnet) => subnet.id === form.subnetId,
   );
   const placementValid = form.networkId === "none" || form.subnetId !== "none";
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [{ metricId: "share_networks", requested: 1 }],
+    serviceId: "shared-file-system",
+  });
   const reviewIssues = [
     ...(!form.name.trim() ? ["Enter a share network name."] : []),
     ...(!placementValid
       ? ["Select a subnet for the chosen Neutron network."]
       : []),
+    ...quota.issues,
   ];
 
   const update = <K extends keyof typeof form>(
@@ -163,6 +173,9 @@ export function ShareNetworkActions({
       }
       await queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "manila", "share-networks"],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "project-quotas", "shared-file-system"],
       });
       handleOpenChange(false);
     });
@@ -220,6 +233,11 @@ export function ShareNetworkActions({
                     disabled={pending}
                   />
                 </div>
+                <QuotaImpactPreview
+                  impacts={quota.impacts}
+                  loading={quota.loading}
+                  unavailableMessage={quota.unavailableMessage}
+                />
                 <div className="space-y-1.5">
                   <Label htmlFor="share-network-description">Description</Label>
                   <Textarea
@@ -366,6 +384,11 @@ export function ShareNetworkActions({
                     }
                   />
                 </div>
+                <QuotaImpactPreview
+                  impacts={quota.impacts}
+                  loading={quota.loading}
+                  unavailableMessage={quota.unavailableMessage}
+                />
                 <p className="text-xs text-muted-foreground">
                   Manila creates an initial share-network subnet with this
                   placement. Additional availability-zone subnets can be added

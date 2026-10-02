@@ -7,11 +7,12 @@ import {
   useState,
   useTransition,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Server, Trash2 } from "lucide-react";
 
 import { ImagePicker } from "@/components/Image/ImageSelectOption";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -45,7 +46,16 @@ import {
   keypairsQueryOptions,
   serverAvailabilityZonesQueryOptions,
 } from "@/hooks/queries/useServers";
+import {
+  projectQuotaQueryOptions,
+  quotaQueryUnavailableMessage,
+} from "@/hooks/queries/useQuotas";
 import { formatFlavorCapacity } from "@/lib/openstack/flavor";
+import {
+  novaQuotaImpacts,
+  quotaImpactIssues,
+  quotaUnavailableReason,
+} from "@/lib/openstack/quota-impact";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { createServerAction } from "@/lib/openstack/nova-actions";
 import { normalizeMutationProjectId } from "@/lib/mutations";
@@ -158,6 +168,10 @@ export function InstanceActions({
   >([]);
   const [optionsLoading, setOptionsLoading] = useState(initiallyOpen);
   const [isPending, startTransition] = useTransition();
+  const quota = useQuery({
+    ...projectQuotaQueryOptions(regionId, projectId, "compute"),
+    enabled: isOpen && Boolean(regionId && projectId),
+  });
   const visibleNetworks = useMemo(
     () => projectNetworks(networks, projectId),
     [networks, projectId],
@@ -166,8 +180,54 @@ export function InstanceActions({
     () => projectSecurityGroups(securityGroups, projectId),
     [projectId, securityGroups],
   );
+  const selectedImage = images.find(({ id }) => id === form.imageRef);
+  const selectedFlavor = flavors.find(
+    ({ id }) => String(id) === form.flavorRef,
+  );
+  const count = Number(form.count);
+  const configuredMetadata = form.metadata.filter(({ key }) => key.trim());
+  const configuredMetadataCount = configuredMetadata.length;
+  const quotaMetrics = useMemo(
+    () => (quota.data?.status === "available" ? quota.data.metrics : []),
+    [quota.data],
+  );
+  const quotaImpacts = useMemo(
+    () =>
+      novaQuotaImpacts(
+        quotaMetrics,
+        selectedFlavor,
+        count,
+        configuredMetadataCount,
+      ),
+    [configuredMetadataCount, count, quotaMetrics, selectedFlavor],
+  );
+  const quotaIssues = useMemo(
+    () => quotaImpactIssues(quotaImpacts),
+    [quotaImpacts],
+  );
+  const quotaUnavailableMessage = quotaQueryUnavailableMessage(
+    quota,
+    "Compute quotas are unavailable. Nova will validate the request when it is submitted.",
+  );
+  const flavorQuotaReasons = useMemo(
+    () =>
+      new Map(
+        flavors.map((flavor) => {
+          if (flavor["OS-FLV-DISABLED:disabled"]) {
+            return [String(flavor.id), "Disabled by the cloud operator"];
+          }
+          const reason = quotaUnavailableReason(
+            novaQuotaImpacts(quotaMetrics, flavor, count),
+          );
+          return [
+            String(flavor.id),
+            reason ? `Insufficient ${reason} quota` : null,
+          ];
+        }),
+      ),
+    [count, flavors, quotaMetrics],
+  );
   const reviewIssues = useMemo(() => {
-    const count = Number(form.count);
     const issues: string[] = [];
     if (!form.name.trim()) issues.push("Enter an instance name.");
     if (!form.imageRef) issues.push("Select a source image.");
@@ -175,8 +235,9 @@ export function InstanceActions({
     if (!Number.isInteger(count) || count < 1) {
       issues.push("Enter an instance count of at least 1.");
     }
+    issues.push(...quotaIssues);
     return issues;
-  }, [form.count, form.flavorRef, form.imageRef, form.name]);
+  }, [count, form.flavorRef, form.imageRef, form.name, quotaIssues]);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -318,17 +379,15 @@ export function InstanceActions({
       void queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "servers"],
       });
+      void queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "project-quotas", "compute"],
+      });
     });
   };
 
-  const selectedImage = images.find(({ id }) => id === form.imageRef);
-  const selectedFlavor = flavors.find(
-    ({ id }) => String(id) === form.flavorRef,
-  );
   const selectedNetworkNames = visibleNetworks
     .filter(({ id }) => form.networkIds.includes(id))
     .map(({ id, name }) => name || id);
-  const configuredMetadata = form.metadata.filter(({ key }) => key.trim());
 
   return (
     <>
@@ -531,17 +590,39 @@ export function InstanceActions({
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          {flavors.map((flavor) => (
-                            <SelectItem
-                              key={flavor.id}
-                              value={String(flavor.id)}
-                            >
-                              {formatFlavorCapacity(flavor)}
-                            </SelectItem>
-                          ))}
+                          {flavors.map((flavor) => {
+                            const reason = flavorQuotaReasons.get(
+                              String(flavor.id),
+                            );
+                            return (
+                              <SelectItem
+                                key={flavor.id}
+                                value={String(flavor.id)}
+                                textValue={formatFlavorCapacity(flavor)}
+                                disabled={Boolean(reason)}
+                                className="py-2"
+                              >
+                                <span className="flex min-w-0 flex-col">
+                                  <span className="truncate">
+                                    {formatFlavorCapacity(flavor)}
+                                  </span>
+                                  {reason ? (
+                                    <span className="truncate text-xs text-status-danger">
+                                      {reason}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                     </div>
+                    <QuotaImpactPreview
+                      impacts={quotaImpacts}
+                      loading={quota.isLoading}
+                      unavailableMessage={quotaUnavailableMessage}
+                    />
                   </section>
                 </TabsContent>
 
@@ -841,6 +922,11 @@ export function InstanceActions({
                       value={form.configDrive ? "Enabled" : "Disabled"}
                     />
                   </dl>
+                  <QuotaImpactPreview
+                    impacts={quotaImpacts}
+                    loading={quota.isLoading}
+                    unavailableMessage={quotaUnavailableMessage}
+                  />
                 </TabsContent>
               </div>
             </Tabs>

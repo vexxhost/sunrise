@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +30,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { createOrderAction } from "@/lib/openstack/barbican-actions";
 import { createOrderSchema } from "@/lib/openstack/barbican-input";
 import type { MutationScope } from "@/lib/mutations";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 
 export function OrderCreateSheet({
   onCreated,
@@ -40,6 +43,7 @@ export function OrderCreateSheet({
   open: boolean;
   scope: MutationScope;
 }) {
+  const queryClient = useQueryClient();
   const [type, setType] = useState<"key" | "asymmetric">("key");
   const [activeTab, setActiveTab] = useState("details");
   const [name, setName] = useState("");
@@ -61,7 +65,7 @@ export function OrderCreateSheet({
     [algorithm, bitLength, expiration, mode, name, type],
   );
   const validation = createOrderSchema.safeParse(input);
-  const reviewIssues = validation.success
+  const validationIssues = validation.success
     ? []
     : Array.from(
         new Set(
@@ -79,6 +83,14 @@ export function OrderCreateSheet({
           }),
         ),
       );
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId: scope.projectId,
+    regionId: scope.regionId,
+    requests: [{ metricId: "orders", requested: 1 }],
+    serviceId: "key-manager",
+  });
+  const reviewIssues = [...validationIssues, ...quota.issues];
 
   const reset = () => {
     setType("key");
@@ -118,6 +130,14 @@ export function OrderCreateSheet({
       return;
     }
     await onCreated(result.message);
+    await queryClient.invalidateQueries({
+      queryKey: [
+        scope.regionId,
+        scope.projectId,
+        "project-quotas",
+        "key-manager",
+      ],
+    });
     changeOpen(false);
   };
 
@@ -254,6 +274,11 @@ export function OrderCreateSheet({
                   }
                 />
               </dl>
+              <QuotaImpactPreview
+                impacts={quota.impacts}
+                loading={quota.loading}
+                unavailableMessage={quota.unavailableMessage}
+              />
             </TabsContent>
           </div>
         </Tabs>

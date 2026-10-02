@@ -14,6 +14,7 @@ import {
   ServerCog,
 } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import {
   AvailabilityZoneMultiSelect,
   AvailabilityZoneSelect,
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/wizard-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { clusterTemplatesQueryOptions } from "@/hooks/queries/useMagnum";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import { loadBalancerAvailabilityZonesQueryOptions } from "@/hooks/queries/useLoadBalancers";
 import { shareNetworksQueryOptions } from "@/hooks/queries/useManila";
 import {
@@ -370,6 +372,9 @@ export function ClusterMutationSheet({
       await queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "magnum"],
       });
+      await queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "project-quotas", "container-infra"],
+      });
       queryClient.setQueriesData<MagnumCluster[]>(
         {
           queryKey: [regionId, projectId, "magnum", "clusters"],
@@ -410,6 +415,13 @@ export function ClusterMutationSheet({
   const controlPlaneCount = Number(form.controlPlaneCount);
   const workerCount = Number(form.workerCount);
   const createTimeout = Number(form.createTimeout);
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [{ metricId: "clusters", requested: 1 }],
+    serviceId: "container-infra",
+  });
   const reviewIssues = [
     ...(!form.name.trim() ? ["Enter a cluster name."] : []),
     ...(!form.clusterTemplateId ? ["Select a cluster template."] : []),
@@ -437,6 +449,7 @@ export function ClusterMutationSheet({
     ...(form.oidcIssuerUrl.trim() && !form.oidcClientId.trim()
       ? ["Enter an OpenID Connect client ID."]
       : []),
+    ...quota.issues,
   ];
 
   return (
@@ -1196,6 +1209,12 @@ export function ClusterMutationSheet({
                     after this sheet closes.
                   </p>
                 </div>
+                <QuotaImpactPreview
+                  impacts={quota.impacts}
+                  loading={quota.loading}
+                  unavailableMessage={quota.unavailableMessage}
+                  description="Magnum enforces the direct cluster-count quota. Compute, network, load-balancer, and storage use is validated independently by those services during provisioning."
+                />
                 <dl className="rounded-md border px-4">
                   <ReviewRow label="Name" value={form.name || "Not set"} />
                   <ReviewRow

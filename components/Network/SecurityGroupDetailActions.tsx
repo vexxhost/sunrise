@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +34,7 @@ import {
   updateSecurityGroupAction,
 } from "@/lib/openstack/neutron-actions";
 import type { SecurityGroup, SecurityGroupRule } from "@/types/openstack";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 
 export function SecurityGroupDetailActions({
   group,
@@ -60,6 +62,13 @@ export function SecurityGroupDetailActions({
   const [ruleDescription, setRuleDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const ruleQuota = useProjectQuotaImpact({
+    enabled: dialog === "rule",
+    projectId,
+    regionId,
+    requests: [{ metricId: "security_group_rule", requested: 1 }],
+    serviceId: "network",
+  });
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: [regionId, projectId] });
     router.refresh();
@@ -215,7 +224,7 @@ export function SecurityGroupDetailActions({
         open={dialog === "rule"}
         onOpenChange={(isOpen) => !isOpen && setDialog(null)}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submitRule}>
             <DialogHeader>
               <DialogTitle>Add security group rule</DialogTitle>
@@ -245,7 +254,15 @@ export function SecurityGroupDetailActions({
               onRemoteChange={setRemote}
               onRemoteTypeChange={setRemoteType}
             />
+            <QuotaImpactPreview
+              impacts={ruleQuota.impacts}
+              loading={ruleQuota.loading}
+              unavailableMessage={ruleQuota.unavailableMessage}
+            />
             {error ? <MutationAlert>{error}</MutationAlert> : null}
+            {ruleQuota.issues.length ? (
+              <MutationAlert>{ruleQuota.issues.join(" ")}</MutationAlert>
+            ) : null}
             <DialogFooter>
               <Button
                 type="button"
@@ -257,7 +274,11 @@ export function SecurityGroupDetailActions({
               </Button>
               <Button
                 type="submit"
-                disabled={pending || (remoteType !== "any" && !remote)}
+                disabled={
+                  pending ||
+                  (remoteType !== "any" && !remote) ||
+                  ruleQuota.issues.length > 0
+                }
               >
                 {pending ? "Adding" : "Add rule"}
               </Button>

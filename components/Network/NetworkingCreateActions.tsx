@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -51,6 +52,7 @@ import {
   parseFloatingIpPortSelection,
 } from "@/lib/openstack/neutron-floating-ip";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
+import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 
 interface ScopeProps {
   initiallyOpen?: boolean;
@@ -107,6 +109,13 @@ export function CreateNetworkAction({
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [{ metricId: "network", requested: 1 }],
+    serviceId: "network",
+  });
 
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
@@ -142,7 +151,7 @@ export function CreateNetworkAction({
         <Plus className="size-4" /> Create network
       </Button>
       <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -196,7 +205,15 @@ export function CreateNetworkAction({
                 />
               </div>
             </div>
+            <QuotaImpactPreview
+              impacts={quota.impacts}
+              loading={quota.loading}
+              unavailableMessage={quota.unavailableMessage}
+            />
             <FormError error={error} />
+            {quota.issues.length ? (
+              <MutationAlert>{quota.issues.join(" ")}</MutationAlert>
+            ) : null}
             <DialogFooter>
               <Button
                 type="button"
@@ -206,7 +223,10 @@ export function CreateNetworkAction({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
+              <Button
+                type="submit"
+                disabled={pending || !name.trim() || quota.issues.length > 0}
+              >
                 {pending ? "Creating" : "Create network"}
               </Button>
             </DialogFooter>
@@ -230,6 +250,13 @@ export function CreateRouterAction({
   const [adminStateUp, setAdminStateUp] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [{ metricId: "router", requested: 1 }],
+    serviceId: "network",
+  });
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
     if (!next) clearCreateActionIntent();
@@ -263,7 +290,7 @@ export function CreateRouterAction({
         Create router
       </Button>
       <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -307,7 +334,15 @@ export function CreateRouterAction({
                 onCheckedChange={setAdminStateUp}
               />
             </div>
+            <QuotaImpactPreview
+              impacts={quota.impacts}
+              loading={quota.loading}
+              unavailableMessage={quota.unavailableMessage}
+            />
             <FormError error={error} />
+            {quota.issues.length ? (
+              <MutationAlert>{quota.issues.join(" ")}</MutationAlert>
+            ) : null}
             <DialogFooter>
               <Button
                 type="button"
@@ -317,7 +352,10 @@ export function CreateRouterAction({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
+              <Button
+                type="submit"
+                disabled={pending || !name.trim() || quota.issues.length > 0}
+              >
                 {pending ? "Creating" : "Create router"}
               </Button>
             </DialogFooter>
@@ -344,6 +382,13 @@ export function CreatePortAction({
   const [securityGroupIds, setSecurityGroupIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [{ metricId: "port", requested: 1 }],
+    serviceId: "network",
+  });
   const networks = useQuery({
     ...networksQueryOptions(regionId, projectId),
     enabled: open,
@@ -395,7 +440,7 @@ export function CreatePortAction({
         Create port
       </Button>
       <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -499,7 +544,15 @@ export function CreatePortAction({
                 </div>
               ) : null}
             </div>
+            <QuotaImpactPreview
+              impacts={quota.impacts}
+              loading={quota.loading}
+              unavailableMessage={quota.unavailableMessage}
+            />
             <FormError error={error} />
+            {quota.issues.length ? (
+              <MutationAlert>{quota.issues.join(" ")}</MutationAlert>
+            ) : null}
             <DialogFooter>
               <Button
                 type="button"
@@ -511,7 +564,12 @@ export function CreatePortAction({
               </Button>
               <Button
                 type="submit"
-                disabled={pending || !name.trim() || !networkId}
+                disabled={
+                  pending ||
+                  !name.trim() ||
+                  !networkId ||
+                  quota.issues.length > 0
+                }
               >
                 {pending ? "Creating" : "Create port"}
               </Button>
@@ -536,6 +594,13 @@ export function AllocateFloatingIpAction({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [{ metricId: "floatingip", requested: 1 }],
+    serviceId: "network",
+  });
   const externalNetworks = useQuery({
     ...externalNetworksQueryOptions(regionId, projectId),
     enabled: open,
@@ -598,7 +663,7 @@ export function AllocateFloatingIpAction({
         Allocate floating IP
       </Button>
       <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -676,7 +741,15 @@ export function AllocateFloatingIpAction({
                 />
               </div>
             </div>
+            <QuotaImpactPreview
+              impacts={quota.impacts}
+              loading={quota.loading}
+              unavailableMessage={quota.unavailableMessage}
+            />
             <FormError error={error} />
+            {quota.issues.length ? (
+              <MutationAlert>{quota.issues.join(" ")}</MutationAlert>
+            ) : null}
             <DialogFooter>
               <Button
                 type="button"
@@ -686,7 +759,12 @@ export function AllocateFloatingIpAction({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !floatingNetworkId}>
+              <Button
+                type="submit"
+                disabled={
+                  pending || !floatingNetworkId || quota.issues.length > 0
+                }
+              >
                 {pending ? "Allocating" : "Allocate"}
               </Button>
             </DialogFooter>
@@ -709,6 +787,13 @@ export function CreateSecurityGroupAction({
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const quota = useProjectQuotaImpact({
+    enabled: open,
+    projectId,
+    regionId,
+    requests: [{ metricId: "security_group", requested: 1 }],
+    serviceId: "network",
+  });
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
     if (!next) clearCreateActionIntent();
@@ -740,7 +825,7 @@ export function CreateSecurityGroupAction({
         Create security group
       </Button>
       <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -774,7 +859,15 @@ export function CreateSecurityGroupAction({
                 />
               </div>
             </div>
+            <QuotaImpactPreview
+              impacts={quota.impacts}
+              loading={quota.loading}
+              unavailableMessage={quota.unavailableMessage}
+            />
             <FormError error={error} />
+            {quota.issues.length ? (
+              <MutationAlert>{quota.issues.join(" ")}</MutationAlert>
+            ) : null}
             <DialogFooter>
               <Button
                 type="button"
@@ -784,7 +877,10 @@ export function CreateSecurityGroupAction({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
+              <Button
+                type="submit"
+                disabled={pending || !name.trim() || quota.issues.length > 0}
+              >
                 {pending ? "Creating" : "Create security group"}
               </Button>
             </DialogFooter>
