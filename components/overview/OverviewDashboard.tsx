@@ -31,6 +31,10 @@ import type {
 import type { OverviewService } from "@/lib/openstack/overview";
 import { quotaPercentage, type QuotaMetric } from "@/lib/openstack/quota";
 import type {
+  NavigationDestination,
+  NavigationDestinationId,
+} from "@/lib/navigation-destinations";
+import type {
   ServiceDirectoryId,
   ServiceDirectoryItem,
 } from "@/lib/openstack/service-directory";
@@ -44,46 +48,68 @@ import {
 const quickAccess = [
   {
     label: "Instances",
+    destination: "compute.instances",
     href: "/compute/instances",
     icon: Server,
     accent: "compute",
   },
   {
     label: "Volumes",
+    destination: "compute.volumes",
     href: "/compute/volumes",
     icon: HardDrive,
     accent: "storage",
   },
   {
     label: "Networks",
+    destination: "networking.networks",
     href: "/networking/networks",
     icon: Network,
     accent: "network",
   },
   {
     label: "Images",
+    destination: "compute.images",
     href: "/compute/images",
     icon: ImageIcon,
     accent: "image",
   },
   {
     label: "Kubernetes",
+    destination: "kubernetes.clusters",
     href: "/kubernetes",
     icon: Container,
     accent: "kubernetes",
   },
   {
     label: "Buckets",
+    destination: "object-storage.buckets",
     href: "/object-storage/buckets",
     icon: Database,
     accent: "object-storage",
   },
 ] satisfies Array<{
   label: string;
+  destination: NavigationDestinationId;
   href: string;
   icon: ComponentType<{ className?: string }>;
   accent: ServiceAccent;
 }>;
+
+export function quickAccessForDestinations(
+  navigationDestinations: NavigationDestination[],
+) {
+  const destinationStatus = new Map(
+    navigationDestinations.map((destination) => [
+      destination.id,
+      destination.status,
+    ]),
+  );
+  return quickAccess.filter(({ destination }) => {
+    const status = destinationStatus.get(destination);
+    return status === "available" || status === "unknown";
+  });
+}
 
 const serviceIcons: Record<
   OverviewService["id"],
@@ -359,12 +385,14 @@ export function OverviewDashboard({
   services,
   operationalFeed,
   serviceDirectory,
+  navigationDestinations,
   pinnedResources,
   recentResources,
 }: {
   services: OverviewService[];
   operationalFeed: OperationalFeed;
   serviceDirectory: ServiceDirectoryItem[];
+  navigationDestinations: NavigationDestination[];
   pinnedResources: ResourcePreference[];
   recentResources: ResourcePreference[];
 }) {
@@ -377,6 +405,7 @@ export function OverviewDashboard({
   const directoryStatusUnknown = serviceDirectory.some(
     (service) => service.status === "unknown",
   );
+  const visibleQuickAccess = quickAccessForDestinations(navigationDestinations);
 
   return (
     <div className="space-y-10">
@@ -385,7 +414,7 @@ export function OverviewDashboard({
           Quick access
         </h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-          {quickAccess.map(({ label, href, icon: Icon, accent }) => (
+          {visibleQuickAccess.map(({ label, href, icon: Icon, accent }) => (
             <Link
               key={href}
               href={href}

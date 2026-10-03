@@ -1,13 +1,14 @@
-import { redirect } from 'next/navigation';
-import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
-import { DataTableHeader } from '@/components/DataTable/Header';
+import { redirect } from "next/navigation";
+import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
+import { DataTableHeader } from "@/components/DataTable/Header";
+import { requireS3Backend } from "@/components/services/ServiceGuards";
 import {
   getActiveS3Credentials,
   getSession,
   normalizeProjectId,
-} from '@/lib/session';
+} from "@/lib/session";
 
-import { DirectClient } from '../DirectClient';
+import { DirectClient } from "../DirectClient";
 
 interface PageProps {
   params: Promise<{ bucket: string }>;
@@ -15,12 +16,13 @@ interface PageProps {
 }
 
 export default async function Page({ params, searchParams }: PageProps) {
+  await requireS3Backend();
   const [{ bucket: rawBucket }, { key }] = await Promise.all([
     params,
     searchParams,
   ]);
   const bucket = decodeURIComponent(rawBucket);
-  const objectKey = typeof key === 'string' ? key : null;
+  const objectKey = typeof key === "string" ? key : null;
 
   if (objectKey === null) {
     redirect(`/object-storage/buckets/${encodeURIComponent(bucket)}/direct`);
@@ -29,7 +31,7 @@ export default async function Page({ params, searchParams }: PageProps) {
   const session = await getSession();
   const creds = getActiveS3Credentials(session);
   const activeProjectId = normalizeProjectId(session.projectId);
-  const activeRegionId = session.regionId ?? '';
+  const activeRegionId = session.regionId ?? "";
 
   if (!creds) {
     return <ObjectStorageAuthRedirect />;

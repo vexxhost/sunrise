@@ -6,6 +6,8 @@ import {
   buildAuthorizeUrl,
   buildEndSessionUrl,
   extractOidcIdentity,
+  getSunriseOidcConfig,
+  isRgwOidcConfigured,
   resolveOidcIdentity,
 } from "@/lib/oidc/sunrise";
 
@@ -122,5 +124,16 @@ describe("Sunrise OIDC", () => {
     expect(logoutUrl.searchParams.get("post_logout_redirect_uri")).toBe(
       "https://sunrise.example.test/",
     );
+  });
+
+  it("keeps the primary OIDC client valid without S3 configuration", () => {
+    delete process.env.KEYCLOAK_S3_CLIENT_ID;
+
+    expect(isRgwOidcConfigured()).toBe(false);
+    expect(getSunriseOidcConfig()).toMatchObject({
+      issuer,
+      clientId,
+      rgwAudience: undefined,
+    });
   });
 });

@@ -1,4 +1,5 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
+import { ConfiguredService } from "@/components/services/ServiceGuards";
 
 const sections = [
   {
@@ -28,5 +29,9 @@ export default function KeyManagerLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <ServiceLayout sidebarSections={sections}>{children}</ServiceLayout>;
+  return (
+    <ConfiguredService id="key-manager">
+      <ServiceLayout sidebarSections={sections}>{children}</ServiceLayout>
+    </ConfiguredService>
+  );
 }

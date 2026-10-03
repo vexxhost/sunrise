@@ -5,6 +5,7 @@ import type { OpenStackCatalogService } from "@/lib/openstack/catalog";
 import type { SunrisePrefs } from "@/lib/prefs";
 import type { ResourcePreference } from "@/lib/resource-preferences";
 import type { SunriseSession } from "@/lib/session";
+import { parseServicePolicy } from "@/lib/service-policy";
 import type { Project, Region } from "@/types/openstack";
 
 const projectOneId = "7a96a68d-c826-4f3d-84fa-fd95a72265c5";
@@ -48,6 +49,17 @@ const catalog: OpenStackCatalogService[] = [
         interface: "public",
         region: "RegionOne",
         url: "https://nova.example.test",
+      },
+    ],
+  },
+  {
+    name: "s3",
+    type: "object-storage-s3",
+    endpoints: [
+      {
+        interface: "public",
+        region: "RegionOne",
+        url: "https://s3.example.test",
       },
     ],
   },
@@ -258,5 +270,88 @@ describe("cloud context snapshot", () => {
     expect(
       snapshot.services.find(({ id }) => id === "kubernetes")?.status,
     ).toBe("unavailable");
+  });
+
+  it("filters disabled service resources and resolves Swift fallback", () => {
+    const snapshot = buildCloudContextSnapshot({
+      session: {
+        projectId: projectOneId,
+        regionId: "RegionOne",
+        keystoneProjectToken: "keystone-token",
+      },
+      prefs: {
+        pinnedResources: [resource("hidden-instance")],
+      },
+      projects,
+      regions,
+      userName: "Sunrise Operator",
+      catalog: [
+        {
+          name: "object-storage",
+          type: "object-storage",
+          endpoints: [
+            {
+              interface: "public",
+              region: "RegionOne",
+              url: "https://swift.example.test",
+            },
+          ],
+        },
+      ],
+      servicePolicy: parseServicePolicy({
+        disabledServices: "compute,image,volume",
+        objectStorageBackends: "s3,swift",
+      }),
+    });
+
+    expect(snapshot.objectStorage).toMatchObject({
+      backend: "swift",
+      status: "available",
+    });
+    expect(snapshot.services.map(({ id }) => id)).not.toContain("compute");
+    expect(
+      snapshot.destinations.some(({ service }) => service === "compute"),
+    ).toBe(false);
+    expect(
+      snapshot.createActions.some(({ service }) => service === "compute"),
+    ).toBe(false);
+    expect(snapshot.personalResources.pinned).toEqual([]);
+    expect(snapshot.role.message).toBe("S3 access roles are not used by Swift");
+  });
+
+  it("hides S3 bucket history when S3 is disabled for the region", () => {
+    const snapshot = buildCloudContextSnapshot({
+      session: {
+        projectId: projectOneId,
+        regionId: "RegionOne",
+        keystoneProjectToken: "keystone-token",
+      },
+      prefs: {
+        pinnedResources: [
+          resource("kept-instance"),
+          {
+            ...resource("hidden-bucket"),
+            kind: "bucket",
+          },
+        ],
+      },
+      projects,
+      regions,
+      userName: "Sunrise Operator",
+      catalog,
+      servicePolicy: parseServicePolicy({
+        disabledServicesByRegion: JSON.stringify({
+          RegionOne: ["object-storage-s3"],
+        }),
+      }),
+    });
+
+    expect(snapshot.personalResources.pinned.map(({ id }) => id)).toEqual([
+      "kept-instance",
+    ]);
+    expect(snapshot.objectStorage).toMatchObject({
+      backend: null,
+      status: "disabled",
+    });
   });
 });

@@ -5,6 +5,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getS3Client, S3AuthRequiredError } from "@/lib/s3/client";
 import { objectStorageAuthRefreshHref } from "@/lib/s3/auth-navigation";
+import { unavailableS3RouteResponse } from "@/lib/object-storage/route-guard";
 
 interface RouteContext {
   params: Promise<{ bucket: string }>;
@@ -225,6 +226,9 @@ function zipFileName(bucket: string): string {
 }
 
 export async function POST(request: Request, { params }: RouteContext) {
+  const unavailable = await unavailableS3RouteResponse(request);
+  if (unavailable) return unavailable;
+
   const { bucket: rawBucket } = await params;
   const bucket = decodeURIComponent(rawBucket);
   const formData = await request.formData();

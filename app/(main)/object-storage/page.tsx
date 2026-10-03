@@ -3,6 +3,7 @@ import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRe
 import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import {
   ServiceLandingPage,
+  ServiceAvailabilityPage,
   ServiceLandingSection,
   ServiceRecentResources,
   ServiceResourceGrid,
@@ -17,12 +18,29 @@ import { RoleDetailsDialog } from "./RoleDetailsDialog";
 export const dynamic = "force-dynamic";
 
 export default async function ObjectStoragePage() {
-  const [cloud, bucketResult, roleResult] = await Promise.all([
-    loadCloudContext(),
+  const cloud = await loadCloudContext();
+  const { snapshot } = cloud;
+
+  if (snapshot.objectStorage.backend !== "s3") {
+    return (
+      <ServiceAvailabilityPage
+        title="Object Storage"
+        description="Store and retrieve unstructured data through the backend selected for this region."
+        context={snapshot}
+        serviceId="object-storage"
+        resourceLabel={
+          snapshot.objectStorage.backend === "swift"
+            ? "Swift Object Storage"
+            : "Object Storage"
+        }
+      />
+    );
+  }
+
+  const [bucketResult, roleResult] = await Promise.all([
     listBucketsForRender(),
     listRolesForRender(),
   ]);
-  const { snapshot } = cloud;
   const resources = [
     ...snapshot.personalResources.pinned,
     ...snapshot.personalResources.recent,

@@ -1,4 +1,5 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
+import { ConfiguredService } from "@/components/services/ServiceGuards";
 
 const sharedFileSystemSidebarSections = [
   {
@@ -37,8 +38,10 @@ export default function SharedFileSystemLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ServiceLayout sidebarSections={sharedFileSystemSidebarSections}>
-      {children}
-    </ServiceLayout>
+    <ConfiguredService id="share">
+      <ServiceLayout sidebarSections={sharedFileSystemSidebarSections}>
+        {children}
+      </ServiceLayout>
+    </ConfiguredService>
   );
 }

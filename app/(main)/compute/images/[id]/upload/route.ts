@@ -7,6 +7,7 @@ import {
   resolveServiceEndpoint,
 } from "@/lib/openstack/catalog";
 import { serviceUrl } from "@/lib/openstack/request";
+import { unavailableServiceRouteResponse } from "@/lib/service-route-guard";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -56,6 +57,9 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   const { projectToken, scope } = guarded.context;
+  const unavailable = unavailableServiceRouteResponse("image", scope.regionId);
+  if (unavailable) return unavailable;
+
   const catalog = await getServiceCatalog(projectToken!);
   if (!catalog) {
     return Response.json(

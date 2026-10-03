@@ -16,6 +16,7 @@ import { parseBarbicanSecret } from "@/lib/openstack/barbican-schema";
 import { serviceUrl } from "@/lib/openstack/request";
 import { isSameOriginRequest } from "@/lib/request-origin";
 import { getSession } from "@/lib/session";
+import { unavailableServiceRouteResponse } from "@/lib/service-route-guard";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -76,6 +77,11 @@ export async function GET(request: Request, { params }: RouteContext) {
   if (!session.keystoneProjectToken || !session.regionId) {
     return Response.json({ error: "Authentication required" }, { status: 401 });
   }
+  const unavailable = unavailableServiceRouteResponse(
+    "key-manager",
+    session.regionId,
+  );
+  if (unavailable) return unavailable;
 
   const inline =
     new URL(request.url).searchParams.get("disposition") === "inline";
@@ -291,6 +297,12 @@ export async function PUT(request: Request, { params }: RouteContext) {
   }
 
   const { projectToken, scope } = guarded.context;
+  const unavailable = unavailableServiceRouteResponse(
+    "key-manager",
+    scope.regionId,
+  );
+  if (unavailable) return unavailable;
+
   const catalog = await getServiceCatalog(projectToken!);
   if (!catalog) {
     return Response.json(

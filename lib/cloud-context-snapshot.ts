@@ -1,4 +1,5 @@
 import type { OpenStackCatalogService } from "@/lib/openstack/catalog";
+import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
 import { buildCreateActions, type CreateAction } from "@/lib/create-actions";
 import {
   buildServiceDirectory,
@@ -22,6 +23,14 @@ import {
   type SunriseSession,
 } from "@/lib/session";
 import type { Project, Region } from "@/types/openstack";
+import {
+  defaultServicePolicy,
+  isServiceEnabled,
+  isSunriseServiceEnabled,
+  type OpenStackServiceId,
+  type ObjectStorageBackend,
+  type ServicePolicy,
+} from "@/lib/service-policy";
 
 export type CloudSelection = {
   id: string | null;
@@ -42,11 +51,18 @@ export type CloudCatalog = {
   message: string;
 };
 
+export type CloudObjectStorage = {
+  backend: ObjectStorageBackend | null;
+  status: "available" | "unavailable" | "unknown" | "disabled";
+  message: string;
+};
+
 export type CloudContextSnapshot = {
   user: { name: string | null };
   project: CloudSelection;
   region: CloudSelection;
   role: CloudRole;
+  objectStorage: CloudObjectStorage;
   catalog: CloudCatalog;
   projects: Project[];
   regions: Region[];
@@ -67,9 +83,28 @@ type BuildCloudContextInput = {
   regions: Region[];
   userName?: string | null;
   catalog: OpenStackCatalogService[] | null;
+  servicePolicy?: ServicePolicy;
 };
 
-function activeRole(session: SunriseSession): CloudRole {
+function activeRole(
+  session: SunriseSession,
+  objectStorage: CloudObjectStorage,
+): CloudRole {
+  if (objectStorage.backend !== "s3") {
+    return {
+      arn: null,
+      name: null,
+      status: "unavailable",
+      credentialExpiration: null,
+      message:
+        objectStorage.status === "disabled"
+          ? "Object Storage is disabled by the deployment"
+          : objectStorage.backend === "swift"
+            ? "S3 access roles are not used by Swift"
+            : objectStorage.message,
+    };
+  }
+
   const projectId = normalizeProjectId(session.projectId);
   if (!projectId) {
     return {
@@ -122,6 +157,62 @@ function activeRole(session: SunriseSession): CloudRole {
   };
 }
 
+function objectStorageContext(
+  catalog: OpenStackCatalogService[] | null,
+  regionId: string | undefined,
+  policy: ServicePolicy,
+): CloudObjectStorage {
+  if (!isSunriseServiceEnabled(policy, "object-storage", regionId)) {
+    return {
+      backend: null,
+      status: "disabled",
+      message: "Disabled by the Sunrise deployment configuration",
+    };
+  }
+  if (!regionId) {
+    return {
+      backend: null,
+      status: "unknown",
+      message: "Select a region to resolve an Object Storage backend",
+    };
+  }
+  if (!catalog) {
+    return {
+      backend: null,
+      status: "unknown",
+      message: "Object Storage catalog availability could not be verified",
+    };
+  }
+
+  const resolution = resolveObjectStorageBackend(catalog, regionId, policy);
+  if (!resolution) {
+    return {
+      backend: null,
+      status: "unavailable",
+      message: `No configured Object Storage backend is available in ${regionId}`,
+    };
+  }
+  return {
+    backend: resolution.backend,
+    status: "available",
+    message: `${resolution.backend === "s3" ? "S3" : "Swift"} selected in ${regionId}`,
+  };
+}
+
+const resourceServices: Partial<
+  Record<ResourcePreference["kind"], OpenStackServiceId>
+> = {
+  instance: "compute",
+  volume: "volume",
+  image: "image",
+  cluster: "container-infra",
+  share: "share",
+  "share-snapshot": "share",
+  secret: "key-manager",
+  "secret-container": "key-manager",
+  "secret-order": "key-manager",
+};
+
 export function buildCloudContextSnapshot({
   session,
   prefs,
@@ -129,6 +220,7 @@ export function buildCloudContextSnapshot({
   regions,
   userName,
   catalog,
+  servicePolicy = defaultServicePolicy,
 }: BuildCloudContextInput): CloudContextSnapshot {
   const selectedProject = projects.find(
     (project) => project.id === session.projectId,
@@ -143,7 +235,12 @@ export function buildCloudContextSnapshot({
     "No project selected";
   const regionName =
     selectedRegion?.id ?? session.regionId ?? "No region selected";
-  const personalResources = visibleResourcePreferences({
+  const objectStorage = objectStorageContext(
+    catalog,
+    session.regionId,
+    servicePolicy,
+  );
+  const visiblePersonalResources = visibleResourcePreferences({
     recent: prefs.recentResources ?? [],
     pinned: prefs.pinnedResources ?? [],
     context: {
@@ -151,6 +248,28 @@ export function buildCloudContextSnapshot({
       regionId: session.regionId ?? "",
     },
   });
+  const personalResources = {
+    pinned: visiblePersonalResources.pinned.filter((resource) => {
+      if (resource.kind === "bucket" && objectStorage.backend !== "s3") {
+        return false;
+      }
+      const serviceId = resourceServices[resource.kind];
+      return (
+        !serviceId ||
+        isServiceEnabled(servicePolicy, serviceId, session.regionId)
+      );
+    }),
+    recent: visiblePersonalResources.recent.filter((resource) => {
+      if (resource.kind === "bucket" && objectStorage.backend !== "s3") {
+        return false;
+      }
+      const serviceId = resourceServices[resource.kind];
+      return (
+        !serviceId ||
+        isServiceEnabled(servicePolicy, serviceId, session.regionId)
+      );
+    }),
+  };
   const catalogStatus: CloudCatalog = session.keystoneProjectToken
     ? catalog
       ? {
@@ -165,7 +284,7 @@ export function buildCloudContextSnapshot({
         status: "authentication-required",
         message: "Sign in to verify service availability",
       };
-  const role = activeRole(session);
+  const role = activeRole(session, objectStorage);
 
   return {
     user: {
@@ -186,11 +305,16 @@ export function buildCloudContextSnapshot({
       status: session.regionId ? "selected" : "missing",
     },
     role,
+    objectStorage,
     catalog: catalogStatus,
     projects,
     regions,
-    services: buildServiceDirectory(catalog, session.regionId),
-    destinations: buildNavigationDestinations(catalog, session.regionId),
+    services: buildServiceDirectory(catalog, session.regionId, servicePolicy),
+    destinations: buildNavigationDestinations(
+      catalog,
+      session.regionId,
+      servicePolicy,
+    ),
     favoriteDestinations: parseFavoriteDestinationIds(
       prefs.favoriteDestinations,
     ),
@@ -200,6 +324,7 @@ export function buildCloudContextSnapshot({
       objectStorageRole: role,
       projectId: session.projectId,
       regionId: session.regionId,
+      policy: servicePolicy,
     }),
     personalResources,
   };

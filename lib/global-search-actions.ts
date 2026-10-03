@@ -18,6 +18,13 @@ import {
 } from "@/lib/openstack/request";
 import type { ResourceKind } from "@/lib/resource-preferences";
 import { barbicanIdFromRef } from "@/lib/openstack/barbican-schema";
+import { getServicePolicy } from "@/lib/deployment-config";
+import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
+import {
+  isServiceEnabled,
+  isSunriseServiceEnabled,
+  type OpenStackServiceId,
+} from "@/lib/service-policy";
 import { listBuckets } from "@/lib/s3/actions";
 import { getSession } from "@/lib/session";
 
@@ -29,6 +36,7 @@ type LoadedSource = {
 
 type OpenStackSearchSource = {
   kind: ResourceKind;
+  service: OpenStackServiceId;
   label: string;
   serviceType: string;
   serviceName: string;
@@ -43,6 +51,7 @@ type OpenStackSearchSource = {
 const openStackSources: OpenStackSearchSource[] = [
   {
     kind: "instance",
+    service: "compute",
     label: "Instances",
     serviceType: "compute",
     serviceName: "nova",
@@ -52,6 +61,7 @@ const openStackSources: OpenStackSearchSource[] = [
   },
   {
     kind: "volume",
+    service: "volume",
     label: "Volumes",
     serviceType: "volumev3",
     serviceName: "cinder",
@@ -61,6 +71,7 @@ const openStackSources: OpenStackSearchSource[] = [
   },
   {
     kind: "image",
+    service: "image",
     label: "Images",
     serviceType: "image",
     serviceName: "glance",
@@ -69,6 +80,7 @@ const openStackSources: OpenStackSearchSource[] = [
   },
   {
     kind: "share",
+    service: "share",
     label: "Shares",
     serviceType: "sharev2",
     serviceName: "manilav2",
@@ -81,6 +93,7 @@ const openStackSources: OpenStackSearchSource[] = [
   },
   {
     kind: "share-snapshot",
+    service: "share",
     label: "Share snapshots",
     serviceType: "sharev2",
     serviceName: "manilav2",
@@ -93,6 +106,7 @@ const openStackSources: OpenStackSearchSource[] = [
   },
   {
     kind: "secret",
+    service: "key-manager",
     label: "Secrets",
     serviceType: "key-manager",
     serviceName: "barbican",
@@ -111,6 +125,7 @@ const openStackSources: OpenStackSearchSource[] = [
   },
   {
     kind: "secret-container",
+    service: "key-manager",
     label: "Secret containers",
     serviceType: "key-manager",
     serviceName: "barbican",
@@ -129,6 +144,7 @@ const openStackSources: OpenStackSearchSource[] = [
   },
   {
     kind: "secret-order",
+    service: "key-manager",
     label: "Key orders",
     serviceType: "key-manager",
     serviceName: "barbican",
@@ -249,9 +265,17 @@ export async function loadGlobalSearchIndex(): Promise<GlobalSearchIndex> {
   const projectId = session.projectId;
 
   const catalog = await getServiceCatalog(token);
+  const policy = getServicePolicy();
+  const enabledOpenStackSources = openStackSources.filter((source) =>
+    isServiceEnabled(policy, source.service, regionId),
+  );
+  const objectStorageResolution =
+    catalog && isSunriseServiceEnabled(policy, "object-storage", regionId)
+      ? resolveObjectStorageBackend(catalog, regionId, policy)
+      : null;
   const loadedSources = await Promise.all([
     ...(catalog
-      ? openStackSources.map((source) =>
+      ? enabledOpenStackSources.map((source) =>
           loadOpenStackSource({
             source,
             catalog,
@@ -260,12 +284,12 @@ export async function loadGlobalSearchIndex(): Promise<GlobalSearchIndex> {
             projectId,
           }),
         )
-      : openStackSources.map((source): LoadedSource => ({
+      : enabledOpenStackSources.map((source): LoadedSource => ({
           kind: source.kind,
           items: [],
           unavailableSource: source.label,
         }))),
-    loadBucketSource(),
+    ...(objectStorageResolution?.backend === "s3" ? [loadBucketSource()] : []),
   ]);
 
   return {

@@ -14,9 +14,11 @@ import {
 } from "@/lib/session-lifetime";
 import {
   exchangeCodeForTokens,
+  isRgwOidcConfigured,
   resolveOidcIdentity,
   tokenExchangeForRgw,
 } from "@/lib/oidc/sunrise";
+import { getServicePolicy } from "@/lib/deployment-config";
 import {
   federateOidcWithKeystone,
   finalizeKeystoneSession,
@@ -25,6 +27,12 @@ import {
 } from "@/lib/keystone/login";
 import { getS3Endpoint } from "@/lib/s3/endpoint";
 import { assumeRoleWithIdToken, tryExtractRgwProjectRoles } from "@/lib/s3/sts";
+import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
+import {
+  isObjectStorageBackendEnabled,
+  isSunriseServiceEnabled,
+  type ServicePolicy,
+} from "@/lib/service-policy";
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "/";
 const PROTOCOL =
@@ -71,6 +79,18 @@ export async function GET(request: Request) {
     }
   }
 
+  let servicePolicy: ServicePolicy;
+  try {
+    servicePolicy = getServicePolicy();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Invalid service policy";
+    console.error("[oidc/callback] invalid service policy:", message);
+    return new NextResponse(`Sunrise configuration error: ${message}`, {
+      status: 500,
+    });
+  }
+
   let tokens;
   try {
     tokens = await exchangeCodeForTokens(code, verifier);
@@ -93,10 +113,23 @@ export async function GET(request: Request) {
     tokens.id_token,
     idp,
   );
-  const rgwExchangePromise = tokenExchangeForRgw(tokens.access_token).then(
-    (exchanged) => ({ ok: true as const, exchanged }),
-    (error: unknown) => ({ ok: false as const, error }),
+  const exchangeRgwToken = () =>
+    tokenExchangeForRgw(tokens.access_token).then(
+      (exchanged) => ({ ok: true as const, exchanged }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+  const canStartRgwExchange = Boolean(
+    session.regionId &&
+    isSunriseServiceEnabled(
+      servicePolicy,
+      "object-storage",
+      session.regionId,
+    ) &&
+    servicePolicy.objectStorageBackends.includes("s3") &&
+    isObjectStorageBackendEnabled(servicePolicy, "s3", session.regionId) &&
+    isRgwOidcConfigured(),
   );
+  const rgwExchangePromise = canStartRgwExchange ? exchangeRgwToken() : null;
   session.oidcIdentity = undefined;
   session.authRecovery = undefined;
   session.keystone_unscoped_token = undefined;
@@ -165,49 +198,68 @@ export async function GET(request: Request) {
       undefined,
   });
 
-  // 2. Token-exchange + STS for S3.
-  try {
-    const exchangeResult = await rgwExchangePromise;
-    if (!exchangeResult.ok) throw exchangeResult.error;
-    const exchanged = exchangeResult.exchanged;
-    const rgwIdToken = exchanged.id_token ?? exchanged.access_token;
-    const projectRoles = tryExtractRgwProjectRoles(
-      rgwIdToken,
-      exchanged.id_token,
-      exchanged.access_token,
-      tokens.id_token,
-      tokens.access_token,
-    );
-    if (!projectRoles) {
-      throw new Error("RGW project roles claim is missing from token");
-    }
-    const projectId = normalizeProjectId(session.projectId);
-    const roleArn = projectRoles[projectId];
-    if (!roleArn) {
-      throw new Error(`No RGW role ARN found for active project ${projectId}`);
-    }
+  // 2. Token-exchange + STS only when S3 is selected for this region.
+  const objectStorage =
+    resolution.catalog &&
+    session.regionId &&
+    isSunriseServiceEnabled(servicePolicy, "object-storage", session.regionId)
+      ? resolveObjectStorageBackend(
+          resolution.catalog,
+          session.regionId,
+          servicePolicy,
+        )
+      : null;
+  if (objectStorage?.backend === "s3") {
+    try {
+      if (!isRgwOidcConfigured()) {
+        throw new Error(
+          "KEYCLOAK_S3_CLIENT_ID is required for the selected S3 backend",
+        );
+      }
+      const exchangeResult = await (rgwExchangePromise ?? exchangeRgwToken());
+      if (!exchangeResult.ok) throw exchangeResult.error;
+      const exchanged = exchangeResult.exchanged;
+      const rgwIdToken = exchanged.id_token ?? exchanged.access_token;
+      const projectRoles = tryExtractRgwProjectRoles(
+        rgwIdToken,
+        exchanged.id_token,
+        exchanged.access_token,
+        tokens.id_token,
+        tokens.access_token,
+      );
+      if (!projectRoles) {
+        throw new Error("RGW project roles claim is missing from token");
+      }
+      const projectId = normalizeProjectId(session.projectId);
+      const roleArn = projectRoles[projectId];
+      if (!roleArn) {
+        throw new Error(
+          `No RGW role ARN found for active project ${projectId}`,
+        );
+      }
 
-    session.s3ProjectRoles = projectRoles;
-    if (!session.regionId || !session.keystoneProjectToken) {
-      throw new Error("Keystone project context is incomplete");
+      session.s3ProjectRoles = projectRoles;
+      if (!session.regionId || !session.keystoneProjectToken) {
+        throw new Error("Keystone project context is incomplete");
+      }
+      const endpoint = await getS3Endpoint({
+        regionId: session.regionId,
+        token: session.keystoneProjectToken,
+        catalog: resolution.catalog,
+      });
+      const creds = await assumeRoleWithIdToken(
+        rgwIdToken,
+        projectId,
+        roleArn,
+        endpoint,
+      );
+      setS3CredentialsForProject(session, creds);
+    } catch (e) {
+      // Non-fatal: user can still use other services. Object Storage will try
+      // one server-side credential refresh before showing its recovery state.
+      const msg = e instanceof Error ? e.message : "unknown error";
+      console.error("[oidc/callback] STS exchange failed (non-fatal):", msg);
     }
-    const endpoint = await getS3Endpoint({
-      regionId: session.regionId,
-      token: session.keystoneProjectToken,
-      catalog: resolution.catalog,
-    });
-    const creds = await assumeRoleWithIdToken(
-      rgwIdToken,
-      projectId,
-      roleArn,
-      endpoint,
-    );
-    setS3CredentialsForProject(session, creds);
-  } catch (e) {
-    // Non-fatal: user can still use other services. Object Storage will try
-    // one server-side credential refresh before showing its recovery state.
-    const msg = e instanceof Error ? e.message : "unknown error";
-    console.error("[oidc/callback] STS exchange failed (non-fatal):", msg);
   }
 
   await session.save();

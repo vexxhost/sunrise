@@ -19,6 +19,11 @@ import {
   requestJson,
   serviceUrl,
 } from "@/lib/openstack/request";
+import { getServicePolicy } from "@/lib/deployment-config";
+import {
+  isServiceEnabled,
+  type OpenStackServiceId,
+} from "@/lib/service-policy";
 
 const RESOURCE_LIMIT = 20;
 const CINDER_MESSAGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -30,6 +35,7 @@ type SourceLoadResult = {
 
 type SourceDefinition = {
   id: string;
+  policyService: OpenStackServiceId;
   label: string;
   href: string;
   serviceType: string;
@@ -355,6 +361,7 @@ async function loadMagnumSignals(
 const sourceDefinitions: SourceDefinition[] = [
   {
     id: "compute",
+    policyService: "compute",
     label: "Compute",
     href: "/compute/instances",
     serviceType: "compute",
@@ -364,6 +371,7 @@ const sourceDefinitions: SourceDefinition[] = [
   },
   {
     id: "block-storage",
+    policyService: "volume",
     label: "Block storage",
     href: "/compute/volumes",
     serviceType: "volumev3",
@@ -373,6 +381,7 @@ const sourceDefinitions: SourceDefinition[] = [
   },
   {
     id: "images",
+    policyService: "image",
     label: "Images",
     href: "/compute/images",
     serviceType: "image",
@@ -381,6 +390,7 @@ const sourceDefinitions: SourceDefinition[] = [
   },
   {
     id: "kubernetes",
+    policyService: "container-infra",
     label: "Kubernetes",
     href: "/kubernetes/clusters",
     serviceType: "container-infra",
@@ -524,10 +534,15 @@ export async function loadOperationalFeed({
   catalog?: OpenStackCatalogService[] | null;
   now?: number;
 }): Promise<OperationalFeed> {
+  const policy = getServicePolicy();
+  const definitions = sourceDefinitions.filter((definition) =>
+    isServiceEnabled(policy, definition.policyService, regionId),
+  );
+
   if (!token || !regionId || !projectId) {
     return {
       signals: [],
-      sources: sourceDefinitions.map((definition) =>
+      sources: definitions.map((definition) =>
         unavailableSource(
           definition,
           "unavailable",
@@ -544,7 +559,7 @@ export async function loadOperationalFeed({
   if (!catalog) {
     return {
       signals: [],
-      sources: sourceDefinitions.map((definition) =>
+      sources: definitions.map((definition) =>
         unavailableSource(
           definition,
           "unavailable",
@@ -555,7 +570,7 @@ export async function loadOperationalFeed({
   }
 
   const results = await Promise.all(
-    sourceDefinitions.map((definition) =>
+    definitions.map((definition) =>
       loadSource(definition, catalog, token, regionId, projectId, now),
     ),
   );

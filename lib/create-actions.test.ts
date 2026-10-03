@@ -6,6 +6,7 @@ import {
   isCreateActionRequested,
 } from "@/lib/create-actions";
 import type { OpenStackCatalogService } from "@/lib/openstack/catalog";
+import { parseServicePolicy } from "@/lib/service-policy";
 
 const catalog: OpenStackCatalogService[] = [
   {
@@ -137,6 +138,46 @@ describe("create action availability", () => {
       actions.find(({ id }) => id === "share-network")?.capability.status,
     ).toBe("available");
     expect(build().map(({ id }) => id)).not.toContain("load-balancer");
+  });
+
+  it("omits disabled services and S3-only actions in Swift mode", () => {
+    const actions = build({
+      catalog: [
+        ...catalog,
+        {
+          name: "object-storage",
+          type: "object-storage",
+          endpoints: [
+            {
+              interface: "public",
+              region: "RegionOne",
+              url: "https://swift.example.test",
+            },
+          ],
+        },
+      ],
+      policy: parseServicePolicy({
+        disabledServices: "identity",
+        objectStorageBackends: "swift,s3",
+      }),
+    });
+
+    expect(actions.some(({ service }) => service === "identity")).toBe(false);
+    expect(actions.some(({ service }) => service === "object-storage")).toBe(
+      false,
+    );
+  });
+
+  it("disables Cinder actions without hiding Nova or Glance", () => {
+    const actions = build({
+      policy: parseServicePolicy({ disabledServices: "volume" }),
+    });
+    const ids = actions.map(({ id }) => id);
+
+    expect(ids).toContain("instance");
+    expect(ids).toContain("image");
+    expect(ids).not.toContain("volume");
+    expect(ids).not.toContain("snapshot");
   });
 
   it("filters service actions and validates URL intents", () => {

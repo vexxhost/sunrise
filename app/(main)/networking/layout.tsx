@@ -1,4 +1,5 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
+import { ConfiguredService } from "@/components/services/ServiceGuards";
 
 const networkingSidebarSections = [
   {
@@ -36,8 +37,10 @@ export default function NetworkingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ServiceLayout sidebarSections={networkingSidebarSections}>
-      {children}
-    </ServiceLayout>
+    <ConfiguredService id="network">
+      <ServiceLayout sidebarSections={networkingSidebarSections}>
+        {children}
+      </ServiceLayout>
+    </ConfiguredService>
   );
 }

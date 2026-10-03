@@ -1,6 +1,6 @@
-import 'server-only';
-import { randomBytes, createHash } from 'crypto';
-import type { SunriseIdentity } from '@/lib/session';
+import "server-only";
+import { randomBytes, createHash } from "crypto";
+import type { SunriseIdentity } from "@/lib/session";
 
 /**
  * OIDC client config for the unified Sunrise login flow.
@@ -18,18 +18,18 @@ import type { SunriseIdentity } from '@/lib/session';
  * One user-visible login → both Keystone session and S3 STS creds.
  */
 
-export const OIDC_LOGIN_PATH = '/auth/oidc/login';
-export const OIDC_CALLBACK_PATH = '/auth/oidc/callback';
+export const OIDC_LOGIN_PATH = "/auth/oidc/login";
+export const OIDC_CALLBACK_PATH = "/auth/oidc/callback";
 
 export type SunriseOidcConfig = {
   issuer: string;
   clientId: string;
   clientSecret: string;
   redirectUri: string;
-  rgwAudience: string;
+  rgwAudience?: string;
 };
 
-export type OidcAuthorizationPrompt = 'login' | 'select_account';
+export type OidcAuthorizationPrompt = "login" | "select_account";
 
 export function getSunriseOidcConfig(): SunriseOidcConfig {
   const issuer = process.env.KEYCLOAK_ISSUER;
@@ -37,11 +37,10 @@ export function getSunriseOidcConfig(): SunriseOidcConfig {
   const clientSecret = process.env.KEYCLOAK_SERVER_CLIENT_SECRET;
   const dashboardUrl = process.env.DASHBOARD_URL;
   const rgwAudience = process.env.KEYCLOAK_S3_CLIENT_ID;
-  if (!issuer) throw new Error('KEYCLOAK_ISSUER not set');
-  if (!clientId) throw new Error('KEYCLOAK_SERVER_CLIENT_ID not set');
-  if (!clientSecret) throw new Error('KEYCLOAK_SERVER_CLIENT_SECRET not set');
-  if (!dashboardUrl) throw new Error('DASHBOARD_URL not set');
-  if (!rgwAudience) throw new Error('KEYCLOAK_S3_CLIENT_ID not set');
+  if (!issuer) throw new Error("KEYCLOAK_ISSUER not set");
+  if (!clientId) throw new Error("KEYCLOAK_SERVER_CLIENT_ID not set");
+  if (!clientSecret) throw new Error("KEYCLOAK_SERVER_CLIENT_SECRET not set");
+  if (!dashboardUrl) throw new Error("DASHBOARD_URL not set");
   return {
     issuer,
     clientId,
@@ -49,6 +48,10 @@ export function getSunriseOidcConfig(): SunriseOidcConfig {
     redirectUri: `${dashboardUrl}${OIDC_CALLBACK_PATH}`,
     rgwAudience,
   };
+}
+
+export function isRgwOidcConfigured() {
+  return Boolean(process.env.KEYCLOAK_S3_CLIENT_ID?.trim());
 }
 
 type OidcDiscovery = {
@@ -66,7 +69,7 @@ export async function discoverOidc(): Promise<OidcDiscovery> {
   }
   const { issuer } = getSunriseOidcConfig();
   const res = await fetch(`${issuer}/.well-known/openid-configuration`, {
-    cache: 'no-store',
+    cache: "no-store",
   });
   if (!res.ok) throw new Error(`OIDC discovery failed: ${res.status}`);
   const value = (await res.json()) as OidcDiscovery;
@@ -86,12 +89,12 @@ type IdTokenClaims = {
 };
 
 function decodeIdTokenClaims(idToken: string): IdTokenClaims | null {
-  const payload = idToken.split('.')[1];
+  const payload = idToken.split(".")[1];
   if (!payload) return null;
 
   try {
     return JSON.parse(
-      Buffer.from(payload, 'base64url').toString('utf8'),
+      Buffer.from(payload, "base64url").toString("utf8"),
     ) as IdTokenClaims;
   } catch {
     return null;
@@ -114,7 +117,7 @@ export function extractOidcIdentity(
   const intendedForClient =
     audiences.includes(clientId) || claims.azp === clientId;
   const expired =
-    typeof claims.exp === 'number' && claims.exp * 1000 <= Date.now();
+    typeof claims.exp === "number" && claims.exp * 1000 <= Date.now();
 
   if (claims.iss !== issuer || !intendedForClient || expired) return null;
 
@@ -146,7 +149,7 @@ export async function resolveOidcIdentity(
 
     const response = await fetch(userinfo_endpoint, {
       headers: { Authorization: `Bearer ${accessToken}` },
-      cache: 'no-store',
+      cache: "no-store",
     });
     if (!response.ok) return tokenIdentity;
 
@@ -167,22 +170,22 @@ export async function resolveOidcIdentity(
       identityProvider,
     };
   } catch (error) {
-    console.warn('Unable to load OIDC UserInfo; using ID token claims:', error);
+    console.warn("Unable to load OIDC UserInfo; using ID token claims:", error);
     return tokenIdentity;
   }
 }
 
 function base64url(buf: Buffer): string {
   return buf
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 export function generatePkce() {
   const verifier = base64url(randomBytes(32));
-  const challenge = base64url(createHash('sha256').update(verifier).digest());
+  const challenge = base64url(createHash("sha256").update(verifier).digest());
   return { verifier, challenge };
 }
 
@@ -198,7 +201,7 @@ export type CodeExchangeResult = {
   token_type: string;
 };
 
-export type RefreshTokenResult = Omit<CodeExchangeResult, 'id_token'> & {
+export type RefreshTokenResult = Omit<CodeExchangeResult, "id_token"> & {
   id_token?: string;
 };
 
@@ -209,18 +212,18 @@ export async function exchangeCodeForTokens(
   const { token_endpoint } = await discoverOidc();
   const { clientId, clientSecret, redirectUri } = getSunriseOidcConfig();
   const body = new URLSearchParams({
-    grant_type: 'authorization_code',
+    grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
     code_verifier: verifier,
   });
   const res = await fetch(token_endpoint, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      "Content-Type": "application/x-www-form-urlencoded",
       Authorization:
-        'Basic ' +
-        Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+        "Basic " +
+        Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
     },
     body,
   });
@@ -237,17 +240,17 @@ export async function refreshAccessToken(
   const { token_endpoint } = await discoverOidc();
   const { clientId, clientSecret } = getSunriseOidcConfig();
   const body = new URLSearchParams({
-    grant_type: 'refresh_token',
+    grant_type: "refresh_token",
     refresh_token: refreshToken,
   });
 
   const res = await fetch(token_endpoint, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      "Content-Type": "application/x-www-form-urlencoded",
       Authorization:
-        'Basic ' +
-        Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+        "Basic " +
+        Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
     },
     body,
   });
@@ -277,26 +280,29 @@ export async function tokenExchangeForRgw(
 ): Promise<TokenExchangeResult> {
   const { token_endpoint } = await discoverOidc();
   const { clientId, clientSecret, rgwAudience } = getSunriseOidcConfig();
+  if (!rgwAudience) {
+    throw new Error("KEYCLOAK_S3_CLIENT_ID is required for the S3 backend");
+  }
   const body = new URLSearchParams({
-    grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+    grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
     subject_token: subjectAccessToken,
-    subject_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+    subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
     // Keycloak < 26 (legacy token-exchange) cannot mint id_tokens here and
     // returns `requested_token_type unsupported`. We request access_token
     // instead; RGW STS validates it like any other JWT (signature + aud).
     // The audience mapper on `sunrise-server` ensures aud contains the RGW
     // client id. Switch to id_token once Keycloak is upgraded to 26+ with
     // `--features=token-exchange-standard-v2`.
-    requested_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+    requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
     audience: rgwAudience,
   });
   const res = await fetch(token_endpoint, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      "Content-Type": "application/x-www-form-urlencoded",
       Authorization:
-        'Basic ' +
-        Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+        "Basic " +
+        Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
     },
     body,
   });
@@ -316,14 +322,14 @@ export async function buildAuthorizeUrl(opts: {
   const { authorization_endpoint } = await discoverOidc();
   const { clientId, redirectUri } = getSunriseOidcConfig();
   const url = new URL(authorization_endpoint);
-  url.searchParams.set('response_type', 'code');
-  url.searchParams.set('client_id', clientId);
-  url.searchParams.set('redirect_uri', redirectUri);
-  url.searchParams.set('scope', opts.scope ?? 'openid profile email');
-  url.searchParams.set('state', opts.state);
-  url.searchParams.set('code_challenge', opts.challenge);
-  url.searchParams.set('code_challenge_method', 'S256');
-  if (opts.prompt) url.searchParams.set('prompt', opts.prompt);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", redirectUri);
+  url.searchParams.set("scope", opts.scope ?? "openid profile email");
+  url.searchParams.set("state", opts.state);
+  url.searchParams.set("code_challenge", opts.challenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  if (opts.prompt) url.searchParams.set("prompt", opts.prompt);
   return url.toString();
 }
 
@@ -336,10 +342,10 @@ export async function buildEndSessionUrl(opts: {
 
   const { clientId } = getSunriseOidcConfig();
   const url = new URL(end_session_endpoint);
-  url.searchParams.set('client_id', clientId);
-  url.searchParams.set('post_logout_redirect_uri', opts.postLogoutRedirectUri);
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("post_logout_redirect_uri", opts.postLogoutRedirectUri);
   if (opts.idTokenHint) {
-    url.searchParams.set('id_token_hint', opts.idTokenHint);
+    url.searchParams.set("id_token_hint", opts.idTokenHint);
   }
   return url.toString();
 }

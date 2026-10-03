@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import { clearS3Credentials, getSession } from "@/lib/session";
 import { refreshActiveProjectS3Credentials } from "@/lib/s3/session";
+import { getS3Endpoint } from "@/lib/s3/endpoint";
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "http://localhost";
 
@@ -25,6 +26,15 @@ export async function GET(request: Request) {
   const session = await getSession();
   if (session.sessionExpiryReason) {
     return NextResponse.redirect(new URL("/", DASHBOARD_URL), { status: 303 });
+  }
+  try {
+    await getS3Endpoint();
+  } catch {
+    clearS3Credentials(session);
+    await session.save();
+    return NextResponse.redirect(new URL("/object-storage", DASHBOARD_URL), {
+      status: 303,
+    });
   }
 
   try {

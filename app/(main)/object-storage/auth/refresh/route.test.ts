@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   return {
     clearS3Credentials: vi.fn(),
     getSession: vi.fn(),
+    getS3Endpoint: vi.fn(),
     refreshActiveProjectS3Credentials: vi.fn(),
   };
 });
@@ -16,6 +17,9 @@ vi.mock("@/lib/session", () => ({
 
 vi.mock("@/lib/s3/session", () => ({
   refreshActiveProjectS3Credentials: mocks.refreshActiveProjectS3Credentials,
+}));
+vi.mock("@/lib/s3/endpoint", () => ({
+  getS3Endpoint: mocks.getS3Endpoint,
 }));
 
 import { GET } from "./route";
@@ -32,6 +36,7 @@ describe("Object Storage auth refresh route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mocks.getS3Endpoint.mockResolvedValue("https://s3.example.test");
   });
 
   it("returns to the exact Object Storage view after silent renewal", async () => {
@@ -90,5 +95,24 @@ describe("Object Storage auth refresh route", () => {
     );
     expect(mocks.clearS3Credentials).toHaveBeenCalledWith(current);
     expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("returns to Object Storage when S3 is not the active backend", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.getS3Endpoint.mockRejectedValue(new Error("Swift selected"));
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/object-storage/auth/refresh?returnTo=%2Fobject-storage%2Fbuckets",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/object-storage",
+    );
+    expect(mocks.refreshActiveProjectS3Credentials).not.toHaveBeenCalled();
+    expect(mocks.clearS3Credentials).toHaveBeenCalledWith(current);
   });
 });

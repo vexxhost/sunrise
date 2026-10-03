@@ -2,8 +2,17 @@ import {
   resolveServiceEndpoint,
   type OpenStackCatalogService,
 } from "@/lib/openstack/catalog";
+import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
 import type { ServiceDirectoryId } from "@/lib/openstack/service-directory";
 import type { CreateActionId } from "@/lib/create-actions";
+import {
+  defaultServicePolicy,
+  enabledObjectStorageBackends,
+  isServiceEnabled,
+  type OpenStackServiceId,
+  type ObjectStorageBackend,
+  type ServicePolicy,
+} from "@/lib/service-policy";
 
 export const MAX_FAVORITE_DESTINATIONS = 12;
 
@@ -85,7 +94,9 @@ type NavigationDestinationDefinition = Omit<
   NavigationDestination,
   "status" | "message"
 > & {
+  policyService: OpenStackServiceId;
   catalogIdentities: CatalogIdentity[];
+  objectStorageBackend?: ObjectStorageBackend;
 };
 
 const nova = [{ serviceType: "compute", serviceName: "nova" }];
@@ -107,7 +118,7 @@ const s3 = [{ serviceType: "object-storage-s3", serviceName: "s3" }];
 const keystone = [{ serviceType: "identity", serviceName: "keystone" }];
 const manila = [
   { serviceType: "sharev2", serviceName: "manilav2" },
-  { serviceType: "shared-file-system", serviceName: "manila" },
+  { serviceType: "share", serviceName: "manila" },
 ];
 const barbican = [{ serviceType: "key-manager", serviceName: "barbican" }];
 
@@ -118,6 +129,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Virtual machines in the active project.",
     href: "/compute/instances",
     service: "compute",
+    policyService: "compute",
     group: "Compute",
     icon: "instance",
     keywords: ["servers", "virtual machines", "vm", "ec2", "compute engine"],
@@ -129,6 +141,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "CPU, memory, and disk profiles for instances.",
     href: "/compute/instance-flavors",
     service: "compute",
+    policyService: "compute",
     group: "Compute",
     icon: "flavor",
     keywords: ["sizes", "machine types", "instance types", "nova flavors"],
@@ -140,6 +153,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Bootable operating-system and appliance images.",
     href: "/compute/images",
     service: "compute",
+    policyService: "image",
     group: "Compute",
     icon: "image",
     keywords: ["glance", "ami", "boot images", "machine images"],
@@ -151,6 +165,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "SSH public keys used to access instances.",
     href: "/compute/key-pairs",
     service: "compute",
+    policyService: "compute",
     group: "Compute",
     icon: "key-pair",
     keywords: ["ssh", "public keys", "credentials"],
@@ -162,6 +177,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Persistent block-storage disks.",
     href: "/compute/volumes",
     service: "compute",
+    policyService: "volume",
     group: "Block storage",
     icon: "volume",
     keywords: ["cinder", "disks", "block storage", "ebs"],
@@ -173,6 +189,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Point-in-time copies of block-storage volumes.",
     href: "/compute/snapshots",
     service: "compute",
+    policyService: "volume",
     group: "Block storage",
     icon: "snapshot",
     keywords: ["cinder", "backups", "disk snapshots"],
@@ -184,6 +201,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Project networks and their subnets.",
     href: "/networking/networks",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     icon: "network",
     keywords: ["neutron", "vpc", "subnets", "private networks"],
@@ -195,6 +213,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Interactive map of project network relationships.",
     href: "/networking/topology",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     icon: "topology",
     keywords: ["neutron", "map", "diagram", "visualizer"],
@@ -206,6 +225,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Connect project subnets and external gateways.",
     href: "/networking/routers",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     icon: "router",
     keywords: ["neutron", "gateway", "routing", "vpc router"],
@@ -217,6 +237,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Virtual network interfaces and addresses.",
     href: "/networking/ports",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     icon: "port",
     keywords: ["neutron", "interfaces", "nic", "network adapters"],
@@ -228,6 +249,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Public addresses allocated to project resources.",
     href: "/networking/floating-ips",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     icon: "floating-ip",
     keywords: ["neutron", "public ip", "elastic ip", "eip"],
@@ -239,6 +261,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Stateful firewall policies for project resources.",
     href: "/networking/security-groups",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     icon: "security-group",
     keywords: ["neutron", "firewall", "rules", "network acl"],
@@ -250,6 +273,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Magnum-backed Kubernetes control planes and node groups.",
     href: "/kubernetes/clusters",
     service: "kubernetes",
+    policyService: "container-infra",
     group: "Kubernetes",
     icon: "cluster",
     keywords: ["magnum", "k8s", "eks", "gke", "aks", "capi"],
@@ -261,6 +285,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Reusable Kubernetes infrastructure defaults.",
     href: "/kubernetes/templates",
     service: "kubernetes",
+    policyService: "container-infra",
     group: "Kubernetes",
     icon: "cluster-template",
     keywords: ["magnum", "k8s", "capi", "node image"],
@@ -272,10 +297,12 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "S3-compatible buckets and objects.",
     href: "/object-storage/buckets",
     service: "object-storage",
+    policyService: "object-storage-s3",
     group: "Object Storage",
     icon: "bucket",
     keywords: ["s3", "rgw", "object storage", "blob storage"],
     catalogIdentities: s3,
+    objectStorageBackend: "s3",
   },
   {
     id: "object-storage.roles",
@@ -283,10 +310,12 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "IAM roles in the active RGW account.",
     href: "/object-storage/roles",
     service: "object-storage",
+    policyService: "object-storage-s3",
     group: "Object Storage",
     icon: "role",
     keywords: ["s3", "rgw", "iam", "access roles", "sts"],
     catalogIdentities: s3,
+    objectStorageBackend: "s3",
   },
   {
     id: "identity.application-credentials",
@@ -294,6 +323,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Project-scoped credentials for automation.",
     href: "/identity/application-credentials",
     service: "identity",
+    policyService: "identity",
     group: "Identity",
     icon: "application-credential",
     keywords: ["keystone", "api credentials", "automation", "service account"],
@@ -305,6 +335,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Mountable shared file systems.",
     href: "/shared-file-systems/shares",
     service: "shared-file-system",
+    policyService: "share",
     group: "Shared File System",
     icon: "share",
     keywords: ["manila", "nfs", "shared storage", "file shares"],
@@ -316,6 +347,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Point-in-time copies of shared file systems.",
     href: "/shared-file-systems/snapshots",
     service: "shared-file-system",
+    policyService: "share",
     group: "Shared File System",
     icon: "snapshot",
     keywords: ["manila", "nfs", "share snapshot", "backup"],
@@ -327,6 +359,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Network context used by shared file systems.",
     href: "/shared-file-systems/share-networks",
     service: "shared-file-system",
+    policyService: "share",
     group: "Shared File System",
     icon: "share-network",
     keywords: ["manila", "nfs", "share network", "subnet"],
@@ -338,6 +371,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Directory authentication for Manila share servers.",
     href: "/shared-file-systems/security-services",
     service: "shared-file-system",
+    policyService: "share",
     group: "Shared File System",
     icon: "security-service",
     keywords: ["manila", "ldap", "kerberos", "active directory"],
@@ -349,6 +383,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Encrypted keys, certificates, and protected values.",
     href: "/key-manager/secrets",
     service: "key-manager",
+    policyService: "key-manager",
     group: "Key Manager",
     icon: "secret",
     keywords: ["barbican", "key vault", "secret manager", "kms"],
@@ -360,6 +395,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Typed groups of related secrets.",
     href: "/key-manager/containers",
     service: "key-manager",
+    policyService: "key-manager",
     group: "Key Manager",
     icon: "container",
     keywords: ["barbican", "certificates", "secret groups"],
@@ -371,6 +407,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Server-side key and certificate generation requests.",
     href: "/key-manager/orders",
     service: "key-manager",
+    policyService: "key-manager",
     group: "Key Manager",
     icon: "order",
     keywords: ["barbican", "generate key", "certificate request"],
@@ -382,6 +419,7 @@ const definitions: NavigationDestinationDefinition[] = [
     description: "Available Key Manager storage backends.",
     href: "/key-manager/secret-stores",
     service: "key-manager",
+    policyService: "key-manager",
     group: "Key Manager",
     icon: "secret-store",
     keywords: ["barbican", "backends", "plugins", "vault"],
@@ -407,7 +445,15 @@ export const serviceDirectorySearchTerms: Record<ServiceDirectoryId, string[]> =
     compute: ["nova", "glance", "cinder", "virtual machines"],
     networking: ["neutron", "networks", "routers", "ports", "firewall"],
     kubernetes: ["magnum", "k8s", "capi", "containers"],
-    "object-storage": ["s3", "rgw", "buckets", "iam"],
+    "object-storage": [
+      "s3",
+      "rgw",
+      "swift",
+      "buckets",
+      "containers",
+      "objects",
+      "iam",
+    ],
     identity: ["keystone", "application credentials", "access"],
     orchestration: ["heat", "stacks", "infrastructure as code"],
     dns: ["designate", "zones", "records"],
@@ -501,34 +547,53 @@ export function toggleFavoriteDestination(
 export function buildNavigationDestinations(
   catalog: OpenStackCatalogService[] | null,
   regionId?: string | null,
+  policy: ServicePolicy = defaultServicePolicy,
 ): NavigationDestination[] {
-  return definitions.map((definition) => {
-    let status: NavigationDestinationStatus;
-    let message: string;
+  const selectedObjectStorageBackend =
+    catalog && regionId
+      ? (resolveObjectStorageBackend(catalog, regionId, policy)?.backend ??
+        null)
+      : (enabledObjectStorageBackends(policy, regionId)[0] ?? null);
 
-    if (!regionId) {
-      status = "unknown";
-      message = "Select a region to verify availability";
-    } else if (!catalog) {
-      status = "unknown";
-      message = "Catalog availability could not be verified";
-    } else {
-      const available = definition.catalogIdentities.some(
-        ({ serviceType, serviceName }) =>
-          resolveServiceEndpoint(
-            catalog,
-            regionId,
-            serviceType,
-            serviceName,
-          ) !== null,
-      );
-      status = available ? "available" : "unavailable";
-      message = available
-        ? `Available in ${regionId}`
-        : `Unavailable in ${regionId}`;
-    }
+  return definitions
+    .filter(
+      (definition) =>
+        isServiceEnabled(policy, definition.policyService, regionId) &&
+        (!definition.objectStorageBackend ||
+          definition.objectStorageBackend === selectedObjectStorageBackend),
+    )
+    .map((definition) => {
+      let status: NavigationDestinationStatus;
+      let message: string;
 
-    const { catalogIdentities: _, ...destination } = definition;
-    return { ...destination, status, message };
-  });
+      if (!regionId) {
+        status = "unknown";
+        message = "Select a region to verify availability";
+      } else if (!catalog) {
+        status = "unknown";
+        message = "Catalog availability could not be verified";
+      } else {
+        const available = definition.catalogIdentities.some(
+          ({ serviceType, serviceName }) =>
+            resolveServiceEndpoint(
+              catalog,
+              regionId,
+              serviceType,
+              serviceName,
+            ) !== null,
+        );
+        status = available ? "available" : "unavailable";
+        message = available
+          ? `Available in ${regionId}`
+          : `Unavailable in ${regionId}`;
+      }
+
+      const {
+        catalogIdentities: _,
+        objectStorageBackend: __,
+        policyService: ___,
+        ...destination
+      } = definition;
+      return { ...destination, status, message };
+    });
 }

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
     saveSessionActivity: vi.fn(),
     startSessionLifetime: vi.fn(),
     exchangeCodeForTokens: vi.fn(),
+    isRgwOidcConfigured: vi.fn(),
     resolveOidcIdentity: vi.fn(),
     tokenExchangeForRgw: vi.fn(),
     federateOidcWithKeystone: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("@/lib/session", () => ({
 
 vi.mock("@/lib/oidc/sunrise", () => ({
   exchangeCodeForTokens: mocks.exchangeCodeForTokens,
+  isRgwOidcConfigured: mocks.isRgwOidcConfigured,
   resolveOidcIdentity: mocks.resolveOidcIdentity,
   tokenExchangeForRgw: mocks.tokenExchangeForRgw,
 }));
@@ -84,7 +86,19 @@ function readyResolution() {
     region: { id: "RegionOne" },
     projects: [{ id: "project-1", name: "Project One" }],
     regions: [{ id: "RegionOne" }],
-    catalog: [{ name: "s3", type: "object-storage-s3", endpoints: [] }],
+    catalog: [
+      {
+        name: "s3",
+        type: "object-storage-s3",
+        endpoints: [
+          {
+            interface: "public",
+            region: "RegionOne",
+            url: "https://s3.example.test",
+          },
+        ],
+      },
+    ],
     userName: "operator@example.test",
   };
 }
@@ -92,6 +106,9 @@ function readyResolution() {
 describe("OIDC callback recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.SUNRISE_DISABLED_SERVICES;
+    delete process.env.SUNRISE_DISABLED_SERVICES_BY_REGION;
+    delete process.env.SUNRISE_OBJECT_STORAGE_BACKENDS;
     mocks.exchangeCodeForTokens.mockResolvedValue({
       access_token: "access-token",
       id_token: "id-token",
@@ -100,6 +117,7 @@ describe("OIDC callback recovery", () => {
       token_type: "Bearer",
     });
     mocks.resolveOidcIdentity.mockResolvedValue(identity);
+    mocks.isRgwOidcConfigured.mockReturnValue(true);
     mocks.federateOidcWithKeystone.mockResolvedValue("unscoped-token");
     mocks.tokenExchangeForRgw.mockResolvedValue({
       access_token: "rgw-token",
@@ -134,7 +152,7 @@ describe("OIDC callback recovery", () => {
     });
     expect(current.save).toHaveBeenCalled();
     expect(mocks.startSessionLifetime).toHaveBeenCalledWith(current);
-    expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith("access-token");
+    expect(mocks.tokenExchangeForRgw).not.toHaveBeenCalled();
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
@@ -159,6 +177,92 @@ describe("OIDC callback recovery", () => {
     expect(mocks.saveSessionActivity).toHaveBeenCalledWith("session-1");
     expect(mocks.startSessionLifetime).not.toHaveBeenCalled();
     expect(current.sessionSignedInAt).toBe(now - 1_000);
+  });
+
+  it("completes Keystone login when S3 is absent and OIDC is not configured", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.isRgwOidcConfigured.mockReturnValue(false);
+    mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
+      activeSession.projectId = "project-1";
+      activeSession.regionId = "RegionOne";
+      activeSession.keystoneProjectToken = "project-token";
+      return {
+        ...readyResolution(),
+        catalog: [
+          {
+            name: "nova",
+            type: "compute",
+            endpoints: [
+              {
+                interface: "public",
+                region: "RegionOne",
+                url: "https://nova.example.test",
+              },
+            ],
+          },
+        ],
+      };
+    });
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(mocks.tokenExchangeForRgw).not.toHaveBeenCalled();
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+    expect(current).toMatchObject({
+      projectId: "project-1",
+      keystoneProjectToken: "project-token",
+    });
+  });
+
+  it("skips S3 exchange when the backend is disabled in the selected region", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES_BY_REGION = JSON.stringify({
+      RegionOne: ["object-storage-s3"],
+    });
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
+      activeSession.projectId = "project-1";
+      activeSession.regionId = "RegionOne";
+      activeSession.keystoneProjectToken = "project-token";
+      return readyResolution();
+    });
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(mocks.tokenExchangeForRgw).not.toHaveBeenCalled();
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+  });
+
+  it("reports invalid service policy before consuming the OIDC code", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES_BY_REGION = JSON.stringify({
+      RegionOne: ["not-a-service"],
+    });
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.text()).resolves.toContain(
+      "Sunrise configuration error",
+    );
+    expect(mocks.exchangeCodeForTokens).not.toHaveBeenCalled();
+    expect(current.save).not.toHaveBeenCalled();
   });
 
   it("rejects continuation after the absolute lifetime", async () => {
@@ -259,7 +363,7 @@ describe("OIDC callback recovery", () => {
   });
 
   it("starts RGW exchange while cold Keystone setup is still resolving", async () => {
-    const current = session();
+    const current = { ...session(), regionId: "RegionOne" };
     mocks.getSession.mockResolvedValue(current);
     let finishKeystone!: (value: ReturnType<typeof readyResolution>) => void;
     mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {

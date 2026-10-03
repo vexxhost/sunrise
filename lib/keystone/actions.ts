@@ -1,15 +1,22 @@
-'use server';
+"use server";
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath } from "next/cache";
 import {
   clearS3Credentials,
   getS3CredentialsForProject,
   getSession,
-} from '@/lib/session';
-import { writePrefs } from '@/lib/prefs';
-import type { Region, Project } from '@/types/openstack';
-import { getProjectScopedToken } from '@/lib/keystone/login';
-import { refreshActiveProjectS3Credentials } from '@/lib/s3/session';
+} from "@/lib/session";
+import { writePrefs } from "@/lib/prefs";
+import type { Region, Project } from "@/types/openstack";
+import { getProjectScopedToken } from "@/lib/keystone/login";
+import { refreshActiveProjectS3Credentials } from "@/lib/s3/session";
+import { getServicePolicy } from "@/lib/deployment-config";
+import { getServiceCatalog } from "@/lib/openstack/catalog";
+import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
+import {
+  isObjectStorageBackendEnabled,
+  isSunriseServiceEnabled,
+} from "@/lib/service-policy";
 
 /**
  * Server Action to set the selected region
@@ -25,7 +32,7 @@ export async function setRegion(region: Region) {
   await writePrefs({ regionId: region.id });
 
   // Revalidate all pages to pick up new region
-  revalidatePath('/', 'layout');
+  revalidatePath("/", "layout");
 }
 
 /**
@@ -46,10 +53,13 @@ export async function setProject(project: Project) {
   );
 
   if (!token) {
-    console.error('[keystone] failed to switch project: scoped token unavailable', {
-      projectId: project.id,
-      projectName: project.name,
-    });
+    console.error(
+      "[keystone] failed to switch project: scoped token unavailable",
+      {
+        projectId: project.id,
+        projectName: project.name,
+      },
+    );
     return;
   }
 
@@ -57,14 +67,34 @@ export async function setProject(project: Project) {
   session.keystoneProjectToken = token;
   clearS3Credentials(session);
 
-  if (!getS3CredentialsForProject(session, project.id)) {
+  const servicePolicy = getServicePolicy();
+  const catalog =
+    session.regionId &&
+    isSunriseServiceEnabled(
+      servicePolicy,
+      "object-storage",
+      session.regionId,
+    ) &&
+    servicePolicy.objectStorageBackends.includes("s3") &&
+    isObjectStorageBackendEnabled(servicePolicy, "s3", session.regionId)
+      ? await getServiceCatalog(token)
+      : null;
+  const objectStorage =
+    catalog && session.regionId
+      ? resolveObjectStorageBackend(catalog, session.regionId, servicePolicy)
+      : null;
+
+  if (
+    objectStorage?.backend === "s3" &&
+    !getS3CredentialsForProject(session, project.id)
+  ) {
     try {
       await refreshActiveProjectS3Credentials(session);
     } catch (err) {
-      console.error('[keystone] failed to refresh S3 credentials for project', {
+      console.error("[keystone] failed to refresh S3 credentials for project", {
         projectId: project.id,
         projectName: project.name,
-        error: err instanceof Error ? err.message : 'unknown error',
+        error: err instanceof Error ? err.message : "unknown error",
       });
     }
   }
@@ -73,5 +103,5 @@ export async function setProject(project: Project) {
   await writePrefs({ projectId: project.id, projectName: project.name });
 
   // Revalidate all pages to pick up new project
-  revalidatePath('/', 'layout');
+  revalidatePath("/", "layout");
 }

@@ -1,10 +1,9 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
+import { ConfiguredService } from "@/components/services/ServiceGuards";
 
 const orchestrationSidebarSections = [
   {
-    items: [
-      { name: "Overview", href: "/orchestration", icon: "Gauge" },
-    ],
+    items: [{ name: "Overview", href: "/orchestration", icon: "Gauge" }],
   },
   {
     title: "Stacks",
@@ -16,7 +15,11 @@ const orchestrationSidebarSections = [
   {
     title: "Resources",
     items: [
-      { name: "Resource Types", href: "/orchestration/resource-types", icon: "Settings" },
+      {
+        name: "Resource Types",
+        href: "/orchestration/resource-types",
+        icon: "Settings",
+      },
     ],
   },
 ];
@@ -27,8 +30,10 @@ export default function OrchestrationLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ServiceLayout sidebarSections={orchestrationSidebarSections}>
-      {children}
-    </ServiceLayout>
+    <ConfiguredService id="orchestration">
+      <ServiceLayout sidebarSections={orchestrationSidebarSections}>
+        {children}
+      </ServiceLayout>
+    </ConfiguredService>
   );
 }

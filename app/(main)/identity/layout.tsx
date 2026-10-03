@@ -1,4 +1,5 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
+import { ConfiguredService } from "@/components/services/ServiceGuards";
 
 const identitySidebarSections = [
   {
@@ -22,8 +23,10 @@ export default function IdentityLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ServiceLayout sidebarSections={identitySidebarSections}>
-      {children}
-    </ServiceLayout>
+    <ConfiguredService id="identity">
+      <ServiceLayout sidebarSections={identitySidebarSections}>
+        {children}
+      </ServiceLayout>
+    </ConfiguredService>
   );
 }

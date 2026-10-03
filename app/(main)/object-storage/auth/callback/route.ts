@@ -7,6 +7,7 @@ import {
 import { exchangeCodeForTokens } from "@/lib/s3/oidc";
 import { assumeRoleWithIdToken, tryExtractRgwProjectRoles } from "@/lib/s3/sts";
 import { getOidcConfig, normalizeObjectStorageReturnTo } from "@/lib/s3/oidc";
+import { getS3Endpoint } from "@/lib/s3/endpoint";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -17,6 +18,11 @@ export async function GET(request: Request) {
   const session = await getSession();
   if (session.sessionExpiryReason) {
     return NextResponse.redirect(new URL("/", request.url));
+  }
+  try {
+    await getS3Endpoint();
+  } catch {
+    return NextResponse.redirect(new URL("/object-storage", request.url));
   }
   const expectedState = session.s3OidcState;
   const verifier = session.s3OidcVerifier;
