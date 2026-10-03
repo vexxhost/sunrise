@@ -11,6 +11,7 @@ import type {
   ManilaShareNetwork,
   ManilaShareNetworkSubnet,
   ManilaSecurityService,
+  ManilaSecurityServiceNetworkRef,
   ManilaShareSnapshot,
   ManilaShareType,
   Network,
@@ -155,19 +156,38 @@ export async function getShareNetworkSubnet(
   return payload.share_network_subnet;
 }
 
-function redactSecurityService(
-  service: ManilaSecurityService & { password?: string | null },
+type ManilaSecurityServiceResponse = Omit<
+  ManilaSecurityService,
+  "share_networks"
+> & {
+  password?: string | null;
+  share_networks?: Array<string | ManilaSecurityServiceNetworkRef>;
+};
+
+export function normalizeSecurityService(
+  service: ManilaSecurityServiceResponse,
 ): ManilaSecurityService {
-  const { password: _password, ...safeService } = service;
-  return safeService;
+  const {
+    password: _password,
+    share_networks: shareNetworks,
+    ...safeService
+  } = service;
+  return {
+    ...safeService,
+    ...(shareNetworks
+      ? {
+          share_networks: shareNetworks.map((network) =>
+            typeof network === "string" ? { id: network } : network,
+          ),
+        }
+      : {}),
+  };
 }
 
 export async function listSecurityServices() {
   const { projectId, projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{
-    security_services?: Array<
-      ManilaSecurityService & { password?: string | null }
-    >;
+    security_services?: ManilaSecurityServiceResponse[];
   }>(`/${projectPathId}/security-services/detail?all_tenants=0`);
   return (payload?.security_services ?? [])
     .filter(
@@ -176,13 +196,13 @@ export async function listSecurityServices() {
         normalizeProjectId(service.project_id) ===
           normalizeProjectId(projectId),
     )
-    .map(redactSecurityService);
+    .map(normalizeSecurityService);
 }
 
 export async function getSecurityService(id: string) {
   const { projectId, projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{
-    security_service?: ManilaSecurityService & { password?: string | null };
+    security_service?: ManilaSecurityServiceResponse;
   }>(
     `/${projectPathId}/security-services/${resourceId(id, "security service ID")}`,
   );
@@ -190,7 +210,7 @@ export async function getSecurityService(id: string) {
     throw new Error("Manila did not return the security service");
   }
   assertActiveProject(payload.security_service.project_id, projectId);
-  return redactSecurityService(payload.security_service);
+  return normalizeSecurityService(payload.security_service);
 }
 
 export async function listShareNetworkSecurityServices(shareNetworkId: string) {

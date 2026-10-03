@@ -298,7 +298,7 @@ describe("Manila project scoping", () => {
             id: "attached",
             type: "ldap",
             project_id: "project-a",
-            share_networks: [{ id: "share-network-a" }],
+            share_networks: ["share-network-a"],
           },
           {
             id: "unattached",
@@ -312,6 +312,11 @@ describe("Manila project scoping", () => {
 
     await expect(
       listShareNetworkSecurityServices("share-network-a"),
-    ).resolves.toEqual([expect.objectContaining({ id: "attached" })]);
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "attached",
+        share_networks: [{ id: "share-network-a" }],
+      }),
+    ]);
   });
 });

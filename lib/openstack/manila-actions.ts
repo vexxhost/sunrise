@@ -19,6 +19,7 @@ import {
   getShareSnapshot,
   MANILA_API_VERSION,
   MANILA_SERVICE,
+  normalizeSecurityService,
 } from "@/lib/openstack/manila-server";
 import type {
   ManilaShare,
@@ -218,12 +219,13 @@ function securityServiceFromPayload(payload: unknown) {
   ) {
     throw new Error("Manila did not return the security service");
   }
-  const { password: _password, ...service } = (
-    payload as {
-      security_service: ManilaSecurityService & { password?: string | null };
-    }
-  ).security_service;
-  return service;
+  return normalizeSecurityService(
+    (
+      payload as {
+        security_service: Parameters<typeof normalizeSecurityService>[0];
+      }
+    ).security_service,
+  );
 }
 
 function resourcePreflightFailure(
