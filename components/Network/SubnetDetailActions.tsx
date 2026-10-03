@@ -7,6 +7,7 @@ import { Router as RouterIcon, Trash2, Unplug } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { IPv6ConfigurationField } from "@/components/Network/IPv6ConfigurationField";
 import { SubnetAddressFields } from "@/components/Network/SubnetAddressFields";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,14 @@ import {
   removeRouterInterfaceAction,
   updateSubnetAction,
 } from "@/lib/openstack/neutron-actions";
-import type { AllocationPool, Port, Router, Subnet } from "@/types/openstack";
+import { getIpv6ConfigurationMode } from "@/lib/openstack/neutron-ipv6";
+import type {
+  AllocationPool,
+  HostRoute,
+  Port,
+  Router,
+  Subnet,
+} from "@/types/openstack";
 
 export function SubnetDetailActions({
   projectId,
@@ -63,11 +71,19 @@ export function SubnetDetailActions({
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState(subnet.name);
   const [gatewayIp, setGatewayIp] = useState(subnet.gateway_ip ?? "");
+  const [disableGateway, setDisableGateway] = useState(
+    subnet.gateway_ip === null,
+  );
   const [enableDhcp, setEnableDhcp] = useState(subnet.enable_dhcp);
+  const ipv6Mode = getIpv6ConfigurationMode(
+    subnet.ipv6_address_mode,
+    subnet.ipv6_ra_mode,
+  );
   const [allocationPools, setAllocationPools] = useState<AllocationPool[]>(
     subnet.allocation_pools,
   );
   const [dnsNameservers, setDnsNameservers] = useState(subnet.dns_nameservers);
+  const [hostRoutes, setHostRoutes] = useState<HostRoute[]>(subnet.host_routes);
   const [routerId, setRouterId] = useState("");
   const [detachRouterId, setDetachRouterId] = useState("");
   const connectedRouterIds = useMemo(
@@ -93,15 +109,18 @@ export function SubnetDetailActions({
   const canAttachRouter =
     connectedRouters.length === 0 && availableRouters.length > 0;
   const detachRouter = routers.find((router) => router.id === detachRouterId);
+  const ipv6ModeRequiresDhcp = subnet.ip_version === 6 && ipv6Mode !== "none";
 
   const open = (next: typeof dialog) => {
     setError(null);
     if (next === "edit") {
       setName(subnet.name);
       setGatewayIp(subnet.gateway_ip ?? "");
+      setDisableGateway(subnet.gateway_ip === null);
       setEnableDhcp(subnet.enable_dhcp);
       setAllocationPools(subnet.allocation_pools);
       setDnsNameservers(subnet.dns_nameservers);
+      setHostRoutes(subnet.host_routes);
     }
     if (next === "router") {
       setRouterId(canAttachRouter ? (availableRouters[0]?.id ?? "") : "");
@@ -121,10 +140,15 @@ export function SubnetDetailActions({
         {
           name,
           description: subnet.description,
+          cidr: subnet.cidr,
+          ipVersion: subnet.ip_version,
           gatewayIp: gatewayIp || undefined,
+          disableGateway,
           enableDhcp,
+          currentIpv6Mode: ipv6Mode,
           allocationPools,
           dnsNameservers,
+          hostRoutes,
         },
       );
       if (!result.ok) {
@@ -244,38 +268,94 @@ export function SubnetDetailActions({
                   onChange={(event) => setName(event.target.value)}
                 />
               </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor={`subnet-cidr-${subnet.id}`}>CIDR</Label>
+                  <Input
+                    id={`subnet-cidr-${subnet.id}`}
+                    readOnly
+                    value={subnet.cidr}
+                    className="font-mono text-muted-foreground"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`subnet-ip-version-${subnet.id}`}>
+                    IP version
+                  </Label>
+                  <Input
+                    id={`subnet-ip-version-${subnet.id}`}
+                    readOnly
+                    value={`IPv${subnet.ip_version}`}
+                    className="text-muted-foreground"
+                  />
+                </div>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor={`subnet-gateway-${subnet.id}`}>
                   Gateway IP
                 </Label>
                 <Input
                   id={`subnet-gateway-${subnet.id}`}
-                  placeholder="No gateway"
+                  required={!disableGateway}
+                  placeholder="Enter a gateway address"
                   value={gatewayIp}
-                  disabled={pending}
+                  disabled={pending || disableGateway}
                   onChange={(event) => setGatewayIp(event.target.value)}
                 />
               </div>
               <label className="flex items-start gap-3 rounded-md border p-3">
                 <Checkbox
-                  checked={enableDhcp}
+                  checked={disableGateway}
                   disabled={pending}
+                  onCheckedChange={(value) => setDisableGateway(value === true)}
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Disable gateway
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Remove the subnet&apos;s default gateway.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 rounded-md border p-3">
+                <Checkbox
+                  checked={enableDhcp}
+                  disabled={pending || ipv6ModeRequiresDhcp}
                   onCheckedChange={(value) => setEnableDhcp(value === true)}
                 />
                 <span>
                   <span className="block text-sm font-medium">Enable DHCP</span>
                   <span className="block text-xs text-muted-foreground">
-                    Automatically configure addresses for attached ports.
+                    {ipv6ModeRequiresDhcp
+                      ? "Required by this subnet's IPv6 address configuration."
+                      : "Automatically configure addresses for attached ports."}
                   </span>
                 </span>
               </label>
+              {subnet.ip_version === 6 ? (
+                <div className="space-y-1.5">
+                  <IPv6ConfigurationField
+                    id={`subnet-ipv6-configuration-${subnet.id}`}
+                    mode={ipv6Mode}
+                    disabled
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    IPv6 address configuration cannot be changed after subnet
+                    creation.
+                  </p>
+                </div>
+              ) : null}
               <SubnetAddressFields
                 idPrefix={`edit-subnet-${subnet.id}`}
                 allocationPools={allocationPools}
                 dnsNameservers={dnsNameservers}
+                hostRoutes={hostRoutes}
                 disabled={pending}
+                ipVersion={subnet.ip_version}
                 onAllocationPoolsChange={setAllocationPools}
                 onDnsNameserversChange={setDnsNameservers}
+                onHostRoutesChange={setHostRoutes}
               />
             </div>
             {error ? <MutationAlert>{error}</MutationAlert> : null}
@@ -288,7 +368,14 @@ export function SubnetDetailActions({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
+              <Button
+                type="submit"
+                disabled={
+                  pending ||
+                  !name.trim() ||
+                  (!disableGateway && !gatewayIp.trim())
+                }
+              >
                 {pending ? "Saving" : "Save changes"}
               </Button>
             </DialogFooter>

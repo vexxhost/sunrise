@@ -45,6 +45,15 @@ export interface HostRoute {
   nexthop: string;
 }
 
+export type IPv6AddressMode = "slaac" | "dhcpv6-stateful" | "dhcpv6-stateless";
+
+export type IPv6ConfigurationMode =
+  | "none"
+  | "slaac-openstack"
+  | "slaac-external"
+  | "dhcpv6-stateful"
+  | "dhcpv6-stateless";
+
 export interface Subnet {
   id: string;
   name: string;
@@ -59,8 +68,8 @@ export interface Subnet {
   dns_nameservers: string[];
   host_routes: HostRoute[];
   enable_dhcp: boolean;
-  ipv6_address_mode: string | null;
-  ipv6_ra_mode: string | null;
+  ipv6_address_mode: IPv6AddressMode | null;
+  ipv6_ra_mode: IPv6AddressMode | null;
   subnetpool_id: string | null;
   segment_id?: string | null;
   service_types?: string[];

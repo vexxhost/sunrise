@@ -8,6 +8,11 @@ import {
   type MutationResult,
   type MutationScope,
 } from "@/lib/mutations";
+import { getCidrPrefixLength } from "@/lib/network-address";
+import {
+  getIpv6ConfigurationAttributes,
+  usesIpv6AutoAddressing,
+} from "@/lib/openstack/neutron-ipv6";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import type {
   FloatingIp,
@@ -51,6 +56,104 @@ const allocationPools = z
   .max(32)
   .optional();
 const dnsNameservers = z.array(ipAddress).max(16).optional();
+const routeSchema = z.object({
+  destination: cidr,
+  nexthop: ipAddress,
+});
+const hostRoutes = z.array(routeSchema).max(32).default([]);
+const ipv6ConfigurationMode = z
+  .enum([
+    "none",
+    "slaac-openstack",
+    "slaac-external",
+    "dhcpv6-stateful",
+    "dhcpv6-stateless",
+  ])
+  .default("none");
+
+type SubnetAddressingValue = {
+  allocationPools?: Array<{ start: string; end: string }>;
+  disableGateway: boolean;
+  dnsNameservers?: string[];
+  gatewayIp?: string;
+  hostRoutes: Array<{ destination: string; nexthop: string }>;
+  ipVersion: 4 | 6;
+};
+
+type IPv6ConfigurationValue = {
+  cidr: string;
+  enableDhcp: boolean;
+  ipVersion: 4 | 6;
+  ipv6Mode:
+    | "none"
+    | "slaac-openstack"
+    | "slaac-external"
+    | "dhcpv6-stateful"
+    | "dhcpv6-stateless";
+};
+
+function validateSubnetAddressing(
+  value: SubnetAddressingValue,
+  context: z.RefinementCtx,
+) {
+  const validateAddress = (address: string, path: PropertyKey[]) => {
+    if (isIP(address) !== value.ipVersion) {
+      context.addIssue({
+        code: "custom",
+        message: `Use an IPv${value.ipVersion} address.`,
+        path,
+      });
+    }
+  };
+
+  if (!value.disableGateway && value.gatewayIp) {
+    validateAddress(value.gatewayIp, ["gatewayIp"]);
+  }
+  value.allocationPools?.forEach((pool, index) => {
+    validateAddress(pool.start, ["allocationPools", index, "start"]);
+    validateAddress(pool.end, ["allocationPools", index, "end"]);
+  });
+  value.dnsNameservers?.forEach((server, index) => {
+    validateAddress(server, ["dnsNameservers", index]);
+  });
+  value.hostRoutes.forEach((route, index) => {
+    const destination = route.destination.split("/")[0] ?? "";
+    validateAddress(destination, ["hostRoutes", index, "destination"]);
+    validateAddress(route.nexthop, ["hostRoutes", index, "nexthop"]);
+  });
+}
+
+function validateIpv6Configuration(
+  value: IPv6ConfigurationValue,
+  context: z.RefinementCtx,
+) {
+  if (value.ipVersion === 4 && value.ipv6Mode !== "none") {
+    context.addIssue({
+      code: "custom",
+      message: "IPv6 address configuration is only available for IPv6 subnets.",
+      path: ["ipv6Mode"],
+    });
+  }
+  if (value.ipv6Mode !== "none" && !value.enableDhcp) {
+    context.addIssue({
+      code: "custom",
+      message: "Enable DHCP to use IPv6 address configuration.",
+      path: ["enableDhcp"],
+    });
+  }
+  if (
+    value.ipVersion === 6 &&
+    usesIpv6AutoAddressing(value.ipv6Mode) &&
+    getCidrPrefixLength(value.cidr) !== 64
+  ) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "A /64 prefix is required for SLAAC and DHCPv6 stateless addressing.",
+      path: ["cidr"],
+    });
+  }
+}
 
 const networkCreateSchema = z.object({
   name,
@@ -59,34 +162,70 @@ const networkCreateSchema = z.object({
   portSecurityEnabled: z.boolean().default(true),
 });
 const networkUpdateSchema = networkCreateSchema;
-const subnetCreateSchema = z.object({
-  networkId: resourceId,
-  name,
-  description,
-  cidr: z.string().trim().min(3).max(64),
-  ipVersion: z.union([z.literal(4), z.literal(6)]),
-  gatewayIp: optionalIpAddress,
-  enableDhcp: z.boolean().default(true),
-  allocationPools,
-  dnsNameservers,
-});
-const subnetUpdateSchema = z.object({
-  name,
-  description,
-  gatewayIp: optionalIpAddress,
-  enableDhcp: z.boolean(),
-  allocationPools,
-  dnsNameservers,
-});
+const subnetCreateSchema = z
+  .object({
+    networkId: resourceId,
+    name,
+    description,
+    cidr,
+    ipVersion: z.union([z.literal(4), z.literal(6)]),
+    gatewayIp: optionalIpAddress,
+    disableGateway: z.boolean().default(false),
+    enableDhcp: z.boolean().default(true),
+    ipv6Mode: ipv6ConfigurationMode,
+    allocationPools,
+    dnsNameservers,
+    hostRoutes,
+  })
+  .superRefine((value, context) => {
+    if (isIP(value.cidr.split("/")[0] ?? "") !== value.ipVersion) {
+      context.addIssue({
+        code: "custom",
+        message: `The CIDR must use IPv${value.ipVersion}.`,
+        path: ["cidr"],
+      });
+    }
+    validateSubnetAddressing(value, context);
+    validateIpv6Configuration(value, context);
+  });
+const subnetUpdateSchema = z
+  .object({
+    name,
+    description,
+    cidr,
+    ipVersion: z.union([z.literal(4), z.literal(6)]),
+    gatewayIp: optionalIpAddress,
+    disableGateway: z.boolean().default(false),
+    enableDhcp: z.boolean(),
+    currentIpv6Mode: ipv6ConfigurationMode,
+    allocationPools,
+    dnsNameservers,
+    hostRoutes,
+  })
+  .superRefine((value, context) => {
+    if (!value.disableGateway && !value.gatewayIp) {
+      context.addIssue({
+        code: "custom",
+        message: "Enter a gateway address or disable the gateway.",
+        path: ["gatewayIp"],
+      });
+    }
+    if (value.currentIpv6Mode !== "none" && !value.enableDhcp) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "DHCP cannot be disabled while IPv6 address configuration is active.",
+        path: ["enableDhcp"],
+      });
+    }
+    validateSubnetAddressing(value, context);
+  });
 const routerCreateSchema = z.object({
   name,
   description,
   adminStateUp: z.boolean().default(true),
 });
-const routerRouteSchema = z.object({
-  destination: cidr,
-  nexthop: ipAddress,
-});
+const routerRouteSchema = routeSchema;
 const routerGatewaySchema = z.object({
   networkId: resourceId,
   enableSnat: z.boolean().default(true),
@@ -270,6 +409,7 @@ export async function createSubnetAction(
   const parsed = parse(subnetCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const ipv6Configuration = getIpv6ConfigurationAttributes(value.ipv6Mode);
   return executeOpenStackMutation({
     actionLabel: "create a subnet",
     scope,
@@ -283,10 +423,18 @@ export async function createSubnetAction(
         description: value.description,
         cidr: value.cidr,
         ip_version: value.ipVersion,
-        gateway_ip: value.gatewayIp || undefined,
+        ...(value.disableGateway
+          ? { gateway_ip: null }
+          : value.gatewayIp
+            ? { gateway_ip: value.gatewayIp }
+            : {}),
         enable_dhcp: value.enableDhcp,
+        ...(value.ipVersion === 6 && value.ipv6Mode !== "none"
+          ? ipv6Configuration
+          : {}),
         allocation_pools: value.allocationPools,
         dns_nameservers: value.dnsNameservers,
+        host_routes: value.hostRoutes,
       },
     },
     invalidates: networkingInvalidates,
@@ -315,10 +463,11 @@ export async function updateSubnetAction(
       subnet: {
         name: value.name,
         description: value.description,
-        gateway_ip: value.gatewayIp || null,
+        gateway_ip: value.disableGateway ? null : value.gatewayIp,
         enable_dhcp: value.enableDhcp,
         allocation_pools: value.allocationPools,
         dns_nameservers: value.dnsNameservers,
+        host_routes: value.hostRoutes,
       },
     },
     invalidates: networkingInvalidates,
