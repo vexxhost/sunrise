@@ -44,42 +44,49 @@ import {
 const quickAccess = [
   {
     label: "Instances",
+    service: "compute",
     href: "/compute/instances",
     icon: Server,
     accent: "compute",
   },
   {
     label: "Volumes",
+    service: "compute",
     href: "/compute/volumes",
     icon: HardDrive,
     accent: "storage",
   },
   {
     label: "Networks",
+    service: "networking",
     href: "/networking/networks",
     icon: Network,
     accent: "network",
   },
   {
     label: "Images",
+    service: "compute",
     href: "/compute/images",
     icon: ImageIcon,
     accent: "image",
   },
   {
     label: "Kubernetes",
+    service: "kubernetes",
     href: "/kubernetes",
     icon: Container,
     accent: "kubernetes",
   },
   {
     label: "Buckets",
+    service: "object-storage",
     href: "/object-storage/buckets",
     icon: Database,
     accent: "object-storage",
   },
 ] satisfies Array<{
   label: string;
+  service: ServiceDirectoryId;
   href: string;
   icon: ComponentType<{ className?: string }>;
   accent: ServiceAccent;
@@ -377,6 +384,13 @@ export function OverviewDashboard({
   const directoryStatusUnknown = serviceDirectory.some(
     (service) => service.status === "unknown",
   );
+  const serviceStatus = new Map(
+    serviceDirectory.map((service) => [service.id, service.status]),
+  );
+  const visibleQuickAccess = quickAccess.filter(({ service }) => {
+    const status = serviceStatus.get(service);
+    return status === "available" || status === "unknown";
+  });
 
   return (
     <div className="space-y-10">
@@ -385,7 +399,7 @@ export function OverviewDashboard({
           Quick access
         </h2>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-          {quickAccess.map(({ label, href, icon: Icon, accent }) => (
+          {visibleQuickAccess.map(({ label, href, icon: Icon, accent }) => (
             <Link
               key={href}
               href={href}

@@ -2,7 +2,16 @@ import {
   resolveServiceEndpoint,
   type OpenStackCatalogService,
 } from "@/lib/openstack/catalog";
+import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
 import type { MutationCapability } from "@/lib/mutations";
+import {
+  defaultServicePolicy,
+  enabledObjectStorageBackends,
+  isServiceEnabled,
+  type OpenStackServiceId,
+  type ObjectStorageBackend,
+  type ServicePolicy,
+} from "@/lib/service-policy";
 
 export type CreateActionId =
   | "instance"
@@ -53,8 +62,10 @@ type CatalogIdentity = {
 };
 
 type CreateActionDefinition = Omit<CreateAction, "capability"> & {
+  policyService: OpenStackServiceId;
   catalogIdentities: CatalogIdentity[];
   requiresObjectStorageCredentials?: boolean;
+  objectStorageBackend?: ObjectStorageBackend;
 };
 
 const definitions: CreateActionDefinition[] = [
@@ -64,6 +75,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Create a virtual machine from an image and flavor.",
     href: "/compute/instances?create=instance",
     service: "compute",
+    policyService: "compute",
     group: "Virtual machines",
     catalogIdentities: [{ serviceType: "compute", serviceName: "nova" }],
   },
@@ -73,6 +85,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Add a bootable image to the project catalog.",
     href: "/compute/images?create=image",
     service: "compute",
+    policyService: "image",
     group: "Virtual machines",
     catalogIdentities: [{ serviceType: "image", serviceName: "glance" }],
   },
@@ -82,6 +95,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Generate or import an SSH public key.",
     href: "/compute/key-pairs?create=key-pair",
     service: "compute",
+    policyService: "compute",
     group: "Virtual machines",
     catalogIdentities: [{ serviceType: "compute", serviceName: "nova" }],
   },
@@ -91,6 +105,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Provision persistent block storage.",
     href: "/compute/volumes?create=volume",
     service: "compute",
+    policyService: "volume",
     group: "Block storage",
     catalogIdentities: [
       { serviceType: "volumev3", serviceName: "cinderv3" },
@@ -103,6 +118,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Capture a point-in-time copy of a volume.",
     href: "/compute/snapshots?create=snapshot",
     service: "compute",
+    policyService: "volume",
     group: "Block storage",
     catalogIdentities: [
       { serviceType: "volumev3", serviceName: "cinderv3" },
@@ -115,6 +131,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Create isolated project network infrastructure.",
     href: "/networking/networks?create=network",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
@@ -124,6 +141,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Connect project subnets and external gateways.",
     href: "/networking/routers?create=router",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
@@ -133,6 +151,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Reserve and configure a network interface.",
     href: "/networking/ports?create=port",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
@@ -142,6 +161,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Allocate a public address and optionally associate it.",
     href: "/networking/floating-ips?create=floating-ip",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
@@ -151,6 +171,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Create a reusable stateful firewall policy.",
     href: "/networking/security-groups?create=security-group",
     service: "networking",
+    policyService: "network",
     group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
   },
@@ -160,6 +181,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Deploy a Kubernetes cluster from a Magnum template.",
     href: "/kubernetes/clusters?create=cluster",
     service: "kubernetes",
+    policyService: "container-infra",
     group: "Kubernetes",
     catalogIdentities: [
       { serviceType: "container-infra", serviceName: "magnum" },
@@ -176,6 +198,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Define reusable Kubernetes infrastructure defaults.",
     href: "/kubernetes/templates?create=cluster-template",
     service: "kubernetes",
+    policyService: "container-infra",
     group: "Kubernetes",
     catalogIdentities: [
       { serviceType: "container-infra", serviceName: "magnum" },
@@ -192,6 +215,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Create a project-scoped credential for automation.",
     href: "/identity/application-credentials?create=application-credential",
     service: "identity",
+    policyService: "identity",
     group: "Identity and access",
     catalogIdentities: [{ serviceType: "identity", serviceName: "keystone" }],
   },
@@ -201,11 +225,13 @@ const definitions: CreateActionDefinition[] = [
     description: "Create an S3-compatible bucket in the active RGW account.",
     href: "/object-storage/buckets?create=bucket",
     service: "object-storage",
+    policyService: "object-storage-s3",
     group: "Object Storage",
     catalogIdentities: [
       { serviceType: "object-storage-s3", serviceName: "s3" },
     ],
     requiresObjectStorageCredentials: true,
+    objectStorageBackend: "s3",
   },
   {
     id: "role",
@@ -213,11 +239,13 @@ const definitions: CreateActionDefinition[] = [
     description: "Create an assumable role in the active RGW account.",
     href: "/object-storage/roles?create=role",
     service: "object-storage",
+    policyService: "object-storage-s3",
     group: "Access management",
     catalogIdentities: [
       { serviceType: "object-storage-s3", serviceName: "s3" },
     ],
     requiresObjectStorageCredentials: true,
+    objectStorageBackend: "s3",
   },
   {
     id: "share",
@@ -225,10 +253,11 @@ const definitions: CreateActionDefinition[] = [
     description: "Provision a mountable shared file system with Manila.",
     href: "/shared-file-systems/shares?create=share",
     service: "shared-file-system",
+    policyService: "share",
     group: "Shared File System",
     catalogIdentities: [
       { serviceType: "sharev2", serviceName: "manilav2" },
-      { serviceType: "shared-file-system", serviceName: "manila" },
+      { serviceType: "share", serviceName: "manila" },
     ],
   },
   {
@@ -237,10 +266,11 @@ const definitions: CreateActionDefinition[] = [
     description: "Capture a point-in-time copy of a Manila share.",
     href: "/shared-file-systems/snapshots?create=share-snapshot",
     service: "shared-file-system",
+    policyService: "share",
     group: "Shared File System",
     catalogIdentities: [
       { serviceType: "sharev2", serviceName: "manilav2" },
-      { serviceType: "shared-file-system", serviceName: "manila" },
+      { serviceType: "share", serviceName: "manila" },
     ],
   },
   {
@@ -249,10 +279,11 @@ const definitions: CreateActionDefinition[] = [
     description: "Define Neutron placement for Manila share servers.",
     href: "/shared-file-systems/share-networks?create=share-network",
     service: "shared-file-system",
+    policyService: "share",
     group: "Shared File System",
     catalogIdentities: [
       { serviceType: "sharev2", serviceName: "manilav2" },
-      { serviceType: "shared-file-system", serviceName: "manila" },
+      { serviceType: "share", serviceName: "manila" },
     ],
   },
   {
@@ -261,10 +292,11 @@ const definitions: CreateActionDefinition[] = [
     description: "Configure LDAP, Kerberos, or Active Directory for shares.",
     href: "/shared-file-systems/security-services?create=security-service",
     service: "shared-file-system",
+    policyService: "share",
     group: "Shared File System",
     catalogIdentities: [
       { serviceType: "sharev2", serviceName: "manilav2" },
-      { serviceType: "shared-file-system", serviceName: "manila" },
+      { serviceType: "share", serviceName: "manila" },
     ],
   },
   {
@@ -273,6 +305,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Store encrypted key material or another protected value.",
     href: "/key-manager/secrets?create=secret",
     service: "key-manager",
+    policyService: "key-manager",
     group: "Key Manager",
     catalogIdentities: [
       { serviceType: "key-manager", serviceName: "barbican" },
@@ -284,6 +317,7 @@ const definitions: CreateActionDefinition[] = [
     description: "Group related secrets into a typed Barbican container.",
     href: "/key-manager/containers?create=secret-container",
     service: "key-manager",
+    policyService: "key-manager",
     group: "Key Manager",
     catalogIdentities: [
       { serviceType: "key-manager", serviceName: "barbican" },
@@ -296,6 +330,7 @@ const definitions: CreateActionDefinition[] = [
       "Ask Barbican to generate symmetric or asymmetric key material.",
     href: "/key-manager/orders?create=secret-order",
     service: "key-manager",
+    policyService: "key-manager",
     group: "Key Manager",
     catalogIdentities: [
       { serviceType: "key-manager", serviceName: "barbican" },
@@ -326,55 +361,72 @@ export function buildCreateActions({
   objectStorageRole,
   projectId,
   regionId,
+  policy = defaultServicePolicy,
 }: {
   catalog: OpenStackCatalogService[] | null;
   catalogStatus: "available" | "authentication-required" | "unavailable";
   objectStorageRole: { status: string; message: string };
   projectId?: string | null;
   regionId?: string | null;
+  policy?: ServicePolicy;
 }): CreateAction[] {
-  return definitions.map((definition) => {
-    let capability: MutationCapability;
+  const selectedObjectStorageBackend =
+    catalog && regionId
+      ? (resolveObjectStorageBackend(catalog, regionId, policy)?.backend ??
+        null)
+      : (enabledObjectStorageBackends(policy, regionId)[0] ?? null);
 
-    if (!projectId) {
-      capability = unavailable("Select a project to use this action.");
-    } else if (!regionId) {
-      capability = unavailable("Select a region to use this action.");
-    } else if (catalogStatus === "authentication-required") {
-      capability = unavailable("Sign in to use cloud resource actions.");
-    } else if (!catalog) {
-      capability = unknown("Service availability could not be verified.");
-    } else {
-      const endpointAvailable = definition.catalogIdentities.some(
-        ({ serviceType, serviceName }) =>
-          resolveServiceEndpoint(
-            catalog,
-            regionId,
-            serviceType,
-            serviceName,
-          ) !== null,
-      );
+  return definitions
+    .filter(
+      (definition) =>
+        isServiceEnabled(policy, definition.policyService, regionId) &&
+        (!definition.objectStorageBackend ||
+          definition.objectStorageBackend === selectedObjectStorageBackend),
+    )
+    .map((definition) => {
+      let capability: MutationCapability;
 
-      capability = endpointAvailable
-        ? available()
-        : unavailable(`This service is unavailable in ${regionId}.`);
-    }
+      if (!projectId) {
+        capability = unavailable("Select a project to use this action.");
+      } else if (!regionId) {
+        capability = unavailable("Select a region to use this action.");
+      } else if (catalogStatus === "authentication-required") {
+        capability = unavailable("Sign in to use cloud resource actions.");
+      } else if (!catalog) {
+        capability = unknown("Service availability could not be verified.");
+      } else {
+        const endpointAvailable = definition.catalogIdentities.some(
+          ({ serviceType, serviceName }) =>
+            resolveServiceEndpoint(
+              catalog,
+              regionId,
+              serviceType,
+              serviceName,
+            ) !== null,
+        );
 
-    if (
-      capability.status === "available" &&
-      definition.requiresObjectStorageCredentials &&
-      objectStorageRole.status !== "active"
-    ) {
-      capability = unavailable(objectStorageRole.message);
-    }
+        capability = endpointAvailable
+          ? available()
+          : unavailable(`This service is unavailable in ${regionId}.`);
+      }
 
-    const {
-      catalogIdentities: _,
-      requiresObjectStorageCredentials: __,
-      ...action
-    } = definition;
-    return { ...action, capability };
-  });
+      if (
+        capability.status === "available" &&
+        definition.requiresObjectStorageCredentials &&
+        objectStorageRole.status !== "active"
+      ) {
+        capability = unavailable(objectStorageRole.message);
+      }
+
+      const {
+        catalogIdentities: _,
+        requiresObjectStorageCredentials: __,
+        objectStorageBackend: ___,
+        policyService: ____,
+        ...action
+      } = definition;
+      return { ...action, capability };
+    });
 }
 
 export function createActionsForService(

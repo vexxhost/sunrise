@@ -26,6 +26,11 @@ import {
   requestJson,
   serviceUrl,
 } from "@/lib/openstack/request";
+import { getServicePolicy } from "@/lib/deployment-config";
+import {
+  isServiceEnabled,
+  type OpenStackServiceId,
+} from "@/lib/service-policy";
 
 export type OverviewServiceId =
   | "compute"
@@ -49,6 +54,7 @@ export type OverviewService = {
 
 type ServiceDefinition = {
   id: OverviewServiceId;
+  policyService: OpenStackServiceId;
   label: string;
   href: string;
   serviceType: string;
@@ -63,6 +69,7 @@ type ServiceDefinition = {
 const serviceDefinitions: ServiceDefinition[] = [
   {
     id: "compute",
+    policyService: "compute",
     label: "Compute",
     href: "/compute/instances",
     serviceType: "compute",
@@ -73,6 +80,7 @@ const serviceDefinitions: ServiceDefinition[] = [
   },
   {
     id: "storage",
+    policyService: "volume",
     label: "Block storage",
     href: "/compute/volumes",
     serviceType: "volumev3",
@@ -83,6 +91,7 @@ const serviceDefinitions: ServiceDefinition[] = [
   },
   {
     id: "network",
+    policyService: "network",
     label: "Network",
     href: "/networking",
     serviceType: "network",
@@ -92,6 +101,7 @@ const serviceDefinitions: ServiceDefinition[] = [
   },
   {
     id: "shared-file-system",
+    policyService: "share",
     label: "Shared File System",
     href: "/shared-file-systems",
     serviceType: "sharev2",
@@ -103,6 +113,7 @@ const serviceDefinitions: ServiceDefinition[] = [
   },
   {
     id: "container-infra",
+    policyService: "container-infra",
     label: "Kubernetes",
     href: "/kubernetes/clusters",
     serviceType: "container-infra",
@@ -113,6 +124,7 @@ const serviceDefinitions: ServiceDefinition[] = [
   },
   {
     id: "load-balancing",
+    policyService: "load-balancer",
     label: "Load balancing",
     href: "/quotas",
     serviceType: "load-balancer",
@@ -122,6 +134,7 @@ const serviceDefinitions: ServiceDefinition[] = [
   },
   {
     id: "key-manager",
+    policyService: "key-manager",
     label: "Key Manager",
     href: "/key-manager",
     serviceType: "key-manager",
@@ -441,11 +454,15 @@ export async function loadProjectOverview({
   catalog?: OpenStackCatalogService[] | null;
   serviceIds?: OverviewServiceId[];
 }): Promise<OverviewService[]> {
-  const definitions = serviceIds
+  const requestedDefinitions = serviceIds
     ? serviceDefinitions.filter((definition) =>
         serviceIds.includes(definition.id),
       )
     : serviceDefinitions;
+  const policy = getServicePolicy();
+  const definitions = requestedDefinitions.filter((definition) =>
+    isServiceEnabled(policy, definition.policyService, regionId),
+  );
 
   if (!token || !regionId || !projectId) {
     return definitions.map((definition) =>

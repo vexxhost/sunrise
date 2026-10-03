@@ -1,10 +1,11 @@
-import { ObjectsClient } from './ObjectsClient';
-import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
-import { DataTableHeader } from '@/components/DataTable/Header';
-import { RecentResourceTracker } from '@/components/resources/RecentResourceTracker';
-import { listObjectsForRender } from '@/lib/s3/actions';
-import { getSession, normalizeProjectId } from '@/lib/session';
-import { recoverMissingResource } from '@/lib/resource-recovery-server';
+import { ObjectsClient } from "./ObjectsClient";
+import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
+import { DataTableHeader } from "@/components/DataTable/Header";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
+import { requireS3Backend } from "@/components/services/ServiceGuards";
+import { listObjectsForRender } from "@/lib/s3/actions";
+import { getSession, normalizeProjectId } from "@/lib/session";
+import { recoverMissingResource } from "@/lib/resource-recovery-server";
 
 interface PageProps {
   params: Promise<{ bucket: string }>;
@@ -12,20 +13,21 @@ interface PageProps {
 }
 
 export default async function Page({ params, searchParams }: PageProps) {
+  await requireS3Backend();
   const { bucket: rawBucket } = await params;
   const { prefix: rawPrefix } = await searchParams;
   const bucket = decodeURIComponent(rawBucket);
-  const prefix = rawPrefix ?? '';
+  const prefix = rawPrefix ?? "";
   const session = await getSession();
   const activeProjectId = normalizeProjectId(session.projectId);
-  const activeRegionId = session.regionId ?? '';
+  const activeRegionId = session.regionId ?? "";
 
   const probe = await listObjectsForRender(bucket, prefix);
   if (!probe.ok && probe.needsAuth) {
     return <ObjectStorageAuthRedirect />;
   }
   if (!probe.ok && probe.notFound) {
-    await recoverMissingResource({ kind: 'bucket', id: bucket });
+    await recoverMissingResource({ kind: "bucket", id: bucket });
   }
   if (!probe.ok) {
     throw new Error(probe.error);

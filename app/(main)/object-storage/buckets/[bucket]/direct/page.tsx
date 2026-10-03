@@ -1,14 +1,15 @@
-import { redirect } from 'next/navigation';
-import { DirectClient } from './DirectClient';
-import { ObjectStorageAuthRedirect } from '@/components/Auth/ObjectStorageAuthRedirect';
-import { DataTableHeader } from '@/components/DataTable/Header';
-import { RecentResourceTracker } from '@/components/resources/RecentResourceTracker';
-import { directObjectPath } from '@/lib/s3/direct-route';
+import { redirect } from "next/navigation";
+import { DirectClient } from "./DirectClient";
+import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
+import { DataTableHeader } from "@/components/DataTable/Header";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
+import { requireS3Backend } from "@/components/services/ServiceGuards";
+import { directObjectPath } from "@/lib/s3/direct-route";
 import {
   getActiveS3Credentials,
   getSession,
   normalizeProjectId,
-} from '@/lib/session';
+} from "@/lib/session";
 
 interface PageProps {
   params: Promise<{ bucket: string }>;
@@ -16,11 +17,12 @@ interface PageProps {
 }
 
 export default async function Page({ params, searchParams }: PageProps) {
+  await requireS3Backend();
   const { bucket: rawBucket } = await params;
   const bucket = decodeURIComponent(rawBucket);
   const { inspect } = await searchParams;
 
-  if (typeof inspect === 'string' && inspect.length > 0) {
+  if (typeof inspect === "string" && inspect.length > 0) {
     redirect(directObjectPath(bucket, inspect));
   }
 
@@ -28,7 +30,7 @@ export default async function Page({ params, searchParams }: PageProps) {
   const session = await getSession();
   const creds = getActiveS3Credentials(session);
   const activeProjectId = normalizeProjectId(session.projectId);
-  const activeRegionId = session.regionId ?? '';
+  const activeRegionId = session.regionId ?? "";
 
   if (!creds) {
     return <ObjectStorageAuthRedirect />;

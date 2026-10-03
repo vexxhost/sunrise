@@ -17,14 +17,24 @@ async function OverviewData() {
   const { snapshot } = cloud;
   const regionId = snapshot.region.id ?? undefined;
   const projectId = snapshot.project.id ?? undefined;
+  const kubernetesAvailable =
+    snapshot.services.find(({ id }) => id === "kubernetes")?.status ===
+    "available";
   const magnumEndpoint =
-    cloud.catalog && regionId
-      ? resolveServiceEndpoint(
-          cloud.catalog,
-          regionId,
+    kubernetesAvailable && cloud.catalog && regionId
+      ? [
           "container-infra",
-          "magnum",
-        )
+          "container-infrastructure",
+          "container-infrastructure-management",
+        ].flatMap((serviceType) => {
+          const endpoint = resolveServiceEndpoint(
+            cloud.catalog ?? [],
+            regionId,
+            serviceType,
+            "magnum",
+          );
+          return endpoint ? [endpoint] : [];
+        })[0]
       : undefined;
   const [services, resourceFeed, clustersResult] = await Promise.all([
     loadProjectOverview({
@@ -39,12 +49,14 @@ async function OverviewData() {
       projectId,
       catalog: cloud.catalog,
     }),
-    listClusters({}, regionId, projectId, magnumEndpoint ?? undefined)
-      .then((clusters) => ({ ok: true as const, clusters }))
-      .catch((error) => {
-        unstable_rethrow(error);
-        return { ok: false as const, clusters: [] };
-      }),
+    magnumEndpoint
+      ? listClusters({}, regionId, projectId, magnumEndpoint)
+          .then((clusters) => ({ ok: true as const, clusters }))
+          .catch((error) => {
+            unstable_rethrow(error);
+            return { ok: false as const, clusters: [] };
+          })
+      : Promise.resolve({ ok: false as const, clusters: [] }),
   ]);
   const operationalFeed = compileOperationalFeed({
     services,

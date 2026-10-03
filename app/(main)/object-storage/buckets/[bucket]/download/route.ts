@@ -1,5 +1,6 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { redirect } from "next/navigation";
+import { unavailableS3RouteResponse } from "@/lib/object-storage/route-guard";
 import { getS3Client, S3AuthRequiredError } from "@/lib/s3/client";
 import { objectStorageAuthRefreshHref } from "@/lib/s3/auth-navigation";
 
@@ -22,6 +23,9 @@ function fallbackFileName(name: string): string {
 }
 
 export async function GET(request: Request, { params }: RouteContext) {
+  const unavailable = await unavailableS3RouteResponse(request);
+  if (unavailable) return unavailable;
+
   const { bucket: rawBucket } = await params;
   const bucket = decodeURIComponent(rawBucket);
   const key = new URL(request.url).searchParams.get("key");

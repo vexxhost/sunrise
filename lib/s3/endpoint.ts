@@ -1,16 +1,18 @@
-import 'server-only';
-import { getSession } from '@/lib/session';
+import "server-only";
+import { getSession } from "@/lib/session";
 import {
   getServiceCatalog,
-  resolveServiceEndpoint,
   type OpenStackCatalogService,
-} from '@/lib/openstack/catalog';
+} from "@/lib/openstack/catalog";
+import { getServicePolicy } from "@/lib/deployment-config";
+import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
+import { isSunriseServiceEnabled } from "@/lib/service-policy";
 
-const SERVICE_TYPE = 'object-storage-s3';
-const SERVICE_NAME = 's3';
+const SERVICE_TYPE = "object-storage-s3";
+const SERVICE_NAME = "s3";
 
 // RGW ignores the AWS region but the SDK requires one for SigV4.
-export const S3_REGION = 'us-east-1';
+export const S3_REGION = "us-east-1";
 
 type S3EndpointContext = {
   regionId: string;
@@ -33,17 +35,22 @@ export async function getS3Endpoint(
     context?.token ??
     session?.keystoneProjectToken ??
     session?.keystone_unscoped_token;
-  if (!regionId) throw new Error('No active region in session');
-  if (!token) throw new Error('No Keystone token in session');
+  if (!regionId) throw new Error("No active region in session");
+  if (!token) throw new Error("No Keystone token in session");
+
+  const policy = getServicePolicy();
+  if (!isSunriseServiceEnabled(policy, "object-storage", regionId)) {
+    throw new Error(`Object Storage is disabled in ${regionId}`);
+  }
 
   const catalog = context?.catalog ?? (await getServiceCatalog(token));
-  const endpoint = catalog
-    ? resolveServiceEndpoint(catalog, regionId, SERVICE_TYPE, SERVICE_NAME)
+  const resolution = catalog
+    ? resolveObjectStorageBackend(catalog, regionId, policy)
     : null;
-  if (!endpoint) {
+  if (resolution?.backend !== "s3") {
     throw new Error(
       `S3 endpoint ('${SERVICE_NAME}' / ${SERVICE_TYPE}) not found in catalog for region ${regionId}`,
     );
   }
-  return endpoint;
+  return resolution.endpoint;
 }

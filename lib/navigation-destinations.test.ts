@@ -6,6 +6,7 @@ import {
   parseFavoriteDestinationIds,
   toggleFavoriteDestination,
 } from "@/lib/navigation-destinations";
+import { parseServicePolicy } from "@/lib/service-policy";
 
 const catalog = [
   {
@@ -60,6 +61,52 @@ describe("navigation destinations", () => {
         ({ status }) => status === "unknown",
       ),
     ).toBe(true);
+  });
+
+  it("removes disabled services and S3-only pages in Swift mode", () => {
+    const swiftCatalog = [
+      ...catalog,
+      {
+        name: "object-storage",
+        type: "object-storage",
+        endpoints: [
+          {
+            interface: "public",
+            region: "RegionOne",
+            url: "https://swift.example.test",
+          },
+        ],
+      },
+    ];
+    const destinations = buildNavigationDestinations(
+      swiftCatalog,
+      "RegionOne",
+      parseServicePolicy({
+        disabledServices: "network",
+        objectStorageBackends: "swift,s3",
+      }),
+    );
+
+    expect(destinations.some(({ service }) => service === "networking")).toBe(
+      false,
+    );
+    expect(
+      destinations.some(({ service }) => service === "object-storage"),
+    ).toBe(false);
+  });
+
+  it("disables Cinder destinations without hiding Nova or Glance", () => {
+    const destinations = buildNavigationDestinations(
+      catalog,
+      "RegionOne",
+      parseServicePolicy({ disabledServices: "volume" }),
+    );
+    const ids = destinations.map(({ id }) => id);
+
+    expect(ids).toContain("compute.instances");
+    expect(ids).toContain("compute.images");
+    expect(ids).not.toContain("compute.volumes");
+    expect(ids).not.toContain("compute.snapshots");
   });
 
   it("accepts only known, unique, bounded favorite IDs", () => {
@@ -130,8 +177,9 @@ describe("navigation destinations", () => {
       });
 
     try {
-      expect(commandPaletteFilter("Instances Active", "instances active"))
-        .toBeGreaterThan(0);
+      expect(
+        commandPaletteFilter("Instances Active", "instances active"),
+      ).toBeGreaterThan(0);
       expect(localeLowerCase).not.toHaveBeenCalled();
     } finally {
       localeLowerCase.mockRestore();

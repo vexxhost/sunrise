@@ -22,6 +22,11 @@ function cloudContext(
       credentialExpiration: null,
       message: "No Object Storage role",
     },
+    objectStorage: {
+      backend: null,
+      status: "unavailable",
+      message: "Object Storage unavailable",
+    },
     catalog: { status: "available", message: "Catalog available" },
     projects: [],
     regions: [],

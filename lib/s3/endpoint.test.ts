@@ -18,6 +18,9 @@ import { getS3Endpoint } from "@/lib/s3/endpoint";
 describe("S3 endpoint resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.SUNRISE_DISABLED_SERVICES;
+    delete process.env.SUNRISE_DISABLED_SERVICES_BY_REGION;
+    delete process.env.SUNRISE_OBJECT_STORAGE_BACKENDS;
     mocks.resolveServiceEndpoint.mockReturnValue("https://s3.example.test");
   });
 
@@ -46,5 +49,48 @@ describe("S3 endpoint resolution", () => {
       "object-storage-s3",
       "s3",
     );
+  });
+
+  it("rejects S3 access when the S3 backend is disabled", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES = "object-storage-s3";
+
+    await expect(
+      getS3Endpoint({
+        regionId: "RegionOne",
+        token: "project-token",
+        catalog: [],
+      }),
+    ).rejects.toThrow("Object Storage is disabled in RegionOne");
+    expect(mocks.resolveServiceEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("keeps S3 available when only Swift is disabled", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES = "object-storage";
+
+    await expect(
+      getS3Endpoint({
+        regionId: "RegionOne",
+        token: "project-token",
+        catalog: [],
+      }),
+    ).resolves.toBe("https://s3.example.test");
+  });
+
+  it("rejects S3 access when Swift wins backend selection", async () => {
+    process.env.SUNRISE_OBJECT_STORAGE_BACKENDS = "swift,s3";
+    mocks.resolveServiceEndpoint.mockImplementation(
+      (_catalog, _region, serviceType) =>
+        serviceType === "object-storage" || serviceType === "object-store"
+          ? "https://swift.example.test"
+          : "https://s3.example.test",
+    );
+
+    await expect(
+      getS3Endpoint({
+        regionId: "RegionOne",
+        token: "project-token",
+        catalog: [],
+      }),
+    ).rejects.toThrow("S3 endpoint");
   });
 });

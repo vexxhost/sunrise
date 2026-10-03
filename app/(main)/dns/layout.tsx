@@ -1,10 +1,9 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
+import { ConfiguredService } from "@/components/services/ServiceGuards";
 
 const dnsSidebarSections = [
   {
-    items: [
-      { name: "Overview", href: "/dns", icon: "Gauge" },
-    ],
+    items: [{ name: "Overview", href: "/dns", icon: "Gauge" }],
   },
   {
     title: "DNS",
@@ -21,14 +20,12 @@ const dnsSidebarSections = [
   },
 ];
 
-export default function DNSLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DNSLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ServiceLayout sidebarSections={dnsSidebarSections}>
-      {children}
-    </ServiceLayout>
+    <ConfiguredService id="dns">
+      <ServiceLayout sidebarSections={dnsSidebarSections}>
+        {children}
+      </ServiceLayout>
+    </ConfiguredService>
   );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OpenStackCatalogService } from "@/lib/openstack/catalog";
 import { buildServiceDirectory } from "@/lib/openstack/service-directory";
+import { parseServicePolicy } from "@/lib/service-policy";
 
 const endpoint = (region: string, url: string) => ({
   interface: "public",
@@ -100,7 +101,7 @@ describe("service directory", () => {
           id: "object-storage",
           label: "Object Storage",
           href: "/object-storage",
-          description: "Browse buckets, objects, and S3 access roles.",
+          description: "Browse object containers, stored objects, and access.",
         }),
         expect.objectContaining({
           id: "key-manager",
@@ -124,5 +125,39 @@ describe("service directory", () => {
         }),
       ]),
     );
+  });
+
+  it("removes operator-disabled services from the directory", () => {
+    const directory = buildServiceDirectory(
+      catalog,
+      "RegionOne",
+      parseServicePolicy({
+        disabledServices: "object-storage-s3,object-storage,dns",
+      }),
+    );
+
+    expect(directory.map(({ id }) => id)).not.toContain("object-storage");
+    expect(directory.map(({ id }) => id)).not.toContain("dns");
+  });
+
+  it("uses Swift when it is the first available configured backend", () => {
+    const withSwift: OpenStackCatalogService[] = [
+      ...catalog,
+      {
+        name: "object-storage",
+        type: "object-storage",
+        endpoints: [endpoint("RegionOne", "https://swift.example.test")],
+      },
+    ];
+    const objectStorage = buildServiceDirectory(
+      withSwift,
+      "RegionOne",
+      parseServicePolicy({ objectStorageBackends: "swift,s3" }),
+    ).find(({ id }) => id === "object-storage");
+
+    expect(objectStorage).toMatchObject({
+      status: "available",
+      message: "Swift available in RegionOne",
+    });
   });
 });

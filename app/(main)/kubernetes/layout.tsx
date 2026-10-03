@@ -1,4 +1,5 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
+import { ConfiguredService } from "@/components/services/ServiceGuards";
 
 const kubernetesSidebarSections = [
   {
@@ -23,8 +24,10 @@ export default function KubernetesLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ServiceLayout sidebarSections={kubernetesSidebarSections}>
-      {children}
-    </ServiceLayout>
+    <ConfiguredService id="container-infra">
+      <ServiceLayout sidebarSections={kubernetesSidebarSections}>
+        {children}
+      </ServiceLayout>
+    </ConfiguredService>
   );
 }

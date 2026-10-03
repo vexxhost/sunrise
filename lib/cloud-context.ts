@@ -15,6 +15,7 @@ import { getUserInfo } from "@/lib/openstack/keystone-actions";
 import { readPrefs } from "@/lib/prefs";
 import { getSession } from "@/lib/session";
 import type { SunriseAppearance } from "@/lib/theme-preference";
+import { getServicePolicy } from "@/lib/deployment-config";
 
 export type CloudContext = {
   keystoneToken?: string;
@@ -25,6 +26,7 @@ export type CloudContext = {
 
 export async function loadCloudContextUncached(): Promise<CloudContext> {
   const session = await getSession();
+  const servicePolicy = getServicePolicy();
   const bootstrap = takeCloudContextBootstrap(session.cloudContextBootstrapId);
   const knownUserName =
     bootstrap?.userName ??
@@ -61,6 +63,7 @@ export async function loadCloudContextUncached(): Promise<CloudContext> {
       regions,
       userName: knownUserName ?? userInfo?.name,
       catalog,
+      servicePolicy,
     }),
   };
 }

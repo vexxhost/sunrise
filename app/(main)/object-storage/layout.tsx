@@ -1,10 +1,10 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
+import { ConfiguredServiceGroup } from "@/components/services/ServiceGuards";
+import { loadCloudContext } from "@/lib/cloud-context";
 
 const objectStorageSidebarSections = [
   {
-    items: [
-      { name: "Overview", href: "/object-storage", icon: "Gauge" },
-    ],
+    items: [{ name: "Overview", href: "/object-storage", icon: "Gauge" }],
   },
   {
     title: "Storage",
@@ -20,14 +20,22 @@ const objectStorageSidebarSections = [
   },
 ];
 
-export default function ObjectStorageLayout({
+export default async function ObjectStorageLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { snapshot } = await loadCloudContext();
+  const sidebarSections =
+    snapshot.objectStorage.backend === "s3"
+      ? objectStorageSidebarSections
+      : objectStorageSidebarSections.slice(0, 1);
+
   return (
-    <ServiceLayout sidebarSections={objectStorageSidebarSections}>
-      {children}
-    </ServiceLayout>
+    <ConfiguredServiceGroup id="object-storage">
+      <ServiceLayout sidebarSections={sidebarSections}>
+        {children}
+      </ServiceLayout>
+    </ConfiguredServiceGroup>
   );
 }

@@ -1,6 +1,7 @@
 import { ObjectDetailClient } from "./ObjectDetailClient";
 import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
 import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
+import { requireS3Backend } from "@/components/services/ServiceGuards";
 import { objectMetadataQueryOptions } from "@/hooks/queries/useObjects";
 import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { headObjectForRender } from "@/lib/s3/actions";
@@ -13,6 +14,7 @@ interface PageProps {
 }
 
 export default async function Page({ params }: PageProps) {
+  await requireS3Backend();
   const { bucket: rawBucket, key: rawKeyParts } = await params;
   const bucket = decodeURIComponent(rawBucket);
   const objectKey = rawKeyParts.map((p) => decodeURIComponent(p)).join("/");

@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export function UserMenu() {
-  const { user, project, role } = useCloudContext();
+  const { user, project, role, objectStorage } = useCloudContext();
   const userName = user.name;
   if (!userName) {
     return null;
@@ -54,53 +54,55 @@ export function UserMenu() {
                     {project.name}
                   </dd>
                 </div>
-                <div
-                  className="flex items-start gap-2"
-                  title={role.arn ?? role.message}
-                >
-                  <KeyRound
-                    className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <dt className="sr-only">Object Storage role</dt>
-                  <dd className="min-w-0 flex-1">
-                    <span className="block truncate">
-                      {role.name ?? "Object Storage role"}
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">
-                      <span
-                        className={cn(
-                          "size-1.5 rounded-full",
-                          role.status === "active"
-                            ? "bg-status-success"
-                            : role.status === "authentication-required"
-                              ? "bg-status-warning"
-                              : "bg-muted-foreground/50",
-                        )}
-                        aria-hidden="true"
-                      />
-                      {roleStatus}
-                    </span>
-                  </dd>
-                </div>
+                {objectStorage.backend === "s3" ? (
+                  <div
+                    className="flex items-start gap-2"
+                    title={role.arn ?? role.message}
+                  >
+                    <KeyRound
+                      className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <dt className="sr-only">Object Storage role</dt>
+                    <dd className="min-w-0 flex-1">
+                      <span className="block truncate">
+                        {role.name ?? "Object Storage role"}
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">
+                        <span
+                          className={cn(
+                            "size-1.5 rounded-full",
+                            role.status === "active"
+                              ? "bg-status-success"
+                              : role.status === "authentication-required"
+                                ? "bg-status-warning"
+                                : "bg-muted-foreground/50",
+                          )}
+                          aria-hidden="true"
+                        />
+                        {roleStatus}
+                      </span>
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
             </div>
             <ul className="pt-1">
-            <li>
-              {/*
+              <li>
+                {/*
                 Use a plain <a> (not next/link) so logout performs a full page
                 navigation. Otherwise the App Router serves the cached RSC for
                 "/" rendered before logout, and the user appears still signed in.
               */}
-              <a
-                href="/auth/logout"
-                className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs transition-colors hover:bg-accent"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Sign out
-              </a>
-            </li>
-          </ul>
+                <a
+                  href="/auth/logout"
+                  className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs transition-colors hover:bg-accent"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign out
+                </a>
+              </li>
+            </ul>
           </div>
         </NavigationMenuContent>
       </NavigationMenuItem>
