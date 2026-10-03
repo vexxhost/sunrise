@@ -31,11 +31,13 @@ export function QuotaImpactPreview({
   impacts,
   loading = false,
   unavailableMessage,
+  title = "Quota impact",
   description = "Projected usage includes resources already reserved by operations in progress.",
 }: {
   impacts: QuotaImpact[];
   loading?: boolean;
   unavailableMessage?: string;
+  title?: string;
   description?: string;
 }) {
   return (
@@ -46,7 +48,7 @@ export function QuotaImpactPreview({
           aria-hidden="true"
         />
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold">Quota impact</h3>
+          <h3 className="text-sm font-semibold">{title}</h3>
           <p className="text-xs text-muted-foreground">{description}</p>
         </div>
       </div>
