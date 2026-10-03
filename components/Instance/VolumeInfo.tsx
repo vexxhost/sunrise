@@ -5,7 +5,7 @@ import { Volume } from "@/types/openstack";
 import { Server } from "@/types/openstack";
 import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
 import { imageQueryOptions } from "@/hooks/queries/useImages";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
@@ -21,6 +21,7 @@ import { canModifyServerAttachments } from "@/lib/openstack/server-lifecycle";
 import {
   canDetachVolume,
   isVolumeTransitioning,
+  volumeDetachPollState,
 } from "@/lib/openstack/storage-lifecycle";
 import { Link2Off } from "lucide-react";
 
@@ -31,6 +32,9 @@ interface VolumeInfoProps {
 }
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
+type TrackedServerVolumeAttachment = Server["os-extended-volumes:volumes_attached"][number] & {
+  sunrise_detaching?: boolean;
+};
 
 export default function VolumeInfo({
   server,
@@ -49,18 +53,25 @@ export default function VolumeInfo({
   >(null);
   const [attachmentPolicyPending, startAttachmentPolicyUpdate] =
     useTransition();
-  const serverVolumeAttachments =
-    server["os-extended-volumes:volumes_attached"] ?? [];
+  const serverVolumeAttachments = (server[
+    "os-extended-volumes:volumes_attached"
+  ] ?? []) as TrackedServerVolumeAttachment[];
   const serverVolumeKeys = serverVolumeAttachments.map((volume) => volume.id);
 
   // Fetch all volumes in parallel using useSuspenseQueries
   const volumeQueries = useSuspenseQueries({
     queries: serverVolumeKeys.map((id) => ({
       ...volumeQueryOptions(regionId, projectId, id),
-      refetchInterval: (query: { state: { data?: Volume } }) =>
-        query.state.data && isVolumeTransitioning(query.state.data)
+      refetchInterval: (query: { state: { data?: Volume } }) => {
+        const detaching = serverVolumeAttachments.some(
+          (attachment) =>
+            attachment.id === id && attachment.sunrise_detaching,
+        );
+        return (query.state.data && isVolumeTransitioning(query.state.data)) ||
+          detaching
           ? TRANSITION_REFETCH_INTERVAL_MS
-          : false,
+          : false;
+      },
       refetchOnReconnect: false,
       refetchOnWindowFocus: false,
     })),
@@ -70,6 +81,32 @@ export default function VolumeInfo({
   const volumes = useMemo(() => {
     return volumeQueries.map((query) => query.data);
   }, [volumeQueries]);
+
+  const settledDetachmentKey = volumes
+    .filter((volume) => {
+      const detaching = serverVolumeAttachments.some(
+        (attachment) =>
+          attachment.id === volume.id && attachment.sunrise_detaching,
+      );
+      return (
+        detaching && volumeDetachPollState(volume, server.id) !== "pending"
+      );
+    })
+    .map((volume) => volume.id)
+    .sort()
+    .join(",");
+
+  useEffect(() => {
+    if (!settledDetachmentKey) return;
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "server", server.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "servers"],
+      }),
+    ]);
+  }, [projectId, queryClient, regionId, server.id, settledDetachmentKey]);
 
   // Determine image ID - either from server or from boot volume
   const imageId = useMemo(() => {
@@ -127,32 +164,39 @@ export default function VolumeInfo({
         setDetachError(result.error.message);
         return;
       }
+      const detachedId = detachTarget.id;
+      const markDetaching = (current: Server | undefined) =>
+        current
+          ? {
+              ...current,
+              "os-extended-volumes:volumes_attached": (
+                current["os-extended-volumes:volumes_attached"] ?? []
+              ).map((attachment) =>
+                attachment.id === detachedId
+                  ? { ...attachment, sunrise_detaching: true }
+                  : attachment,
+              ),
+            }
+          : current;
+      queryClient.setQueryData<Server>(
+        [regionId, projectId, "server", server.id],
+        markDetaching,
+      );
+      queryClient.setQueryData<Server[]>(
+        [regionId, projectId, "servers"],
+        (current) =>
+          current?.map((item) =>
+            item.id === server.id ? (markDetaching(item) ?? item) : item,
+          ),
+      );
       await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: [regionId, projectId, "server", server.id],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: [regionId, projectId, "servers"],
-        }),
         queryClient.invalidateQueries({
           queryKey: [regionId, projectId, "volumes"],
         }),
         queryClient.invalidateQueries({
-          queryKey: [regionId, projectId, "volume", detachTarget.id],
+          queryKey: [regionId, projectId, "volume", detachedId],
         }),
       ]);
-      queryClient.setQueryData<Server>(
-        [regionId, projectId, "server", server.id],
-        (current) =>
-          current
-            ? {
-                ...current,
-                "os-extended-volumes:volumes_attached": (
-                  current["os-extended-volumes:volumes_attached"] ?? []
-                ).filter(({ id }) => id !== detachTarget.id),
-              }
-            : current,
-      );
       setDetachTarget(null);
     });
   };
@@ -254,6 +298,7 @@ export default function VolumeInfo({
             );
             const updatingPolicy =
               attachmentPolicyPending && attachmentPolicyTarget === volume.id;
+            const detaching = Boolean(serverAttachment?.sunrise_detaching);
 
             return (
               <DetailField key={volume.id ?? index} label="Attached volume">
@@ -273,6 +318,10 @@ export default function VolumeInfo({
                       {rootVolume ? (
                         <p className="text-xs text-muted-foreground">
                           Root volume
+                        </p>
+                      ) : detaching ? (
+                        <p className="text-xs text-muted-foreground">
+                          Detaching
                         </p>
                       ) : null}
                     </div>
@@ -300,7 +349,7 @@ export default function VolumeInfo({
                       <Link2Off className="size-4" />
                     </Button>
                   </div>
-                  {!rootVolume ? (
+                  {!rootVolume && !detaching ? (
                     <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                       <Checkbox
                         checked={Boolean(
@@ -331,6 +380,15 @@ export default function VolumeInfo({
         {attachmentPolicyError ? (
           <MutationAlert>{attachmentPolicyError}</MutationAlert>
         ) : null}
+        {volumes.some(
+          (volume) => volume.status.toLowerCase() === "error_detaching",
+        ) ? (
+          <MutationAlert>
+            A volume could not be detached and remains connected to this
+            instance.
+          </MutationAlert>
+        ) : null}
+        {detachError ? <MutationAlert>{detachError}</MutationAlert> : null}
       </DetailSection>
 
       <MutationConfirmationDialog

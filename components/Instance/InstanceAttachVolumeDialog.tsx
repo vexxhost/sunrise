@@ -117,7 +117,10 @@ export function InstanceAttachVolumeDialog({
                 ...current,
                 "os-extended-volumes:volumes_attached": [
                   ...attached,
-                  { id: volumeId },
+                  {
+                    id: volumeId,
+                    delete_on_termination: deleteOnTermination,
+                  },
                 ],
               };
         },

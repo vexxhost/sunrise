@@ -157,12 +157,20 @@ export function InstanceSecurityGroupsDialog({
                     disabled={
                       pending || ports.length === 0 || mixed || duplicateName
                     }
-                    onCheckedChange={(value) =>
-                      setOverrides((current) => ({
-                        ...current,
-                        [group.id]: value === true,
-                      }))
-                    }
+                    onCheckedChange={(value) => {
+                      const selected = value === true;
+                      const originallyApplied =
+                        count === ports.length && ports.length > 0;
+                      setOverrides((current) => {
+                        const next = { ...current };
+                        if (selected === originallyApplied) {
+                          delete next[group.id];
+                        } else {
+                          next[group.id] = selected;
+                        }
+                        return next;
+                      });
+                    }}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block break-words text-sm font-medium [overflow-wrap:anywhere]">
