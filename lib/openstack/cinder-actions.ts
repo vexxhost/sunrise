@@ -19,6 +19,7 @@ const NOVA_SERVICE = {
 } as const;
 const CINDER_API_VERSION = "volume 3.66";
 const NOVA_API_VERSION = "compute 2.79";
+const NOVA_ATTACHMENT_UPDATE_API_VERSION = "compute 2.85";
 
 const resourceIdSchema = z.string().trim().min(1).max(255);
 const optionalText = z.string().trim().max(255).optional();
@@ -53,12 +54,18 @@ const volumeDetachSchema = z.object({
   volumeId: resourceIdSchema,
   serverId: resourceIdSchema,
 });
+const volumeAttachmentUpdateSchema = volumeDetachSchema.extend({
+  deleteOnTermination: z.boolean(),
+});
 
 export type CreateVolumeInput = z.input<typeof volumeCreateSchema>;
 export type UpdateVolumeInput = z.input<typeof volumeUpdateSchema>;
 export type CreateSnapshotInput = z.input<typeof snapshotCreateSchema>;
 export type AttachVolumeInput = z.input<typeof volumeAttachSchema>;
 export type DetachVolumeInput = z.input<typeof volumeDetachSchema>;
+export type UpdateVolumeAttachmentInput = z.input<
+  typeof volumeAttachmentUpdateSchema
+>;
 
 function validationFailure(scope: MutationScope, message: string) {
   return mutationFailure(
@@ -285,5 +292,38 @@ export async function detachVolumeAction(
       `/compute/volumes/${value.volumeId}`,
     ],
     successMessage: "Volume detachment requested.",
+  });
+}
+
+export async function updateVolumeAttachmentAction(
+  scope: MutationScope,
+  input: UpdateVolumeAttachmentInput,
+): Promise<MutationResult<null>> {
+  const parsed = parseInput(volumeAttachmentUpdateSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+  const value = parsed.value;
+
+  return executeOpenStackMutation({
+    actionLabel: "update this volume attachment",
+    scope,
+    ...NOVA_SERVICE,
+    path: `/servers/${encodeURIComponent(value.serverId)}/os-volume_attachments/${encodeURIComponent(value.volumeId)}`,
+    method: "PUT",
+    apiVersion: NOVA_ATTACHMENT_UPDATE_API_VERSION,
+    body: {
+      volumeAttachment: {
+        volumeId: value.volumeId,
+        delete_on_termination: value.deleteOnTermination,
+      },
+    },
+    invalidates: [
+      "/compute/instances",
+      `/compute/instances/${value.serverId}`,
+      "/compute/volumes",
+      `/compute/volumes/${value.volumeId}`,
+    ],
+    successMessage: value.deleteOnTermination
+      ? "The volume will be deleted with the instance."
+      : "The volume will be preserved when the instance is deleted.",
   });
 }

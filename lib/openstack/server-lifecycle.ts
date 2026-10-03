@@ -14,7 +14,6 @@ const TRANSITIONAL_STATUSES = new Set([
   "RESCUE",
   "RESIZE",
   "REVERT_RESIZE",
-  "VERIFY_RESIZE",
 ]);
 
 function normalizedStatus(server: Pick<Server, "status">) {
@@ -68,6 +67,38 @@ export function canRebuildServer(
   return ["ACTIVE", "ERROR", "SHUTOFF"].includes(normalizedStatus(server));
 }
 
+export function canResizeServer(
+  server: Pick<Server, "status" | "locked" | "OS-EXT-STS:task_state">,
+) {
+  if (server.locked || isServerTransitioning(server)) {
+    return false;
+  }
+
+  return ["ACTIVE", "SHUTOFF"].includes(normalizedStatus(server));
+}
+
+export function canResolveServerResize(
+  server: Pick<Server, "status" | "locked" | "OS-EXT-STS:task_state">,
+) {
+  return (
+    !server.locked &&
+    !server["OS-EXT-STS:task_state"] &&
+    normalizedStatus(server) === "VERIFY_RESIZE"
+  );
+}
+
+export function canModifyServerAttachments(
+  server: Pick<Server, "status" | "locked" | "OS-EXT-STS:task_state">,
+) {
+  if (server.locked || isServerTransitioning(server)) {
+    return false;
+  }
+
+  return ["ACTIVE", "PAUSED", "SHUTOFF", "SUSPENDED"].includes(
+    normalizedStatus(server),
+  );
+}
+
 export function mergeServerUpdates<T extends { id: string }>(
   existing: T[],
   updates: ReadonlyMap<string, T>,
@@ -80,6 +111,45 @@ export function mergeServerUpdates<T extends { id: string }>(
     }
 
     changed = true;
+    return updated;
+  });
+
+  return changed ? nextServers : existing;
+}
+
+export function markServerTaskStateIfStatus<
+  T extends Pick<Server, "status" | "OS-EXT-STS:task_state">,
+>(server: T, expectedStatuses: ReadonlySet<string>, taskState: string) {
+  if (
+    server["OS-EXT-STS:task_state"] ||
+    !expectedStatuses.has(normalizedStatus(server))
+  ) {
+    return server;
+  }
+
+  return {
+    ...server,
+    "OS-EXT-STS:task_state": taskState,
+  };
+}
+
+export function markServersTaskStateIfStatus<
+  T extends Pick<Server, "status" | "OS-EXT-STS:task_state"> & { id: string },
+>(
+  existing: T[],
+  serverIds: ReadonlySet<string>,
+  expectedStatuses: ReadonlySet<string>,
+  taskState: string,
+) {
+  let changed = false;
+  const nextServers = existing.map((server) => {
+    if (!serverIds.has(server.id)) return server;
+    const updated = markServerTaskStateIfStatus(
+      server,
+      expectedStatuses,
+      taskState,
+    );
+    changed = changed || updated !== server;
     return updated;
   });
 

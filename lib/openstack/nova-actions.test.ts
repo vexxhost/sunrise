@@ -14,7 +14,9 @@ vi.mock("@/lib/openstack/request-server", () => ({
 vi.mock("@/lib/session", () => ({ getSession: vi.fn() }));
 
 import {
+  addServerSecurityGroupAction,
   attachPortAction,
+  confirmResizeServerAction,
   createKeypairAction,
   createServerAction,
   deleteServerAction,
@@ -22,6 +24,9 @@ import {
   detachPortAction,
   getServerConsoleOutputAction,
   replaceServerMetadataAction,
+  removeServerSecurityGroupAction,
+  resizeServerAction,
+  revertResizeServerAction,
   runServerLifecycleAction,
 } from "@/lib/openstack/nova-actions";
 
@@ -215,6 +220,61 @@ describe("Nova mutation actions", () => {
         path: "/servers/server-a/action",
         body: { reboot: { type: "HARD" } },
         successMessage: "Forced reboot requested.",
+      }),
+    );
+  });
+
+  it("maps resize, confirmation, and rollback to guarded Nova mutations", async () => {
+    await resizeServerAction(scope, "server-a", { flavorRef: "flavor-b" });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        apiVersion: "compute 2.79",
+        path: "/servers/server-a/action",
+        body: { resize: { flavorRef: "flavor-b" } },
+      }),
+    );
+
+    await confirmResizeServerAction(scope, "server-a");
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ body: { confirmResize: null } }),
+    );
+
+    await revertResizeServerAction(scope, "server-a");
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ body: { revertResize: null } }),
+    );
+  });
+
+  it("rejects a resize without a target flavor", async () => {
+    const result = await resizeServerAction(scope, "server-a", {
+      flavorRef: "",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("adds and removes server-wide security groups by name", async () => {
+    await addServerSecurityGroupAction(scope, "server-a", {
+      groupName: "web",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: { addSecurityGroup: { name: "web" } },
+        path: "/servers/server-a/action",
+      }),
+    );
+
+    await removeServerSecurityGroupAction(scope, "server-a", {
+      groupName: "web",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: { removeSecurityGroup: { name: "web" } },
+        path: "/servers/server-a/action",
       }),
     );
   });

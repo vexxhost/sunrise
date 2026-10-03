@@ -48,6 +48,15 @@ export function canDetachVolume(volume: Volume) {
   return volume.attachments.length > 0 && volume.status === "in-use";
 }
 
+export function volumeDetachPollState(volume: Volume, serverId: string) {
+  if (isVolumeTransitioning(volume)) return "pending" as const;
+  return volume.attachments.some(
+    (attachment) => attachment.server_id === serverId,
+  )
+    ? ("attached" as const)
+    : ("detached" as const);
+}
+
 export function canSnapshotVolume(volume: Volume) {
   return volume.status === "available" || volume.status === "in-use";
 }

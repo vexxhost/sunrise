@@ -5,14 +5,19 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Check,
   CircleStop,
+  HardDrive,
   MoreHorizontal,
   Monitor,
   Pencil,
   Play,
   RefreshCw,
   RotateCw,
+  Scaling,
+  ShieldCheck,
   Trash2,
+  Undo2,
   Zap,
 } from "lucide-react";
 
@@ -21,7 +26,11 @@ import {
   type InstanceMutationKind,
 } from "@/components/Instance/InstanceLifecycleDialog";
 import { ImagePicker } from "@/components/Image/ImageSelectOption";
+import { InstanceAttachVolumeDialog } from "@/components/Instance/InstanceAttachVolumeDialog";
+import { InstanceResizeDialog } from "@/components/Instance/InstanceResizeDialog";
+import { InstanceSecurityGroupsDialog } from "@/components/Instance/InstanceSecurityGroupsDialog";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,17 +62,24 @@ import {
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { keypairsQueryOptions } from "@/hooks/queries/useServers";
 import {
+  confirmResizeServerAction,
   rebuildServerAction,
   replaceServerMetadataAction,
+  revertResizeServerAction,
 } from "@/lib/openstack/nova-actions";
 import {
   canDeleteServer,
+  canModifyServerAttachments,
   canRebuildServer,
+  canResizeServer,
+  canResolveServerResize,
   canRunServerLifecycleAction,
   isServerTransitioning,
+  markServersTaskStateIfStatus,
+  markServerTaskStateIfStatus,
   markServersDeleting,
 } from "@/lib/openstack/server-lifecycle";
-import type { Server } from "@/types/openstack";
+import type { Port, Server } from "@/types/openstack";
 
 type MetadataEntry = { id: number; key: string; value: string };
 
@@ -71,12 +87,14 @@ interface InstanceDetailActionsProps {
   projectId?: string;
   regionId?: string;
   server: Server;
+  ports: Port[];
 }
 
 export function InstanceDetailActions({
   projectId,
   regionId,
   server,
+  ports,
 }: InstanceDetailActionsProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -84,6 +102,12 @@ export function InstanceDetailActions({
     useState<InstanceMutationKind | null>(null);
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
+  const [resizeOpen, setResizeOpen] = useState(false);
+  const [attachVolumeOpen, setAttachVolumeOpen] = useState(false);
+  const [securityGroupsOpen, setSecurityGroupsOpen] = useState(false);
+  const [resizeDecision, setResizeDecision] = useState<
+    "confirm" | "revert" | null
+  >(null);
   const [imageRef, setImageRef] = useState("");
   const [keyName, setKeyName] = useState("preserve");
   const [preserveEphemeral, setPreserveEphemeral] = useState(false);
@@ -91,6 +115,10 @@ export function InstanceDetailActions({
   const [nextMetadataId, setNextMetadataId] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [resizeDecisionError, setResizeDecisionError] = useState<string | null>(
+    null,
+  );
+  const [resizeDecisionPending, startResizeDecision] = useTransition();
 
   const { data: images = [], isFetching: imagesLoading } = useQuery({
     ...imagesQueryOptions(regionId, projectId),
@@ -136,7 +164,63 @@ export function InstanceDetailActions({
       queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "server-actions", server.id],
       }),
+      queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "server-interfaces", server.id],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "volumes"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "ports"],
+      }),
+      ...ports.map((port) =>
+        queryClient.invalidateQueries({
+          queryKey: [regionId, projectId, "port", port.id],
+        }),
+      ),
     ]);
+  };
+
+  const resolveResize = () => {
+    if (!resizeDecision || !projectId || !regionId) return;
+    startResizeDecision(async () => {
+      setResizeDecisionError(null);
+      const result =
+        resizeDecision === "confirm"
+          ? await confirmResizeServerAction({ projectId, regionId }, server.id)
+          : await revertResizeServerAction({ projectId, regionId }, server.id);
+      if (!result.ok) {
+        setResizeDecisionError(result.error.message);
+        return;
+      }
+      const completedDecision = resizeDecision;
+      setResizeDecision(null);
+      await refresh();
+      const expectedStatuses = new Set(["VERIFY_RESIZE"]);
+      const taskState =
+        completedDecision === "confirm"
+          ? "resize_confirming"
+          : "resize_reverting";
+      queryClient.setQueryData<Server>(
+        [regionId, projectId, "server", server.id],
+        (current) =>
+          current
+            ? markServerTaskStateIfStatus(current, expectedStatuses, taskState)
+            : current,
+      );
+      queryClient.setQueryData<Server[]>(
+        [regionId, projectId, "servers"],
+        (current) =>
+          current
+            ? markServersTaskStateIfStatus(
+                current,
+                new Set([server.id]),
+                expectedStatuses,
+                taskState,
+              )
+            : current,
+      );
+    });
   };
 
   const completeLifecycleAction = async (
@@ -230,6 +314,8 @@ export function InstanceDetailActions({
   };
 
   const transitioning = isServerTransitioning(server);
+  const resizeAwaitingDecision = canResolveServerResize(server);
+  const attachmentChangesAvailable = canModifyServerAttachments(server);
   const PrimaryIcon = primaryAction?.icon;
 
   return (
@@ -267,6 +353,28 @@ export function InstanceDetailActions({
           ) : null}
         </ButtonGroup>
 
+        {resizeAwaitingDecision ? (
+          <ButtonGroup>
+            <Button
+              type="button"
+              className="h-10 gap-2"
+              onClick={() => setResizeDecision("confirm")}
+            >
+              <Check className="size-4" />
+              Confirm resize
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 gap-2"
+              onClick={() => setResizeDecision("revert")}
+            >
+              <Undo2 className="size-4" />
+              Revert
+            </Button>
+          </ButtonGroup>
+        ) : null}
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -300,6 +408,27 @@ export function InstanceDetailActions({
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               Configuration
             </DropdownMenuLabel>
+            <DropdownMenuItem
+              disabled={!canResizeServer(server)}
+              onClick={() => setResizeOpen(true)}
+            >
+              <Scaling className="size-4" />
+              Resize
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!attachmentChangesAvailable}
+              onClick={() => setAttachVolumeOpen(true)}
+            >
+              <HardDrive className="size-4" />
+              Attach volume
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!attachmentChangesAvailable || ports.length === 0}
+              onClick={() => setSecurityGroupsOpen(true)}
+            >
+              <ShieldCheck className="size-4" />
+              Manage security groups
+            </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!canRebuildServer(server)}
               onClick={openRebuildDialog}
@@ -339,6 +468,60 @@ export function InstanceDetailActions({
         }}
         projectId={projectId}
         regionId={regionId}
+      />
+
+      <InstanceResizeDialog
+        open={resizeOpen}
+        onOpenChange={setResizeOpen}
+        onComplete={refresh}
+        projectId={projectId}
+        regionId={regionId}
+        server={server}
+      />
+
+      <InstanceAttachVolumeDialog
+        open={attachVolumeOpen}
+        onOpenChange={setAttachVolumeOpen}
+        onComplete={refresh}
+        projectId={projectId}
+        regionId={regionId}
+        server={server}
+      />
+
+      <InstanceSecurityGroupsDialog
+        open={securityGroupsOpen}
+        onOpenChange={setSecurityGroupsOpen}
+        onComplete={refresh}
+        ports={ports}
+        projectId={projectId}
+        regionId={regionId}
+        server={server}
+      />
+
+      <MutationConfirmationDialog
+        open={resizeDecision !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResizeDecision(null);
+            setResizeDecisionError(null);
+          }
+        }}
+        title={
+          resizeDecision === "confirm" ? "Confirm resize?" : "Revert resize?"
+        }
+        description={
+          resizeDecision === "confirm"
+            ? "Accept the new flavor and permanently remove Nova's saved copy of the original instance."
+            : "Discard the resized instance and restore the original flavor and instance copy."
+        }
+        confirmLabel={
+          resizeDecision === "confirm" ? "Confirm resize" : "Revert resize"
+        }
+        pendingLabel={resizeDecision === "confirm" ? "Confirming" : "Reverting"}
+        pending={resizeDecisionPending}
+        error={resizeDecisionError}
+        variant={resizeDecision === "revert" ? "destructive" : "default"}
+        onConfirm={resolveResize}
       />
 
       <Dialog open={metadataOpen} onOpenChange={setMetadataOpen}>

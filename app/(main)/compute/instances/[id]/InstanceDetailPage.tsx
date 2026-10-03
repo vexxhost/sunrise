@@ -1,30 +1,34 @@
-import { getSession } from '@/lib/session';
-import { InstanceDetailClient } from './InstanceDetailClient';
-import { PrefetchHydrationBoundary } from '@/components/PrefetchHydrationBoundary';
+import { getSession } from "@/lib/session";
+import { InstanceDetailClient } from "./InstanceDetailClient";
+import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
 import {
   serverQueryOptions,
   serverInterfacesQueryOptions,
   serverActionsQueryOptions,
   serverConsoleOutputQueryOptions,
   flavorsQueryOptions,
-} from '@/hooks/queries/useServers';
+} from "@/hooks/queries/useServers";
 import {
-  networkQueryOptions,
+  networksQueryOptions,
   portQueryOptions,
+  portsQueryOptions,
   securityGroupsQueryOptions,
-} from '@/hooks/queries/useNetworks';
-import { volumeQueryOptions } from '@/hooks/queries/useVolumes';
-import { imageQueryOptions } from '@/hooks/queries/useImages';
-import { makeQueryClient } from '@/lib/query-client';
-import type { InstanceDetailTab } from './tabs';
-import { fetchOpenStackResourceOrRecover } from '@/lib/resource-recovery-server';
+} from "@/hooks/queries/useNetworks";
+import { volumeQueryOptions } from "@/hooks/queries/useVolumes";
+import { imageQueryOptions } from "@/hooks/queries/useImages";
+import { makeQueryClient } from "@/lib/query-client";
+import type { InstanceDetailTab } from "./tabs";
+import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 
 interface InstanceDetailPageProps {
   id: string;
   activeTab: InstanceDetailTab;
 }
 
-export async function InstanceDetailPage({ id, activeTab }: InstanceDetailPageProps) {
+export async function InstanceDetailPage({
+  id,
+  activeTab,
+}: InstanceDetailPageProps) {
   const session = await getSession();
   const { regionId, projectId } = session;
 
@@ -34,49 +38,43 @@ export async function InstanceDetailPage({ id, activeTab }: InstanceDetailPagePr
   const interfacesQuery = serverInterfacesQueryOptions(regionId, projectId, id);
   const server = await fetchOpenStackResourceOrRecover(
     queryClient.fetchQuery(serverQuery),
-    { kind: 'instance', id },
+    { kind: "instance", id },
   );
   const interfaceAttachments = await fetchOpenStackResourceOrRecover(
     queryClient.fetchQuery(interfacesQuery),
-    { kind: 'instance', id },
+    { kind: "instance", id },
   );
 
   const attachedVolumeIds =
-    server['os-extended-volumes:volumes_attached']?.map(
+    server["os-extended-volumes:volumes_attached"]?.map(
       (volume: { id: string }) => volume.id,
     ) ?? [];
   const portIds = interfaceAttachments.map((attachment) => attachment.port_id);
-  const ports = await Promise.all(
-    portIds.map((portId) =>
-      queryClient.fetchQuery(portQueryOptions(regionId, projectId, portId)),
-    ),
-  );
-  const networkIds = Array.from(
-    new Set(ports.map((port) => port.network_id).filter(Boolean)),
-  );
-
   const queries: Array<any> = [
     serverQuery,
     interfacesQuery,
     securityGroupsQueryOptions(regionId, projectId),
+    portsQueryOptions(regionId, projectId),
+    networksQueryOptions(regionId, projectId),
     flavorsQueryOptions(regionId, projectId),
     serverActionsQueryOptions(regionId, projectId, id) as any,
     ...portIds.map((portId) => portQueryOptions(regionId, projectId, portId)),
-    ...networkIds.map((networkId) =>
-      networkQueryOptions(regionId, projectId, networkId),
-    ),
   ];
 
   for (const volumeId of attachedVolumeIds) {
     queries.push(volumeQueryOptions(regionId, projectId, volumeId) as any);
   }
 
-  if (server.image && typeof server.image === 'object' && server.image.id) {
-    queries.push(imageQueryOptions(regionId, projectId, server.image.id) as any);
+  if (server.image && typeof server.image === "object" && server.image.id) {
+    queries.push(
+      imageQueryOptions(regionId, projectId, server.image.id) as any,
+    );
   }
 
-  if (activeTab === 'log') {
-    queries.push(serverConsoleOutputQueryOptions(regionId, projectId, id, 35) as any);
+  if (activeTab === "log") {
+    queries.push(
+      serverConsoleOutputQueryOptions(regionId, projectId, id, 35) as any,
+    );
   }
 
   return (

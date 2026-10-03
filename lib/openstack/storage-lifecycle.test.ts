@@ -10,6 +10,7 @@ import {
   isVolumeTransitioning,
   mergeSnapshotUpdates,
   mergeVolumeUpdates,
+  volumeDetachPollState,
 } from "@/lib/openstack/storage-lifecycle";
 import {
   formatSnapshotStatus,
@@ -60,6 +61,27 @@ describe("Cinder lifecycle availability", () => {
     expect(isSnapshotTransitioning(snapshot("deleting"))).toBe(true);
     expect(canDeleteSnapshot(snapshot("available"))).toBe(true);
     expect(canDeleteSnapshot(snapshot("creating"))).toBe(false);
+  });
+
+  it("keeps detachments pending until Cinder confirms their outcome", () => {
+    const attachment = {
+      server_id: "server-a",
+    } as Volume["attachments"][number];
+    expect(
+      volumeDetachPollState(
+        volume("detaching", { attachments: [attachment] }),
+        "server-a",
+      ),
+    ).toBe("pending");
+    expect(
+      volumeDetachPollState(
+        volume("error_detaching", { attachments: [attachment] }),
+        "server-a",
+      ),
+    ).toBe("attached");
+    expect(volumeDetachPollState(volume("available"), "server-a")).toBe(
+      "detached",
+    );
   });
 
   it("presents Cinder activity with user-facing labels", () => {

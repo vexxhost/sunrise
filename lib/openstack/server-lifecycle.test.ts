@@ -2,9 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   canDeleteServer,
+  canModifyServerAttachments,
   canRebuildServer,
+  canResizeServer,
+  canResolveServerResize,
   canRunServerLifecycleAction,
   isServerTransitioning,
+  markServersTaskStateIfStatus,
+  markServerTaskStateIfStatus,
   markServersDeleting,
   mergeServerUpdates,
   selectServerPollingTargets,
@@ -68,6 +73,61 @@ describe("server lifecycle availability", () => {
     expect(canRebuildServer(server("SHUTOFF"))).toBe(true);
     expect(canRebuildServer(server("ERROR"))).toBe(true);
     expect(canRebuildServer(server("BUILD"))).toBe(false);
+  });
+
+  it("offers resize only from stable active or stopped states", () => {
+    expect(canResizeServer(server("ACTIVE"))).toBe(true);
+    expect(canResizeServer(server("SHUTOFF"))).toBe(true);
+    expect(canResizeServer(server("ERROR"))).toBe(false);
+    expect(canResizeServer(server("RESIZE"))).toBe(false);
+  });
+
+  it("treats VERIFY_RESIZE as a decision state instead of a transition", () => {
+    const awaitingDecision = server("VERIFY_RESIZE");
+    expect(isServerTransitioning(awaitingDecision)).toBe(false);
+    expect(canResolveServerResize(awaitingDecision)).toBe(true);
+    expect(
+      canResolveServerResize(
+        server("VERIFY_RESIZE", { "OS-EXT-STS:task_state": "resize_finish" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("allows attachment changes only while the instance is stable", () => {
+    expect(canModifyServerAttachments(server("ACTIVE"))).toBe(true);
+    expect(canModifyServerAttachments(server("SHUTOFF"))).toBe(true);
+    expect(canModifyServerAttachments(server("BUILD"))).toBe(false);
+    expect(canModifyServerAttachments(server("ACTIVE", { locked: true }))).toBe(
+      false,
+    );
+  });
+
+  it("keeps polling alive when Nova has not exposed a resize transition yet", () => {
+    const active = server("ACTIVE");
+    const expected = new Set(["ACTIVE", "SHUTOFF"]);
+    const marked = markServerTaskStateIfStatus(active, expected, "resize_prep");
+
+    expect(marked["OS-EXT-STS:task_state"]).toBe("resize_prep");
+    expect(isServerTransitioning(marked)).toBe(true);
+    expect(
+      markServerTaskStateIfStatus(server("RESIZE"), expected, "resize_prep"),
+    ).toEqual(server("RESIZE"));
+  });
+
+  it("marks only matching cached servers for continued transition polling", () => {
+    const current = [
+      { ...server("VERIFY_RESIZE"), id: "server-a" },
+      { ...server("ACTIVE"), id: "server-b" },
+    ];
+    const next = markServersTaskStateIfStatus(
+      current,
+      new Set(["server-a"]),
+      new Set(["VERIFY_RESIZE"]),
+      "resize_confirming",
+    );
+
+    expect(next[0]?.["OS-EXT-STS:task_state"]).toBe("resize_confirming");
+    expect(next[1]).toBe(current[1]);
   });
 });
 

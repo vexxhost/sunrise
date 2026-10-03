@@ -5,7 +5,7 @@ type MutationAlertProps = {
   children: React.ReactNode;
   className?: string;
   title?: string;
-  variant?: "error" | "success" | "warning";
+  variant?: "error" | "info" | "success" | "warning";
 };
 
 export function MutationAlert({
@@ -30,6 +30,8 @@ export function MutationAlert({
           "border-destructive/40 bg-destructive/10 text-destructive",
         variant === "warning" &&
           "border-status-warning-border bg-status-warning-soft text-foreground",
+        variant === "info" &&
+          "border-status-info-border bg-status-info-soft text-foreground",
         variant === "success" &&
           "border-status-success-border bg-status-success-soft text-foreground",
         className,

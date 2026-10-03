@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useSuspenseQuery, useSuspenseQueries } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +14,12 @@ import {
   serverQueryOptions,
   serverInterfacesQueryOptions,
 } from "@/hooks/queries/useServers";
-import { portQueryOptions, networkQueryOptions } from "@/hooks/queries/useNetworks";
+import {
+  networksQueryOptions,
+  portQueryOptions,
+  portsQueryOptions,
+  securityGroupsQueryOptions,
+} from "@/hooks/queries/useNetworks";
 import { useEffect, useMemo, useState } from "react";
 import { isInstanceDetailTab, type InstanceDetailTab } from "./tabs";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +30,10 @@ import {
   formatServerStatus,
   serverStatusBadgeVariant,
 } from "@/lib/openstack/server-state";
-import { isServerTransitioning } from "@/lib/openstack/server-lifecycle";
+import {
+  canModifyServerAttachments,
+  isServerTransitioning,
+} from "@/lib/openstack/server-lifecycle";
 import { resolveServerFlavor } from "@/lib/openstack/server-flavor";
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
@@ -56,52 +64,50 @@ export function InstanceDetailClient({
     refetchOnWindowFocus: false,
   });
   const { data: interfaceAttachments } = useSuspenseQuery(
-    serverInterfacesQueryOptions(regionId, projectId, serverId)
+    serverInterfacesQueryOptions(regionId, projectId, serverId),
   );
   const { data: flavors } = useSuspenseQuery(
     flavorsQueryOptions(regionId, projectId),
   );
+  const { data: allPorts } = useSuspenseQuery(
+    portsQueryOptions(regionId, projectId),
+  );
+  const { data: networks } = useSuspenseQuery(
+    networksQueryOptions(regionId, projectId),
+  );
+  const { data: securityGroups } = useSuspenseQuery(
+    securityGroupsQueryOptions(regionId, projectId),
+  );
   const resolvedFlavor = resolveServerFlavor(server, flavors);
 
   const portIds = useMemo(() => {
-    return interfaceAttachments.map(attachment => attachment.port_id);
+    return interfaceAttachments.map((attachment) => attachment.port_id);
   }, [interfaceAttachments]);
 
   // Fetch all ports in parallel using useSuspenseQueries
   const portQueries = useSuspenseQueries({
-    queries: portIds.map(id => portQueryOptions(regionId, projectId, id))
+    queries: portIds.map((id) => portQueryOptions(regionId, projectId, id)),
   });
 
   // Get ports data
   const ports = useMemo(() => {
-    return portQueries.map(query => query.data);
+    return portQueries.map((query) => query.data);
   }, [portQueries]);
-
-  // Get unique network IDs
-  const networkIds = useMemo(() => {
-    return Array.from(new Set(ports.map(port => port.network_id)));
-  }, [ports]);
-
-  // Fetch all networks in parallel using useSuspenseQueries
-  const networkQueries = useSuspenseQueries({
-    queries: networkIds.map(id => networkQueryOptions(regionId, projectId, id))
-  });
 
   // Enrich ports with network names
   const networkPorts = useMemo(() => {
-    const networksMap = new Map();
-    networkQueries.forEach(query => {
-      networksMap.set(query.data.id, query.data);
-    });
+    const networksMap = new Map(
+      networks.map((network) => [network.id, network]),
+    );
 
-    return ports.map(port => {
+    return ports.map((port) => {
       const network = networksMap.get(port.network_id);
       return {
         ...port,
-        network_name: network?.name
+        network_name: network?.name || "",
       };
     });
-  }, [ports, networkQueries]);
+  }, [networks, ports]);
 
   useEffect(() => {
     setSelectedTab(activeTab);
@@ -163,35 +169,57 @@ export function InstanceDetailClient({
             <Badge variant="secondary">
               {formatServerPowerState(server["OS-EXT-STS:power_state"])}
             </Badge>
-            {transitioning && Number.isFinite(server.progress) && server.progress > 0 ? (
-              <Badge variant="outline">
-                {server.progress}%
-              </Badge>
+            {transitioning &&
+            Number.isFinite(server.progress) &&
+            server.progress > 0 ? (
+              <Badge variant="outline">{server.progress}%</Badge>
             ) : null}
           </div>
-          <p className="truncate font-mono text-sm text-muted-foreground">{server.id}</p>
+          <p className="truncate font-mono text-sm text-muted-foreground">
+            {server.id}
+          </p>
         </div>
         <InstanceDetailActions
           server={server}
+          ports={networkPorts}
           projectId={projectId}
           regionId={regionId}
         />
       </div>
-      <Tabs value={selectedTab} onValueChange={handleTabChange} className="w-full">
+      <Tabs
+        value={selectedTab}
+        onValueChange={handleTabChange}
+        className="w-full"
+      >
         <TabsList className="flex w-full justify-start overflow-x-auto overflow-y-hidden">
-          <TabsTrigger className="min-w-28 flex-1 whitespace-nowrap" value="overview">
+          <TabsTrigger
+            className="min-w-28 flex-1 whitespace-nowrap"
+            value="overview"
+          >
             Overview
           </TabsTrigger>
-          <TabsTrigger className="min-w-28 flex-1 whitespace-nowrap" value="interfaces">
+          <TabsTrigger
+            className="min-w-28 flex-1 whitespace-nowrap"
+            value="interfaces"
+          >
             Networking
           </TabsTrigger>
-          <TabsTrigger className="min-w-28 flex-1 whitespace-nowrap" value="console">
+          <TabsTrigger
+            className="min-w-28 flex-1 whitespace-nowrap"
+            value="console"
+          >
             Console
           </TabsTrigger>
-          <TabsTrigger className="min-w-28 flex-1 whitespace-nowrap" value="log">
+          <TabsTrigger
+            className="min-w-28 flex-1 whitespace-nowrap"
+            value="log"
+          >
             System log
           </TabsTrigger>
-          <TabsTrigger className="min-w-28 flex-1 whitespace-nowrap" value="action-log">
+          <TabsTrigger
+            className="min-w-28 flex-1 whitespace-nowrap"
+            value="action-log"
+          >
             Activity
           </TabsTrigger>
         </TabsList>
@@ -203,17 +231,50 @@ export function InstanceDetailClient({
             flavor={resolvedFlavor}
           />
         </TabsContent>
-        <TabsContent value="interfaces" className={`${tabContentClass} rounded-md border`}>
-          <Interfaces networkPorts={networkPorts || []} />
+        <TabsContent
+          value="interfaces"
+          className={`${tabContentClass} rounded-md border`}
+        >
+          <Interfaces
+            allPorts={allPorts}
+            canModify={canModifyServerAttachments(server)}
+            networkPorts={networkPorts || []}
+            networks={networks}
+            projectId={projectId}
+            regionId={regionId}
+            securityGroups={securityGroups}
+            serverId={server.id}
+          />
         </TabsContent>
-        <TabsContent value="log" className={`${tabContentClass} rounded-md border p-4`}>
-          <ConsoleLog serverId={serverId} regionId={regionId} projectId={projectId} />
+        <TabsContent
+          value="log"
+          className={`${tabContentClass} rounded-md border p-4`}
+        >
+          <ConsoleLog
+            serverId={serverId}
+            regionId={regionId}
+            projectId={projectId}
+          />
         </TabsContent>
-        <TabsContent value="console" className={`${tabContentClass} rounded-md border p-4`}>
-          <Console serverId={serverId} projectId={projectId} regionId={regionId} />
+        <TabsContent
+          value="console"
+          className={`${tabContentClass} rounded-md border p-4`}
+        >
+          <Console
+            serverId={serverId}
+            projectId={projectId}
+            regionId={regionId}
+          />
         </TabsContent>
-        <TabsContent value="action-log" className={`${tabContentClass} rounded-md border p-4`}>
-          <ActionLog serverId={serverId} regionId={regionId} projectId={projectId} />
+        <TabsContent
+          value="action-log"
+          className={`${tabContentClass} rounded-md border p-4`}
+        >
+          <ActionLog
+            serverId={serverId}
+            regionId={regionId}
+            projectId={projectId}
+          />
         </TabsContent>
       </Tabs>
     </div>

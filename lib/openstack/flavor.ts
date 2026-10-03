@@ -1,4 +1,4 @@
-import type { Flavor } from "@/types/openstack";
+import type { Flavor, Server } from "@/types/openstack";
 
 export function flavorTotalDiskGiB(flavor: Flavor) {
   return flavor.disk + (flavor["OS-FLV-EXT-DATA:ephemeral"] || 0);
@@ -12,4 +12,13 @@ export function formatFlavorRam(ramMiB: number) {
 
 export function formatFlavorCapacity(flavor: Flavor) {
   return `${flavor.name} · ${flavor.vcpus} vCPU · ${formatFlavorRam(flavor.ram)} RAM · ${flavorTotalDiskGiB(flavor)} GiB disk`;
+}
+
+export function resizeFlavorDiskUnavailableReason(
+  currentFlavor: Pick<Server["flavor"], "disk">,
+  targetFlavor: Pick<Flavor, "disk">,
+) {
+  return targetFlavor.disk < currentFlavor.disk
+    ? `Root disk cannot shrink below ${currentFlavor.disk} GiB`
+    : null;
 }

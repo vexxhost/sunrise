@@ -4,6 +4,7 @@ import {
   flavorTotalDiskGiB,
   formatFlavorCapacity,
   formatFlavorRam,
+  resizeFlavorDiskUnavailableReason,
 } from "@/lib/openstack/flavor";
 import type { Flavor } from "@/types/openstack";
 
@@ -40,5 +41,17 @@ describe("flavor capacity formatting", () => {
     expect(formatFlavorCapacity(flavor())).toBe(
       "m1.medium · 2 vCPU · 4 GiB RAM · 40 GiB disk",
     );
+  });
+
+  it("rejects resize targets with a smaller root disk", () => {
+    expect(
+      resizeFlavorDiskUnavailableReason({ disk: 40 }, flavor({ disk: 20 })),
+    ).toBe("Root disk cannot shrink below 40 GiB");
+    expect(
+      resizeFlavorDiskUnavailableReason({ disk: 40 }, flavor({ disk: 40 })),
+    ).toBeNull();
+    expect(
+      resizeFlavorDiskUnavailableReason({ disk: 40 }, flavor({ disk: 80 })),
+    ).toBeNull();
   });
 });

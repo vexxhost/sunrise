@@ -4,6 +4,7 @@ import {
   cinderSnapshotQuotaImpacts,
   cinderVolumeQuotaImpacts,
   novaQuotaImpacts,
+  novaResizeQuotaImpacts,
   quotaImpactIssues,
   quotaRequestImpacts,
 } from "@/lib/openstack/quota-impact";
@@ -60,6 +61,35 @@ describe("creation quota impact", () => {
       { id: "cores", requested: 4, projected: 12, exceeds: false },
       { id: "ram", requested: 8, projected: 16, exceeds: false },
     ]);
+  });
+
+  it("projects only additional compute capacity for a resize", () => {
+    const impacts = novaResizeQuotaImpacts(
+      [metric("cores", 6, 10), metric("ram", 8, 16, 0, "GiB")],
+      { vcpus: 1, ram: 2048 },
+      { vcpus: 4, ram: 8192 },
+    );
+
+    expect(
+      impacts.map(({ metric: item, requested, projected }) => ({
+        id: item.id,
+        requested,
+        projected,
+      })),
+    ).toEqual([
+      { id: "cores", requested: 3, projected: 9 },
+      { id: "ram", requested: 6, projected: 14 },
+    ]);
+  });
+
+  it("does not invent quota consumption when resizing down", () => {
+    const impacts = novaResizeQuotaImpacts(
+      [metric("cores", 6, 10), metric("ram", 8, 16, 0, "GiB")],
+      { vcpus: 4, ram: 8192 },
+      { vcpus: 1, ram: 2048 },
+    );
+
+    expect(impacts.every(({ requested }) => requested === 0)).toBe(true);
   });
 
   it("marks a flavor unavailable when any requested resource exceeds quota", () => {

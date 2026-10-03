@@ -95,6 +95,25 @@ export function novaQuotaImpacts(
   return impacts;
 }
 
+export function novaResizeQuotaImpacts(
+  metrics: QuotaMetric[],
+  currentFlavor: Pick<Flavor, "ram" | "vcpus"> | undefined,
+  targetFlavor: Pick<Flavor, "ram" | "vcpus"> | undefined,
+) {
+  if (!currentFlavor || !targetFlavor) return [];
+
+  return quotaRequestImpacts(metrics, [
+    {
+      metricId: "cores",
+      requested: Math.max(0, targetFlavor.vcpus - currentFlavor.vcpus),
+    },
+    {
+      metricId: "ram",
+      requested: Math.max(0, targetFlavor.ram - currentFlavor.ram) / 1024,
+    },
+  ]);
+}
+
 export function cinderVolumeQuotaImpacts(
   metrics: QuotaMetric[],
   sizeGiB: number,
