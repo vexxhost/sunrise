@@ -26,6 +26,7 @@ import {
   WizardDialogContent,
   WizardDialogDescription,
   WizardDialogFooter,
+  WizardDialogForm,
   WizardDialogHeader,
   WizardReviewStatus,
   WizardDialogTitle,
@@ -519,12 +520,8 @@ export function InstanceActions({
     }));
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (activeTab !== "review") {
-      setActiveTab("review");
-      return;
-    }
+  const createInstance = () => {
+    if (activeTab !== "review") return;
     if (reviewIssues.length || !projectId || !regionId) return;
 
     startTransition(async () => {
@@ -622,10 +619,7 @@ export function InstanceActions({
 
       <WizardDialog open={isOpen} onOpenChange={handleOpenChange}>
         <WizardDialogContent>
-          <form
-            className="flex min-h-0 flex-1 flex-col"
-            onSubmit={handleSubmit}
-          >
+          <WizardDialogForm className="flex min-h-0 flex-1 flex-col">
             <WizardDialogHeader>
               <WizardDialogTitle className="flex items-center gap-2">
                 <Server className="size-5" />
@@ -1463,8 +1457,9 @@ export function InstanceActions({
               </Button>
               {activeTab === "review" ? (
                 <Button
-                  type="submit"
+                  type="button"
                   disabled={reviewIssues.length > 0 || isPending}
+                  onClick={createInstance}
                 >
                   {isPending ? "Creating" : "Create instance"}
                 </Button>
@@ -1478,7 +1473,7 @@ export function InstanceActions({
                 </Button>
               )}
             </WizardDialogFooter>
-          </form>
+          </WizardDialogForm>
         </WizardDialogContent>
       </WizardDialog>
     </>

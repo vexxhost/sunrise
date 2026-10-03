@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { preventWizardFormSubmit } from "@/components/ui/wizard-form";
 import { cn } from "@/lib/utils";
 
 function WizardDialog(props: React.ComponentProps<typeof Dialog>) {
@@ -37,6 +38,12 @@ function WizardDialogContent({
       {...props}
     />
   );
+}
+
+function WizardDialogForm({
+  ...props
+}: Omit<React.ComponentProps<"form">, "onSubmit">) {
+  return <form {...props} onSubmit={preventWizardFormSubmit} />;
 }
 
 function WizardDialogHeader({
@@ -137,6 +144,7 @@ export {
   WizardDialogContent,
   WizardDialogDescription,
   WizardDialogFooter,
+  WizardDialogForm,
   WizardDialogHeader,
   WizardDialogTitle,
   WizardDialogTrigger,

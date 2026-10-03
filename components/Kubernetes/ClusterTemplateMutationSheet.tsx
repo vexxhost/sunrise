@@ -26,6 +26,7 @@ import {
   WizardDialogContent,
   WizardDialogDescription,
   WizardDialogFooter,
+  WizardDialogForm,
   WizardDialogHeader,
   WizardDialogTitle,
   WizardReviewRow,
@@ -473,8 +474,8 @@ export function ClusterTemplateMutationSheet({
     );
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitTemplate = () => {
+    if (activeTab !== "review") return;
     if (!projectId || !regionId) {
       setError("Select a project and region before changing templates.");
       return;
@@ -572,11 +573,6 @@ export function ClusterTemplateMutationSheet({
       customLabels: Object.fromEntries(customLabelEntries),
     };
 
-    if (activeTab !== "review") {
-      setError(null);
-      setActiveTab("review");
-      return;
-    }
     if (reviewIssues.length > 0) return;
 
     startTransition(async () => {
@@ -650,7 +646,7 @@ export function ClusterTemplateMutationSheet({
   return (
     <WizardDialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
       <WizardDialogContent>
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+        <WizardDialogForm className="flex min-h-0 flex-1 flex-col">
           <WizardDialogHeader>
             <WizardDialogTitle>
               {editing ? "Edit cluster template" : "Create cluster template"}
@@ -1712,7 +1708,8 @@ export function ClusterTemplateMutationSheet({
               {activeTab === "review" ? (
                 <Button
                   disabled={isPending || reviewIssues.length > 0}
-                  type="submit"
+                  onClick={submitTemplate}
+                  type="button"
                 >
                   {isPending
                     ? editing
@@ -1735,7 +1732,7 @@ export function ClusterTemplateMutationSheet({
               )}
             </div>
           </WizardDialogFooter>
-        </form>
+        </WizardDialogForm>
       </WizardDialogContent>
     </WizardDialog>
   );

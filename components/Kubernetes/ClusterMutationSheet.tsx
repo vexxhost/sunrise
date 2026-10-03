@@ -34,6 +34,7 @@ import {
   WizardDialogContent,
   WizardDialogDescription,
   WizardDialogFooter,
+  WizardDialogForm,
   WizardDialogHeader,
   WizardDialogTitle,
   WizardReviewStatus,
@@ -305,11 +306,6 @@ export function ClusterMutationSheet({
     onOpenChange(false);
   };
 
-  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (activeTab !== "review") setActiveTab("review");
-  };
-
   const createCluster = () => {
     if (activeTab !== "review" || reviewIssues.length > 0) return;
     if (!projectId || !regionId) {
@@ -455,10 +451,7 @@ export function ClusterMutationSheet({
   return (
     <WizardDialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
       <WizardDialogContent>
-        <form
-          className="flex min-h-0 flex-1 flex-col"
-          onSubmit={handleFormSubmit}
-        >
+        <WizardDialogForm className="flex min-h-0 flex-1 flex-col">
           <WizardDialogHeader>
             <WizardDialogTitle>Create Kubernetes cluster</WizardDialogTitle>
             <WizardDialogDescription>
@@ -1377,7 +1370,7 @@ export function ClusterMutationSheet({
               </Button>
             )}
           </WizardDialogFooter>
-        </form>
+        </WizardDialogForm>
       </WizardDialogContent>
     </WizardDialog>
   );
