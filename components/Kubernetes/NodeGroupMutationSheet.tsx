@@ -20,6 +20,7 @@ import {
   WizardDialogContent,
   WizardDialogDescription,
   WizardDialogFooter,
+  WizardDialogForm,
   WizardDialogHeader,
   WizardDialogTitle,
   WizardReviewRow,
@@ -146,15 +147,10 @@ export function NodeGroupMutationSheet({
     onOpenChange(false);
   };
 
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submit = () => {
+    if (activeTab !== "review") return;
     if (!projectId || !regionId) {
       setError("Select a project and region before changing node groups.");
-      return;
-    }
-    if (activeTab !== "review") {
-      setError(null);
-      setActiveTab("review");
       return;
     }
     if (reviewIssues.length > 0) return;
@@ -199,7 +195,7 @@ export function NodeGroupMutationSheet({
   return (
     <WizardDialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
       <WizardDialogContent className="sm:max-w-3xl">
-        <form className="flex min-h-0 flex-1 flex-col" onSubmit={submit}>
+        <WizardDialogForm className="flex min-h-0 flex-1 flex-col">
           <WizardDialogHeader>
             <WizardDialogTitle>
               {editing ? `Edit ${nodeGroup?.name}` : "Add node group"}
@@ -470,7 +466,8 @@ export function NodeGroupMutationSheet({
             {activeTab === "review" ? (
               <Button
                 disabled={isPending || reviewIssues.length > 0}
-                type="submit"
+                onClick={submit}
+                type="button"
               >
                 {isPending
                   ? "Submitting"
@@ -488,7 +485,7 @@ export function NodeGroupMutationSheet({
               </Button>
             )}
           </WizardDialogFooter>
-        </form>
+        </WizardDialogForm>
       </WizardDialogContent>
     </WizardDialog>
   );
