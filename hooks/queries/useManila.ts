@@ -3,14 +3,18 @@ import { queryOptions } from "@tanstack/react-query";
 import {
   getShareAction,
   getShareNetworkAction,
+  getSecurityServiceAction,
   getShareSnapshotAction,
   listManilaAvailabilityZonesAction,
   listShareAccessRulesAction,
   listShareExportLocationsAction,
   listShareNetworksAction,
+  listShareNetworkSecurityServicesAction,
+  listShareNetworkSubnetsAction,
   listShareSnapshotsAction,
   listSharesAction,
   listShareTypesAction,
+  listSecurityServicesAction,
 } from "@/lib/openstack/manila";
 
 export function sharesQueryOptions(
@@ -55,6 +59,67 @@ export function shareNetworkQueryOptions(
   return queryOptions({
     queryKey: [regionId, projectId, "manila", "share-network", networkId],
     queryFn: () => getShareNetworkAction(networkId),
+    enabled: !!regionId && !!projectId && !!networkId,
+  });
+}
+
+export function shareNetworkSubnetsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  networkId: string,
+) {
+  return queryOptions({
+    queryKey: [
+      regionId,
+      projectId,
+      "manila",
+      "share-network",
+      networkId,
+      "subnets",
+    ],
+    queryFn: () => listShareNetworkSubnetsAction(networkId),
+    enabled: !!regionId && !!projectId && !!networkId,
+  });
+}
+
+export function securityServicesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "manila", "security-services"],
+    queryFn: () => listSecurityServicesAction(),
+    enabled: !!regionId && !!projectId,
+  });
+}
+
+export function securityServiceQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  serviceId: string,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "manila", "security-service", serviceId],
+    queryFn: () => getSecurityServiceAction(serviceId),
+    enabled: !!regionId && !!projectId && !!serviceId,
+  });
+}
+
+export function shareNetworkSecurityServicesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  networkId: string,
+) {
+  return queryOptions({
+    queryKey: [
+      regionId,
+      projectId,
+      "manila",
+      "share-network",
+      networkId,
+      "security-services",
+    ],
+    queryFn: () => listShareNetworkSecurityServicesAction(networkId),
     enabled: !!regionId && !!projectId && !!networkId,
   });
 }

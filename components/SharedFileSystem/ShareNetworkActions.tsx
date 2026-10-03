@@ -392,7 +392,7 @@ export function ShareNetworkActions({
                 <p className="text-xs text-muted-foreground">
                   Manila creates an initial share-network subnet with this
                   placement. Additional availability-zone subnets can be added
-                  in a later lifecycle iteration.
+                  from the share-network detail page.
                 </p>
               </TabsContent>
 

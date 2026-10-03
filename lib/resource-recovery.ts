@@ -20,6 +20,7 @@ export const recoveryResourceKinds = [
   "share",
   "share-snapshot",
   "share-network",
+  "security-service",
   "secret",
   "secret-container",
   "secret-order",
@@ -56,6 +57,7 @@ const recoveryLabels: Record<RecoveryResourceKind, string> = {
   share: "share",
   "share-snapshot": "share snapshot",
   "share-network": "share network",
+  "security-service": "security service",
   secret: "secret",
   "secret-container": "secret container",
   "secret-order": "key order",
@@ -144,6 +146,8 @@ export function recoveryDestination({
       return "/shared-file-systems/snapshots";
     case "share-network":
       return "/shared-file-systems/share-networks";
+    case "security-service":
+      return "/shared-file-systems/security-services";
     case "secret":
       return "/key-manager/secrets";
     case "secret-container":

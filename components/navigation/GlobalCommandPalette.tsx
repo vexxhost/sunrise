@@ -129,6 +129,7 @@ const destinationIcons: Record<
   secret: Vault,
   "secret-store": Warehouse,
   "security-group": Shield,
+  "security-service": Shield,
   share: FolderTree,
   "share-network": Share2,
   snapshot: Camera,

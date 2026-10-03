@@ -12,17 +12,22 @@ import {
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import {
   assertShareNetworkPlacement,
+  getSecurityService,
   getShare,
   getShareNetwork,
+  getShareNetworkSubnet,
   getShareSnapshot,
   MANILA_API_VERSION,
   MANILA_SERVICE,
+  normalizeSecurityService,
 } from "@/lib/openstack/manila-server";
 import type {
   ManilaShare,
   ManilaShareAccessRule,
   ManilaShareNetwork,
+  ManilaShareNetworkSubnet,
   ManilaShareSnapshot,
+  ManilaSecurityService,
 } from "@/types/openstack";
 
 const MANILA_HEADERS = {
@@ -90,6 +95,30 @@ const updateShareNetworkSchema = z.object({
   name: z.string().trim().min(1).max(255),
   description: z.string().trim().max(255).default(""),
 });
+const createShareNetworkSubnetSchema = z.object({
+  neutronNetworkId: z.string().trim().min(1).max(255),
+  neutronSubnetId: z.string().trim().min(1).max(255),
+  availabilityZone: optionalText,
+});
+const securityServiceTypeSchema = z.enum([
+  "ldap",
+  "kerberos",
+  "active_directory",
+]);
+const createSecurityServiceSchema = z.object({
+  type: securityServiceTypeSchema,
+  name: z.string().trim().min(1).max(255),
+  description: z.string().trim().max(255).default(""),
+  dnsIp: optionalText,
+  user: optionalText,
+  password: z.string().max(1024).optional(),
+  domain: optionalText,
+  ou: optionalText,
+  server: optionalText,
+});
+const updateSecurityServiceSchema = createSecurityServiceSchema.omit({
+  type: true,
+});
 
 export type CreateShareInput = z.input<typeof createShareSchema>;
 export type UpdateShareInput = z.input<typeof updateShareSchema>;
@@ -103,6 +132,15 @@ export type UpdateShareSnapshotInput = z.input<
 >;
 export type CreateShareNetworkInput = z.input<typeof createShareNetworkSchema>;
 export type UpdateShareNetworkInput = z.input<typeof updateShareNetworkSchema>;
+export type CreateShareNetworkSubnetInput = z.input<
+  typeof createShareNetworkSubnetSchema
+>;
+export type CreateSecurityServiceInput = z.input<
+  typeof createSecurityServiceSchema
+>;
+export type UpdateSecurityServiceInput = z.input<
+  typeof updateSecurityServiceSchema
+>;
 
 function validationFailure(scope: MutationScope, message: string) {
   return mutationFailure(
@@ -159,6 +197,35 @@ function shareNetworkFromPayload(payload: unknown) {
     throw new Error("Manila did not return the share network");
   }
   return (payload as { share_network: ManilaShareNetwork }).share_network;
+}
+
+function shareNetworkSubnetFromPayload(payload: unknown) {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("share_network_subnet" in payload)
+  ) {
+    throw new Error("Manila did not return the share network subnet");
+  }
+  return (payload as { share_network_subnet: ManilaShareNetworkSubnet })
+    .share_network_subnet;
+}
+
+function securityServiceFromPayload(payload: unknown) {
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    !("security_service" in payload)
+  ) {
+    throw new Error("Manila did not return the security service");
+  }
+  return normalizeSecurityService(
+    (
+      payload as {
+        security_service: Parameters<typeof normalizeSecurityService>[0];
+      }
+    ).security_service,
+  );
 }
 
 function resourcePreflightFailure(
@@ -352,6 +419,382 @@ export async function updateShareNetworkAction(
     successMessage: "Share network details updated.",
     transform: shareNetworkFromPayload,
   });
+}
+
+export async function deleteShareNetworkAction(
+  scope: MutationScope,
+  shareNetworkId: string,
+): Promise<MutationResult<null>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedId = parseInput(
+    resourceIdSchema,
+    shareNetworkId,
+    guarded.context.scope,
+  );
+  if (!parsedId.ok) return parsedId.result;
+  const existing = await readMutationResource(
+    () => getShareNetwork(parsedId.value),
+    guarded.context.scope,
+    "share network",
+  );
+  if (!existing.ok) return existing.result;
+
+  return executeOpenStackMutation<null>({
+    actionLabel: "delete this share network",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `share-networks/${encodeURIComponent(parsedId.value)}`,
+    ),
+    method: "DELETE",
+    headers: MANILA_HEADERS,
+    invalidates: [
+      "/shared-file-systems",
+      "/shared-file-systems/share-networks",
+      `/shared-file-systems/share-networks/${parsedId.value}`,
+    ],
+    successMessage: "Share network deletion requested.",
+  });
+}
+
+export async function createShareNetworkSubnetAction(
+  scope: MutationScope,
+  shareNetworkId: string,
+  input: CreateShareNetworkSubnetInput,
+): Promise<MutationResult<ManilaShareNetworkSubnet>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedId = parseInput(
+    resourceIdSchema,
+    shareNetworkId,
+    guarded.context.scope,
+  );
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parseInput(
+    createShareNetworkSubnetSchema,
+    input,
+    guarded.context.scope,
+  );
+  if (!parsed.ok) return parsed.result;
+  const parent = await readMutationResource(
+    () => getShareNetwork(parsedId.value),
+    guarded.context.scope,
+    "share network",
+  );
+  if (!parent.ok) return parent.result;
+  const placement = await readMutationResource(
+    () =>
+      assertShareNetworkPlacement(
+        parsed.value.neutronNetworkId,
+        parsed.value.neutronSubnetId,
+      ),
+    guarded.context.scope,
+    "network placement",
+  );
+  if (!placement.ok) return placement.result;
+
+  return executeOpenStackMutation<ManilaShareNetworkSubnet>({
+    actionLabel: "add a subnet to this share network",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `share-networks/${encodeURIComponent(parsedId.value)}/subnets`,
+    ),
+    method: "POST",
+    headers: MANILA_HEADERS,
+    body: {
+      "share-network-subnet": {
+        neutron_net_id: parsed.value.neutronNetworkId,
+        neutron_subnet_id: parsed.value.neutronSubnetId,
+        availability_zone: parsed.value.availabilityZone || undefined,
+      },
+    },
+    invalidates: [
+      "/shared-file-systems/share-networks",
+      `/shared-file-systems/share-networks/${parsedId.value}`,
+    ],
+    successMessage: "Share network subnet creation requested.",
+    transform: shareNetworkSubnetFromPayload,
+  });
+}
+
+export async function deleteShareNetworkSubnetAction(
+  scope: MutationScope,
+  shareNetworkId: string,
+  subnetId: string,
+): Promise<MutationResult<null>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedNetworkId = parseInput(
+    resourceIdSchema,
+    shareNetworkId,
+    guarded.context.scope,
+  );
+  if (!parsedNetworkId.ok) return parsedNetworkId.result;
+  const parsedSubnetId = parseInput(
+    resourceIdSchema,
+    subnetId,
+    guarded.context.scope,
+  );
+  if (!parsedSubnetId.ok) return parsedSubnetId.result;
+  const existing = await readMutationResource(
+    () => getShareNetworkSubnet(parsedNetworkId.value, parsedSubnetId.value),
+    guarded.context.scope,
+    "share network subnet",
+  );
+  if (!existing.ok) return existing.result;
+
+  return executeOpenStackMutation<null>({
+    actionLabel: "delete this share network subnet",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `share-networks/${encodeURIComponent(parsedNetworkId.value)}/subnets/${encodeURIComponent(parsedSubnetId.value)}`,
+    ),
+    method: "DELETE",
+    headers: MANILA_HEADERS,
+    invalidates: [
+      "/shared-file-systems/share-networks",
+      `/shared-file-systems/share-networks/${parsedNetworkId.value}`,
+    ],
+    successMessage: "Share network subnet deletion requested.",
+  });
+}
+
+export async function createSecurityServiceAction(
+  scope: MutationScope,
+  input: CreateSecurityServiceInput,
+): Promise<MutationResult<ManilaSecurityService>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsed = parseInput(
+    createSecurityServiceSchema,
+    input,
+    guarded.context.scope,
+  );
+  if (!parsed.ok) return parsed.result;
+  const value = parsed.value;
+
+  return executeOpenStackMutation<ManilaSecurityService>({
+    actionLabel: "create a security service",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(guarded.context.scope.projectId, "security-services"),
+    method: "POST",
+    headers: MANILA_HEADERS,
+    body: {
+      security_service: {
+        type: value.type,
+        name: value.name,
+        description: value.description || undefined,
+        dns_ip: value.dnsIp || undefined,
+        user: value.user || undefined,
+        password: value.password || undefined,
+        domain: value.domain || undefined,
+        ou: value.ou || undefined,
+        server: value.server || undefined,
+      },
+    },
+    invalidates: [
+      "/shared-file-systems",
+      "/shared-file-systems/security-services",
+    ],
+    successMessage: `Security service ${value.name} created.`,
+    transform: securityServiceFromPayload,
+  });
+}
+
+export async function updateSecurityServiceAction(
+  scope: MutationScope,
+  securityServiceId: string,
+  input: UpdateSecurityServiceInput,
+): Promise<MutationResult<ManilaSecurityService>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedId = parseInput(
+    resourceIdSchema,
+    securityServiceId,
+    guarded.context.scope,
+  );
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parseInput(
+    updateSecurityServiceSchema,
+    input,
+    guarded.context.scope,
+  );
+  if (!parsed.ok) return parsed.result;
+  const existing = await readMutationResource(
+    () => getSecurityService(parsedId.value),
+    guarded.context.scope,
+    "security service",
+  );
+  if (!existing.ok) return existing.result;
+  const value = parsed.value;
+  const active = existing.value.status?.toLowerCase() === "active";
+
+  return executeOpenStackMutation<ManilaSecurityService>({
+    actionLabel: "edit this security service",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `security-services/${encodeURIComponent(parsedId.value)}`,
+    ),
+    method: "PUT",
+    headers: MANILA_HEADERS,
+    body: {
+      security_service: {
+        name: value.name,
+        description: value.description,
+        ...(active
+          ? {}
+          : {
+              dns_ip: value.dnsIp || null,
+              user: value.user || null,
+              password: value.password || undefined,
+              domain: value.domain || null,
+              ou: value.ou || null,
+              server: value.server || null,
+            }),
+      },
+    },
+    invalidates: [
+      "/shared-file-systems/security-services",
+      `/shared-file-systems/security-services/${parsedId.value}`,
+    ],
+    successMessage: "Security service details updated.",
+    transform: securityServiceFromPayload,
+  });
+}
+
+export async function deleteSecurityServiceAction(
+  scope: MutationScope,
+  securityServiceId: string,
+): Promise<MutationResult<null>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedId = parseInput(
+    resourceIdSchema,
+    securityServiceId,
+    guarded.context.scope,
+  );
+  if (!parsedId.ok) return parsedId.result;
+  const existing = await readMutationResource(
+    () => getSecurityService(parsedId.value),
+    guarded.context.scope,
+    "security service",
+  );
+  if (!existing.ok) return existing.result;
+
+  return executeOpenStackMutation<null>({
+    actionLabel: "delete this security service",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `security-services/${encodeURIComponent(parsedId.value)}`,
+    ),
+    method: "DELETE",
+    headers: MANILA_HEADERS,
+    invalidates: [
+      "/shared-file-systems",
+      "/shared-file-systems/security-services",
+      `/shared-file-systems/security-services/${parsedId.value}`,
+    ],
+    successMessage: "Security service deleted.",
+  });
+}
+
+async function changeShareNetworkSecurityService(
+  scope: MutationScope,
+  shareNetworkId: string,
+  securityServiceId: string,
+  operation: "add_security_service" | "remove_security_service",
+) {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedNetworkId = parseInput(
+    resourceIdSchema,
+    shareNetworkId,
+    guarded.context.scope,
+  );
+  if (!parsedNetworkId.ok) return parsedNetworkId.result;
+  const parsedServiceId = parseInput(
+    resourceIdSchema,
+    securityServiceId,
+    guarded.context.scope,
+  );
+  if (!parsedServiceId.ok) return parsedServiceId.result;
+  const [network, service] = await Promise.all([
+    readMutationResource(
+      () => getShareNetwork(parsedNetworkId.value),
+      guarded.context.scope,
+      "share network",
+    ),
+    readMutationResource(
+      () => getSecurityService(parsedServiceId.value),
+      guarded.context.scope,
+      "security service",
+    ),
+  ]);
+  if (!network.ok) return network.result;
+  if (!service.ok) return service.result;
+
+  return executeOpenStackMutation<null>({
+    actionLabel:
+      operation === "add_security_service"
+        ? "attach this security service"
+        : "detach this security service",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `share-networks/${encodeURIComponent(parsedNetworkId.value)}/action`,
+    ),
+    method: "POST",
+    headers: MANILA_HEADERS,
+    body: {
+      [operation]: { security_service_id: parsedServiceId.value },
+    },
+    invalidates: [
+      "/shared-file-systems/security-services",
+      `/shared-file-systems/share-networks/${parsedNetworkId.value}`,
+    ],
+    successMessage:
+      operation === "add_security_service"
+        ? "Security service attached."
+        : "Security service detached.",
+  });
+}
+
+export async function attachShareNetworkSecurityServiceAction(
+  scope: MutationScope,
+  shareNetworkId: string,
+  securityServiceId: string,
+) {
+  return changeShareNetworkSecurityService(
+    scope,
+    shareNetworkId,
+    securityServiceId,
+    "add_security_service",
+  );
+}
+
+export async function detachShareNetworkSecurityServiceAction(
+  scope: MutationScope,
+  shareNetworkId: string,
+  securityServiceId: string,
+) {
+  return changeShareNetworkSecurityService(
+    scope,
+    shareNetworkId,
+    securityServiceId,
+    "remove_security_service",
+  );
 }
 
 export async function updateShareAction(

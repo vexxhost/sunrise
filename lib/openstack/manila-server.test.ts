@@ -13,10 +13,15 @@ vi.mock("@/lib/openstack/request-server", () => ({
 
 import {
   assertShareNetworkPlacement,
+  getSecurityService,
   getShare,
   getShareNetwork,
+  getShareNetworkSubnet,
   getShareSnapshot,
   listShareAccessRules,
+  listSecurityServices,
+  listShareNetworkSecurityServices,
+  listShareNetworkSubnets,
   listShares,
 } from "@/lib/openstack/manila-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
@@ -176,5 +181,142 @@ describe("Manila project scoping", () => {
       (error: unknown) =>
         error instanceof OpenStackRequestError && error.status === 400,
     );
+  });
+
+  it("lists child subnets only after reading the project-owned parent", async () => {
+    mocks.openstackRequest.mockImplementation(async ({ path }) =>
+      path.endsWith("/share-networks/share-network-a")
+        ? {
+            share_network: {
+              id: "share-network-a",
+              project_id: "project-a",
+            },
+          }
+        : {
+            share_network_subnets: [
+              {
+                id: "subnet-a",
+                share_network_id: "share-network-a",
+              },
+              { id: "subnet-b", share_network_id: "other-network" },
+            ],
+          },
+    );
+
+    await expect(listShareNetworkSubnets("share-network-a")).resolves.toEqual([
+      expect.objectContaining({ id: "subnet-a" }),
+    ]);
+    expect(mocks.openstackRequest).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        path: "/project-a/share-networks/share-network-a/subnets",
+      }),
+    );
+  });
+
+  it("rejects a subnet returned for another share network", async () => {
+    mocks.openstackRequest.mockImplementation(async ({ path }) =>
+      path.endsWith("/share-networks/share-network-a")
+        ? {
+            share_network: {
+              id: "share-network-a",
+              project_id: "project-a",
+            },
+          }
+        : {
+            share_network_subnet: {
+              id: "subnet-a",
+              share_network_id: "other-network",
+            },
+          },
+    );
+
+    await expect(
+      getShareNetworkSubnet("share-network-a", "subnet-a"),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof OpenStackRequestError && error.status === 404,
+    );
+  });
+
+  it("filters security services to the active project and redacts passwords", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      security_services: [
+        {
+          id: "owned",
+          name: "owned-directory",
+          type: "ldap",
+          project_id: "project-a",
+          password: "must-not-cross-the-server-boundary",
+        },
+        {
+          id: "other",
+          name: "other-directory",
+          type: "ldap",
+          project_id: "project-b",
+          password: "other-secret",
+        },
+      ],
+    });
+
+    const services = await listSecurityServices();
+
+    expect(services).toEqual([
+      expect.objectContaining({ id: "owned", name: "owned-directory" }),
+    ]);
+    expect(services[0]).not.toHaveProperty("password");
+  });
+
+  it("redacts a security-service password from detail responses", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      security_service: {
+        id: "service-a",
+        type: "kerberos",
+        project_id: "project-a",
+        password: "secret",
+      },
+    });
+
+    const service = await getSecurityService("service-a");
+
+    expect(service).toMatchObject({ id: "service-a", type: "kerberos" });
+    expect(service).not.toHaveProperty("password");
+  });
+
+  it("derives share-network attachments from project security services", async () => {
+    mocks.openstackRequest.mockImplementation(async ({ path }) => {
+      if (path.endsWith("/share-networks/share-network-a")) {
+        return {
+          share_network: {
+            id: "share-network-a",
+            project_id: "project-a",
+          },
+        };
+      }
+      return {
+        security_services: [
+          {
+            id: "attached",
+            type: "ldap",
+            project_id: "project-a",
+            share_networks: ["share-network-a"],
+          },
+          {
+            id: "unattached",
+            type: "kerberos",
+            project_id: "project-a",
+            share_networks: [],
+          },
+        ],
+      };
+    });
+
+    await expect(
+      listShareNetworkSecurityServices("share-network-a"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "attached",
+        share_networks: [{ id: "share-network-a" }],
+      }),
+    ]);
   });
 });

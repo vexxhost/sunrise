@@ -28,6 +28,7 @@ const serviceNames: Record<string, string> = {
   "secret-stores": "Access and Storage",
   shares: "Shares",
   "share-networks": "Share Networks",
+  "security-services": "Security Services",
   clusters: "Clusters",
   templates: "Templates",
   topology: "Topology",

@@ -22,6 +22,11 @@ const sharedFileSystemSidebarSections = [
         href: "/shared-file-systems/share-networks",
         icon: "Share2",
       },
+      {
+        name: "Security Services",
+        href: "/shared-file-systems/security-services",
+        icon: "ShieldCheck",
+      },
     ],
   },
 ];

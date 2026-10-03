@@ -28,6 +28,7 @@ export type NavigationDestinationId =
   | "shared-file-system.shares"
   | "shared-file-system.snapshots"
   | "shared-file-system.share-networks"
+  | "shared-file-system.security-services"
   | "key-manager.secrets"
   | "key-manager.containers"
   | "key-manager.orders"
@@ -52,6 +53,7 @@ export type NavigationDestinationIcon =
   | "secret"
   | "secret-store"
   | "security-group"
+  | "security-service"
   | "share"
   | "share-network"
   | "snapshot"
@@ -331,6 +333,17 @@ const definitions: NavigationDestinationDefinition[] = [
     catalogIdentities: manila,
   },
   {
+    id: "shared-file-system.security-services",
+    label: "Security services",
+    description: "Directory authentication for Manila share servers.",
+    href: "/shared-file-systems/security-services",
+    service: "shared-file-system",
+    group: "Shared File System",
+    icon: "security-service",
+    keywords: ["manila", "ldap", "kerberos", "active directory"],
+    catalogIdentities: manila,
+  },
+  {
     id: "key-manager.secrets",
     label: "Secrets",
     description: "Encrypted keys, certificates, and protected values.",
@@ -421,6 +434,7 @@ export const createActionSearchTerms: Record<CreateActionId, string[]> = {
   share: ["manila", "nfs", "shared file system"],
   "share-network": ["manila", "neutron", "nfs", "share network"],
   "share-snapshot": ["manila", "nfs", "share snapshot", "backup"],
+  "security-service": ["manila", "ldap", "kerberos", "active directory"],
   secret: ["barbican", "key vault", "secret manager", "kms"],
   "secret-container": ["barbican", "certificate", "secret group"],
   "secret-order": ["barbican", "generate key", "certificate request"],
