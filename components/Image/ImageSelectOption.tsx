@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check, ChevronsUpDown, ImageIcon } from "lucide-react";
+import bytes from "bytes";
 
 import { OsIcon } from "@/components/icons/OsIcon";
 import { Button } from "@/components/ui/button";
@@ -21,11 +22,23 @@ import { imageOperatingSystemMetadata } from "@/lib/openstack/image-metadata";
 import { cn } from "@/lib/utils";
 import type { Image } from "@/types/openstack";
 
+export function formatImageSelectionSize(
+  size: number | null | undefined,
+): string {
+  if (typeof size !== "number" || !Number.isFinite(size) || size < 0) {
+    return "Size unavailable";
+  }
+
+  return bytes(size, { unitSeparator: " " }) ?? "Size unavailable";
+}
+
 export function ImageSelectOption({ image }: { image: Image }) {
   const metadata = imageOperatingSystemMetadata(image);
+  const size = formatImageSelectionSize(image.size);
   const details = [
     metadata?.label ?? "OS metadata unavailable",
     image.disk_format?.toUpperCase(),
+    size,
     image.visibility,
   ].filter(Boolean);
 
@@ -116,6 +129,7 @@ export function ImagePicker({
                 image.id,
                 metadata?.label,
                 image.disk_format,
+                formatImageSelectionSize(image.size),
                 image.visibility,
               ]
                 .filter(Boolean)
