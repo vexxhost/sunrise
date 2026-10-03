@@ -73,12 +73,16 @@ const ipv6ConfigurationMode = z
 
 type SubnetAddressingValue = {
   allocationPools?: Array<{ start: string; end: string }>;
-  cidr: string;
   disableGateway: boolean;
   dnsNameservers?: string[];
-  enableDhcp: boolean;
   gatewayIp?: string;
   hostRoutes: Array<{ destination: string; nexthop: string }>;
+  ipVersion: 4 | 6;
+};
+
+type IPv6ConfigurationValue = {
+  cidr: string;
+  enableDhcp: boolean;
   ipVersion: 4 | 6;
   ipv6Mode:
     | "none"
@@ -117,7 +121,12 @@ function validateSubnetAddressing(
     validateAddress(destination, ["hostRoutes", index, "destination"]);
     validateAddress(route.nexthop, ["hostRoutes", index, "nexthop"]);
   });
+}
 
+function validateIpv6Configuration(
+  value: IPv6ConfigurationValue,
+  context: z.RefinementCtx,
+) {
   if (value.ipVersion === 4 && value.ipv6Mode !== "none") {
     context.addIssue({
       code: "custom",
@@ -177,6 +186,7 @@ const subnetCreateSchema = z
       });
     }
     validateSubnetAddressing(value, context);
+    validateIpv6Configuration(value, context);
   });
 const subnetUpdateSchema = z
   .object({
@@ -187,7 +197,7 @@ const subnetUpdateSchema = z
     gatewayIp: optionalIpAddress,
     disableGateway: z.boolean().default(false),
     enableDhcp: z.boolean(),
-    ipv6Mode: ipv6ConfigurationMode,
+    currentIpv6Mode: ipv6ConfigurationMode,
     allocationPools,
     dnsNameservers,
     hostRoutes,
@@ -198,6 +208,14 @@ const subnetUpdateSchema = z
         code: "custom",
         message: "Enter a gateway address or disable the gateway.",
         path: ["gatewayIp"],
+      });
+    }
+    if (value.currentIpv6Mode !== "none" && !value.enableDhcp) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "DHCP cannot be disabled while IPv6 address configuration is active.",
+        path: ["enableDhcp"],
       });
     }
     validateSubnetAddressing(value, context);
@@ -435,7 +453,6 @@ export async function updateSubnetAction(
   const parsed = parse(subnetUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
-  const ipv6Configuration = getIpv6ConfigurationAttributes(value.ipv6Mode);
   return executeOpenStackMutation({
     actionLabel: "edit this subnet",
     scope,
@@ -448,7 +465,6 @@ export async function updateSubnetAction(
         description: value.description,
         gateway_ip: value.disableGateway ? null : value.gatewayIp,
         enable_dhcp: value.enableDhcp,
-        ...(value.ipVersion === 6 ? ipv6Configuration : {}),
         allocation_pools: value.allocationPools,
         dns_nameservers: value.dnsNameservers,
         host_routes: value.hostRoutes,

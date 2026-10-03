@@ -34,21 +34,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getCidrValidationError } from "@/lib/network-address";
 import {
   addRouterInterfaceAction,
   deleteSubnetAction,
   removeRouterInterfaceAction,
   updateSubnetAction,
 } from "@/lib/openstack/neutron-actions";
-import {
-  getIpv6ConfigurationMode,
-  usesIpv6AutoAddressing,
-} from "@/lib/openstack/neutron-ipv6";
+import { getIpv6ConfigurationMode } from "@/lib/openstack/neutron-ipv6";
 import type {
   AllocationPool,
   HostRoute,
-  IPv6ConfigurationMode,
   Port,
   Router,
   Subnet,
@@ -80,8 +75,9 @@ export function SubnetDetailActions({
     subnet.gateway_ip === null,
   );
   const [enableDhcp, setEnableDhcp] = useState(subnet.enable_dhcp);
-  const [ipv6Mode, setIpv6Mode] = useState<IPv6ConfigurationMode>(() =>
-    getIpv6ConfigurationMode(subnet.ipv6_address_mode, subnet.ipv6_ra_mode),
+  const ipv6Mode = getIpv6ConfigurationMode(
+    subnet.ipv6_address_mode,
+    subnet.ipv6_ra_mode,
   );
   const [allocationPools, setAllocationPools] = useState<AllocationPool[]>(
     subnet.allocation_pools,
@@ -113,9 +109,7 @@ export function SubnetDetailActions({
   const canAttachRouter =
     connectedRouters.length === 0 && availableRouters.length > 0;
   const detachRouter = routers.find((router) => router.id === detachRouterId);
-  const ipv6ModeError = getCidrValidationError(subnet.cidr, subnet.ip_version, {
-    require64: usesIpv6AutoAddressing(ipv6Mode),
-  });
+  const ipv6ModeRequiresDhcp = subnet.ip_version === 6 && ipv6Mode !== "none";
 
   const open = (next: typeof dialog) => {
     setError(null);
@@ -124,9 +118,6 @@ export function SubnetDetailActions({
       setGatewayIp(subnet.gateway_ip ?? "");
       setDisableGateway(subnet.gateway_ip === null);
       setEnableDhcp(subnet.enable_dhcp);
-      setIpv6Mode(
-        getIpv6ConfigurationMode(subnet.ipv6_address_mode, subnet.ipv6_ra_mode),
-      );
       setAllocationPools(subnet.allocation_pools);
       setDnsNameservers(subnet.dns_nameservers);
       setHostRoutes(subnet.host_routes);
@@ -154,7 +145,7 @@ export function SubnetDetailActions({
           gatewayIp: gatewayIp || undefined,
           disableGateway,
           enableDhcp,
-          ipv6Mode,
+          currentIpv6Mode: ipv6Mode,
           allocationPools,
           dnsNameservers,
           hostRoutes,
@@ -330,17 +321,15 @@ export function SubnetDetailActions({
               <label className="flex items-start gap-3 rounded-md border p-3">
                 <Checkbox
                   checked={enableDhcp}
-                  disabled={pending}
-                  onCheckedChange={(value) => {
-                    const enabled = value === true;
-                    setEnableDhcp(enabled);
-                    if (!enabled) setIpv6Mode("none");
-                  }}
+                  disabled={pending || ipv6ModeRequiresDhcp}
+                  onCheckedChange={(value) => setEnableDhcp(value === true)}
                 />
                 <span>
                   <span className="block text-sm font-medium">Enable DHCP</span>
                   <span className="block text-xs text-muted-foreground">
-                    Automatically configure addresses for attached ports.
+                    {ipv6ModeRequiresDhcp
+                      ? "Required by this subnet's IPv6 address configuration."
+                      : "Automatically configure addresses for attached ports."}
                   </span>
                 </span>
               </label>
@@ -349,17 +338,12 @@ export function SubnetDetailActions({
                   <IPv6ConfigurationField
                     id={`subnet-ipv6-configuration-${subnet.id}`}
                     mode={ipv6Mode}
-                    disabled={pending}
-                    onModeChange={(mode) => {
-                      setIpv6Mode(mode);
-                      if (mode !== "none") setEnableDhcp(true);
-                    }}
+                    disabled
                   />
-                  {ipv6ModeError ? (
-                    <p className="text-xs text-destructive" role="alert">
-                      {ipv6ModeError}
-                    </p>
-                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    IPv6 address configuration cannot be changed after subnet
+                    creation.
+                  </p>
                 </div>
               ) : null}
               <SubnetAddressFields
@@ -389,8 +373,7 @@ export function SubnetDetailActions({
                 disabled={
                   pending ||
                   !name.trim() ||
-                  (!disableGateway && !gatewayIp.trim()) ||
-                  Boolean(ipv6ModeError)
+                  (!disableGateway && !gatewayIp.trim())
                 }
               >
                 {pending ? "Saving" : "Save changes"}

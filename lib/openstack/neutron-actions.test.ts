@@ -430,26 +430,45 @@ describe("Neutron mutation actions", () => {
         },
       }),
     );
+  });
 
+  it("keeps IPv6 address configuration immutable during subnet updates", async () => {
     await updateSubnetAction(scope, "subnet-a", {
-      name: "manual-addressing",
+      name: "external-slaac",
+      description: "",
+      cidr: "2001:db8:2::/64",
+      ipVersion: 6,
+      disableGateway: true,
+      enableDhcp: true,
+      currentIpv6Mode: "slaac-external",
+    });
+
+    const subnetRequest =
+      mocks.executeOpenStackMutation.mock.calls.at(-1)?.[0].body.subnet;
+    expect(subnetRequest).not.toHaveProperty("ipv6_address_mode");
+    expect(subnetRequest).not.toHaveProperty("ipv6_ra_mode");
+  });
+
+  it("preserves DHCP required by an existing IPv6 mode", async () => {
+    const result = await updateSubnetAction(scope, "subnet-a", {
+      name: "external-slaac",
       description: "",
       cidr: "2001:db8:2::/64",
       ipVersion: 6,
       disableGateway: true,
       enableDhcp: false,
-      ipv6Mode: "none",
+      currentIpv6Mode: "slaac-external",
     });
-    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        body: {
-          subnet: expect.objectContaining({
-            ipv6_address_mode: null,
-            ipv6_ra_mode: null,
-          }),
-        },
-      }),
-    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message:
+          "DHCP cannot be disabled while IPv6 address configuration is active.",
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("rejects incompatible IPv6 address configuration", async () => {

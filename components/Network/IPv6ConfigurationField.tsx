@@ -20,7 +20,7 @@ export function IPv6ConfigurationField({
   disabled?: boolean;
   id: string;
   mode: IPv6ConfigurationMode;
-  onModeChange: (mode: IPv6ConfigurationMode) => void;
+  onModeChange?: (mode: IPv6ConfigurationMode) => void;
 }) {
   const selected =
     ipv6ConfigurationOptions.find((option) => option.value === mode) ??
@@ -31,8 +31,10 @@ export function IPv6ConfigurationField({
       <Label htmlFor={id}>IPv6 address configuration</Label>
       <Select
         value={mode}
-        disabled={disabled}
-        onValueChange={(value) => onModeChange(value as IPv6ConfigurationMode)}
+        disabled={disabled || !onModeChange}
+        onValueChange={(value) =>
+          onModeChange?.(value as IPv6ConfigurationMode)
+        }
       >
         <SelectTrigger id={id}>
           <SelectValue />
