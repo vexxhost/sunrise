@@ -1,5 +1,7 @@
 export interface ManilaShareNetworkSubnet {
   id: string;
+  share_network_id?: string;
+  share_network_name?: string | null;
   availability_zone?: string | null;
   neutron_net_id?: string | null;
   neutron_subnet_id?: string | null;
@@ -9,6 +11,34 @@ export interface ManilaShareNetworkSubnet {
   mtu?: number | null;
   network_type?: string | null;
   segmentation_id?: number | null;
+  metadata?: Record<string, string>;
+  created_at?: string;
+  updated_at?: string | null;
+}
+
+export type ManilaSecurityServiceType =
+  "ldap" | "kerberos" | "active_directory";
+
+export interface ManilaSecurityServiceNetworkRef {
+  id: string;
+  name?: string | null;
+}
+
+export interface ManilaSecurityService {
+  id: string;
+  name?: string | null;
+  description?: string | null;
+  project_id?: string;
+  status?: string;
+  type: ManilaSecurityServiceType;
+  dns_ip?: string | null;
+  user?: string | null;
+  domain?: string | null;
+  ou?: string | null;
+  server?: string | null;
+  share_networks?: ManilaSecurityServiceNetworkRef[];
+  created_at?: string;
+  updated_at?: string | null;
 }
 
 export interface ManilaShareNetwork {

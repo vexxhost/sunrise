@@ -59,6 +59,7 @@ export const createActionIcons: Record<
   share: FolderPlus,
   "share-network": Share2,
   "share-snapshot": Camera,
+  "security-service": ShieldCheck,
   secret: Vault,
   "secret-container": PackagePlus,
   "secret-order": ScrollText,

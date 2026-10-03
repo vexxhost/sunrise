@@ -1,4 +1,11 @@
-import { Camera, FolderTree, Gauge, Network, Share2 } from "lucide-react";
+import {
+  Camera,
+  FolderTree,
+  Gauge,
+  Network,
+  Share2,
+  ShieldCheck,
+} from "lucide-react";
 
 import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import {
@@ -14,17 +21,20 @@ import {
   listShareNetworks,
   listShareSnapshots,
   listShares,
+  listSecurityServices,
 } from "@/lib/openstack/manila-server";
 
 export const dynamic = "force-dynamic";
 
 export default async function SharedFileSystemPage() {
-  const [{ snapshot }, shares, snapshots, networks] = await Promise.all([
-    loadCloudContext(),
-    listShares(),
-    listShareSnapshots(),
-    listShareNetworks(),
-  ]);
+  const [{ snapshot }, shares, snapshots, networks, securityServices] =
+    await Promise.all([
+      loadCloudContext(),
+      listShares(),
+      listShareSnapshots(),
+      listShareNetworks(),
+      listSecurityServices(),
+    ]);
   const resources = [
     ...snapshot.personalResources.pinned,
     ...snapshot.personalResources.recent,
@@ -40,6 +50,9 @@ export default async function SharedFileSystemPage() {
   const createShare = createActions.find(({ id }) => id === "share");
   const createSnapshot = createActions.find(
     ({ id }) => id === "share-snapshot",
+  );
+  const createSecurityService = createActions.find(
+    ({ id }) => id === "security-service",
   );
   const metrics: ServiceLandingMetric[] = [
     {
@@ -112,6 +125,16 @@ export default async function SharedFileSystemPage() {
                 "Inspect the Neutron networks and subnets used by Manila share servers.",
               meta: `${networks.length} visible`,
               badge: "Project scoped",
+            },
+            {
+              name: "Security services",
+              href: "/shared-file-systems/security-services",
+              icon: ShieldCheck,
+              description:
+                "Configure LDAP, Kerberos, and Active Directory authentication for share servers.",
+              meta: `${securityServices.length} visible`,
+              badge: "Project scoped",
+              createAction: createSecurityService,
             },
           ]}
         />

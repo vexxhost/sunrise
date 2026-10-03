@@ -9,6 +9,8 @@ import type {
   ManilaShare,
   ManilaShareAccessRule,
   ManilaShareNetwork,
+  ManilaShareNetworkSubnet,
+  ManilaSecurityService,
   ManilaShareSnapshot,
   ManilaShareType,
   Network,
@@ -115,6 +117,88 @@ export async function getShareNetwork(id: string) {
   }
   assertActiveProject(payload.share_network.project_id, projectId);
   return payload.share_network;
+}
+
+export async function listShareNetworkSubnets(shareNetworkId: string) {
+  await getShareNetwork(shareNetworkId);
+  const { projectPathId } = await activeManilaContext();
+  const networkId = resourceId(shareNetworkId, "share network ID");
+  const payload = await manilaRequest<{
+    share_network_subnets?: ManilaShareNetworkSubnet[];
+  }>(`/${projectPathId}/share-networks/${networkId}/subnets`);
+  return (payload?.share_network_subnets ?? []).filter(
+    (subnet) =>
+      !subnet.share_network_id || subnet.share_network_id === shareNetworkId,
+  );
+}
+
+export async function getShareNetworkSubnet(
+  shareNetworkId: string,
+  subnetId: string,
+) {
+  await getShareNetwork(shareNetworkId);
+  const { projectPathId } = await activeManilaContext();
+  const payload = await manilaRequest<{
+    share_network_subnet?: ManilaShareNetworkSubnet;
+  }>(
+    `/${projectPathId}/share-networks/${resourceId(shareNetworkId, "share network ID")}/subnets/${resourceId(subnetId, "share network subnet ID")}`,
+  );
+  if (!payload?.share_network_subnet) {
+    throw new Error("Manila did not return the share network subnet");
+  }
+  if (
+    payload.share_network_subnet.share_network_id &&
+    payload.share_network_subnet.share_network_id !== shareNetworkId
+  ) {
+    throw new OpenStackRequestError(404, "Not Found");
+  }
+  return payload.share_network_subnet;
+}
+
+function redactSecurityService(
+  service: ManilaSecurityService & { password?: string | null },
+): ManilaSecurityService {
+  const { password: _password, ...safeService } = service;
+  return safeService;
+}
+
+export async function listSecurityServices() {
+  const { projectId, projectPathId } = await activeManilaContext();
+  const payload = await manilaRequest<{
+    security_services?: Array<
+      ManilaSecurityService & { password?: string | null }
+    >;
+  }>(`/${projectPathId}/security-services/detail?all_tenants=0`);
+  return (payload?.security_services ?? [])
+    .filter(
+      (service) =>
+        !service.project_id ||
+        normalizeProjectId(service.project_id) ===
+          normalizeProjectId(projectId),
+    )
+    .map(redactSecurityService);
+}
+
+export async function getSecurityService(id: string) {
+  const { projectId, projectPathId } = await activeManilaContext();
+  const payload = await manilaRequest<{
+    security_service?: ManilaSecurityService & { password?: string | null };
+  }>(
+    `/${projectPathId}/security-services/${resourceId(id, "security service ID")}`,
+  );
+  if (!payload?.security_service) {
+    throw new Error("Manila did not return the security service");
+  }
+  assertActiveProject(payload.security_service.project_id, projectId);
+  return redactSecurityService(payload.security_service);
+}
+
+export async function listShareNetworkSecurityServices(shareNetworkId: string) {
+  await getShareNetwork(shareNetworkId);
+  const services = await listSecurityServices();
+  return services.filter((service) =>
+    service.share_networks?.some((network) => network.id === shareNetworkId),
+  );
 }
 
 export async function assertShareNetworkPlacement(

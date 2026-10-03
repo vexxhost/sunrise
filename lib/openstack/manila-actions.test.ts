@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   assertShareNetworkPlacement: vi.fn(),
   executeOpenStackMutation: vi.fn(),
+  getSecurityService: vi.fn(),
   getShare: vi.fn(),
   getShareNetwork: vi.fn(),
+  getShareNetworkSubnet: vi.fn(),
   getShareSnapshot: vi.fn(),
   guardMutationContext: vi.fn(),
 }));
@@ -17,22 +19,30 @@ vi.mock("@/lib/mutation-context", () => ({
 }));
 vi.mock("@/lib/openstack/manila-server", () => ({
   assertShareNetworkPlacement: mocks.assertShareNetworkPlacement,
+  getSecurityService: mocks.getSecurityService,
   getShare: mocks.getShare,
   getShareNetwork: mocks.getShareNetwork,
+  getShareNetworkSubnet: mocks.getShareNetworkSubnet,
   getShareSnapshot: mocks.getShareSnapshot,
   MANILA_API_VERSION: "2.51",
   MANILA_SERVICE: { serviceType: "sharev2", serviceName: "manila" },
 }));
 
 import {
+  attachShareNetworkSecurityServiceAction,
+  createSecurityServiceAction,
   createShareAction,
   createShareNetworkAction,
+  createShareNetworkSubnetAction,
   createShareSnapshotAction,
   deleteShareSnapshotAction,
   deleteShareAction,
+  deleteShareNetworkAction,
+  deleteShareNetworkSubnetAction,
   grantShareAccessAction,
   resizeShareAction,
   updateShareNetworkAction,
+  updateSecurityServiceAction,
 } from "@/lib/openstack/manila-actions";
 
 const scope = { projectId: "project-a", regionId: "RegionOne" };
@@ -67,6 +77,17 @@ describe("Manila mutation actions", () => {
       id: "share-network-a",
       name: "team-network",
       project_id: "project-a",
+    });
+    mocks.getShareNetworkSubnet.mockResolvedValue({
+      id: "network-subnet-a",
+      share_network_id: "share-network-a",
+    });
+    mocks.getSecurityService.mockResolvedValue({
+      id: "security-service-a",
+      name: "team-directory",
+      project_id: "project-a",
+      status: "new",
+      type: "ldap",
     });
     mocks.assertShareNetworkPlacement.mockResolvedValue(undefined);
   });
@@ -295,6 +316,149 @@ describe("Manila mutation actions", () => {
           share_network: {
             name: "renamed-network",
             description: "Updated description",
+          },
+        },
+      }),
+    );
+  });
+
+  it("creates an additional share-network subnet with the v2.51 body key", async () => {
+    await createShareNetworkSubnetAction(scope, "share-network-a", {
+      neutronNetworkId: "network-a",
+      neutronSubnetId: "subnet-a",
+      availabilityZone: "manila-zone-a",
+    });
+
+    expect(mocks.getShareNetwork).toHaveBeenCalledWith("share-network-a");
+    expect(mocks.assertShareNetworkPlacement).toHaveBeenCalledWith(
+      "network-a",
+      "subnet-a",
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        path: "/project-a/share-networks/share-network-a/subnets",
+        body: {
+          "share-network-subnet": {
+            neutron_net_id: "network-a",
+            neutron_subnet_id: "subnet-a",
+            availability_zone: "manila-zone-a",
+          },
+        },
+      }),
+    );
+  });
+
+  it("preflights the child resource before deleting a network subnet", async () => {
+    await deleteShareNetworkSubnetAction(
+      scope,
+      "share-network-a",
+      "network-subnet-a",
+    );
+
+    expect(mocks.getShareNetworkSubnet).toHaveBeenCalledWith(
+      "share-network-a",
+      "network-subnet-a",
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/project-a/share-networks/share-network-a/subnets/network-subnet-a",
+      }),
+    );
+  });
+
+  it("preflights the parent before deleting a share network", async () => {
+    await deleteShareNetworkAction(scope, "share-network-a");
+
+    expect(mocks.getShareNetwork).toHaveBeenCalledWith("share-network-a");
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/project-a/share-networks/share-network-a",
+      }),
+    );
+  });
+
+  it("creates a security service without expanding unsupported fields", async () => {
+    await createSecurityServiceAction(scope, {
+      type: "active_directory",
+      name: "team-directory",
+      description: "Project directory",
+      dnsIp: "192.0.2.53",
+      server: "ad.example.com",
+      domain: "example.com",
+      ou: "OU=File Servers",
+      user: "svc-manila",
+      password: "secret",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        path: "/project-a/security-services",
+        body: {
+          security_service: {
+            type: "active_directory",
+            name: "team-directory",
+            description: "Project directory",
+            dns_ip: "192.0.2.53",
+            server: "ad.example.com",
+            domain: "example.com",
+            ou: "OU=File Servers",
+            user: "svc-manila",
+            password: "secret",
+          },
+        },
+      }),
+    );
+  });
+
+  it("limits active security-service updates to display fields", async () => {
+    mocks.getSecurityService.mockResolvedValueOnce({
+      id: "security-service-a",
+      name: "team-directory",
+      status: "active",
+      type: "ldap",
+    });
+
+    await updateSecurityServiceAction(scope, "security-service-a", {
+      name: "renamed-directory",
+      description: "Updated",
+      dnsIp: "192.0.2.54",
+      server: "new.example.com",
+      user: "new-user",
+      password: "new-password",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          security_service: {
+            name: "renamed-directory",
+            description: "Updated",
+          },
+        },
+      }),
+    );
+  });
+
+  it("preflights both resources before attaching a security service", async () => {
+    await attachShareNetworkSecurityServiceAction(
+      scope,
+      "share-network-a",
+      "security-service-a",
+    );
+
+    expect(mocks.getShareNetwork).toHaveBeenCalledWith("share-network-a");
+    expect(mocks.getSecurityService).toHaveBeenCalledWith("security-service-a");
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        path: "/project-a/share-networks/share-network-a/action",
+        body: {
+          add_security_service: {
+            security_service_id: "security-service-a",
           },
         },
       }),

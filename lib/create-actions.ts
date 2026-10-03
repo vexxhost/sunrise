@@ -23,6 +23,7 @@ export type CreateActionId =
   | "share"
   | "share-network"
   | "share-snapshot"
+  | "security-service"
   | "secret"
   | "secret-container"
   | "secret-order";
@@ -247,6 +248,18 @@ const definitions: CreateActionDefinition[] = [
     label: "Create share network",
     description: "Define Neutron placement for Manila share servers.",
     href: "/shared-file-systems/share-networks?create=share-network",
+    service: "shared-file-system",
+    group: "Shared File System",
+    catalogIdentities: [
+      { serviceType: "sharev2", serviceName: "manilav2" },
+      { serviceType: "shared-file-system", serviceName: "manila" },
+    ],
+  },
+  {
+    id: "security-service",
+    label: "Create security service",
+    description: "Configure LDAP, Kerberos, or Active Directory for shares.",
+    href: "/shared-file-systems/security-services?create=security-service",
     service: "shared-file-system",
     group: "Shared File System",
     catalogIdentities: [
