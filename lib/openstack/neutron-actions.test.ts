@@ -221,10 +221,11 @@ describe("Neutron mutation actions", () => {
     );
   });
 
-  it("maps explicit DHCP pools and DNS servers to subnet mutations", async () => {
+  it("maps explicit subnet addressing controls to Neutron mutations", async () => {
     const addressing = {
       allocationPools: [{ start: "10.20.30.20", end: "10.20.30.220" }],
       dnsNameservers: ["1.1.1.1", "9.9.9.9"],
+      hostRoutes: [{ destination: "172.20.0.0/16", nexthop: "10.20.30.2" }],
     };
 
     await createSubnetAction(scope, {
@@ -234,6 +235,7 @@ describe("Neutron mutation actions", () => {
       cidr: "10.20.30.0/24",
       ipVersion: 4,
       gatewayIp: "10.20.30.1",
+      disableGateway: false,
       enableDhcp: true,
       ...addressing,
     });
@@ -245,6 +247,8 @@ describe("Neutron mutation actions", () => {
           subnet: expect.objectContaining({
             allocation_pools: addressing.allocationPools,
             dns_nameservers: addressing.dnsNameservers,
+            gateway_ip: "10.20.30.1",
+            host_routes: addressing.hostRoutes,
           }),
         },
       }),
@@ -253,7 +257,10 @@ describe("Neutron mutation actions", () => {
     await updateSubnetAction(scope, "subnet-a", {
       name: "application-subnet",
       description: "Updated addressing",
+      cidr: "10.20.30.0/24",
+      ipVersion: 4,
       gatewayIp: "10.20.30.1",
+      disableGateway: false,
       enableDhcp: true,
       ...addressing,
     });
@@ -265,10 +272,243 @@ describe("Neutron mutation actions", () => {
           subnet: expect.objectContaining({
             allocation_pools: addressing.allocationPools,
             dns_nameservers: addressing.dnsNameservers,
+            gateway_ip: "10.20.30.1",
+            host_routes: addressing.hostRoutes,
           }),
         },
       }),
     );
+  });
+
+  it("preserves automatic and disabled gateway semantics", async () => {
+    await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "automatic-gateway",
+      description: "",
+      cidr: "10.20.30.0/24",
+      ipVersion: 4,
+      disableGateway: false,
+      enableDhcp: true,
+    });
+    const automaticGatewayRequest =
+      mocks.executeOpenStackMutation.mock.calls.at(-1)?.[0];
+    expect(automaticGatewayRequest.body.subnet).not.toHaveProperty(
+      "gateway_ip",
+    );
+
+    await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "disabled-gateway",
+      description: "",
+      cidr: "2001:db8::/64",
+      ipVersion: 6,
+      disableGateway: true,
+      enableDhcp: true,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          subnet: expect.objectContaining({ gateway_ip: null }),
+        },
+      }),
+    );
+
+    await updateSubnetAction(scope, "subnet-a", {
+      name: "disabled-gateway",
+      description: "",
+      cidr: "2001:db8::/64",
+      ipVersion: 6,
+      disableGateway: true,
+      enableDhcp: true,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          subnet: expect.objectContaining({ gateway_ip: null }),
+        },
+      }),
+    );
+  });
+
+  it("rejects subnet fields that do not match the selected IP version", async () => {
+    const cidrResult = await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "mixed-subnet",
+      description: "",
+      cidr: "2001:db8::/64",
+      ipVersion: 4,
+      disableGateway: false,
+      enableDhcp: true,
+    });
+
+    expect(cidrResult).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: "The CIDR must use IPv4.",
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+
+    const routeResult = await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "mixed-route",
+      description: "",
+      cidr: "10.20.30.0/24",
+      ipVersion: 4,
+      disableGateway: false,
+      enableDhcp: true,
+      hostRoutes: [{ destination: "2001:db8::/64", nexthop: "10.20.30.2" }],
+    });
+
+    expect(routeResult).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed", message: "Use an IPv4 address." },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("requires a gateway address when enabling one during subnet editing", async () => {
+    const result = await updateSubnetAction(scope, "subnet-a", {
+      name: "application-subnet",
+      description: "",
+      cidr: "10.20.30.0/24",
+      ipVersion: 4,
+      disableGateway: false,
+      enableDhcp: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: "Enter a gateway address or disable the gateway.",
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("maps supported IPv6 address configuration modes", async () => {
+    await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "openstack-slaac",
+      description: "",
+      cidr: "2001:db8:1::/64",
+      ipVersion: 6,
+      disableGateway: false,
+      enableDhcp: true,
+      ipv6Mode: "slaac-openstack",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          subnet: expect.objectContaining({
+            ipv6_address_mode: "slaac",
+            ipv6_ra_mode: "slaac",
+          }),
+        },
+      }),
+    );
+
+    await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "external-slaac",
+      description: "",
+      cidr: "2001:db8:2::/64",
+      ipVersion: 6,
+      disableGateway: false,
+      enableDhcp: true,
+      ipv6Mode: "slaac-external",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          subnet: expect.objectContaining({
+            ipv6_address_mode: "slaac",
+            ipv6_ra_mode: null,
+          }),
+        },
+      }),
+    );
+
+    await updateSubnetAction(scope, "subnet-a", {
+      name: "manual-addressing",
+      description: "",
+      cidr: "2001:db8:2::/64",
+      ipVersion: 6,
+      disableGateway: true,
+      enableDhcp: false,
+      ipv6Mode: "none",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          subnet: expect.objectContaining({
+            ipv6_address_mode: null,
+            ipv6_ra_mode: null,
+          }),
+        },
+      }),
+    );
+  });
+
+  it("rejects incompatible IPv6 address configuration", async () => {
+    const dhcpResult = await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "slaac-without-dhcp",
+      description: "",
+      cidr: "2001:db8::/64",
+      ipVersion: 6,
+      disableGateway: false,
+      enableDhcp: false,
+      ipv6Mode: "slaac-openstack",
+    });
+    expect(dhcpResult).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: "Enable DHCP to use IPv6 address configuration.",
+      },
+    });
+
+    const prefixResult = await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "invalid-slaac-prefix",
+      description: "",
+      cidr: "2001:db8::/56",
+      ipVersion: 6,
+      disableGateway: false,
+      enableDhcp: true,
+      ipv6Mode: "dhcpv6-stateless",
+    });
+    expect(prefixResult).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message:
+          "A /64 prefix is required for SLAAC and DHCPv6 stateless addressing.",
+      },
+    });
+
+    const ipv4Result = await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "ipv4-slaac",
+      description: "",
+      cidr: "10.20.30.0/24",
+      ipVersion: 4,
+      disableGateway: false,
+      enableDhcp: true,
+      ipv6Mode: "slaac-openstack",
+    });
+    expect(ipv4Result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message:
+          "IPv6 address configuration is only available for IPv6 subnets.",
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("rejects reversed security group port ranges", async () => {

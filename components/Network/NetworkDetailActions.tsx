@@ -7,6 +7,7 @@ import { GitBranch, Plus, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { IPv6ConfigurationField } from "@/components/Network/IPv6ConfigurationField";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { SubnetAddressFields } from "@/components/Network/SubnetAddressFields";
 import { EditActionButton } from "@/components/resources/EditActionButton";
@@ -22,13 +23,27 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   createSubnetAction,
   deleteNetworkAction,
   updateNetworkAction,
 } from "@/lib/openstack/neutron-actions";
-import type { AllocationPool, Network } from "@/types/openstack";
+import { getCidrValidationError } from "@/lib/network-address";
+import { usesIpv6AutoAddressing } from "@/lib/openstack/neutron-ipv6";
+import type {
+  AllocationPool,
+  HostRoute,
+  IPv6ConfigurationMode,
+  Network,
+} from "@/types/openstack";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 
 interface NetworkDetailActionsProps {
@@ -57,10 +72,14 @@ export function NetworkDetailActions({
   );
   const [subnetName, setSubnetName] = useState("");
   const [cidr, setCidr] = useState("");
+  const [ipVersion, setIpVersion] = useState<4 | 6>(4);
   const [gatewayIp, setGatewayIp] = useState("");
+  const [disableGateway, setDisableGateway] = useState(false);
   const [enableDhcp, setEnableDhcp] = useState(true);
+  const [ipv6Mode, setIpv6Mode] = useState<IPv6ConfigurationMode>("none");
   const [allocationPools, setAllocationPools] = useState<AllocationPool[]>([]);
   const [dnsNameservers, setDnsNameservers] = useState<string[]>([]);
+  const [hostRoutes, setHostRoutes] = useState<HostRoute[]>([]);
   const subnetQuota = useProjectQuotaImpact({
     enabled: dialog === "subnet",
     projectId,
@@ -80,10 +99,14 @@ export function NetworkDetailActions({
     if (next === "subnet") {
       setSubnetName("");
       setCidr("");
+      setIpVersion(4);
       setGatewayIp("");
+      setDisableGateway(false);
       setEnableDhcp(true);
+      setIpv6Mode("none");
       setAllocationPools([]);
       setDnsNameservers([]);
+      setHostRoutes([]);
     }
     setDialog(next);
   };
@@ -118,11 +141,14 @@ export function NetworkDetailActions({
           name: subnetName,
           description: "",
           cidr,
-          ipVersion: cidr.includes(":") ? 6 : 4,
+          ipVersion,
           gatewayIp: gatewayIp || undefined,
+          disableGateway,
           enableDhcp,
+          ipv6Mode,
           allocationPools: allocationPools.length ? allocationPools : undefined,
           dnsNameservers: dnsNameservers.length ? dnsNameservers : undefined,
+          hostRoutes: hostRoutes.length ? hostRoutes : undefined,
         },
       );
       if (!result.ok) {
@@ -133,6 +159,9 @@ export function NetworkDetailActions({
       await refresh();
     });
   };
+  const cidrError = getCidrValidationError(cidr, ipVersion, {
+    require64: ipVersion === 6 && usesIpv6AutoAddressing(ipv6Mode),
+  });
   const confirmDelete = () => {
     startTransition(async () => {
       const result = await deleteNetworkAction(
@@ -281,31 +310,83 @@ export function NetworkDetailActions({
                 />
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="subnet-ip-version">IP version</Label>
+                <Select
+                  value={String(ipVersion)}
+                  disabled={pending}
+                  onValueChange={(value) => {
+                    const nextVersion = value === "6" ? 6 : 4;
+                    setIpVersion(nextVersion);
+                    if (nextVersion === 4) setIpv6Mode("none");
+                  }}
+                >
+                  <SelectTrigger id="subnet-ip-version">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="4">IPv4</SelectItem>
+                    <SelectItem value="6">IPv6</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="subnet-cidr">CIDR</Label>
                 <Input
                   id="subnet-cidr"
                   required
-                  placeholder="10.0.0.0/24"
+                  placeholder={
+                    ipVersion === 6 ? "2001:db8::/64" : "10.0.0.0/24"
+                  }
                   value={cidr}
                   disabled={pending}
+                  aria-invalid={Boolean(cidrError)}
+                  aria-describedby={cidrError ? "subnet-cidr-error" : undefined}
                   onChange={(event) => setCidr(event.target.value)}
                 />
+                {cidrError ? (
+                  <p
+                    id="subnet-cidr-error"
+                    className="text-xs text-destructive"
+                    role="alert"
+                  >
+                    {cidrError}
+                  </p>
+                ) : null}
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="subnet-gateway">Gateway IP</Label>
                 <Input
                   id="subnet-gateway"
                   placeholder="Selected automatically"
                   value={gatewayIp}
-                  disabled={pending}
+                  disabled={pending || disableGateway}
                   onChange={(event) => setGatewayIp(event.target.value)}
                 />
               </div>
               <label className="flex items-start gap-3 rounded-md border p-3 sm:col-span-2">
                 <Checkbox
+                  checked={disableGateway}
+                  disabled={pending}
+                  onCheckedChange={(value) => setDisableGateway(value === true)}
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Disable gateway
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Create this subnet without a default gateway.
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 rounded-md border p-3 sm:col-span-2">
+                <Checkbox
                   checked={enableDhcp}
                   disabled={pending}
-                  onCheckedChange={(value) => setEnableDhcp(value === true)}
+                  onCheckedChange={(value) => {
+                    const enabled = value === true;
+                    setEnableDhcp(enabled);
+                    if (!enabled) setIpv6Mode("none");
+                  }}
                 />
                 <span>
                   <span className="block text-sm font-medium">Enable DHCP</span>
@@ -314,13 +395,29 @@ export function NetworkDetailActions({
                   </span>
                 </span>
               </label>
+              {ipVersion === 6 ? (
+                <div className="sm:col-span-2">
+                  <IPv6ConfigurationField
+                    id="subnet-ipv6-configuration"
+                    mode={ipv6Mode}
+                    disabled={pending}
+                    onModeChange={(mode) => {
+                      setIpv6Mode(mode);
+                      if (mode !== "none") setEnableDhcp(true);
+                    }}
+                  />
+                </div>
+              ) : null}
               <SubnetAddressFields
                 idPrefix="create-subnet"
                 allocationPools={allocationPools}
                 dnsNameservers={dnsNameservers}
+                hostRoutes={hostRoutes}
                 disabled={pending}
+                ipVersion={ipVersion}
                 onAllocationPoolsChange={setAllocationPools}
                 onDnsNameserversChange={setDnsNameservers}
+                onHostRoutesChange={setHostRoutes}
               />
             </div>
             <QuotaImpactPreview
@@ -347,6 +444,7 @@ export function NetworkDetailActions({
                   pending ||
                   !subnetName.trim() ||
                   !cidr.trim() ||
+                  Boolean(cidrError) ||
                   subnetQuota.issues.length > 0
                 }
               >
