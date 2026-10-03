@@ -12,6 +12,7 @@ import {
   createVolumeAction,
   deleteVolumeAction,
   detachVolumeAction,
+  updateVolumeAttachmentAction,
 } from "@/lib/openstack/cinder-actions";
 
 const scope = { projectId: "project-a", regionId: "RegionOne" };
@@ -117,6 +118,28 @@ describe("Cinder mutation actions", () => {
       expect.objectContaining({
         method: "DELETE",
         path: "/servers/server-a/os-volume_attachments/volume-a",
+      }),
+    );
+  });
+
+  it("updates delete-on-termination using Nova 2.85", async () => {
+    await updateVolumeAttachmentAction(scope, {
+      volumeId: "volume-a",
+      serverId: "server-a",
+      deleteOnTermination: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        apiVersion: "compute 2.85",
+        path: "/servers/server-a/os-volume_attachments/volume-a",
+        body: {
+          volumeAttachment: {
+            volumeId: "volume-a",
+            delete_on_termination: true,
+          },
+        },
       }),
     );
   });

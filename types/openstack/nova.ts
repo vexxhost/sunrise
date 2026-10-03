@@ -162,7 +162,11 @@ export interface Server {
   "OS-EXT-STS:task_state"?: string;
   "OS-EXT-STS:vm_state"?: string;
   "OS-EXT-STS:power_state": number;
-  "os-extended-volumes:volumes_attached": { id: string }[];
+  "OS-EXT-SRV-ATTR:root_device_name"?: string | null;
+  "os-extended-volumes:volumes_attached": {
+    id: string;
+    delete_on_termination?: boolean;
+  }[];
   security_groups?: SecurityGroup[];
   locked: boolean;
   fault?: {

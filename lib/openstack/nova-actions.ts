@@ -16,7 +16,6 @@ import type {
   LiveMigrateServerRequest,
   MigrateServerRequest,
   RescueServerRequest,
-  ResizeServerRequest,
   Server,
   ServerConsole,
   ServerConsoleOutputResponse,
@@ -108,12 +107,22 @@ const attachPortSchema = z.object({
   portId: resourceIdSchema,
   serverId: resourceIdSchema,
 });
+const resizeServerSchema = z.object({
+  flavorRef: resourceIdSchema,
+});
+const serverSecurityGroupSchema = z.object({
+  groupName: z.string().trim().min(1).max(255),
+});
 const consoleOutputLengthSchema = z.number().int().positive().nullable();
 
 export type LaunchServerInput = z.input<typeof launchServerSchema>;
 export type RebuildServerInput = z.input<typeof rebuildServerSchema>;
 export type KeypairInput = z.input<typeof keypairSchema>;
 export type AttachPortInput = z.input<typeof attachPortSchema>;
+export type ResizeServerInput = z.input<typeof resizeServerSchema>;
+export type ServerSecurityGroupInput = z.input<
+  typeof serverSecurityGroupSchema
+>;
 export type ServerLifecycleAction =
   "start" | "stop" | "soft-reboot" | "hard-reboot";
 
@@ -650,25 +659,133 @@ export async function deleteKeypairAction(
 }
 
 export async function resizeServerAction(
+  scope: MutationScope,
   id: string,
-  payload: ResizeServerRequest,
-  regionId?: string,
-): Promise<void> {
-  await performInstanceAction(id, { resize: payload }, regionId);
+  input: ResizeServerInput,
+): Promise<MutationResult<null>> {
+  const parsedId = parseInput(resourceIdSchema, id, scope);
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parseInput(resizeServerSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+
+  return executeOpenStackMutation({
+    actionLabel: "resize this instance",
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(parsedId.value)}/action`,
+    method: "POST",
+    apiVersion: API_VERSION,
+    body: { resize: parsed.value },
+    invalidates: [
+      "/compute",
+      "/compute/instances",
+      `/compute/instances/${parsedId.value}`,
+    ],
+    successMessage: "Instance resize started.",
+  });
 }
 
 export async function confirmResizeServerAction(
+  scope: MutationScope,
   id: string,
-  regionId?: string,
-): Promise<void> {
-  await performInstanceAction(id, { confirmResize: null }, regionId);
+): Promise<MutationResult<null>> {
+  const parsedId = parseInput(resourceIdSchema, id, scope);
+  if (!parsedId.ok) return parsedId.result;
+
+  return executeOpenStackMutation({
+    actionLabel: "confirm this instance resize",
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(parsedId.value)}/action`,
+    method: "POST",
+    apiVersion: API_VERSION,
+    body: { confirmResize: null },
+    invalidates: [
+      "/compute",
+      "/compute/instances",
+      `/compute/instances/${parsedId.value}`,
+    ],
+    successMessage: "Resize confirmation requested.",
+  });
 }
 
 export async function revertResizeServerAction(
+  scope: MutationScope,
   id: string,
-  regionId?: string,
-): Promise<void> {
-  await performInstanceAction(id, { revertResize: null }, regionId);
+): Promise<MutationResult<null>> {
+  const parsedId = parseInput(resourceIdSchema, id, scope);
+  if (!parsedId.ok) return parsedId.result;
+
+  return executeOpenStackMutation({
+    actionLabel: "revert this instance resize",
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(parsedId.value)}/action`,
+    method: "POST",
+    apiVersion: API_VERSION,
+    body: { revertResize: null },
+    invalidates: [
+      "/compute",
+      "/compute/instances",
+      `/compute/instances/${parsedId.value}`,
+    ],
+    successMessage: "Resize rollback requested.",
+  });
+}
+
+async function changeServerSecurityGroupAction(
+  scope: MutationScope,
+  id: string,
+  input: ServerSecurityGroupInput,
+  action: "addSecurityGroup" | "removeSecurityGroup",
+): Promise<MutationResult<null>> {
+  const parsedId = parseInput(resourceIdSchema, id, scope);
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parseInput(serverSecurityGroupSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+
+  const adding = action === "addSecurityGroup";
+  return executeOpenStackMutation({
+    actionLabel: `${adding ? "add" : "remove"} this security group ${adding ? "to" : "from"} the instance`,
+    scope,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/servers/${encodeURIComponent(parsedId.value)}/action`,
+    method: "POST",
+    apiVersion: API_VERSION,
+    body: { [action]: { name: parsed.value.groupName } },
+    invalidates: [
+      "/compute/instances",
+      `/compute/instances/${parsedId.value}`,
+      "/networking",
+      "/networking/ports",
+    ],
+    successMessage: `Security group ${parsed.value.groupName} ${adding ? "added" : "removed"}.`,
+  });
+}
+
+export async function addServerSecurityGroupAction(
+  scope: MutationScope,
+  id: string,
+  input: ServerSecurityGroupInput,
+) {
+  return changeServerSecurityGroupAction(scope, id, input, "addSecurityGroup");
+}
+
+export async function removeServerSecurityGroupAction(
+  scope: MutationScope,
+  id: string,
+  input: ServerSecurityGroupInput,
+) {
+  return changeServerSecurityGroupAction(
+    scope,
+    id,
+    input,
+    "removeSecurityGroup",
+  );
 }
 
 export async function migrateServerAction(
