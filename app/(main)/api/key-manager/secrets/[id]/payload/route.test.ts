@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   guardMutationContext: vi.fn(),
   revalidatePath: vi.fn(),
   resolveServiceEndpoint: vi.fn(),
+  unavailableServiceRouteResponse: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -18,6 +19,9 @@ vi.mock("@/lib/openstack/catalog", () => ({
   resolveServiceEndpoint: mocks.resolveServiceEndpoint,
 }));
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
+vi.mock("@/lib/service-route-guard", () => ({
+  unavailableServiceRouteResponse: mocks.unavailableServiceRouteResponse,
+}));
 
 import { GET, PUT } from "./route";
 
@@ -76,6 +80,7 @@ describe("Barbican payload upload route", () => {
     });
     mocks.getServiceCatalog.mockResolvedValue([]);
     mocks.resolveServiceEndpoint.mockReturnValue("https://barbican.example");
+    mocks.unavailableServiceRouteResponse.mockReturnValue(null);
     mocks.getSession.mockResolvedValue({
       keystoneProjectToken: "token",
       projectId: scope.projectId,
@@ -168,6 +173,21 @@ describe("Barbican payload retrieval route", () => {
     });
     mocks.getServiceCatalog.mockResolvedValue([]);
     mocks.resolveServiceEndpoint.mockReturnValue("https://barbican.example");
+    mocks.unavailableServiceRouteResponse.mockReturnValue(null);
+  });
+
+  it("does not reveal payloads when Key Manager is disabled", async () => {
+    mocks.unavailableServiceRouteResponse.mockReturnValue(
+      Response.json({ error: "Service disabled" }, { status: 404 }),
+    );
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const response = await GET(revealRequest(), {
+      params: Promise.resolve({ id: secretId }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects an inline reveal after the active project changes", async () => {

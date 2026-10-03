@@ -83,6 +83,7 @@ async function OverviewData() {
       services={services}
       operationalFeed={operationalFeed}
       serviceDirectory={snapshot.services}
+      navigationDestinations={snapshot.destinations}
       pinnedResources={pinnedResources}
       recentResources={recentResources}
     />
