@@ -48,7 +48,6 @@ export async function openstackRequest<T = unknown>({
     : session.keystoneProjectToken;
 
   if (!token) {
-    console.error(`No ${unscoped ? "unscoped" : "project"} token in session`);
     redirect("/auth/refresh");
   }
 
