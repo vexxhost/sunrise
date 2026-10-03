@@ -386,6 +386,7 @@ export interface ServerBlockDeviceMapping {
   destination_type?: "volume" | "local";
   boot_index?: number;
   volume_size?: number;
+  volume_type?: string;
   delete_on_termination?: boolean;
   device_name?: string;
   guest_format?: string;

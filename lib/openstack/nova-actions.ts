@@ -35,11 +35,10 @@ const metadataSchema = z
     message: "Metadata cannot contain more than 128 entries.",
   });
 
-const launchServerSchema = z.object({
+const launchServerBaseSchema = z.object({
   name: serverNameSchema,
   description: z.string().trim().max(255).optional(),
   count: z.number().int().min(1).default(1),
-  imageRef: resourceIdSchema,
   flavorRef: resourceIdSchema,
   keyName: z.string().trim().max(255).optional(),
   networkIds: z.array(resourceIdSchema).max(32).default([]),
@@ -52,6 +51,37 @@ const launchServerSchema = z.object({
   userData: z.string().max(65_535).optional(),
   configDrive: z.boolean().default(false),
 });
+
+const launchServerSourceSchema = z.discriminatedUnion("bootSource", [
+  z.object({
+    bootSource: z.literal("image"),
+    imageRef: resourceIdSchema,
+  }),
+  z.object({
+    bootSource: z.literal("image-volume"),
+    imageRef: resourceIdSchema,
+    volumeSize: z.number().int().min(1),
+    volumeType: resourceIdSchema.optional(),
+    deleteOnTermination: z.boolean().default(false),
+  }),
+  z.object({
+    bootSource: z.literal("volume"),
+    volumeRef: resourceIdSchema,
+    deleteOnTermination: z.boolean().default(false),
+  }),
+]);
+
+const launchServerSchema = launchServerBaseSchema
+  .and(launchServerSourceSchema)
+  .superRefine((value, context) => {
+    if (value.bootSource === "volume" && value.count !== 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["count"],
+        message: "An existing boot volume can launch only one instance.",
+      });
+    }
+  });
 
 const rebuildServerSchema = z.object({
   imageRef: resourceIdSchema,
@@ -172,6 +202,30 @@ export async function createServerAction(
   if (!parsed.ok) return parsed.result;
 
   const payload = parsed.value;
+  const bootSource =
+    payload.bootSource === "image"
+      ? { imageRef: payload.imageRef }
+      : {
+          block_device_mapping_v2: [
+            payload.bootSource === "image-volume"
+              ? {
+                  boot_index: 0,
+                  uuid: payload.imageRef,
+                  source_type: "image" as const,
+                  destination_type: "volume" as const,
+                  volume_size: payload.volumeSize,
+                  volume_type: payload.volumeType,
+                  delete_on_termination: payload.deleteOnTermination,
+                }
+              : {
+                  boot_index: 0,
+                  uuid: payload.volumeRef,
+                  source_type: "volume" as const,
+                  destination_type: "volume" as const,
+                  delete_on_termination: payload.deleteOnTermination,
+                },
+          ],
+        };
   return executeOpenStackMutation<Server>({
     actionLabel: "launch an instance",
     scope,
@@ -185,7 +239,7 @@ export async function createServerAction(
         name: payload.name,
         description: payload.description || undefined,
         flavorRef: payload.flavorRef,
-        imageRef: payload.imageRef,
+        ...bootSource,
         key_name: payload.keyName || undefined,
         networks: payload.networkIds.length
           ? payload.networkIds.map((uuid) => ({ uuid }))
@@ -203,7 +257,11 @@ export async function createServerAction(
         max_count: payload.count,
       },
     },
-    invalidates: ["/compute", "/compute/instances"],
+    invalidates: [
+      "/compute",
+      "/compute/instances",
+      ...(payload.bootSource !== "image" ? ["/compute/volumes"] : []),
+    ],
     successMessage:
       payload.count === 1
         ? `Instance ${payload.name} is being created.`

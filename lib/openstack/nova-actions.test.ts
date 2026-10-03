@@ -46,6 +46,7 @@ describe("Nova mutation actions", () => {
       description: "Frontend workload",
       count: 3,
       flavorRef: "m1.small",
+      bootSource: "image",
       imageRef: "image-a",
       networkIds: ["network-a"],
       securityGroupNames: ["default"],
@@ -87,11 +88,103 @@ describe("Nova mutation actions", () => {
     );
   });
 
+  it("creates an image-backed boot volume through Nova block device mapping", async () => {
+    await createServerAction(scope, {
+      name: "database-1",
+      count: 2,
+      flavorRef: "m1.small",
+      bootSource: "image-volume",
+      imageRef: "image-a",
+      volumeSize: 40,
+      volumeType: "fast-type-id",
+      deleteOnTermination: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          server: expect.objectContaining({
+            block_device_mapping_v2: [
+              {
+                boot_index: 0,
+                uuid: "image-a",
+                source_type: "image",
+                destination_type: "volume",
+                volume_size: 40,
+                volume_type: "fast-type-id",
+                delete_on_termination: true,
+              },
+            ],
+            min_count: 2,
+            max_count: 2,
+          }),
+        },
+        invalidates: ["/compute", "/compute/instances", "/compute/volumes"],
+      }),
+    );
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[0][0].body.server,
+    ).not.toHaveProperty("imageRef");
+  });
+
+  it("boots one instance from an existing volume without creating storage", async () => {
+    await createServerAction(scope, {
+      name: "recovered-server",
+      count: 1,
+      flavorRef: "m1.small",
+      bootSource: "volume",
+      volumeRef: "volume-a",
+      deleteOnTermination: false,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          server: expect.objectContaining({
+            block_device_mapping_v2: [
+              {
+                boot_index: 0,
+                uuid: "volume-a",
+                source_type: "volume",
+                destination_type: "volume",
+                delete_on_termination: false,
+              },
+            ],
+          }),
+        },
+        invalidates: ["/compute", "/compute/instances", "/compute/volumes"],
+      }),
+    );
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[0][0].body.server,
+    ).not.toHaveProperty("imageRef");
+  });
+
+  it("rejects launching multiple instances from one existing volume", async () => {
+    const result = await createServerAction(scope, {
+      name: "invalid-group",
+      count: 2,
+      flavorRef: "m1.small",
+      bootSource: "volume",
+      volumeRef: "volume-a",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: "An existing boot volume can launch only one instance.",
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("rejects a launch count below one before contacting Nova", async () => {
     const result = await createServerAction(scope, {
       name: "web-1",
       count: 0,
       flavorRef: "m1.small",
+      bootSource: "image",
       imageRef: "image-a",
     });
 

@@ -8,7 +8,13 @@ import {
   useTransition,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Server, Trash2 } from "lucide-react";
+import {
+  HardDrive,
+  Image as ImageIcon,
+  Plus,
+  Server,
+  Trash2,
+} from "lucide-react";
 
 import { ImagePicker } from "@/components/Image/ImageSelectOption";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
@@ -27,6 +33,7 @@ import {
 } from "@/components/ui/wizard-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -47,11 +54,16 @@ import {
   serverAvailabilityZonesQueryOptions,
 } from "@/hooks/queries/useServers";
 import {
+  volumesQueryOptions,
+  volumeTypesQueryOptions,
+} from "@/hooks/queries/useVolumes";
+import {
   projectQuotaQueryOptions,
   quotaQueryUnavailableMessage,
 } from "@/hooks/queries/useQuotas";
 import { formatFlavorCapacity } from "@/lib/openstack/flavor";
 import {
+  cinderVolumeQuotaImpacts,
   novaQuotaImpacts,
   quotaImpactIssues,
   quotaUnavailableReason,
@@ -66,6 +78,7 @@ import type {
   Network,
   SecurityGroup,
   ComputeAvailabilityZone,
+  Volume,
 } from "@/types/openstack";
 
 interface InstanceActionsProps {
@@ -75,12 +88,18 @@ interface InstanceActionsProps {
 }
 
 type MetadataEntry = { id: number; key: string; value: string };
+type BootSource = "image" | "image-volume" | "volume";
 
 interface LaunchFormState {
   name: string;
   description: string;
   count: string;
+  bootSource: BootSource;
   imageRef: string;
+  volumeRef: string;
+  bootVolumeSize: string;
+  bootVolumeType: string;
+  deleteOnTermination: boolean;
   flavorRef: string;
   keyName: string;
   networkIds: string[];
@@ -95,7 +114,12 @@ const INITIAL_FORM: LaunchFormState = {
   name: "",
   description: "",
   count: "1",
+  bootSource: "image",
   imageRef: "",
+  volumeRef: "",
+  bootVolumeSize: "1",
+  bootVolumeType: "default",
+  deleteOnTermination: false,
   flavorRef: "",
   keyName: "none",
   networkIds: [],
@@ -107,6 +131,21 @@ const INITIAL_FORM: LaunchFormState = {
 };
 
 const SCHEDULER_DEFAULT_ZONE = "scheduler-default";
+
+function minimumBootVolumeSize(image: Image | undefined) {
+  if (!image) return 1;
+  const virtualSizeGiB = image.virtual_size
+    ? Math.ceil(image.virtual_size / 1024 ** 3)
+    : 0;
+  return Math.max(1, image.min_disk || 0, virtualSizeGiB);
+}
+
+function isBootableVolume(volume: Volume) {
+  return (
+    volume.status === "available" &&
+    String(volume.bootable).toLowerCase() === "true"
+  );
+}
 
 function metadataRecord(entries: MetadataEntry[]) {
   return Object.fromEntries(
@@ -168,9 +207,24 @@ export function InstanceActions({
   >([]);
   const [optionsLoading, setOptionsLoading] = useState(initiallyOpen);
   const [isPending, startTransition] = useTransition();
+  const volumeTypes = useQuery({
+    ...volumeTypesQueryOptions(regionId, projectId),
+    enabled: isOpen && Boolean(regionId && projectId),
+  });
+  const volumes = useQuery({
+    ...volumesQueryOptions(regionId, projectId),
+    enabled: isOpen && Boolean(regionId && projectId),
+  });
   const quota = useQuery({
     ...projectQuotaQueryOptions(regionId, projectId, "compute"),
     enabled: isOpen && Boolean(regionId && projectId),
+  });
+  const storageQuota = useQuery({
+    ...projectQuotaQueryOptions(regionId, projectId, "storage"),
+    enabled:
+      isOpen &&
+      form.bootSource === "image-volume" &&
+      Boolean(regionId && projectId),
   });
   const visibleNetworks = useMemo(
     () => projectNetworks(networks, projectId),
@@ -181,10 +235,22 @@ export function InstanceActions({
     [projectId, securityGroups],
   );
   const selectedImage = images.find(({ id }) => id === form.imageRef);
+  const selectedVolumeType = (volumeTypes.data ?? []).find(
+    ({ id }) => id === form.bootVolumeType,
+  );
+  const eligibleVolumes = useMemo(
+    () => (volumes.data ?? []).filter(isBootableVolume),
+    [volumes.data],
+  );
+  const selectedVolume = eligibleVolumes.find(
+    ({ id }) => id === form.volumeRef,
+  );
   const selectedFlavor = flavors.find(
     ({ id }) => String(id) === form.flavorRef,
   );
   const count = Number(form.count);
+  const bootVolumeSize = Number(form.bootVolumeSize);
+  const minimumVolumeSize = minimumBootVolumeSize(selectedImage);
   const configuredMetadata = form.metadata.filter(({ key }) => key.trim());
   const configuredMetadataCount = configuredMetadata.length;
   const quotaMetrics = useMemo(
@@ -201,13 +267,66 @@ export function InstanceActions({
       ),
     [configuredMetadataCount, count, quotaMetrics, selectedFlavor],
   );
-  const quotaIssues = useMemo(
+  const computeQuotaIssues = useMemo(
     () => quotaImpactIssues(quotaImpacts),
     [quotaImpacts],
   );
   const quotaUnavailableMessage = quotaQueryUnavailableMessage(
     quota,
     "Compute quotas are unavailable. Nova will validate the request when it is submitted.",
+  );
+  const storageQuotaMetrics = useMemo(
+    () =>
+      storageQuota.data?.status === "available"
+        ? storageQuota.data.metrics
+        : [],
+    [storageQuota.data],
+  );
+  const storageQuotaImpacts = useMemo(
+    () =>
+      form.bootSource === "image-volume"
+        ? cinderVolumeQuotaImpacts(
+            storageQuotaMetrics,
+            bootVolumeSize,
+            selectedVolumeType?.name,
+            count,
+          )
+        : [],
+    [
+      bootVolumeSize,
+      count,
+      form.bootSource,
+      selectedVolumeType?.name,
+      storageQuotaMetrics,
+    ],
+  );
+  const storageQuotaIssues = useMemo(
+    () => quotaImpactIssues(storageQuotaImpacts),
+    [storageQuotaImpacts],
+  );
+  const storageQuotaUnavailableMessage = quotaQueryUnavailableMessage(
+    storageQuota,
+    "Block Storage quotas are unavailable. Cinder will validate the boot volume request when it is submitted.",
+  );
+  const volumeTypeQuotaReasons = useMemo(
+    () =>
+      new Map(
+        (volumeTypes.data ?? []).map((volumeType) => {
+          const reason = quotaUnavailableReason(
+            cinderVolumeQuotaImpacts(
+              storageQuotaMetrics,
+              bootVolumeSize,
+              volumeType.name,
+              count,
+            ),
+          );
+          return [
+            volumeType.id,
+            reason ? `Insufficient ${reason} quota` : null,
+          ];
+        }),
+      ),
+    [bootVolumeSize, count, storageQuotaMetrics, volumeTypes.data],
   );
   const flavorQuotaReasons = useMemo(
     () =>
@@ -230,14 +349,40 @@ export function InstanceActions({
   const reviewIssues = useMemo(() => {
     const issues: string[] = [];
     if (!form.name.trim()) issues.push("Enter an instance name.");
-    if (!form.imageRef) issues.push("Select a source image.");
+    if (form.bootSource === "volume") {
+      if (!form.volumeRef) issues.push("Select an existing boot volume.");
+      if (count !== 1) {
+        issues.push("An existing boot volume can launch only one instance.");
+      }
+    } else if (!form.imageRef) {
+      issues.push("Select a source image.");
+    }
+    if (
+      form.bootSource === "image-volume" &&
+      (!Number.isInteger(bootVolumeSize) || bootVolumeSize < minimumVolumeSize)
+    ) {
+      issues.push(
+        `Enter a boot volume size of at least ${minimumVolumeSize} GiB.`,
+      );
+    }
     if (!form.flavorRef) issues.push("Select an instance flavor.");
     if (!Number.isInteger(count) || count < 1) {
       issues.push("Enter an instance count of at least 1.");
     }
-    issues.push(...quotaIssues);
+    issues.push(...computeQuotaIssues, ...storageQuotaIssues);
     return issues;
-  }, [count, form.flavorRef, form.imageRef, form.name, quotaIssues]);
+  }, [
+    bootVolumeSize,
+    computeQuotaIssues,
+    count,
+    form.bootSource,
+    form.flavorRef,
+    form.imageRef,
+    form.name,
+    form.volumeRef,
+    minimumVolumeSize,
+    storageQuotaIssues,
+  ]);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -317,6 +462,39 @@ export function InstanceActions({
       ? values.filter((item) => item !== value)
       : [...values, value];
 
+  const setBootSource = (bootSource: BootSource) => {
+    setForm((current) => ({
+      ...current,
+      bootSource,
+      count: bootSource === "volume" ? "1" : current.count,
+      bootVolumeSize:
+        bootSource === "image-volume"
+          ? String(
+              Math.max(
+                Number(current.bootVolumeSize) || 0,
+                minimumBootVolumeSize(
+                  images.find(({ id }) => id === current.imageRef),
+                ),
+              ),
+            )
+          : current.bootVolumeSize,
+    }));
+  };
+
+  const setImageRef = (imageRef: string) => {
+    const minimumSize = minimumBootVolumeSize(
+      images.find(({ id }) => id === imageRef),
+    );
+    setForm((current) => ({
+      ...current,
+      imageRef,
+      bootVolumeSize:
+        current.bootSource === "image-volume"
+          ? String(Math.max(Number(current.bootVolumeSize) || 0, minimumSize))
+          : current.bootVolumeSize,
+    }));
+  };
+
   const addMetadata = () => {
     setForm((current) => ({
       ...current,
@@ -351,13 +529,34 @@ export function InstanceActions({
 
     startTransition(async () => {
       setErrorMessage(null);
+      const sourceInput =
+        form.bootSource === "image"
+          ? {
+              bootSource: "image" as const,
+              imageRef: form.imageRef,
+            }
+          : form.bootSource === "image-volume"
+            ? {
+                bootSource: "image-volume" as const,
+                imageRef: form.imageRef,
+                volumeSize: Number(form.bootVolumeSize),
+                volumeType:
+                  form.bootVolumeType === "default"
+                    ? undefined
+                    : form.bootVolumeType,
+                deleteOnTermination: form.deleteOnTermination,
+              }
+            : {
+                bootSource: "volume" as const,
+                volumeRef: form.volumeRef,
+                deleteOnTermination: form.deleteOnTermination,
+              };
       const result = await createServerAction(
         { projectId, regionId },
         {
           name: form.name,
           description: form.description || undefined,
           count: Number(form.count),
-          imageRef: form.imageRef,
           flavorRef: form.flavorRef,
           keyName: form.keyName === "none" ? undefined : form.keyName,
           networkIds: form.networkIds,
@@ -366,6 +565,7 @@ export function InstanceActions({
           metadata: metadataRecord(form.metadata),
           userData: form.userData || undefined,
           configDrive: form.configDrive,
+          ...sourceInput,
         },
       );
 
@@ -382,6 +582,21 @@ export function InstanceActions({
       void queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "project-quotas", "compute"],
       });
+      if (form.bootSource !== "image") {
+        void queryClient.invalidateQueries({
+          queryKey: [regionId, projectId, "volumes"],
+        });
+      }
+      if (form.bootSource === "volume") {
+        void queryClient.invalidateQueries({
+          queryKey: [regionId, projectId, "volume", form.volumeRef],
+        });
+      }
+      if (form.bootSource === "image-volume") {
+        void queryClient.invalidateQueries({
+          queryKey: [regionId, projectId, "project-quotas", "storage"],
+        });
+      }
     });
   };
 
@@ -478,12 +693,13 @@ export function InstanceActions({
                               count: event.target.value,
                             }))
                           }
-                          disabled={isPending}
+                          disabled={isPending || form.bootSource === "volume"}
                           required
                         />
                         <p className="text-xs text-muted-foreground">
-                          Nova creates this many instances with identical
-                          settings, subject to project quota.
+                          {form.bootSource === "volume"
+                            ? "An existing boot volume can be attached to one new instance."
+                            : "Nova creates this many instances with identical settings, subject to project quota."}
                         </p>
                       </div>
                     </div>
@@ -548,28 +764,265 @@ export function InstanceActions({
                   <section className="space-y-5">
                     <div>
                       <h3 className="text-sm font-semibold">
-                        Image and capacity
+                        Boot source and capacity
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        Select the operating system image and compute shape for
-                        every instance in this launch.
+                        Choose where the root disk lives, then select the
+                        operating system or existing bootable volume.
                       </p>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="launch-image">Image</Label>
-                      <ImagePicker
-                        disabled={optionsLoading || isPending}
-                        id="launch-image"
-                        images={images}
-                        onValueChange={(imageRef) =>
-                          setForm((current) => ({ ...current, imageRef }))
-                        }
-                        placeholder={
-                          optionsLoading ? "Loading images" : "Choose an image"
-                        }
-                        value={form.imageRef}
-                      />
-                    </div>
+                    <RadioGroup
+                      className="grid gap-3 md:grid-cols-3"
+                      value={form.bootSource}
+                      onValueChange={(value) =>
+                        setBootSource(value as BootSource)
+                      }
+                      disabled={isPending}
+                    >
+                      <label
+                        className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${form.bootSource === "image" ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                        htmlFor="boot-source-image"
+                      >
+                        <RadioGroupItem
+                          className="mt-0.5"
+                          id="boot-source-image"
+                          value="image"
+                        />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            <ImageIcon className="size-4" aria-hidden="true" />
+                            Local image disk
+                          </span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            Boot from an image on the flavor&apos;s local root
+                            disk.
+                          </span>
+                        </span>
+                      </label>
+                      <label
+                        className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${form.bootSource === "image-volume" ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                        htmlFor="boot-source-image-volume"
+                      >
+                        <RadioGroupItem
+                          className="mt-0.5"
+                          id="boot-source-image-volume"
+                          value="image-volume"
+                        />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            <HardDrive className="size-4" aria-hidden="true" />
+                            New boot volume
+                          </span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            Create an image-backed Cinder volume for each
+                            instance.
+                          </span>
+                        </span>
+                      </label>
+                      <label
+                        className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${form.bootSource === "volume" ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                        htmlFor="boot-source-volume"
+                      >
+                        <RadioGroupItem
+                          className="mt-0.5"
+                          id="boot-source-volume"
+                          value="volume"
+                        />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2 text-sm font-medium">
+                            <HardDrive className="size-4" aria-hidden="true" />
+                            Existing boot volume
+                          </span>
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            Attach one available bootable volume as the root
+                            disk.
+                          </span>
+                        </span>
+                      </label>
+                    </RadioGroup>
+
+                    {form.bootSource === "volume" ? (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="launch-volume">Boot volume</Label>
+                        <Select
+                          value={form.volumeRef}
+                          onValueChange={(volumeRef) =>
+                            setForm((current) => ({ ...current, volumeRef }))
+                          }
+                          disabled={volumes.isLoading || isPending}
+                        >
+                          <SelectTrigger className="w-full" id="launch-volume">
+                            <SelectValue
+                              placeholder={
+                                volumes.isLoading
+                                  ? "Loading bootable volumes"
+                                  : "Choose a bootable volume"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {eligibleVolumes.map((volume) => (
+                              <SelectItem
+                                key={volume.id}
+                                value={volume.id}
+                                textValue={`${volume.name || volume.id} ${volume.id}`}
+                                className="py-2"
+                              >
+                                <span className="flex min-w-0 flex-col">
+                                  <span className="truncate">
+                                    {volume.name || "Unnamed volume"} ·{" "}
+                                    {volume.size} GiB
+                                  </span>
+                                  <span className="truncate font-mono text-xs text-muted-foreground">
+                                    {volume.id}
+                                  </span>
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          Only unattached volumes marked bootable by Cinder are
+                          available. Existing volumes do not consume new storage
+                          quota.
+                        </p>
+                        {volumes.isError ? (
+                          <MutationAlert>
+                            Unable to load bootable volumes. Refresh and try
+                            again.
+                          </MutationAlert>
+                        ) : !volumes.isLoading && !eligibleVolumes.length ? (
+                          <p className="text-sm text-muted-foreground">
+                            No available bootable volumes were found in this
+                            project.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="launch-image">Image</Label>
+                        <ImagePicker
+                          disabled={optionsLoading || isPending}
+                          id="launch-image"
+                          images={images}
+                          onValueChange={setImageRef}
+                          placeholder={
+                            optionsLoading
+                              ? "Loading images"
+                              : "Choose an image"
+                          }
+                          value={form.imageRef}
+                        />
+                      </div>
+                    )}
+
+                    {form.bootSource === "image-volume" ? (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="launch-boot-volume-size">
+                            Boot volume size (GiB)
+                          </Label>
+                          <Input
+                            id="launch-boot-volume-size"
+                            min={minimumVolumeSize}
+                            step={1}
+                            type="number"
+                            value={form.bootVolumeSize}
+                            onChange={(event) =>
+                              setForm((current) => ({
+                                ...current,
+                                bootVolumeSize: event.target.value,
+                              }))
+                            }
+                            disabled={isPending}
+                            required
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            The selected image requires at least{" "}
+                            {minimumVolumeSize} GiB.
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="launch-boot-volume-type">
+                            Volume type
+                          </Label>
+                          <Select
+                            value={form.bootVolumeType}
+                            onValueChange={(bootVolumeType) =>
+                              setForm((current) => ({
+                                ...current,
+                                bootVolumeType,
+                              }))
+                            }
+                            disabled={volumeTypes.isLoading || isPending}
+                          >
+                            <SelectTrigger
+                              className="w-full"
+                              id="launch-boot-volume-type"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="default">
+                                Project default
+                              </SelectItem>
+                              {(volumeTypes.data ?? []).map((volumeType) => {
+                                const reason = volumeTypeQuotaReasons.get(
+                                  volumeType.id,
+                                );
+                                return (
+                                  <SelectItem
+                                    key={volumeType.id}
+                                    value={volumeType.id}
+                                    textValue={volumeType.name}
+                                    disabled={Boolean(reason)}
+                                    className="py-2"
+                                  >
+                                    <span className="flex min-w-0 flex-col">
+                                      <span className="truncate">
+                                        {volumeType.name}
+                                      </span>
+                                      {reason ? (
+                                        <span className="truncate text-xs text-status-danger">
+                                          {reason}
+                                        </span>
+                                      ) : volumeType.description ? (
+                                        <span className="truncate text-xs text-muted-foreground">
+                                          {volumeType.description}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {form.bootSource !== "image" ? (
+                      <label className="flex cursor-pointer items-start gap-2 text-sm">
+                        <Checkbox
+                          checked={form.deleteOnTermination}
+                          onCheckedChange={(value) =>
+                            setForm((current) => ({
+                              ...current,
+                              deleteOnTermination: Boolean(value),
+                            }))
+                          }
+                          disabled={isPending}
+                        />
+                        <span>
+                          Delete the boot volume when the instance is deleted
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            Leave disabled to preserve the volume independently
+                            of the instance lifecycle.
+                          </span>
+                        </span>
+                      </label>
+                    ) : null}
+
                     <div className="space-y-1.5">
                       <Label htmlFor="launch-flavor">Flavor</Label>
                       <Select
@@ -622,7 +1075,17 @@ export function InstanceActions({
                       impacts={quotaImpacts}
                       loading={quota.isLoading}
                       unavailableMessage={quotaUnavailableMessage}
+                      title="Compute quota impact"
                     />
+                    {form.bootSource === "image-volume" ? (
+                      <QuotaImpactPreview
+                        impacts={storageQuotaImpacts}
+                        loading={storageQuota.isLoading}
+                        unavailableMessage={storageQuotaUnavailableMessage}
+                        title="Block Storage quota impact"
+                        description="Nova creates one boot volume per instance. The request must fit aggregate, per-volume, and selected volume-type limits."
+                      />
+                    ) : null}
                   </section>
                 </TabsContent>
 
@@ -876,9 +1339,51 @@ export function InstanceActions({
                       value={form.count || "-"}
                     />
                     <WizardReviewRow
-                      label="Image"
-                      value={selectedImage?.name || form.imageRef || "-"}
+                      label="Boot source"
+                      value={
+                        form.bootSource === "image"
+                          ? "Local image disk"
+                          : form.bootSource === "image-volume"
+                            ? "New image-backed boot volume"
+                            : "Existing boot volume"
+                      }
                     />
+                    {form.bootSource === "volume" ? (
+                      <WizardReviewRow
+                        label="Volume"
+                        value={
+                          selectedVolume
+                            ? `${selectedVolume.name || selectedVolume.id} · ${selectedVolume.size} GiB`
+                            : form.volumeRef || "-"
+                        }
+                      />
+                    ) : (
+                      <WizardReviewRow
+                        label="Image"
+                        value={selectedImage?.name || form.imageRef || "-"}
+                      />
+                    )}
+                    {form.bootSource === "image-volume" ? (
+                      <>
+                        <WizardReviewRow
+                          label="Boot volume"
+                          value={`${form.bootVolumeSize || "-"} GiB · ${selectedVolumeType?.name || "Project default type"}`}
+                        />
+                        <WizardReviewRow
+                          label="Delete with instance"
+                          value={
+                            form.deleteOnTermination ? "Enabled" : "Disabled"
+                          }
+                        />
+                      </>
+                    ) : form.bootSource === "volume" ? (
+                      <WizardReviewRow
+                        label="Delete with instance"
+                        value={
+                          form.deleteOnTermination ? "Enabled" : "Disabled"
+                        }
+                      />
+                    ) : null}
                     <WizardReviewRow
                       label="Flavor"
                       value={
@@ -926,7 +1431,17 @@ export function InstanceActions({
                     impacts={quotaImpacts}
                     loading={quota.isLoading}
                     unavailableMessage={quotaUnavailableMessage}
+                    title="Compute quota impact"
                   />
+                  {form.bootSource === "image-volume" ? (
+                    <QuotaImpactPreview
+                      impacts={storageQuotaImpacts}
+                      loading={storageQuota.isLoading}
+                      unavailableMessage={storageQuotaUnavailableMessage}
+                      title="Block Storage quota impact"
+                      description="Nova creates one boot volume per instance. The request must fit aggregate, per-volume, and selected volume-type limits."
+                    />
+                  ) : null}
                 </TabsContent>
               </div>
             </Tabs>

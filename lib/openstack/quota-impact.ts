@@ -99,15 +99,19 @@ export function cinderVolumeQuotaImpacts(
   metrics: QuotaMetric[],
   sizeGiB: number,
   volumeTypeName?: string,
+  count = 1,
 ) {
   const normalizedSize = Number.isInteger(sizeGiB) && sizeGiB > 0 ? sizeGiB : 0;
+  const normalizedCount = Number.isInteger(count) && count > 0 ? count : 0;
   const impacts: QuotaImpact[] = [];
   const volumes = metricById(metrics, "volumes");
   const gigabytes = metricById(metrics, "gigabytes");
   const perVolume = metricById(metrics, "per_volume_gigabytes");
 
-  if (volumes) impacts.push(buildQuotaImpact(volumes, 1));
-  if (gigabytes) impacts.push(buildQuotaImpact(gigabytes, normalizedSize));
+  if (volumes) impacts.push(buildQuotaImpact(volumes, normalizedCount));
+  if (gigabytes) {
+    impacts.push(buildQuotaImpact(gigabytes, normalizedSize * normalizedCount));
+  }
   if (perVolume) {
     impacts.push(buildQuotaImpact(perVolume, normalizedSize, "per-resource"));
   }
@@ -115,9 +119,13 @@ export function cinderVolumeQuotaImpacts(
   if (volumeTypeName) {
     const typeVolumes = metricById(metrics, `volumes_${volumeTypeName}`);
     const typeGigabytes = metricById(metrics, `gigabytes_${volumeTypeName}`);
-    if (typeVolumes) impacts.push(buildQuotaImpact(typeVolumes, 1));
+    if (typeVolumes) {
+      impacts.push(buildQuotaImpact(typeVolumes, normalizedCount));
+    }
     if (typeGigabytes) {
-      impacts.push(buildQuotaImpact(typeGigabytes, normalizedSize));
+      impacts.push(
+        buildQuotaImpact(typeGigabytes, normalizedSize * normalizedCount),
+      );
     }
   }
 

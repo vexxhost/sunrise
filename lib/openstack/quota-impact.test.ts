@@ -148,6 +148,39 @@ describe("creation quota impact", () => {
     ]);
   });
 
+  it("projects one image-backed boot volume for every launched instance", () => {
+    const impacts = cinderVolumeQuotaImpacts(
+      [
+        metric("volumes", 2, 10),
+        metric("gigabytes", 100, 500, 0, "GiB"),
+        metric("per_volume_gigabytes", 0, 100, 0, "GiB"),
+        metric("volumes_fast", 1, 5),
+        metric("gigabytes_fast", 50, 250, 0, "GiB"),
+      ],
+      40,
+      "fast",
+      3,
+    );
+
+    expect(
+      impacts.map(({ metric: item, requested, kind }) => ({
+        id: item.id,
+        requested,
+        kind,
+      })),
+    ).toEqual([
+      { id: "volumes", requested: 3, kind: "consumable" },
+      { id: "gigabytes", requested: 120, kind: "consumable" },
+      {
+        id: "per_volume_gigabytes",
+        requested: 40,
+        kind: "per-resource",
+      },
+      { id: "volumes_fast", requested: 3, kind: "consumable" },
+      { id: "gigabytes_fast", requested: 120, kind: "consumable" },
+    ]);
+  });
+
   it("does not block unlimited quotas", () => {
     const impacts = cinderVolumeQuotaImpacts(
       [metric("volumes", 100, -1), metric("gigabytes", 5000, -1, 0, "GiB")],
