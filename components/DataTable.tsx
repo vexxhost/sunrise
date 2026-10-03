@@ -85,6 +85,8 @@ export function DataTable<TData, TValue>({
   onPageRowsChange,
   getRowId,
 }: DataTableProps<TData, TValue>) {
+  "use no memo";
+
   const pathname = usePathname();
 
   // Use extracted hooks
@@ -134,6 +136,9 @@ export function DataTable<TData, TValue>({
     resourceName,
   );
 
+  // TanStack Table returns mutable callbacks by design. This component is
+  // explicitly outside React Compiler memoization via "use no memo" above.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data,
     columns: tableColumns,

@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import { listBuckets } from '@/lib/s3/actions';
+import { startObjectStorageCredentialRefresh } from '@/lib/s3/auth-navigation';
 
 export function bucketsQueryOptions(projectId: string) {
   return queryOptions({
@@ -9,7 +10,7 @@ export function bucketsQueryOptions(projectId: string) {
       if (!res.ok) {
         if (res.needsAuth) {
           if (typeof window !== 'undefined') {
-            window.location.href = '/object-storage/auth/login';
+            startObjectStorageCredentialRefresh();
           }
           throw new Error('S3 authentication required');
         }

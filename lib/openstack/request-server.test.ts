@@ -73,6 +73,25 @@ describe("server-only OpenStack requests", () => {
     );
   });
 
+  it("redirects a missing project token without logging an expected expiry", async () => {
+    mocks.getSession.mockResolvedValue({});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    await expect(
+      openstackRequest({
+        regionId: "RegionOne",
+        serviceType: "compute",
+        serviceName: "nova",
+        path: "/servers/detail",
+      }),
+    ).rejects.toThrow("redirect:/auth/refresh");
+
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(mocks.getServiceEndpoint).not.toHaveBeenCalled();
+  });
+
   it("throws a typed 404 without logging when detail recovery is enabled", async () => {
     vi.stubGlobal(
       "fetch",

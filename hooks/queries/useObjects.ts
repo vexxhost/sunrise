@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import { listObjects, headObject } from '@/lib/s3/actions';
+import { startObjectStorageCredentialRefresh } from '@/lib/s3/auth-navigation';
 
 export function objectsQueryOptions(
   projectId: string,
@@ -13,7 +14,7 @@ export function objectsQueryOptions(
       if (!res.ok) {
         if (res.needsAuth) {
           if (typeof window !== 'undefined') {
-            window.location.href = '/object-storage/auth/login';
+            startObjectStorageCredentialRefresh();
           }
           throw new Error('S3 authentication required');
         }
@@ -37,7 +38,7 @@ export function objectMetadataQueryOptions(
       if (!res.ok) {
         if (res.needsAuth) {
           if (typeof window !== 'undefined') {
-            window.location.href = '/object-storage/auth/login';
+            startObjectStorageCredentialRefresh();
           }
           throw new Error('S3 authentication required');
         }

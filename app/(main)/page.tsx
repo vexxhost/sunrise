@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { unstable_rethrow } from "next/navigation";
 import { OverviewDashboard } from "@/components/overview/OverviewDashboard";
 import { OverviewRefreshButton } from "@/components/overview/OverviewRefreshButton";
 import { OverviewSkeleton } from "@/components/overview/OverviewSkeleton";
@@ -40,7 +41,10 @@ async function OverviewData() {
     }),
     listClusters({}, regionId, projectId, magnumEndpoint ?? undefined)
       .then((clusters) => ({ ok: true as const, clusters }))
-      .catch(() => ({ ok: false as const, clusters: [] })),
+      .catch((error) => {
+        unstable_rethrow(error);
+        return { ok: false as const, clusters: [] };
+      }),
   ]);
   const operationalFeed = compileOperationalFeed({
     services,
