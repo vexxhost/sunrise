@@ -152,7 +152,7 @@ describe("Nova mutation actions", () => {
             ],
           }),
         },
-        invalidates: ["/compute", "/compute/instances"],
+        invalidates: ["/compute", "/compute/instances", "/compute/volumes"],
       }),
     );
     expect(

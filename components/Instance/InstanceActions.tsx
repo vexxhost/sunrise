@@ -582,10 +582,17 @@ export function InstanceActions({
       void queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "project-quotas", "compute"],
       });
-      if (form.bootSource === "image-volume") {
+      if (form.bootSource !== "image") {
         void queryClient.invalidateQueries({
           queryKey: [regionId, projectId, "volumes"],
         });
+      }
+      if (form.bootSource === "volume") {
+        void queryClient.invalidateQueries({
+          queryKey: [regionId, projectId, "volume", form.volumeRef],
+        });
+      }
+      if (form.bootSource === "image-volume") {
         void queryClient.invalidateQueries({
           queryKey: [regionId, projectId, "project-quotas", "storage"],
         });

@@ -260,7 +260,7 @@ export async function createServerAction(
     invalidates: [
       "/compute",
       "/compute/instances",
-      ...(payload.bootSource === "image-volume" ? ["/compute/volumes"] : []),
+      ...(payload.bootSource !== "image" ? ["/compute/volumes"] : []),
     ],
     successMessage:
       payload.count === 1
