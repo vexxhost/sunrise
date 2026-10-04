@@ -43,17 +43,17 @@ function configuredSeconds(name: string, fallback: number): number {
 
 export function getSessionLifetimePolicy() {
   const idleTimeoutSeconds = configuredSeconds(
-    "SESSION_IDLE_TIMEOUT_SECONDS",
+    "SUNRISE_SESSION_IDLE_TIMEOUT_SECONDS",
     DEFAULT_SESSION_IDLE_TIMEOUT_SECONDS,
   );
   const absoluteTimeoutSeconds = configuredSeconds(
-    "SESSION_ABSOLUTE_TIMEOUT_SECONDS",
+    "SUNRISE_SESSION_ABSOLUTE_TIMEOUT_SECONDS",
     DEFAULT_SESSION_ABSOLUTE_TIMEOUT_SECONDS,
   );
 
   if (idleTimeoutSeconds > absoluteTimeoutSeconds) {
     throw new Error(
-      "SESSION_IDLE_TIMEOUT_SECONDS cannot exceed SESSION_ABSOLUTE_TIMEOUT_SECONDS",
+      "SUNRISE_SESSION_IDLE_TIMEOUT_SECONDS cannot exceed SUNRISE_SESSION_ABSOLUTE_TIMEOUT_SECONDS",
     );
   }
 

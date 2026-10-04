@@ -19,8 +19,8 @@ describe("S3 endpoint resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.SUNRISE_DISABLED_SERVICES;
-    delete process.env.SUNRISE_DISABLED_SERVICES_BY_REGION;
-    delete process.env.SUNRISE_OBJECT_STORAGE_BACKENDS;
+    delete process.env.SUNRISE_DISABLED_SERVICES_REGIONONE;
+    process.env.SUNRISE_OBJECT_STORAGE_BACKENDS = "s3";
     mocks.resolveServiceEndpoint.mockReturnValue("https://s3.example.test");
   });
 

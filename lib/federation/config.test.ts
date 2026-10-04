@@ -9,7 +9,7 @@ import {
 } from "@/lib/federation/config";
 
 describe("federation provider configuration", () => {
-  it("resolves independent OIDC, Keystone, and RGW settings", () => {
+  it("resolves independent OIDC, Keystone, and RGW duration settings", () => {
     const environment = {
       KEYSTONE_FEDERATION_IDENTITY_PROVIDERS: "demo,workforce-sso",
       KEYSTONE_FEDERATION_IDENTITY_PROVIDER_PROTOCOL: "openid",
@@ -19,8 +19,7 @@ describe("federation provider configuration", () => {
         "https://identity.example.test/realms/demo/",
       SUNRISE_KEYCLOAK_CLIENT_ID_DEMO: "sunrise-demo",
       SUNRISE_KEYCLOAK_CLIENT_SECRET_DEMO: "demo-secret",
-      SUNRISE_KEYCLOAK_RGW_CLIENT_ID_DEMO: "rgw-demo",
-      SUNRISE_RGW_STS_SESSION_DURATION_DEMO: "7200",
+      SUNRISE_RGW_STS_SESSION_DURATION_SECONDS_DEMO: "7200",
       SUNRISE_KEYCLOAK_ISSUER_WORKFORCE_SSO:
         "https://identity.example.test/realms/workforce",
       SUNRISE_KEYCLOAK_CLIENT_ID_WORKFORCE_SSO: "sunrise-workforce",
@@ -33,7 +32,7 @@ describe("federation provider configuration", () => {
       issuer: "https://identity.example.test/realms/demo",
       clientId: "sunrise-demo",
       clientSecret: "demo-secret",
-      rgw: { clientId: "rgw-demo", stsDurationSeconds: 7200 },
+      rgwStsDurationSeconds: 7200,
     });
     expect(getFederationProviderConfig("workforce-sso", environment)).toEqual({
       id: "workforce-sso",
@@ -41,7 +40,7 @@ describe("federation provider configuration", () => {
       issuer: "https://identity.example.test/realms/workforce",
       clientId: "sunrise-workforce",
       clientSecret: "workforce-secret",
-      rgw: undefined,
+      rgwStsDurationSeconds: 3600,
     });
   });
 
@@ -51,7 +50,6 @@ describe("federation provider configuration", () => {
       SUNRISE_KEYCLOAK_ISSUER: "https://identity.example.test/realms/default",
       SUNRISE_KEYCLOAK_CLIENT_ID: "sunrise-default",
       SUNRISE_KEYCLOAK_CLIENT_SECRET: "default-secret",
-      SUNRISE_KEYCLOAK_RGW_CLIENT_ID: "rgw-default",
     };
 
     expect(getFederationProviderConfig("demo", environment)).toEqual({
@@ -60,21 +58,8 @@ describe("federation provider configuration", () => {
       issuer: "https://identity.example.test/realms/default",
       clientId: "sunrise-default",
       clientSecret: "default-secret",
-      rgw: { clientId: "rgw-default", stsDurationSeconds: 3600 },
+      rgwStsDurationSeconds: 3600,
     });
-  });
-
-  it("allows a provider to disable the global RGW fallback explicitly", () => {
-    const config = getFederationProviderConfig("workforce", {
-      KEYSTONE_FEDERATION_IDENTITY_PROVIDERS: "workforce",
-      SUNRISE_KEYCLOAK_ISSUER: "https://identity.example.test/realms/default",
-      SUNRISE_KEYCLOAK_CLIENT_ID: "sunrise-default",
-      SUNRISE_KEYCLOAK_CLIENT_SECRET: "default-secret",
-      SUNRISE_KEYCLOAK_RGW_CLIENT_ID: "rgw-default",
-      SUNRISE_KEYCLOAK_RGW_CLIENT_ID_WORKFORCE: "",
-    });
-
-    expect(config.rgw).toBeUndefined();
   });
 
   it("normalizes portable suffixes and rejects collisions", () => {
@@ -99,7 +84,6 @@ describe("federation provider configuration", () => {
         KEYCLOAK_ISSUER: "https://identity.example.test/realms/demo",
         KEYCLOAK_SERVER_CLIENT_ID: "sunrise-server",
         KEYCLOAK_SERVER_CLIENT_SECRET: "legacy-secret",
-        KEYCLOAK_S3_CLIENT_ID: "rgw-browser",
       }),
     ).toThrow(/SUNRISE_KEYCLOAK_ISSUER_DEMO/);
   });
@@ -132,10 +116,9 @@ describe("federation provider configuration", () => {
             "https://identity.example.test/realms/demo",
           SUNRISE_KEYCLOAK_CLIENT_ID_DEMO: "sunrise-demo",
           SUNRISE_KEYCLOAK_CLIENT_SECRET_DEMO: "demo-secret",
-          SUNRISE_KEYCLOAK_RGW_CLIENT_ID_DEMO: "rgw-demo",
-          SUNRISE_RGW_STS_SESSION_DURATION_DEMO: duration,
+          SUNRISE_RGW_STS_SESSION_DURATION_SECONDS_DEMO: duration,
         }),
-      ).toThrow(/SUNRISE_RGW_STS_SESSION_DURATION_DEMO/);
+      ).toThrow(/SUNRISE_RGW_STS_SESSION_DURATION_SECONDS_DEMO/);
     },
   );
 });

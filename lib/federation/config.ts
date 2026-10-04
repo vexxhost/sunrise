@@ -2,18 +2,13 @@ import "server-only";
 
 import { parseIdentityProviders } from "@/lib/auth-providers";
 
-export type RgwFederationConfig = {
-  clientId: string;
-  stsDurationSeconds: number;
-};
-
 export type FederationProviderConfig = {
   id: string;
   protocol: string;
   issuer: string;
   clientId: string;
   clientSecret: string;
-  rgw?: RgwFederationConfig;
+  rgwStsDurationSeconds: number;
 };
 
 type FederationEnvironment = Record<string, string | undefined>;
@@ -22,8 +17,8 @@ const PROVIDER_PROTOCOL = "KEYSTONE_FEDERATION_IDENTITY_PROVIDER_PROTOCOL";
 const KEYCLOAK_ISSUER = "SUNRISE_KEYCLOAK_ISSUER";
 const KEYCLOAK_CLIENT_ID = "SUNRISE_KEYCLOAK_CLIENT_ID";
 const KEYCLOAK_CLIENT_SECRET = "SUNRISE_KEYCLOAK_CLIENT_SECRET";
-const KEYCLOAK_RGW_CLIENT_ID = "SUNRISE_KEYCLOAK_RGW_CLIENT_ID";
-const RGW_STS_SESSION_DURATION = "SUNRISE_RGW_STS_SESSION_DURATION";
+const RGW_STS_SESSION_DURATION_SECONDS =
+  "SUNRISE_RGW_STS_SESSION_DURATION_SECONDS";
 
 const DEFAULT_PROTOCOL = "openid";
 const DEFAULT_STS_SESSION_DURATION = 3_600;
@@ -112,28 +107,20 @@ function resolveIssuer(environment: FederationEnvironment, suffix: string) {
   return value.replace(/\/+$/, "");
 }
 
-function resolveRgwClientId(
-  environment: FederationEnvironment,
-  suffix: string,
-) {
-  const providerKey = providerVariable(KEYCLOAK_RGW_CLIENT_ID, suffix);
-  if (Object.hasOwn(environment, providerKey)) {
-    return trimmedValue(environment, providerKey);
-  }
-  return trimmedValue(environment, KEYCLOAK_RGW_CLIENT_ID);
-}
-
 function resolveStsSessionDuration(
   environment: FederationEnvironment,
   suffix: string,
 ) {
-  const providerKey = providerVariable(RGW_STS_SESSION_DURATION, suffix);
+  const providerKey = providerVariable(
+    RGW_STS_SESSION_DURATION_SECONDS,
+    suffix,
+  );
   const raw =
-    resolveValue(environment, RGW_STS_SESSION_DURATION, suffix) ??
+    resolveValue(environment, RGW_STS_SESSION_DURATION_SECONDS, suffix) ??
     String(DEFAULT_STS_SESSION_DURATION);
   if (!/^\d+$/.test(raw)) {
     throw new Error(
-      `${providerKey} or ${RGW_STS_SESSION_DURATION} must be an integer number of seconds`,
+      `${providerKey} or ${RGW_STS_SESSION_DURATION_SECONDS} must be an integer number of seconds`,
     );
   }
 
@@ -143,7 +130,7 @@ function resolveStsSessionDuration(
     duration > MAX_STS_SESSION_DURATION
   ) {
     throw new Error(
-      `${providerKey} or ${RGW_STS_SESSION_DURATION} must be between ${MIN_STS_SESSION_DURATION} and ${MAX_STS_SESSION_DURATION} seconds`,
+      `${providerKey} or ${RGW_STS_SESSION_DURATION_SECONDS} must be between ${MIN_STS_SESSION_DURATION} and ${MAX_STS_SESSION_DURATION} seconds`,
     );
   }
   return duration;
@@ -182,7 +169,6 @@ export function getFederationProviderConfigs(
   return new Map(
     providerIds.map((id) => {
       const suffix = suffixes.get(id)!;
-      const rgwClientId = resolveRgwClientId(environment, suffix);
       return [
         id,
         {
@@ -197,15 +183,7 @@ export function getFederationProviderConfigs(
             suffix,
           ),
           clientSecret: resolveRequiredSecret(environment, suffix),
-          rgw: rgwClientId
-            ? {
-                clientId: rgwClientId,
-                stsDurationSeconds: resolveStsSessionDuration(
-                  environment,
-                  suffix,
-                ),
-              }
-            : undefined,
+          rgwStsDurationSeconds: resolveStsSessionDuration(environment, suffix),
         } satisfies FederationProviderConfig,
       ];
     }),

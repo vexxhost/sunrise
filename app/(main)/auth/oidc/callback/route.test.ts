@@ -1,16 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  process.env.DASHBOARD_URL = "https://sunrise.example.test";
+  process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
   return {
     getSession: vi.fn(),
     saveSessionActivity: vi.fn(),
     startSessionLifetime: vi.fn(),
     exchangeCodeForTokens: vi.fn(),
     getSunriseOidcConfig: vi.fn(),
-    isRgwOidcConfigured: vi.fn(),
     resolveOidcIdentity: vi.fn(),
-    tokenExchangeForRgw: vi.fn(),
     federateOidcWithKeystone: vi.fn(),
     finalizeKeystoneSession: vi.fn(),
     assumeRoleWithIdToken: vi.fn(),
@@ -37,9 +35,7 @@ vi.mock("@/lib/session", () => ({
 vi.mock("@/lib/oidc/sunrise", () => ({
   exchangeCodeForTokens: mocks.exchangeCodeForTokens,
   getSunriseOidcConfig: mocks.getSunriseOidcConfig,
-  isRgwOidcConfigured: mocks.isRgwOidcConfigured,
   resolveOidcIdentity: mocks.resolveOidcIdentity,
-  tokenExchangeForRgw: mocks.tokenExchangeForRgw,
 }));
 
 vi.mock("@/lib/keystone/login", () => ({
@@ -109,8 +105,8 @@ describe("OIDC callback recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.SUNRISE_DISABLED_SERVICES;
-    delete process.env.SUNRISE_DISABLED_SERVICES_BY_REGION;
-    delete process.env.SUNRISE_OBJECT_STORAGE_BACKENDS;
+    delete process.env.SUNRISE_DISABLED_SERVICES_REGIONONE;
+    process.env.SUNRISE_OBJECT_STORAGE_BACKENDS = "s3";
     mocks.exchangeCodeForTokens.mockResolvedValue({
       access_token: "access-token",
       id_token: "id-token",
@@ -123,11 +119,7 @@ describe("OIDC callback recovery", () => {
       rgwStsDurationSeconds: 1800,
     });
     mocks.resolveOidcIdentity.mockResolvedValue(identity);
-    mocks.isRgwOidcConfigured.mockReturnValue(true);
     mocks.federateOidcWithKeystone.mockResolvedValue("unscoped-token");
-    mocks.tokenExchangeForRgw.mockResolvedValue({
-      access_token: "rgw-token",
-    });
     mocks.getS3Endpoint.mockResolvedValue("https://s3.example.test");
     mocks.stashCloudContextBootstrap.mockReturnValue("bootstrap-id");
     mocks.saveSessionActivity.mockResolvedValue(undefined);
@@ -158,7 +150,6 @@ describe("OIDC callback recovery", () => {
     });
     expect(current.save).toHaveBeenCalled();
     expect(mocks.startSessionLifetime).toHaveBeenCalledWith(current);
-    expect(mocks.tokenExchangeForRgw).not.toHaveBeenCalled();
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
@@ -185,10 +176,9 @@ describe("OIDC callback recovery", () => {
     expect(current.sessionSignedInAt).toBe(now - 1_000);
   });
 
-  it("completes Keystone login when S3 is absent and OIDC is not configured", async () => {
+  it("completes Keystone login when S3 is absent", async () => {
     const current = session();
     mocks.getSession.mockResolvedValue(current);
-    mocks.isRgwOidcConfigured.mockReturnValue(false);
     mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
       activeSession.projectId = "project-1";
       activeSession.regionId = "RegionOne";
@@ -218,7 +208,6 @@ describe("OIDC callback recovery", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(mocks.tokenExchangeForRgw).not.toHaveBeenCalled();
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
     expect(current).toMatchObject({
       projectId: "project-1",
@@ -226,10 +215,8 @@ describe("OIDC callback recovery", () => {
     });
   });
 
-  it("skips S3 exchange when the backend is disabled in the selected region", async () => {
-    process.env.SUNRISE_DISABLED_SERVICES_BY_REGION = JSON.stringify({
-      RegionOne: ["object-storage-s3"],
-    });
+  it("skips S3 setup when the backend is disabled in the selected region", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES_REGIONONE = "object-storage-s3";
     const current = session();
     mocks.getSession.mockResolvedValue(current);
     mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
@@ -246,14 +233,11 @@ describe("OIDC callback recovery", () => {
     );
 
     expect(response.status).toBe(303);
-    expect(mocks.tokenExchangeForRgw).not.toHaveBeenCalled();
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
   it("reports invalid service policy before consuming the OIDC code", async () => {
-    process.env.SUNRISE_DISABLED_SERVICES_BY_REGION = JSON.stringify({
-      RegionOne: ["not-a-service"],
-    });
+    process.env.SUNRISE_DISABLED_SERVICES_REGIONONE = "not-a-service";
     const current = session();
     mocks.getSession.mockResolvedValue(current);
 
@@ -352,10 +336,6 @@ describe("OIDC callback recovery", () => {
       "verifier",
       "demo",
     );
-    expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith(
-      "access-token",
-      "demo",
-    );
     expect(mocks.federateOidcWithKeystone).toHaveBeenCalledWith(
       "access-token",
       "demo",
@@ -367,7 +347,7 @@ describe("OIDC callback recovery", () => {
       catalog: readyResolution().catalog,
     });
     expect(mocks.assumeRoleWithIdToken).toHaveBeenCalledWith(
-      "rgw-token",
+      "access-token",
       "project1",
       "arn:aws:iam::account:role/access",
       "https://s3.example.test",
@@ -382,7 +362,7 @@ describe("OIDC callback recovery", () => {
     expect(current.save).toHaveBeenCalledOnce();
   });
 
-  it("starts RGW exchange while cold Keystone setup is still resolving", async () => {
+  it("waits for the Keystone project context before starting STS", async () => {
     const current = { ...session(), regionId: "RegionOne" };
     mocks.getSession.mockResolvedValue(current);
     let finishKeystone!: (value: ReturnType<typeof readyResolution>) => void;
@@ -414,10 +394,6 @@ describe("OIDC callback recovery", () => {
     );
 
     await vi.waitFor(() => {
-      expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith(
-        "access-token",
-        "demo",
-      );
       expect(mocks.finalizeKeystoneSession).toHaveBeenCalled();
     });
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();

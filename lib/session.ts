@@ -49,12 +49,6 @@ export type SunriseSession = {
   projectId?: string;
   s3ProjectRoles?: Record<string, string>;
   s3Credentials?: S3StsCredentials;
-  s3OidcVerifier?: string;
-  s3OidcState?: string;
-  s3OidcReturnTo?: string;
-  s3OidcPendingIdentityProvider?: string;
-  s3OidcIdentityProvider?: string;
-  s3OidcRefreshToken?: string;
   // Unified Sunrise OIDC flow (Keycloak as IdP for both Keystone + S3 STS).
   oidcVerifier?: string;
   oidcState?: string;
@@ -85,7 +79,7 @@ function sessionOptions(cookieName: string, chunk = false): SessionOptions {
   const { absoluteTimeoutSeconds } = getSessionLifetimePolicy();
   return {
     cookieName,
-    password: process.env.SESSION_SECRET as string,
+    password: process.env.SUNRISE_SESSION_SECRET as string,
     // Keep the seal valid for one minute longer than the browser cookie so
     // iron-session never rejects a cookie the browser still considers valid.
     ttl: absoluteTimeoutSeconds + 60,
@@ -119,7 +113,6 @@ export function hasAuthenticatedSession(session: SunriseSession): boolean {
     session.keycloakRefreshToken ||
     session.keystone_unscoped_token ||
     session.keystoneProjectToken ||
-    session.s3OidcRefreshToken ||
     session.s3Credentials,
   );
 }
@@ -128,7 +121,6 @@ function denyExpiredCredentials(session: IronSession<SunriseSession>) {
   session.keystone_unscoped_token = undefined;
   session.keystoneProjectToken = undefined;
   session.keycloakRefreshToken = undefined;
-  session.s3OidcRefreshToken = undefined;
   session.s3Credentials = undefined;
 }
 

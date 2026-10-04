@@ -13,7 +13,7 @@ const context = { projectId: "project-a", regionId: "RegionOne" };
 describe("resource recovery proof", () => {
   beforeEach(() => {
     vi.stubEnv(
-      "SESSION_SECRET",
+      "SUNRISE_SESSION_SECRET",
       "test-session-secret-with-at-least-32-characters",
     );
   });
@@ -22,9 +22,9 @@ describe("resource recovery proof", () => {
     const proof = createResourceRecoveryProof(target, context, 1_000);
 
     expect(proof).not.toBeNull();
-    expect(
-      verifyResourceRecoveryProof(target, context, proof!, 1_030),
-    ).toBe(true);
+    expect(verifyResourceRecoveryProof(target, context, proof!, 1_030)).toBe(
+      true,
+    );
   });
 
   it("rejects expired, tampered, and cross-project proofs", () => {

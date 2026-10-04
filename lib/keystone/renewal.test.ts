@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   federateOidcWithKeystone: vi.fn(),
   finalizeKeystoneSession: vi.fn(),
   getSunriseOidcConfig: vi.fn(),
-  refreshAccessToken: vi.fn(),
+  refreshSessionOidcTokens: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -12,9 +12,11 @@ vi.mock("@/lib/keystone/login", () => ({
   federateOidcWithKeystone: mocks.federateOidcWithKeystone,
   finalizeKeystoneSession: mocks.finalizeKeystoneSession,
 }));
+vi.mock("@/lib/oidc/session-refresh", () => ({
+  refreshSessionOidcTokens: mocks.refreshSessionOidcTokens,
+}));
 vi.mock("@/lib/oidc/sunrise", () => ({
   getSunriseOidcConfig: mocks.getSunriseOidcConfig,
-  refreshAccessToken: mocks.refreshAccessToken,
 }));
 
 import { refreshKeystoneSession } from "@/lib/keystone/renewal";
@@ -26,6 +28,7 @@ function session() {
     federationIdentityProvider: "demo",
     oidcIdentity: { identityProvider: "demo" },
     authRecovery: { reason: "session-unavailable" },
+    sessionId: "session-1",
     sessionSignedInAt: now - 1_000,
     sessionLastActivityAt: now - 500,
     save: vi.fn().mockResolvedValue(undefined),
@@ -35,9 +38,12 @@ function session() {
 describe("Keystone session renewal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.refreshAccessToken.mockResolvedValue({
-      access_token: "new-access-token",
-      refresh_token: "rotated-refresh-token",
+    mocks.refreshSessionOidcTokens.mockImplementation(async (current) => {
+      current.keycloakRefreshToken = "rotated-refresh-token";
+      return {
+        access_token: "new-access-token",
+        refresh_token: "rotated-refresh-token",
+      };
     });
     mocks.getSunriseOidcConfig.mockReturnValue({ protocol: "demo-openid" });
     mocks.federateOidcWithKeystone.mockResolvedValue("new-unscoped-token");
@@ -50,8 +56,8 @@ describe("Keystone session renewal", () => {
     await expect(refreshKeystoneSession(current as never)).resolves.toBe(
       "ready",
     );
-    expect(mocks.refreshAccessToken).toHaveBeenCalledWith(
-      "old-refresh-token",
+    expect(mocks.refreshSessionOidcTokens).toHaveBeenCalledWith(
+      current,
       "demo",
     );
     expect(mocks.federateOidcWithKeystone).toHaveBeenCalledWith(
@@ -80,7 +86,9 @@ describe("Keystone session renewal", () => {
 
   it("requests browser reauthentication when the root refresh token is gone", async () => {
     const current = session();
-    mocks.refreshAccessToken.mockRejectedValue(new Error("invalid_grant"));
+    mocks.refreshSessionOidcTokens.mockRejectedValue(
+      new Error("invalid_grant"),
+    );
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     await expect(refreshKeystoneSession(current as never)).resolves.toBe(
@@ -96,6 +104,6 @@ describe("Keystone session renewal", () => {
     await expect(refreshKeystoneSession(current as never)).resolves.toBe(
       "expired",
     );
-    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(mocks.refreshSessionOidcTokens).not.toHaveBeenCalled();
   });
 });

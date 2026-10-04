@@ -55,7 +55,11 @@ const catalog: OpenStackCatalogService[] = [
 describe("service directory", () => {
   it("derives service availability from the active region catalog", () => {
     expect(
-      buildServiceDirectory(catalog, "RegionOne").map(({ id, status }) => ({
+      buildServiceDirectory(
+        catalog,
+        "RegionOne",
+        parseServicePolicy({ objectStorageBackends: "s3" }),
+      ).map(({ id, status }) => ({
         id,
         status,
       })),

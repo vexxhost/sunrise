@@ -62,6 +62,7 @@ function build(
     catalog,
     catalogStatus: "available",
     objectStorageRole: { status: "active", message: "Using ProjectRole" },
+    policy: parseServicePolicy({ objectStorageBackends: "s3" }),
     projectId: "project-a",
     regionId: "RegionOne",
     ...overrides,

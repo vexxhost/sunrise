@@ -49,7 +49,7 @@ async function revokeToken(subjectToken: string, authToken: string) {
 function dashboardUrl() {
   return new URL(
     "/",
-    process.env.DASHBOARD_URL || "http://localhost",
+    process.env.SUNRISE_DASHBOARD_URL || "http://localhost",
   ).toString();
 }
 

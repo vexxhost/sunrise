@@ -1,6 +1,8 @@
 import "server-only";
 
 import type { IronSession } from "iron-session";
+import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
+import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
 import {
   getActiveS3Credentials,
   normalizeProjectId,
@@ -9,17 +11,44 @@ import {
   type SunriseSession,
 } from "@/lib/session";
 import { getSessionLifetimeState } from "@/lib/session-lifetime";
-import {
-  getOidcConfig,
-  refreshS3Tokens,
-  type S3OidcRefreshResult,
-} from "@/lib/s3/oidc";
 import { assumeRoleWithIdToken, tryExtractRgwProjectRoles } from "@/lib/s3/sts";
 
 export class S3ProjectRoleUnavailableError extends Error {
   constructor(projectId: string) {
     super(`No Object Storage role is mapped to project ${projectId}`);
     this.name = "S3ProjectRoleUnavailableError";
+  }
+}
+
+type RefreshedRgwIdentity = {
+  roleTokens: Array<string | undefined>;
+  sessionChanged: boolean;
+  token: string;
+};
+
+async function refreshRgwIdentity(
+  session: IronSession<SunriseSession>,
+  identityProvider: string,
+  projectId: string,
+): Promise<RefreshedRgwIdentity | undefined> {
+  if (!session.keycloakRefreshToken) return undefined;
+
+  try {
+    const previousRefreshToken = session.keycloakRefreshToken;
+    const refreshed = await refreshSessionOidcTokens(session, identityProvider);
+    if (!refreshed) return undefined;
+
+    return {
+      token: refreshed.access_token,
+      roleTokens: [refreshed.access_token, refreshed.id_token],
+      sessionChanged: session.keycloakRefreshToken !== previousRefreshToken,
+    };
+  } catch (error) {
+    console.warn("[s3/session] failed to renew RGW access from Sunrise OIDC", {
+      projectId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
   }
 }
 
@@ -30,44 +59,20 @@ export async function refreshActiveProjectS3Credentials(
 
   const projectId = normalizeProjectId(session.projectId);
   if (!projectId) return undefined;
-  if (!session.s3OidcRefreshToken) return undefined;
   const identityProvider =
-    session.s3OidcIdentityProvider ??
     session.federationIdentityProvider ??
     session.oidcIdentity?.identityProvider;
   if (!identityProvider) return undefined;
 
-  let refreshed: S3OidcRefreshResult;
-  try {
-    refreshed = await refreshS3Tokens(
-      session.s3OidcRefreshToken,
-      identityProvider,
-    );
-    if (!refreshed.id_token) {
-      throw new Error("S3 OIDC refresh did not return an ID token");
-    }
-  } catch (error) {
-    console.warn("[s3/session] failed to refresh Object Storage OIDC token", {
-      projectId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return undefined;
-  }
-  let sessionChanged = false;
-
-  if (refreshed.refresh_token) {
-    session.s3OidcRefreshToken = refreshed.refresh_token;
-    sessionChanged = true;
-  }
-  if (session.s3OidcIdentityProvider !== identityProvider) {
-    session.s3OidcIdentityProvider = identityProvider;
-    sessionChanged = true;
-  }
-
-  const projectRoles = tryExtractRgwProjectRoles(
-    refreshed.id_token,
-    refreshed.access_token,
+  const refreshed = await refreshRgwIdentity(
+    session,
+    identityProvider,
+    projectId,
   );
+  if (!refreshed) return undefined;
+  let { sessionChanged } = refreshed;
+
+  const projectRoles = tryExtractRgwProjectRoles(...refreshed.roleTokens);
   if (projectRoles) {
     // Treat each freshly issued claim as authoritative so revoked project
     // roles cannot survive indefinitely in the encrypted session cookie.
@@ -87,13 +92,13 @@ export async function refreshActiveProjectS3Credentials(
     throw new S3ProjectRoleUnavailableError(projectId);
   }
 
-  const { stsDurationSeconds } = getOidcConfig(identityProvider);
+  const { rgwStsDurationSeconds } = getSunriseOidcConfig(identityProvider);
   const creds = await assumeRoleWithIdToken(
-    refreshed.id_token,
+    refreshed.token,
     projectId,
     roleArn,
     undefined,
-    stsDurationSeconds,
+    rgwStsDurationSeconds,
   );
   setS3CredentialsForProject(session, creds);
   await session.save();

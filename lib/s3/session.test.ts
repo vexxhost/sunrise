@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getActiveS3Credentials: vi.fn(),
-  getOidcConfig: vi.fn(),
-  refreshS3Tokens: vi.fn(),
+  getSunriseOidcConfig: vi.fn(),
+  refreshSessionOidcTokens: vi.fn(),
   assumeRoleWithIdToken: vi.fn(),
   tryExtractRgwProjectRoles: vi.fn(),
 }));
@@ -19,9 +19,12 @@ vi.mock("@/lib/session", () => ({
   }),
 }));
 
-vi.mock("@/lib/s3/oidc", () => ({
-  getOidcConfig: mocks.getOidcConfig,
-  refreshS3Tokens: mocks.refreshS3Tokens,
+vi.mock("@/lib/oidc/session-refresh", () => ({
+  refreshSessionOidcTokens: mocks.refreshSessionOidcTokens,
+}));
+
+vi.mock("@/lib/oidc/sunrise", () => ({
+  getSunriseOidcConfig: mocks.getSunriseOidcConfig,
 }));
 
 vi.mock("@/lib/s3/sts", () => ({
@@ -44,21 +47,21 @@ const credentials = {
 
 function session(): {
   projectId: string;
-  federationIdentityProvider?: string;
-  s3OidcIdentityProvider?: string;
-  s3OidcRefreshToken?: string;
+  federationIdentityProvider: string;
+  keycloakRefreshToken?: string;
   s3ProjectRoles: Record<string, string>;
-  save: ReturnType<typeof vi.fn>;
+  sessionId: string;
   sessionSignedInAt: number;
   sessionLastActivityAt: number;
+  save: ReturnType<typeof vi.fn>;
 } {
   const now = Date.now();
   return {
     projectId: "project-1",
     federationIdentityProvider: "demo",
-    s3OidcIdentityProvider: "demo",
-    s3OidcRefreshToken: "old-s3-refresh-token",
+    keycloakRefreshToken: "old-primary-refresh-token",
     s3ProjectRoles: { project1: "arn:aws:iam::account:role/access" },
+    sessionId: "session-1",
     sessionSignedInAt: now - 1_000,
     sessionLastActivityAt: now - 500,
     save: vi.fn().mockResolvedValue(undefined),
@@ -69,11 +72,16 @@ describe("Object Storage credential renewal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getActiveS3Credentials.mockReturnValue(undefined);
-    mocks.getOidcConfig.mockReturnValue({ stsDurationSeconds: 1800 });
-    mocks.refreshS3Tokens.mockResolvedValue({
-      access_token: "refreshed-s3-access-token",
-      id_token: "refreshed-s3-id-token",
-      refresh_token: "rotated-s3-refresh-token",
+    mocks.getSunriseOidcConfig.mockReturnValue({
+      rgwStsDurationSeconds: 1800,
+    });
+    mocks.refreshSessionOidcTokens.mockImplementation(async (current) => {
+      current.keycloakRefreshToken = "rotated-primary-refresh-token";
+      return {
+        access_token: "refreshed-primary-access-token",
+        id_token: "refreshed-primary-id-token",
+        refresh_token: "rotated-primary-refresh-token",
+      };
     });
     mocks.tryExtractRgwProjectRoles.mockReturnValue({
       project1: "arn:aws:iam::account:role/access",
@@ -81,25 +89,29 @@ describe("Object Storage credential renewal", () => {
     mocks.assumeRoleWithIdToken.mockResolvedValue(credentials);
   });
 
-  it("silently replaces expired STS credentials from the OIDC refresh token", async () => {
+  it("silently replaces expired STS credentials from the Sunrise OIDC session", async () => {
     const current = session();
 
     await expect(
       ensureActiveProjectS3Credentials(current as never),
     ).resolves.toBe(credentials);
 
-    expect(mocks.refreshS3Tokens).toHaveBeenCalledWith(
-      "old-s3-refresh-token",
+    expect(mocks.refreshSessionOidcTokens).toHaveBeenCalledWith(
+      current,
       "demo",
     );
+    expect(mocks.tryExtractRgwProjectRoles).toHaveBeenCalledWith(
+      "refreshed-primary-access-token",
+      "refreshed-primary-id-token",
+    );
     expect(mocks.assumeRoleWithIdToken).toHaveBeenCalledWith(
-      "refreshed-s3-id-token",
+      "refreshed-primary-access-token",
       "project1",
       "arn:aws:iam::account:role/access",
       undefined,
       1800,
     );
-    expect(current.s3OidcRefreshToken).toBe("rotated-s3-refresh-token");
+    expect(current.keycloakRefreshToken).toBe("rotated-primary-refresh-token");
     expect(current.save).toHaveBeenCalledTimes(2);
   });
 
@@ -111,6 +123,7 @@ describe("Object Storage credential renewal", () => {
       ensureActiveProjectS3Credentials(current as never),
     ).rejects.toBeInstanceOf(S3ProjectRoleUnavailableError);
     expect(current.save).toHaveBeenCalledOnce();
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
   it("persists a rotated refresh token before a later STS failure", async () => {
@@ -123,29 +136,32 @@ describe("Object Storage credential renewal", () => {
       ensureActiveProjectS3Credentials(current as never),
     ).rejects.toThrow("STS temporarily unavailable");
 
-    expect(current.s3OidcRefreshToken).toBe("rotated-s3-refresh-token");
+    expect(current.keycloakRefreshToken).toBe("rotated-primary-refresh-token");
     expect(current.save).toHaveBeenCalledOnce();
   });
 
-  it("requests unified reauthentication when the refresh token is no longer usable", async () => {
+  it("returns no credentials when the Sunrise refresh token is unavailable", async () => {
+    const current = session();
+    delete current.keycloakRefreshToken;
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).resolves.toBeUndefined();
+    expect(mocks.refreshSessionOidcTokens).not.toHaveBeenCalled();
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+  });
+
+  it("returns no credentials when the Sunrise refresh token is rejected", async () => {
     const current = session();
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    mocks.refreshS3Tokens.mockRejectedValue(new Error("invalid_grant"));
+    mocks.refreshSessionOidcTokens.mockRejectedValue(
+      new Error("invalid_grant"),
+    );
 
     await expect(
       ensureActiveProjectS3Credentials(current as never),
     ).resolves.toBeUndefined();
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
-  });
-
-  it("starts a browser bootstrap when the Object Storage refresh token is absent", async () => {
-    const current = session();
-    delete current.s3OidcRefreshToken;
-
-    await expect(
-      ensureActiveProjectS3Credentials(current as never),
-    ).resolves.toBeUndefined();
-    expect(mocks.refreshS3Tokens).not.toHaveBeenCalled();
   });
 
   it("does not renew STS credentials beyond the Sunrise lifetime", async () => {
@@ -155,7 +171,7 @@ describe("Object Storage credential renewal", () => {
     await expect(
       ensureActiveProjectS3Credentials(current as never),
     ).resolves.toBeUndefined();
-    expect(mocks.refreshS3Tokens).not.toHaveBeenCalled();
+    expect(mocks.refreshSessionOidcTokens).not.toHaveBeenCalled();
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 });

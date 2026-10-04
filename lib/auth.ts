@@ -33,7 +33,7 @@ export const redirectToIdentityProvider = (
 ) => {
   const url = new URL(
     "/auth/oidc/login",
-    process.env.DASHBOARD_URL ?? "http://localhost",
+    process.env.SUNRISE_DASHBOARD_URL ?? "http://localhost",
   );
   url.searchParams.set("idp", idProvider);
   if (prompt) url.searchParams.set("prompt", prompt);

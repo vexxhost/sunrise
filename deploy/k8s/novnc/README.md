@@ -14,11 +14,11 @@ rules or fonts affect the guest operating system.
 
 The three assets are intentionally small:
 
-| File | Purpose |
-| --- | --- |
-| `sunrise.html` | CSP-friendly document shell. |
-| `sunrise.css` | Black console surface, connection status, and local cursor fallback using system fonts. |
-| `sunrise.js` | RFB initialization and the origin-checked `postMessage` bridge. |
+| File           | Purpose                                                                                 |
+| -------------- | --------------------------------------------------------------------------------------- |
+| `sunrise.html` | CSP-friendly document shell.                                                            |
+| `sunrise.css`  | Black console surface, connection status, and local cursor fallback using system fonts. |
+| `sunrise.js`   | RFB initialization and the origin-checked `postMessage` bridge.                         |
 
 The previous self-hosted Inter ConfigMap was removed. It consumed roughly 442
 KiB to style only the brief connection status, required server-side apply, and
@@ -48,7 +48,7 @@ read-only asset volume served by the main proxy container.
 
 ## Dashboard origin
 
-Sunrise appends its configured `DASHBOARD_URL` origin to each rewritten console
+Sunrise appends its configured `SUNRISE_DASHBOARD_URL` origin to each rewritten console
 URL as `parentOrigin`. `sunrise.js` accepts bridge messages only when both the
 message origin and source window match that value. There is no deployment-time
 localhost allow-list to maintain.
