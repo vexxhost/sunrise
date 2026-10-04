@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  getSession: vi.fn(),
   readPrefs: vi.fn(),
   writePrefs: vi.fn(),
 }));
@@ -10,9 +11,15 @@ vi.mock("@/lib/prefs", () => ({
   readPrefs: mocks.readPrefs,
   writePrefs: mocks.writePrefs,
 }));
+vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
 
 import { removeSavedResourcePreferences } from "@/lib/resource-preference-store";
 import type { ResourcePreference } from "@/lib/resource-preferences";
+
+const preferenceIdentity = {
+  issuer: "https://identity.example.test/realms/demo",
+  subject: "user-one",
+};
 
 function resource(
   kind: ResourcePreference["kind"],
@@ -26,6 +33,9 @@ function resource(
 describe("saved resource preference cleanup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getSession.mockResolvedValue({
+      oidcIdentity: preferenceIdentity,
+    });
     mocks.writePrefs.mockResolvedValue(undefined);
   });
 
@@ -50,10 +60,13 @@ describe("saved resource preference cleanup", () => {
       ),
     ).resolves.toBe(3);
 
-    expect(mocks.writePrefs).toHaveBeenCalledWith({
-      recentResources: [retained],
-      pinnedResources: [retained],
-    });
+    expect(mocks.writePrefs).toHaveBeenCalledWith(
+      {
+        recentResources: [retained],
+        pinnedResources: [retained],
+      },
+      preferenceIdentity,
+    );
   });
 
   it("does not remove an identical resource from another context", async () => {
@@ -61,10 +74,10 @@ describe("saved resource preference cleanup", () => {
     mocks.readPrefs.mockResolvedValue({ recentResources: [otherProject] });
 
     await expect(
-      removeSavedResourcePreferences(
-        [{ kind: "bucket", id: "shared-name" }],
-        { projectId: "project-a", regionId: "RegionOne" },
-      ),
+      removeSavedResourcePreferences([{ kind: "bucket", id: "shared-name" }], {
+        projectId: "project-a",
+        regionId: "RegionOne",
+      }),
     ).resolves.toBe(0);
     expect(mocks.writePrefs).not.toHaveBeenCalled();
   });

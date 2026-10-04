@@ -16,6 +16,10 @@ vi.mock("@/lib/prefs", () => ({
 import { POST } from "./route";
 
 const currentProject = "7a96a68dc8264f3d84fafd95a72265c5";
+const preferenceIdentity = {
+  issuer: "https://identity.example.test/realms/demo",
+  subject: "user-one",
+};
 
 function instancePreference(projectId: string, regionId = "RegionOne") {
   return {
@@ -52,6 +56,7 @@ describe("resource preferences route", () => {
       keystoneProjectToken: "token",
       projectId: currentProject,
       regionId: "RegionOne",
+      oidcIdentity: preferenceIdentity,
     });
     mocks.readPrefs.mockResolvedValue({});
     mocks.writePrefs.mockResolvedValue(undefined);
@@ -69,10 +74,13 @@ describe("resource preferences route", () => {
     const response = await POST(recoveryRequest("http://localhost"));
 
     expect(response.status).toBe(204);
-    expect(mocks.writePrefs).toHaveBeenCalledWith({
-      recentResources: [otherProject, otherRegion],
-      pinnedResources: [otherProject],
-    });
+    expect(mocks.writePrefs).toHaveBeenCalledWith(
+      {
+        recentResources: [otherProject, otherRegion],
+        pinnedResources: [otherProject],
+      },
+      preferenceIdentity,
+    );
   });
 
   it("rejects cross-origin preference mutations before reading the session", async () => {
@@ -88,6 +96,20 @@ describe("resource preferences route", () => {
 
     expect(response.status).toBe(403);
     expect(mocks.getSession).not.toHaveBeenCalled();
+    expect(mocks.writePrefs).not.toHaveBeenCalled();
+  });
+
+  it("rejects preference writes when the session has no stable identity", async () => {
+    mocks.getSession.mockResolvedValue({
+      keystoneProjectToken: "token",
+      projectId: currentProject,
+      regionId: "RegionOne",
+    });
+
+    const response = await POST(recoveryRequest("http://localhost"));
+
+    expect(response.status).toBe(401);
+    expect(mocks.readPrefs).not.toHaveBeenCalled();
     expect(mocks.writePrefs).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,7 @@ import {
   visibleResourcePreferences,
 } from "@/lib/resource-preferences";
 import { getSession } from "@/lib/session";
+import { preferenceIdentityFromSession } from "@/lib/preference-identity";
 import { isSameOriginRequest } from "@/lib/request-origin";
 
 export async function POST(request: NextRequest) {
@@ -66,12 +67,19 @@ export async function POST(request: NextRequest) {
     projectId: session.projectId,
     regionId: session.regionId,
   };
+  const preferenceIdentity = preferenceIdentityFromSession(session);
+  if (!preferenceIdentity) {
+    return NextResponse.json(
+      { error: "Authenticated identity required" },
+      { status: 401 },
+    );
+  }
   const resource = createResourcePreference(input, context);
   if (!resource) {
     return NextResponse.json({ error: "Invalid resource" }, { status: 400 });
   }
 
-  const prefs = await readPrefs();
+  const prefs = await readPrefs(preferenceIdentity);
   const recent = prefs.recentResources ?? [];
   const pinned = prefs.pinnedResources ?? [];
 
@@ -82,19 +90,22 @@ export async function POST(request: NextRequest) {
       recentResources.length !== recent.length ||
       pinnedResources.length !== pinned.length
     ) {
-      await writePrefs({ recentResources, pinnedResources });
+      await writePrefs(
+        { recentResources, pinnedResources },
+        preferenceIdentity,
+      );
     }
     return new Response(null, { status: 204 });
   }
 
   if (operation === "recent") {
     const nextRecent = addRecentResource(recent, resource);
-    await writePrefs({ recentResources: nextRecent });
+    await writePrefs({ recentResources: nextRecent }, preferenceIdentity);
     return new Response(null, { status: 204 });
   }
 
   const nextPinned = togglePinnedResource(pinned, resource).resources;
-  await writePrefs({ pinnedResources: nextPinned });
+  await writePrefs({ pinnedResources: nextPinned }, preferenceIdentity);
 
   return NextResponse.json(
     visibleResourcePreferences({

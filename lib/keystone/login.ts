@@ -3,6 +3,7 @@ import type { IronSession } from 'iron-session';
 import type { OpenStackCatalogService } from '@/lib/openstack/catalog';
 import type { SunriseSession } from '@/lib/session';
 import { readPrefs, writePrefs } from '@/lib/prefs';
+import { preferenceIdentityFromSession } from '@/lib/preference-identity';
 import type { Project, Region } from '@/types/openstack/keystone';
 
 function keystoneApi() {
@@ -235,7 +236,8 @@ export async function finalizeKeystoneSession(
     fetchRegions(unscopedToken),
   ]);
 
-  const prefs = await readPrefs();
+  const preferenceIdentity = preferenceIdentityFromSession(session);
+  const prefs = await readPrefs(preferenceIdentity);
 
   const previousProjectId = session.projectId ?? prefs.projectId;
   const previousProjectName = prefs.projectName;
@@ -287,11 +289,16 @@ export async function finalizeKeystoneSession(
       : undefined) ?? regions[0];
   session.regionId = candidateRegion?.id ?? undefined;
 
-  await writePrefs({
-    projectId: session.projectId,
-    projectName: selectedProject?.name,
-    regionId: session.regionId,
-  });
+  if (preferenceIdentity) {
+    await writePrefs(
+      {
+        projectId: session.projectId,
+        projectName: selectedProject?.name,
+        regionId: session.regionId,
+      },
+      preferenceIdentity,
+    );
+  }
 
   if (projects.length === 0) {
     return { status: 'no-projects', region: candidateRegion };

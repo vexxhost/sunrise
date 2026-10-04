@@ -41,6 +41,8 @@ const session = {
   oidcIdentity: {
     displayName: "OIDC Operator",
     preferredUsername: "operator@example.test",
+    issuer: "https://identity.example.test/realms/demo",
+    subject: "user-one",
   },
 };
 const projects = [{ id: "project-1", name: "Project One" }];
@@ -73,6 +75,10 @@ describe("cloud context loading", () => {
     expect(mocks.getRegions).not.toHaveBeenCalled();
     expect(mocks.getUserInfo).not.toHaveBeenCalled();
     expect(mocks.getServiceCatalog).not.toHaveBeenCalled();
+    expect(mocks.readPrefs).toHaveBeenCalledWith({
+      issuer: "https://identity.example.test/realms/demo",
+      subject: "user-one",
+    });
     expect(mocks.buildCloudContextSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         session,

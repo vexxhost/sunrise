@@ -13,6 +13,7 @@ import {
 } from "@/lib/openstack/catalog";
 import { getUserInfo } from "@/lib/openstack/keystone-actions";
 import { readPrefs } from "@/lib/prefs";
+import { preferenceIdentityFromSession } from "@/lib/preference-identity";
 import { getSession } from "@/lib/session";
 import type { SunriseAppearance } from "@/lib/theme-preference";
 import { getServicePolicy } from "@/lib/deployment-config";
@@ -32,8 +33,9 @@ export async function loadCloudContextUncached(): Promise<CloudContext> {
     bootstrap?.userName ??
     session.oidcIdentity?.preferredUsername ??
     session.oidcIdentity?.displayName;
+  const preferenceIdentity = preferenceIdentityFromSession(session);
   const [prefs, projects, regions, userInfo, catalog] = await Promise.all([
-    readPrefs(),
+    readPrefs(preferenceIdentity),
     bootstrap
       ? Promise.resolve(
           [...bootstrap.projects].sort((a, b) => a.name.localeCompare(b.name)),
