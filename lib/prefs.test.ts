@@ -4,7 +4,9 @@ const mocks = vi.hoisted(() => ({
   cookieValues: new Map<string, string>(),
   cookies: vi.fn(),
   get: vi.fn(),
+  getAll: vi.fn(),
   set: vi.fn(),
+  delete: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({ cookies: mocks.cookies }));
@@ -37,10 +39,21 @@ describe("Sunrise preferences", () => {
       const value = mocks.cookieValues.get(name);
       return value === undefined ? undefined : { name, value };
     });
+    mocks.getAll.mockImplementation(() =>
+      [...mocks.cookieValues].map(([name, value]) => ({ name, value })),
+    );
     mocks.set.mockImplementation((name: string, value: string) => {
       mocks.cookieValues.set(name, value);
     });
-    mocks.cookies.mockResolvedValue({ get: mocks.get, set: mocks.set });
+    mocks.delete.mockImplementation((name: string) => {
+      mocks.cookieValues.delete(name);
+    });
+    mocks.cookies.mockResolvedValue({
+      get: mocks.get,
+      getAll: mocks.getAll,
+      set: mocks.set,
+      delete: mocks.delete,
+    });
   });
 
   it("isolates account preferences by OIDC issuer and subject", async () => {
@@ -107,5 +120,47 @@ describe("Sunrise preferences", () => {
     await expect(
       writePrefs({ recentResources: [recentInstance] }),
     ).rejects.toThrow("Account preference writes require an OIDC identity");
+  });
+
+  it("bounds retained account cookies and their aggregate value size", async () => {
+    const dateNow = vi
+      .spyOn(Date, "now")
+      .mockImplementationOnce(() => 1)
+      .mockImplementationOnce(() => 2)
+      .mockImplementationOnce(() => 3)
+      .mockImplementationOnce(() => 4);
+
+    for (const subject of ["one", "two", "three", "four"]) {
+      await writePrefs(
+        {
+          recentResources: Array.from({ length: 20 }, (_, index) => ({
+            ...recentInstance,
+            id: `${subject}-${index}`,
+            name: `${subject} ${index}`,
+          })),
+        },
+        { ...firstIdentity, subject },
+      );
+    }
+
+    const accountCookies = [...mocks.cookieValues]
+      .filter(([name]) => name.startsWith("sunrise_prefs_account_"))
+      .map(([, value]) => value);
+    expect(accountCookies).toHaveLength(3);
+    expect(
+      accountCookies.every((value) => encodeURIComponent(value).length <= 1200),
+    ).toBe(true);
+    await expect(
+      readPrefs({ ...firstIdentity, subject: "one" }),
+    ).resolves.toMatchObject({ recentResources: undefined });
+    await expect(
+      readPrefs({ ...firstIdentity, subject: "four" }),
+    ).resolves.toMatchObject({
+      recentResources: expect.arrayContaining([
+        expect.objectContaining({ id: "four-0" }),
+      ]),
+    });
+
+    dateNow.mockRestore();
   });
 });

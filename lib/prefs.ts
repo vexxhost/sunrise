@@ -20,7 +20,10 @@ import type { PreferenceIdentity } from "@/lib/preference-identity";
 const PREFS_COOKIE = "sunrise_prefs";
 const ACCOUNT_PREFS_COOKIE_PREFIX = `${PREFS_COOKIE}_account_`;
 const PREFS_MAX_AGE_DAYS = 365;
-const PREFS_COOKIE_SAFE_LENGTH = 3800;
+const ACCOUNT_PREFS_MAX_AGE_DAYS = 90;
+const ACCOUNT_PREFS_COOKIE_SAFE_LENGTH = 1200;
+const MAX_ACCOUNT_PREFS_COOKIES = 3;
+const ACCOUNT_PREFS_UPDATED_AT = "__updatedAt";
 
 export type SunrisePrefs = {
   appearance?: SunriseAppearance;
@@ -88,11 +91,13 @@ function accountPrefs(prefs: SunrisePrefs): AccountPrefs {
 function serializeAccountPrefs(next: AccountPrefs) {
   const serialized = {
     ...next,
+    projectName: next.projectName?.slice(0, 256),
     recentResources: serializeResourcePreferences(next.recentResources),
     pinnedResources: serializeResourcePreferences(next.pinnedResources),
     favoriteDestinations: parseFavoriteDestinationIds(
       next.favoriteDestinations,
     ),
+    [ACCOUNT_PREFS_UPDATED_AT]: Date.now(),
   };
 
   const recent = serialized.recentResources;
@@ -100,7 +105,7 @@ function serializeAccountPrefs(next: AccountPrefs) {
   const favorites = serialized.favoriteDestinations;
   let value = JSON.stringify(serialized);
   while (
-    encodeURIComponent(value).length > PREFS_COOKIE_SAFE_LENGTH &&
+    encodeURIComponent(value).length > ACCOUNT_PREFS_COOKIE_SAFE_LENGTH &&
     (recent.length > 0 || pinned.length > 0 || favorites.length > 0)
   ) {
     if (recent.length > 0) recent.pop();
@@ -108,7 +113,49 @@ function serializeAccountPrefs(next: AccountPrefs) {
     else favorites.pop();
     value = JSON.stringify(serialized);
   }
+  if (encodeURIComponent(value).length > ACCOUNT_PREFS_COOKIE_SAFE_LENGTH) {
+    serialized.projectName = undefined;
+    value = JSON.stringify(serialized);
+  }
   return value;
+}
+
+function accountPreferenceUpdatedAt(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    const updatedAt = parsed?.[ACCOUNT_PREFS_UPDATED_AT];
+    return typeof updatedAt === "number" && Number.isFinite(updatedAt)
+      ? updatedAt
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function pruneAccountPreferenceCookies(
+  store: CookieStore,
+  currentName: string,
+) {
+  const accountCookies = store
+    .getAll()
+    .filter(({ name }) => name.startsWith(ACCOUNT_PREFS_COOKIE_PREFIX));
+  if (accountCookies.length <= MAX_ACCOUNT_PREFS_COOKIES) return;
+
+  accountCookies.sort((left, right) => {
+    if (left.name === currentName) return 1;
+    if (right.name === currentName) return -1;
+    return (
+      accountPreferenceUpdatedAt(left.value) -
+      accountPreferenceUpdatedAt(right.value)
+    );
+  });
+
+  for (const cookie of accountCookies.slice(
+    0,
+    accountCookies.length - MAX_ACCOUNT_PREFS_COOKIES,
+  )) {
+    store.delete(cookie.name);
+  }
 }
 
 function accountPatch(patch: Partial<SunrisePrefs>) {
@@ -133,10 +180,11 @@ function setPreferenceCookie(
   name: string,
   value: string,
   httpOnly: boolean,
+  maxAgeDays = PREFS_MAX_AGE_DAYS,
 ) {
   store.set(name, value, {
     path: "/",
-    maxAge: PREFS_MAX_AGE_DAYS * 24 * 60 * 60,
+    maxAge: maxAgeDays * 24 * 60 * 60,
     // Preserve preferences across the federated login callback.
     sameSite: "none",
     secure: true,
@@ -188,5 +236,12 @@ export async function writePrefs(
   const name = accountCookieName(identity);
   const current = accountPrefs(parseCookie(store.get(name)?.value));
   const next = { ...current, ...scopedPatch };
-  setPreferenceCookie(store, name, serializeAccountPrefs(next), true);
+  setPreferenceCookie(
+    store,
+    name,
+    serializeAccountPrefs(next),
+    true,
+    ACCOUNT_PREFS_MAX_AGE_DAYS,
+  );
+  pruneAccountPreferenceCookies(store, name);
 }
