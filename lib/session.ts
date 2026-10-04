@@ -52,6 +52,8 @@ export type SunriseSession = {
   s3OidcVerifier?: string;
   s3OidcState?: string;
   s3OidcReturnTo?: string;
+  s3OidcPendingIdentityProvider?: string;
+  s3OidcIdentityProvider?: string;
   s3OidcRefreshToken?: string;
   // Unified Sunrise OIDC flow (Keycloak as IdP for both Keystone + S3 STS).
   oidcVerifier?: string;
@@ -59,6 +61,7 @@ export type SunriseSession = {
   oidcIdProvider?: string;
   oidcReturnTo?: string;
   oidcIdentity?: SunriseIdentity;
+  federationIdentityProvider?: string;
   authRecovery?: AuthRecoveryIssue;
   keycloakRefreshToken?: string;
   cloudContextBootstrapId?: string;

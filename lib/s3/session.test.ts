@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getActiveS3Credentials: vi.fn(),
+  getOidcConfig: vi.fn(),
   refreshS3Tokens: vi.fn(),
   assumeRoleWithIdToken: vi.fn(),
   tryExtractRgwProjectRoles: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock("@/lib/session", () => ({
 }));
 
 vi.mock("@/lib/s3/oidc", () => ({
+  getOidcConfig: mocks.getOidcConfig,
   refreshS3Tokens: mocks.refreshS3Tokens,
 }));
 
@@ -42,6 +44,8 @@ const credentials = {
 
 function session(): {
   projectId: string;
+  federationIdentityProvider?: string;
+  s3OidcIdentityProvider?: string;
   s3OidcRefreshToken?: string;
   s3ProjectRoles: Record<string, string>;
   save: ReturnType<typeof vi.fn>;
@@ -51,6 +55,8 @@ function session(): {
   const now = Date.now();
   return {
     projectId: "project-1",
+    federationIdentityProvider: "demo",
+    s3OidcIdentityProvider: "demo",
     s3OidcRefreshToken: "old-s3-refresh-token",
     s3ProjectRoles: { project1: "arn:aws:iam::account:role/access" },
     sessionSignedInAt: now - 1_000,
@@ -63,6 +69,7 @@ describe("Object Storage credential renewal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getActiveS3Credentials.mockReturnValue(undefined);
+    mocks.getOidcConfig.mockReturnValue({ stsDurationSeconds: 1800 });
     mocks.refreshS3Tokens.mockResolvedValue({
       access_token: "refreshed-s3-access-token",
       id_token: "refreshed-s3-id-token",
@@ -81,11 +88,16 @@ describe("Object Storage credential renewal", () => {
       ensureActiveProjectS3Credentials(current as never),
     ).resolves.toBe(credentials);
 
-    expect(mocks.refreshS3Tokens).toHaveBeenCalledWith("old-s3-refresh-token");
+    expect(mocks.refreshS3Tokens).toHaveBeenCalledWith(
+      "old-s3-refresh-token",
+      "demo",
+    );
     expect(mocks.assumeRoleWithIdToken).toHaveBeenCalledWith(
       "refreshed-s3-id-token",
       "project1",
       "arn:aws:iam::account:role/access",
+      undefined,
+      1800,
     );
     expect(current.s3OidcRefreshToken).toBe("rotated-s3-refresh-token");
     expect(current.save).toHaveBeenCalledTimes(2);

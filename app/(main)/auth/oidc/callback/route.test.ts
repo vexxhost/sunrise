@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
     saveSessionActivity: vi.fn(),
     startSessionLifetime: vi.fn(),
     exchangeCodeForTokens: vi.fn(),
+    getSunriseOidcConfig: vi.fn(),
     isRgwOidcConfigured: vi.fn(),
     resolveOidcIdentity: vi.fn(),
     tokenExchangeForRgw: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("@/lib/session", () => ({
 
 vi.mock("@/lib/oidc/sunrise", () => ({
   exchangeCodeForTokens: mocks.exchangeCodeForTokens,
+  getSunriseOidcConfig: mocks.getSunriseOidcConfig,
   isRgwOidcConfigured: mocks.isRgwOidcConfigured,
   resolveOidcIdentity: mocks.resolveOidcIdentity,
   tokenExchangeForRgw: mocks.tokenExchangeForRgw,
@@ -115,6 +117,10 @@ describe("OIDC callback recovery", () => {
       refresh_token: "refresh-token",
       expires_in: 300,
       token_type: "Bearer",
+    });
+    mocks.getSunriseOidcConfig.mockReturnValue({
+      protocol: "demo-openid",
+      rgwStsDurationSeconds: 1800,
     });
     mocks.resolveOidcIdentity.mockResolvedValue(identity);
     mocks.isRgwOidcConfigured.mockReturnValue(true);
@@ -341,7 +347,20 @@ describe("OIDC callback recovery", () => {
       "https://sunrise.example.test/object-storage/buckets/example?prefix=reports%2F",
     );
     expect(current.oidcReturnTo).toBeUndefined();
-    expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith("access-token");
+    expect(mocks.exchangeCodeForTokens).toHaveBeenCalledWith(
+      "code",
+      "verifier",
+      "demo",
+    );
+    expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith(
+      "access-token",
+      "demo",
+    );
+    expect(mocks.federateOidcWithKeystone).toHaveBeenCalledWith(
+      "access-token",
+      "demo",
+      "demo-openid",
+    );
     expect(mocks.getS3Endpoint).toHaveBeenCalledWith({
       regionId: "RegionOne",
       token: "project-token",
@@ -352,6 +371,7 @@ describe("OIDC callback recovery", () => {
       "project1",
       "arn:aws:iam::account:role/access",
       "https://s3.example.test",
+      1800,
     );
     expect(current).toMatchObject({
       cloudContextBootstrapId: "bootstrap-id",
@@ -394,7 +414,10 @@ describe("OIDC callback recovery", () => {
     );
 
     await vi.waitFor(() => {
-      expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith("access-token");
+      expect(mocks.tokenExchangeForRgw).toHaveBeenCalledWith(
+        "access-token",
+        "demo",
+      );
       expect(mocks.finalizeKeystoneSession).toHaveBeenCalled();
     });
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();

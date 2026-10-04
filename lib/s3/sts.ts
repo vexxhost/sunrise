@@ -1,12 +1,12 @@
 import {
   STSClient,
   AssumeRoleWithWebIdentityCommand,
-} from '@aws-sdk/client-sts';
-import { NodeHttpHandler } from '@smithy/node-http-handler';
-import { Agent } from 'https';
-import type { S3StsCredentials } from '@/lib/session';
-import { normalizeProjectId } from '@/lib/session';
-import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
+} from "@aws-sdk/client-sts";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
+import { Agent } from "https";
+import type { S3StsCredentials } from "@/lib/session";
+import { normalizeProjectId } from "@/lib/session";
+import { getS3Endpoint, S3_REGION } from "@/lib/s3/endpoint";
 
 async function getStsClient(endpoint?: string) {
   const resolvedEndpoint = endpoint ?? (await getS3Endpoint());
@@ -15,10 +15,44 @@ async function getStsClient(endpoint?: string) {
     region: S3_REGION,
     requestHandler: new NodeHttpHandler({
       httpsAgent: new Agent({
-        rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0',
+        rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== "0",
       }),
     }),
   });
+}
+
+function isUnknownStsError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const code = (error as Error & { Code?: unknown }).Code;
+  return (
+    error.name === "UnknownError" ||
+    error.message === "UnknownError" ||
+    code === "UnknownError"
+  );
+}
+
+function requestedDurationLabel(durationSeconds: number) {
+  const seconds = new Intl.NumberFormat("en-US").format(durationSeconds);
+  const hours = durationSeconds / 3_600;
+  if (!Number.isInteger(hours)) return `${seconds} seconds`;
+  return `${seconds} seconds (${hours} ${hours === 1 ? "hour" : "hours"})`;
+}
+
+function explainAssumeRoleError(
+  error: unknown,
+  roleArn: string,
+  durationSeconds?: number,
+) {
+  if (
+    isUnknownStsError(error) &&
+    durationSeconds !== undefined &&
+    durationSeconds > 3_600
+  ) {
+    return new Error(
+      `RGW rejected the requested STS session duration of ${requestedDurationLabel(durationSeconds)} for role ${roleArn}. This usually means the requested duration exceeds the role's MaxSessionDuration. Reduce the provider's SUNRISE_RGW_STS_SESSION_DURATION value or increase the role limit.`,
+    );
+  }
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 export async function assumeRoleWithIdToken(
@@ -26,10 +60,11 @@ export async function assumeRoleWithIdToken(
   projectId: string,
   roleArn?: string,
   endpoint?: string,
+  durationSeconds?: number,
 ): Promise<S3StsCredentials> {
   const normalizedProjectId = normalizeProjectId(projectId);
   if (!normalizedProjectId) {
-    throw new Error('Active project is required for S3 STS');
+    throw new Error("Active project is required for S3 STS");
   }
 
   const resolvedRoleArn =
@@ -40,14 +75,19 @@ export async function assumeRoleWithIdToken(
   }
 
   const client = await getStsClient(endpoint);
-  const res = await client.send(
-    new AssumeRoleWithWebIdentityCommand({
-      RoleArn: resolvedRoleArn,
-      RoleSessionName: `sunrise-${normalizedProjectId.slice(0, 20)}`,
-      WebIdentityToken: idToken,
-      DurationSeconds: 3600,
-    }),
-  );
+  let res;
+  try {
+    res = await client.send(
+      new AssumeRoleWithWebIdentityCommand({
+        RoleArn: resolvedRoleArn,
+        RoleSessionName: `sunrise-${normalizedProjectId.slice(0, 20)}`,
+        WebIdentityToken: idToken,
+        DurationSeconds: durationSeconds,
+      }),
+    );
+  } catch (error) {
+    throw explainAssumeRoleError(error, resolvedRoleArn, durationSeconds);
+  }
   const c = res.Credentials;
   if (
     !c?.AccessKeyId ||
@@ -55,7 +95,7 @@ export async function assumeRoleWithIdToken(
     !c.SessionToken ||
     !c.Expiration
   ) {
-    throw new Error('STS returned incomplete credentials');
+    throw new Error("STS returned incomplete credentials");
   }
   return {
     accessKeyId: c.AccessKeyId,
@@ -67,17 +107,17 @@ export async function assumeRoleWithIdToken(
 }
 
 function parseJwtClaims(token: string): Record<string, unknown> {
-  const [, payload] = token.split('.');
-  if (!payload) throw new Error('JWT payload is missing');
+  const [, payload] = token.split(".");
+  if (!payload) throw new Error("JWT payload is missing");
 
-  const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+  const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
   return JSON.parse(
-    Buffer.from(padded, 'base64url').toString('utf-8'),
+    Buffer.from(padded, "base64url").toString("utf-8"),
   ) as Record<string, unknown>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function collectProjectRoles(value: unknown): Record<string, string> {
@@ -88,7 +128,7 @@ function collectProjectRoles(value: unknown): Record<string, string> {
     if (!isRecord(entry)) continue;
 
     for (const [projectId, roleArn] of Object.entries(entry)) {
-      if (typeof roleArn !== 'string' || !roleArn.trim()) continue;
+      if (typeof roleArn !== "string" || !roleArn.trim()) continue;
 
       const normalizedProjectId = normalizeProjectId(projectId);
       if (normalizedProjectId) {
@@ -105,13 +145,13 @@ export function extractRgwProjectRoles(token: string): Record<string, string> {
   const rawProjectRoles = claims.rgw_project_roles;
 
   if (!rawProjectRoles) {
-    throw new Error('RGW project roles claim is missing from token');
+    throw new Error("RGW project roles claim is missing from token");
   }
 
   const projectRoles = collectProjectRoles(rawProjectRoles);
 
   if (Object.keys(projectRoles).length === 0) {
-    throw new Error('RGW project roles claim did not contain usable roles');
+    throw new Error("RGW project roles claim did not contain usable roles");
   }
 
   return projectRoles;

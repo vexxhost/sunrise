@@ -26,6 +26,7 @@ import { GET } from "./route";
 function session() {
   return {
     keycloakRefreshToken: "refresh-token",
+    federationIdentityProvider: "demo",
     oidcIdentity: { identityProvider: "demo" },
     destroy: vi.fn(),
   };
@@ -55,9 +56,14 @@ describe("Sunrise logout route", () => {
       "https://identity.example.test/logout?client_id=sunrise-server",
     );
     expect(mocks.buildEndSessionUrl).toHaveBeenCalledWith({
+      identityProvider: "demo",
       postLogoutRedirectUri: "https://sunrise.example.test/",
       idTokenHint: "logout-id-token",
     });
+    expect(mocks.refreshAccessToken).toHaveBeenCalledWith(
+      "refresh-token",
+      "demo",
+    );
     expect(current.destroy).toHaveBeenCalledOnce();
     expect(mocks.getSession).toHaveBeenCalledWith({ allowExpired: true });
     expect(mocks.destroySessionActivity).toHaveBeenCalledOnce();

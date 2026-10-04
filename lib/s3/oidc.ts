@@ -1,4 +1,5 @@
 import { randomBytes, createHash } from "crypto";
+import { getFederationProviderConfig } from "@/lib/federation/config";
 
 export const OIDC_REDIRECT_PATH = "/object-storage/auth/callback";
 export const OBJECT_STORAGE_HOME_PATH = "/object-storage";
@@ -43,16 +44,21 @@ export function normalizeObjectStorageReturnTo(value?: string | null) {
     : objectStorageSectionPath(url.pathname);
 }
 
-export function getOidcConfig() {
-  const issuer = process.env.KEYCLOAK_ISSUER;
-  const clientId = process.env.KEYCLOAK_S3_CLIENT_ID;
+export function getOidcConfig(identityProvider: string) {
+  const provider = getFederationProviderConfig(identityProvider);
+  const rgw = provider.rgw;
   const dashboardUrl = process.env.DASHBOARD_URL;
-  if (!issuer) throw new Error("KEYCLOAK_ISSUER not set");
-  if (!clientId) throw new Error("KEYCLOAK_S3_CLIENT_ID not set");
+  if (!rgw) {
+    throw new Error(
+      `RGW OIDC is not configured for Identity Provider ${identityProvider}`,
+    );
+  }
   if (!dashboardUrl) throw new Error("DASHBOARD_URL not set");
   return {
-    issuer,
-    clientId,
+    identityProvider,
+    issuer: provider.issuer,
+    clientId: rgw.clientId,
+    stsDurationSeconds: rgw.stsDurationSeconds,
     dashboardUrl,
     redirectUri: `${dashboardUrl}${OIDC_REDIRECT_PATH}`,
   };
@@ -64,19 +70,25 @@ type OidcDiscovery = {
   end_session_endpoint?: string;
 };
 
-let discoveryCache: { value: OidcDiscovery; fetchedAt: number } | null = null;
+const discoveryCache = new Map<
+  string,
+  { value: OidcDiscovery; fetchedAt: number }
+>();
 
-export async function discoverOidc(): Promise<OidcDiscovery> {
-  if (discoveryCache && Date.now() - discoveryCache.fetchedAt < 5 * 60_000) {
-    return discoveryCache.value;
+export async function discoverOidc(
+  identityProvider: string,
+): Promise<OidcDiscovery> {
+  const { issuer } = getOidcConfig(identityProvider);
+  const cached = discoveryCache.get(issuer);
+  if (cached && Date.now() - cached.fetchedAt < 5 * 60_000) {
+    return cached.value;
   }
-  const { issuer } = getOidcConfig();
   const res = await fetch(`${issuer}/.well-known/openid-configuration`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`OIDC discovery failed: ${res.status}`);
   const value = (await res.json()) as OidcDiscovery;
-  discoveryCache = { value, fetchedAt: Date.now() };
+  discoveryCache.set(issuer, { value, fetchedAt: Date.now() });
   return value;
 }
 
@@ -98,9 +110,13 @@ export function generateState() {
   return base64url(randomBytes(16));
 }
 
-export async function exchangeCodeForTokens(code: string, verifier: string) {
-  const { token_endpoint } = await discoverOidc();
-  const { clientId, redirectUri } = getOidcConfig();
+export async function exchangeCodeForTokens(
+  code: string,
+  verifier: string,
+  identityProvider: string,
+) {
+  const { token_endpoint } = await discoverOidc(identityProvider);
+  const { clientId, redirectUri } = getOidcConfig(identityProvider);
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -136,9 +152,10 @@ export type S3OidcRefreshResult = {
 
 export async function refreshS3Tokens(
   refreshToken: string,
+  identityProvider: string,
 ): Promise<S3OidcRefreshResult> {
-  const { token_endpoint } = await discoverOidc();
-  const { clientId } = getOidcConfig();
+  const { token_endpoint } = await discoverOidc(identityProvider);
+  const { clientId } = getOidcConfig(identityProvider);
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,

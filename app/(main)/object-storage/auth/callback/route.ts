@@ -27,17 +27,19 @@ export async function GET(request: Request) {
   const expectedState = session.s3OidcState;
   const verifier = session.s3OidcVerifier;
   const returnTo = normalizeObjectStorageReturnTo(session.s3OidcReturnTo);
+  const identityProvider = session.s3OidcPendingIdentityProvider;
 
   // Clear single-use values regardless of outcome
   session.s3OidcState = undefined;
   session.s3OidcVerifier = undefined;
   session.s3OidcReturnTo = undefined;
+  session.s3OidcPendingIdentityProvider = undefined;
 
   if (error) {
     await session.save();
     return new NextResponse(`OIDC error: ${error}`, { status: 400 });
   }
-  if (!code || !state || !verifier) {
+  if (!code || !state || !verifier || !identityProvider) {
     await session.save();
     return new NextResponse("Missing OIDC parameters", { status: 400 });
   }
@@ -47,7 +49,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const tokens = await exchangeCodeForTokens(code, verifier);
+    const tokens = await exchangeCodeForTokens(
+      code,
+      verifier,
+      identityProvider,
+    );
     const projectRoles = tryExtractRgwProjectRoles(
       tokens.id_token,
       tokens.access_token,
@@ -63,18 +69,25 @@ export async function GET(request: Request) {
 
     session.s3ProjectRoles = projectRoles;
     session.s3OidcRefreshToken = tokens.refresh_token;
+    session.s3OidcIdentityProvider = identityProvider;
+    const { stsDurationSeconds } = getOidcConfig(identityProvider);
     const creds = await assumeRoleWithIdToken(
       tokens.id_token,
       projectId,
       roleArn,
+      undefined,
+      stsDurationSeconds,
     );
     setS3CredentialsForProject(session, creds);
     await session.save();
   } catch (e) {
     await session.save();
     const msg = e instanceof Error ? e.message : "unknown error";
+    console.error("[object-storage/auth/callback] S3 auth failed:", msg);
     return new NextResponse(`S3 auth failed: ${msg}`, { status: 500 });
   }
 
-  return NextResponse.redirect(new URL(returnTo, getOidcConfig().dashboardUrl));
+  return NextResponse.redirect(
+    new URL(returnTo, getOidcConfig(identityProvider).dashboardUrl),
+  );
 }

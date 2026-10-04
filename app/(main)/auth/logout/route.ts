@@ -59,11 +59,11 @@ function oidcLoginUrl(identityProvider: string) {
   return url.toString();
 }
 
-async function logoutIdToken(refreshToken?: string) {
-  if (!refreshToken) return undefined;
+async function logoutIdToken(identityProvider?: string, refreshToken?: string) {
+  if (!identityProvider || !refreshToken) return undefined;
 
   try {
-    const refreshed = await refreshAccessToken(refreshToken);
+    const refreshed = await refreshAccessToken(refreshToken, identityProvider);
     return refreshed.id_token;
   } catch (error) {
     console.warn("Unable to refresh the OIDC ID token for logout:", error);
@@ -71,9 +71,15 @@ async function logoutIdToken(refreshToken?: string) {
   }
 }
 
-async function providerLogoutUrl(idTokenHint?: string) {
+async function providerLogoutUrl(
+  identityProvider?: string,
+  idTokenHint?: string,
+) {
+  if (!identityProvider) return null;
+
   try {
     return await buildEndSessionUrl({
+      identityProvider,
       postLogoutRedirectUri: dashboardUrl(),
       idTokenHint,
     });
@@ -91,7 +97,9 @@ async function performLogout(
   const unscoped = session.keystone_unscoped_token;
   const scoped = session.keystoneProjectToken;
   const refreshToken = session.keycloakRefreshToken;
-  const identityProvider = session.oidcIdentity?.identityProvider;
+  const identityProvider =
+    session.federationIdentityProvider ??
+    session.oidcIdentity?.identityProvider;
   const reuseProviderSession = Boolean(
     expiryReason && prompt === "login" && identityProvider,
   );
@@ -102,13 +110,13 @@ async function performLogout(
   const [idTokenHint] = await Promise.all([
     reuseProviderSession
       ? Promise.resolve(undefined)
-      : logoutIdToken(refreshToken),
+      : logoutIdToken(identityProvider, refreshToken),
     scoped && unscoped ? revokeToken(scoped, unscoped) : Promise.resolve(),
     unscoped ? revokeToken(unscoped, unscoped) : Promise.resolve(),
   ]);
   const endSessionUrl = reuseProviderSession
     ? null
-    : await providerLogoutUrl(idTokenHint);
+    : await providerLogoutUrl(identityProvider, idTokenHint);
 
   session.destroy();
   await destroySessionActivity();

@@ -1,5 +1,6 @@
 import "server-only";
 import { randomBytes, createHash } from "crypto";
+import { getFederationProviderConfig } from "@/lib/federation/config";
 import type { SunriseIdentity } from "@/lib/session";
 
 /**
@@ -22,36 +23,38 @@ export const OIDC_LOGIN_PATH = "/auth/oidc/login";
 export const OIDC_CALLBACK_PATH = "/auth/oidc/callback";
 
 export type SunriseOidcConfig = {
+  identityProvider: string;
+  protocol: string;
   issuer: string;
   clientId: string;
   clientSecret: string;
   redirectUri: string;
   rgwAudience?: string;
+  rgwStsDurationSeconds?: number;
 };
 
 export type OidcAuthorizationPrompt = "login" | "select_account";
 
-export function getSunriseOidcConfig(): SunriseOidcConfig {
-  const issuer = process.env.KEYCLOAK_ISSUER;
-  const clientId = process.env.KEYCLOAK_SERVER_CLIENT_ID;
-  const clientSecret = process.env.KEYCLOAK_SERVER_CLIENT_SECRET;
+export function getSunriseOidcConfig(
+  identityProvider: string,
+): SunriseOidcConfig {
+  const provider = getFederationProviderConfig(identityProvider);
   const dashboardUrl = process.env.DASHBOARD_URL;
-  const rgwAudience = process.env.KEYCLOAK_S3_CLIENT_ID;
-  if (!issuer) throw new Error("KEYCLOAK_ISSUER not set");
-  if (!clientId) throw new Error("KEYCLOAK_SERVER_CLIENT_ID not set");
-  if (!clientSecret) throw new Error("KEYCLOAK_SERVER_CLIENT_SECRET not set");
   if (!dashboardUrl) throw new Error("DASHBOARD_URL not set");
   return {
-    issuer,
-    clientId,
-    clientSecret,
+    identityProvider,
+    protocol: provider.protocol,
+    issuer: provider.issuer,
+    clientId: provider.clientId,
+    clientSecret: provider.clientSecret,
     redirectUri: `${dashboardUrl}${OIDC_CALLBACK_PATH}`,
-    rgwAudience,
+    rgwAudience: provider.rgw?.clientId,
+    rgwStsDurationSeconds: provider.rgw?.stsDurationSeconds,
   };
 }
 
-export function isRgwOidcConfigured() {
-  return Boolean(process.env.KEYCLOAK_S3_CLIENT_ID?.trim());
+export function isRgwOidcConfigured(identityProvider: string) {
+  return Boolean(getSunriseOidcConfig(identityProvider).rgwAudience);
 }
 
 type OidcDiscovery = {
@@ -61,19 +64,25 @@ type OidcDiscovery = {
   userinfo_endpoint?: string;
 };
 
-let discoveryCache: { value: OidcDiscovery; fetchedAt: number } | null = null;
+const discoveryCache = new Map<
+  string,
+  { value: OidcDiscovery; fetchedAt: number }
+>();
 
-export async function discoverOidc(): Promise<OidcDiscovery> {
-  if (discoveryCache && Date.now() - discoveryCache.fetchedAt < 5 * 60_000) {
-    return discoveryCache.value;
+export async function discoverOidc(
+  identityProvider: string,
+): Promise<OidcDiscovery> {
+  const { issuer } = getSunriseOidcConfig(identityProvider);
+  const cached = discoveryCache.get(issuer);
+  if (cached && Date.now() - cached.fetchedAt < 5 * 60_000) {
+    return cached.value;
   }
-  const { issuer } = getSunriseOidcConfig();
   const res = await fetch(`${issuer}/.well-known/openid-configuration`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`OIDC discovery failed: ${res.status}`);
   const value = (await res.json()) as OidcDiscovery;
-  discoveryCache = { value, fetchedAt: Date.now() };
+  discoveryCache.set(issuer, { value, fetchedAt: Date.now() });
   return value;
 }
 
@@ -108,7 +117,7 @@ export function extractOidcIdentity(
   const claims = decodeIdTokenClaims(idToken);
   if (!claims?.sub || !claims.iss) return null;
 
-  const { issuer, clientId } = getSunriseOidcConfig();
+  const { issuer, clientId } = getSunriseOidcConfig(identityProvider);
   const audiences = Array.isArray(claims.aud)
     ? claims.aud
     : claims.aud
@@ -144,7 +153,7 @@ export async function resolveOidcIdentity(
   const tokenIdentity = extractOidcIdentity(idToken, identityProvider);
 
   try {
-    const { userinfo_endpoint } = await discoverOidc();
+    const { userinfo_endpoint } = await discoverOidc(identityProvider);
     if (!userinfo_endpoint) return tokenIdentity;
 
     const response = await fetch(userinfo_endpoint, {
@@ -157,7 +166,7 @@ export async function resolveOidcIdentity(
     if (!claims.sub) return tokenIdentity;
     if (tokenIdentity && claims.sub !== tokenIdentity.subject) return null;
 
-    const { issuer } = getSunriseOidcConfig();
+    const { issuer } = getSunriseOidcConfig(identityProvider);
     const email = claims.email?.trim() || undefined;
     const preferredUsername = claims.preferred_username?.trim() || undefined;
     return {
@@ -208,9 +217,11 @@ export type RefreshTokenResult = Omit<CodeExchangeResult, "id_token"> & {
 export async function exchangeCodeForTokens(
   code: string,
   verifier: string,
+  identityProvider: string,
 ): Promise<CodeExchangeResult> {
-  const { token_endpoint } = await discoverOidc();
-  const { clientId, clientSecret, redirectUri } = getSunriseOidcConfig();
+  const { token_endpoint } = await discoverOidc(identityProvider);
+  const { clientId, clientSecret, redirectUri } =
+    getSunriseOidcConfig(identityProvider);
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -236,9 +247,10 @@ export async function exchangeCodeForTokens(
 
 export async function refreshAccessToken(
   refreshToken: string,
+  identityProvider: string,
 ): Promise<RefreshTokenResult> {
-  const { token_endpoint } = await discoverOidc();
-  const { clientId, clientSecret } = getSunriseOidcConfig();
+  const { token_endpoint } = await discoverOidc(identityProvider);
+  const { clientId, clientSecret } = getSunriseOidcConfig(identityProvider);
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
@@ -277,11 +289,15 @@ export type TokenExchangeResult = {
  */
 export async function tokenExchangeForRgw(
   subjectAccessToken: string,
+  identityProvider: string,
 ): Promise<TokenExchangeResult> {
-  const { token_endpoint } = await discoverOidc();
-  const { clientId, clientSecret, rgwAudience } = getSunriseOidcConfig();
+  const { token_endpoint } = await discoverOidc(identityProvider);
+  const { clientId, clientSecret, rgwAudience } =
+    getSunriseOidcConfig(identityProvider);
   if (!rgwAudience) {
-    throw new Error("KEYCLOAK_S3_CLIENT_ID is required for the S3 backend");
+    throw new Error(
+      `RGW OIDC is not configured for Identity Provider ${identityProvider}`,
+    );
   }
   const body = new URLSearchParams({
     grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -314,13 +330,14 @@ export async function tokenExchangeForRgw(
 }
 
 export async function buildAuthorizeUrl(opts: {
+  identityProvider: string;
   challenge: string;
   state: string;
   scope?: string;
   prompt?: OidcAuthorizationPrompt;
 }): Promise<string> {
-  const { authorization_endpoint } = await discoverOidc();
-  const { clientId, redirectUri } = getSunriseOidcConfig();
+  const { authorization_endpoint } = await discoverOidc(opts.identityProvider);
+  const { clientId, redirectUri } = getSunriseOidcConfig(opts.identityProvider);
   const url = new URL(authorization_endpoint);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
@@ -334,13 +351,14 @@ export async function buildAuthorizeUrl(opts: {
 }
 
 export async function buildEndSessionUrl(opts: {
+  identityProvider: string;
   postLogoutRedirectUri: string;
   idTokenHint?: string;
 }): Promise<string | null> {
-  const { end_session_endpoint } = await discoverOidc();
+  const { end_session_endpoint } = await discoverOidc(opts.identityProvider);
   if (!end_session_endpoint) return null;
 
-  const { clientId } = getSunriseOidcConfig();
+  const { clientId } = getSunriseOidcConfig(opts.identityProvider);
   const url = new URL(end_session_endpoint);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("post_logout_redirect_uri", opts.postLogoutRedirectUri);

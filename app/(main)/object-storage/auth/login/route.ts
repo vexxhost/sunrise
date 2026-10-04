@@ -10,6 +10,10 @@ import {
 import { getS3Endpoint } from "@/lib/s3/endpoint";
 
 export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const returnTo = normalizeObjectStorageReturnTo(
+    requestUrl.searchParams.get("returnTo"),
+  );
   const session = await getSession();
   if (session.sessionExpiryReason) {
     return NextResponse.redirect(new URL("/", request.url));
@@ -20,19 +24,45 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/object-storage", request.url));
   }
 
-  const { authorization_endpoint } = await discoverOidc();
-  const { clientId, redirectUri } = getOidcConfig();
+  const identityProvider =
+    session.federationIdentityProvider ??
+    session.oidcIdentity?.identityProvider;
+  if (!identityProvider) {
+    const unavailable = new URL(
+      "/object-storage/auth/unavailable",
+      request.url,
+    );
+    unavailable.searchParams.set("returnTo", returnTo);
+    return NextResponse.redirect(unavailable, { status: 303 });
+  }
+
+  let authorizationEndpoint: string;
+  let clientId: string;
+  let redirectUri: string;
+  try {
+    const discovery = await discoverOidc(identityProvider);
+    const config = getOidcConfig(identityProvider);
+    authorizationEndpoint = discovery.authorization_endpoint;
+    clientId = config.clientId;
+    redirectUri = config.redirectUri;
+  } catch {
+    const unavailable = new URL(
+      "/object-storage/auth/unavailable",
+      request.url,
+    );
+    unavailable.searchParams.set("returnTo", returnTo);
+    return NextResponse.redirect(unavailable, { status: 303 });
+  }
   const { verifier, challenge } = generatePkce();
   const state = generateState();
 
   session.s3OidcVerifier = verifier;
   session.s3OidcState = state;
-  session.s3OidcReturnTo = normalizeObjectStorageReturnTo(
-    new URL(request.url).searchParams.get("returnTo"),
-  );
+  session.s3OidcReturnTo = returnTo;
+  session.s3OidcPendingIdentityProvider = identityProvider;
   await session.save();
 
-  const url = new URL(authorization_endpoint);
+  const url = new URL(authorizationEndpoint);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
