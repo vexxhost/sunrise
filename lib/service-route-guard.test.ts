@@ -44,9 +44,9 @@ describe("service route availability", () => {
   it("applies region-specific service policy", () => {
     mocks.getServicePolicy.mockReturnValue(
       parseServicePolicy({
-        disabledServicesByRegion: JSON.stringify({
-          RegionOne: ["image"],
-        }),
+        disabledServicesByRegion: {
+          REGIONONE: "image",
+        },
       }),
     );
 

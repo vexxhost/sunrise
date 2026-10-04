@@ -66,9 +66,9 @@ describe("Object Storage backend resolution", () => {
         catalog,
         "RegionOne",
         parseServicePolicy({
-          disabledServicesByRegion: JSON.stringify({
-            RegionOne: ["object-storage-s3"],
-          }),
+          disabledServicesByRegion: {
+            REGIONONE: "object-storage-s3",
+          },
           objectStorageBackends: "s3,swift",
         }),
       ),

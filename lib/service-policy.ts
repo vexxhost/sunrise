@@ -52,7 +52,7 @@ export type ServicePolicy = {
 
 type ServicePolicyEnvironment = {
   disabledServices?: string;
-  disabledServicesByRegion?: string;
+  disabledServicesByRegion?: Record<string, string | undefined>;
   objectStorageBackends?: string;
 };
 
@@ -85,43 +85,47 @@ function parseServiceList(value: unknown, source: string) {
   );
 }
 
-function parseRegionalServiceMap(value?: string) {
-  if (!value?.trim()) return {};
+export function regionEnvironmentSuffix(regionId: string) {
+  const suffix = regionId
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
+  if (!suffix) {
     throw new Error(
-      "SUNRISE_DISABLED_SERVICES_BY_REGION must be a JSON object whose values are service arrays",
+      `Region ${JSON.stringify(regionId)} cannot be mapped to an environment variable suffix`,
     );
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(
-      "SUNRISE_DISABLED_SERVICES_BY_REGION must be a JSON object",
+  return suffix;
+}
+
+function parseRegionalServiceMap(
+  values: Record<string, string | undefined> = {},
+) {
+  const configuredSuffixes = new Map<string, string>();
+  const servicesByRegion: Record<string, SunriseDisableTarget[]> = {};
+
+  for (const [configuredSuffix, services] of Object.entries(values)) {
+    const suffix = regionEnvironmentSuffix(configuredSuffix);
+    const existing = configuredSuffixes.get(suffix);
+    if (existing) {
+      throw new Error(
+        `Region suffixes ${JSON.stringify(existing)} and ${JSON.stringify(configuredSuffix)} both map to ${suffix}`,
+      );
+    }
+    configuredSuffixes.set(suffix, configuredSuffix);
+    servicesByRegion[suffix] = parseServiceList(
+      services,
+      `SUNRISE_DISABLED_SERVICES_${configuredSuffix}`,
     );
   }
 
-  return Object.fromEntries(
-    Object.entries(parsed).map(([regionId, services]) => {
-      if (!regionId.trim() || !Array.isArray(services)) {
-        throw new Error(
-          "SUNRISE_DISABLED_SERVICES_BY_REGION must map region IDs to service arrays",
-        );
-      }
-      return [
-        regionId,
-        parseServiceList(
-          services.join(","),
-          `SUNRISE_DISABLED_SERVICES_BY_REGION.${regionId}`,
-        ),
-      ];
-    }),
-  );
+  return servicesByRegion;
 }
 
 function parseObjectStorageBackends(value?: string) {
-  const candidates = (value?.trim() ? value : "s3")
+  const candidates = (value?.trim() ? value : "swift")
     .split(",")
     .map((candidate) => candidate.trim().toLowerCase())
     .filter(Boolean);
@@ -165,7 +169,9 @@ export function isServiceEnabled(
 ) {
   if (policy.disabledServices.includes(serviceId)) return false;
   if (!regionId) return true;
-  return !policy.disabledServicesByRegion[regionId]?.includes(serviceId);
+  return !policy.disabledServicesByRegion[
+    regionEnvironmentSuffix(regionId)
+  ]?.includes(serviceId);
 }
 
 const sunriseServiceDependencies: Record<
@@ -203,7 +209,9 @@ export function isObjectStorageBackendEnabled(
   const serviceId = objectStorageBackendServiceIds[backend];
   if (policy.disabledServices.includes(serviceId)) return false;
   if (!regionId) return true;
-  return !policy.disabledServicesByRegion[regionId]?.includes(serviceId);
+  return !policy.disabledServicesByRegion[
+    regionEnvironmentSuffix(regionId)
+  ]?.includes(serviceId);
 }
 
 export function enabledObjectStorageBackends(

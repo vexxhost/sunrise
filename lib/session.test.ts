@@ -21,9 +21,10 @@ import {
 describe("Sunrise session", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete process.env.SESSION_IDLE_TIMEOUT_SECONDS;
-    delete process.env.SESSION_ABSOLUTE_TIMEOUT_SECONDS;
-    process.env.SESSION_SECRET = "test-session-secret-at-least-32-characters";
+    delete process.env.SUNRISE_SESSION_IDLE_TIMEOUT_SECONDS;
+    delete process.env.SUNRISE_SESSION_ABSOLUTE_TIMEOUT_SECONDS;
+    process.env.SUNRISE_SESSION_SECRET =
+      "test-session-secret-at-least-32-characters";
     mocks.mainSession = {};
     mocks.activitySession = {
       save: vi.fn().mockResolvedValue(undefined),
@@ -82,14 +83,13 @@ describe("Sunrise session", () => {
 
   it("denies renewable credentials after the idle limit", async () => {
     const now = Date.now();
-    process.env.SESSION_IDLE_TIMEOUT_SECONDS = "60";
-    process.env.SESSION_ABSOLUTE_TIMEOUT_SECONDS = "600";
+    process.env.SUNRISE_SESSION_IDLE_TIMEOUT_SECONDS = "60";
+    process.env.SUNRISE_SESSION_ABSOLUTE_TIMEOUT_SECONDS = "600";
     mocks.mainSession = {
       oidcIdentity: { preferredUsername: "tadas" },
       keycloakRefreshToken: "keycloak-refresh",
       keystone_unscoped_token: "unscoped",
       keystoneProjectToken: "scoped",
-      s3OidcRefreshToken: "s3-refresh",
       s3Credentials: { project: {} },
       sessionId: "session-1",
       sessionSignedInAt: now - 120_000,
@@ -105,7 +105,6 @@ describe("Sunrise session", () => {
     expect(session.keycloakRefreshToken).toBeUndefined();
     expect(session.keystone_unscoped_token).toBeUndefined();
     expect(session.keystoneProjectToken).toBeUndefined();
-    expect(session.s3OidcRefreshToken).toBeUndefined();
     expect(session.s3Credentials).toBeUndefined();
   });
 

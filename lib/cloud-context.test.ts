@@ -91,6 +91,7 @@ function build(
     regions,
     userName: "Sunrise Operator",
     catalog: serviceCatalog,
+    servicePolicy: parseServicePolicy({ objectStorageBackends: "s3" }),
   });
 }
 
@@ -340,9 +341,10 @@ describe("cloud context snapshot", () => {
       userName: "Sunrise Operator",
       catalog,
       servicePolicy: parseServicePolicy({
-        disabledServicesByRegion: JSON.stringify({
-          RegionOne: ["object-storage-s3"],
-        }),
+        disabledServicesByRegion: {
+          REGIONONE: "object-storage-s3",
+        },
+        objectStorageBackends: "s3",
       }),
     });
 

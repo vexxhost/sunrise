@@ -3,10 +3,11 @@ import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import { refreshKeystoneSession } from "@/lib/keystone/renewal";
 import { getSession } from "@/lib/session";
 
-const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "http://localhost";
+const SUNRISE_DASHBOARD_URL =
+  process.env.SUNRISE_DASHBOARD_URL ?? "http://localhost";
 
 function loginUrl(identityProvider: string, returnTo: string) {
-  const url = new URL("/auth/oidc/login", DASHBOARD_URL);
+  const url = new URL("/auth/oidc/login", SUNRISE_DASHBOARD_URL);
   url.searchParams.set("idp", identityProvider);
   url.searchParams.set("returnTo", returnTo);
   url.searchParams.set("continuation", "1");
@@ -19,7 +20,9 @@ export async function GET(request: Request) {
   );
   const session = await getSession();
   if (session.sessionExpiryReason) {
-    return NextResponse.redirect(new URL("/", DASHBOARD_URL), { status: 303 });
+    return NextResponse.redirect(new URL("/", SUNRISE_DASHBOARD_URL), {
+      status: 303,
+    });
   }
   const identityProvider =
     session.federationIdentityProvider ??
@@ -28,17 +31,17 @@ export async function GET(request: Request) {
   try {
     const result = await refreshKeystoneSession(session);
     if (result === "ready") {
-      return NextResponse.redirect(new URL(returnTo, DASHBOARD_URL), {
+      return NextResponse.redirect(new URL(returnTo, SUNRISE_DASHBOARD_URL), {
         status: 303,
       });
     }
     if (result === "no-projects" || result === "no-role") {
-      return NextResponse.redirect(new URL("/", DASHBOARD_URL), {
+      return NextResponse.redirect(new URL("/", SUNRISE_DASHBOARD_URL), {
         status: 303,
       });
     }
     if (result === "expired") {
-      return NextResponse.redirect(new URL("/", DASHBOARD_URL), {
+      return NextResponse.redirect(new URL("/", SUNRISE_DASHBOARD_URL), {
         status: 303,
       });
     }
@@ -53,11 +56,13 @@ export async function GET(request: Request) {
     });
     session.authRecovery = { reason: "session-unavailable" };
     await session.save();
-    return NextResponse.redirect(new URL("/", DASHBOARD_URL), { status: 303 });
+    return NextResponse.redirect(new URL("/", SUNRISE_DASHBOARD_URL), {
+      status: 303,
+    });
   }
 
   return NextResponse.redirect(
-    new URL("/auth/logout?reason=expired&mode=switch", DASHBOARD_URL),
+    new URL("/auth/logout?reason=expired&mode=switch", SUNRISE_DASHBOARD_URL),
     { status: 303 },
   );
 }

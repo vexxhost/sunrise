@@ -7,7 +7,6 @@ import {
   buildEndSessionUrl,
   extractOidcIdentity,
   getSunriseOidcConfig,
-  isRgwOidcConfigured,
   resolveOidcIdentity,
 } from "@/lib/oidc/sunrise";
 
@@ -25,13 +24,11 @@ function configureProviders() {
     SUNRISE_KEYCLOAK_ISSUER_DEMO: issuer,
     SUNRISE_KEYCLOAK_CLIENT_ID_DEMO: clientId,
     SUNRISE_KEYCLOAK_CLIENT_SECRET_DEMO: "client-secret",
-    SUNRISE_KEYCLOAK_RGW_CLIENT_ID_DEMO: "rgw-browser",
-    SUNRISE_RGW_STS_SESSION_DURATION_DEMO: "1800",
+    SUNRISE_RGW_STS_SESSION_DURATION_SECONDS_DEMO: "1800",
     SUNRISE_KEYCLOAK_ISSUER_WORKFORCE: workforceIssuer,
     SUNRISE_KEYCLOAK_CLIENT_ID_WORKFORCE: workforceClientId,
     SUNRISE_KEYCLOAK_CLIENT_SECRET_WORKFORCE: "workforce-secret",
-    SUNRISE_KEYCLOAK_RGW_CLIENT_ID_WORKFORCE: "rgw-workforce",
-    SUNRISE_RGW_STS_SESSION_DURATION_WORKFORCE: "2700",
+    SUNRISE_RGW_STS_SESSION_DURATION_SECONDS_WORKFORCE: "2700",
   });
 }
 
@@ -58,10 +55,9 @@ describe("Sunrise OIDC", () => {
     delete process.env.SUNRISE_KEYCLOAK_ISSUER;
     delete process.env.SUNRISE_KEYCLOAK_CLIENT_ID;
     delete process.env.SUNRISE_KEYCLOAK_CLIENT_SECRET;
-    delete process.env.SUNRISE_KEYCLOAK_RGW_CLIENT_ID;
-    delete process.env.SUNRISE_RGW_STS_SESSION_DURATION;
+    delete process.env.SUNRISE_RGW_STS_SESSION_DURATION_SECONDS;
     configureProviders();
-    process.env.DASHBOARD_URL = "https://sunrise.example.test";
+    process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: string | URL | Request) => {
@@ -155,18 +151,7 @@ describe("Sunrise OIDC", () => {
     );
   });
 
-  it("keeps the primary OIDC client valid without S3 configuration", () => {
-    delete process.env.SUNRISE_KEYCLOAK_RGW_CLIENT_ID_DEMO;
-
-    expect(isRgwOidcConfigured("demo")).toBe(false);
-    expect(getSunriseOidcConfig("demo")).toMatchObject({
-      issuer,
-      clientId,
-      rgwAudience: undefined,
-    });
-  });
-
-  it("keeps discovery, clients, protocols, and RGW settings provider scoped", async () => {
+  it("keeps discovery, clients, protocols, and RGW duration provider scoped", async () => {
     const demo = getSunriseOidcConfig("demo");
     const workforce = getSunriseOidcConfig("workforce");
     const workforceAuthorizeUrl = new URL(
@@ -181,14 +166,12 @@ describe("Sunrise OIDC", () => {
       protocol: "openid",
       issuer,
       clientId,
-      rgwAudience: "rgw-browser",
       rgwStsDurationSeconds: 1800,
     });
     expect(workforce).toMatchObject({
       protocol: "workforce-openid",
       issuer: workforceIssuer,
       clientId: workforceClientId,
-      rgwAudience: "rgw-workforce",
       rgwStsDurationSeconds: 2700,
     });
     expect(workforceAuthorizeUrl.origin + workforceAuthorizeUrl.pathname).toBe(

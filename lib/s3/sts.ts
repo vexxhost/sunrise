@@ -49,7 +49,7 @@ function explainAssumeRoleError(
     durationSeconds > 3_600
   ) {
     return new Error(
-      `RGW rejected the requested STS session duration of ${requestedDurationLabel(durationSeconds)} for role ${roleArn}. This usually means the requested duration exceeds the role's MaxSessionDuration. Reduce the provider's SUNRISE_RGW_STS_SESSION_DURATION value or increase the role limit.`,
+      `RGW rejected the requested STS session duration of ${requestedDurationLabel(durationSeconds)} for role ${roleArn}. This usually means the requested duration exceeds the role's MaxSessionDuration. Reduce the provider's SUNRISE_RGW_STS_SESSION_DURATION_SECONDS value or increase the role limit.`,
     );
   }
   return error instanceof Error ? error : new Error(String(error));

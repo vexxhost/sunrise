@@ -7,20 +7,20 @@ import {
 } from "@/lib/service-policy";
 
 describe("service policy", () => {
-  it("preserves the current S3-first behavior by default", () => {
+  it("uses Swift by default", () => {
     expect(parseServicePolicy()).toEqual({
       disabledServices: [],
       disabledServicesByRegion: {},
-      objectStorageBackends: ["s3"],
+      objectStorageBackends: ["swift"],
     });
   });
 
   it("supports global and region-specific service disablement", () => {
     const policy = parseServicePolicy({
       disabledServices: "dns",
-      disabledServicesByRegion: JSON.stringify({
-        RegionTwo: ["container-infra"],
-      }),
+      disabledServicesByRegion: {
+        REGIONTWO: "container-infra",
+      },
       objectStorageBackends: "swift,s3,swift",
     });
 
@@ -36,9 +36,9 @@ describe("service policy", () => {
 
   it("supports disabling individual Object Storage backends by region", () => {
     const policy = parseServicePolicy({
-      disabledServicesByRegion: JSON.stringify({
-        RegionOne: ["object-storage-s3", "dns"],
-      }),
+      disabledServicesByRegion: {
+        REGIONONE: "object-storage-s3,dns",
+      },
       objectStorageBackends: "s3,swift",
     });
 
@@ -56,10 +56,10 @@ describe("service policy", () => {
 
   it("uses Keystone's object-storage identifier for Swift", () => {
     const policy = parseServicePolicy({
-      disabledServicesByRegion: JSON.stringify({
-        RegionOne: ["object-storage"],
-        RegionTwo: ["object-storage", "object-storage-s3"],
-      }),
+      disabledServicesByRegion: {
+        REGIONONE: "object-storage",
+        REGIONTWO: "object-storage,object-storage-s3",
+      },
       objectStorageBackends: "s3,swift",
     });
 
@@ -86,6 +86,28 @@ describe("service policy", () => {
     expect(isServiceEnabled(policy, "container-infra", "RegionOne")).toBe(
       false,
     );
+  });
+
+  it("normalizes region IDs and configured environment suffixes", () => {
+    const policy = parseServicePolicy({
+      disabledServicesByRegion: {
+        region_one: "dns",
+      },
+    });
+
+    expect(isServiceEnabled(policy, "dns", "Region-One")).toBe(false);
+    expect(isServiceEnabled(policy, "dns", "RegionTwo")).toBe(true);
+  });
+
+  it("rejects region suffix collisions", () => {
+    expect(() =>
+      parseServicePolicy({
+        disabledServicesByRegion: {
+          "region-one": "dns",
+          region_one: "image",
+        },
+      }),
+    ).toThrow(/both map to REGION_ONE/);
   });
 
   it("rejects unknown service and backend names", () => {

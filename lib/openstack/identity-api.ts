@@ -12,7 +12,7 @@ export function identityApiUrl() {
 
 export function publicIdentityApiUrl() {
   return versionedIdentityApiUrl(
-    process.env.NEXT_PUBLIC_KEYSTONE_API,
-    "NEXT_PUBLIC_KEYSTONE_API",
+    process.env.KEYSTONE_PUBLIC_API,
+    "KEYSTONE_PUBLIC_API",
   );
 }

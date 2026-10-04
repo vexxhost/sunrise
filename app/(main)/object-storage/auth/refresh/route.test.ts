@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
-  process.env.DASHBOARD_URL = "https://sunrise.example.test";
+  process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
   return {
     clearS3Credentials: vi.fn(),
     getSession: vi.fn(),
@@ -57,7 +57,7 @@ describe("Object Storage auth refresh route", () => {
     );
   });
 
-  it("bootstraps the RGW public client when its refresh token is unavailable", async () => {
+  it("shows recovery when the unified OIDC session cannot renew RGW access", async () => {
     const current = session();
     mocks.getSession.mockResolvedValue(current);
     mocks.refreshActiveProjectS3Credentials.mockResolvedValue(undefined);
@@ -70,7 +70,7 @@ describe("Object Storage auth refresh route", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("location")).toBe(
-      "https://sunrise.example.test/object-storage/auth/login?returnTo=%2Fobject-storage%2Froles",
+      "https://sunrise.example.test/object-storage/auth/unavailable?returnTo=%2Fobject-storage%2Froles",
     );
     expect(mocks.clearS3Credentials).toHaveBeenCalledWith(current);
     expect(current.save).toHaveBeenCalledOnce();

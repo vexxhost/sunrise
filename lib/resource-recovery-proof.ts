@@ -33,7 +33,7 @@ function recoveryProofPayload(
 }
 
 function recoverySecret() {
-  const secret = process.env.SESSION_SECRET;
+  const secret = process.env.SUNRISE_SESSION_SECRET;
   return secret && secret.length >= 32 ? secret : null;
 }
 

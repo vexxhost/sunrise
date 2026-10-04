@@ -69,7 +69,7 @@ export async function getRemoteConsoleAction(
   const rawUrl = remote.url;
   const url =
     protocol === "vnc"
-      ? rewriteNoVncUrl(rawUrl, process.env.DASHBOARD_URL)
+      ? rewriteNoVncUrl(rawUrl, process.env.SUNRISE_DASHBOARD_URL)
       : rawUrl;
   return { ...remote, url, rawUrl };
 }

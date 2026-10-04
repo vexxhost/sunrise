@@ -15,9 +15,7 @@ import {
 import {
   exchangeCodeForTokens,
   getSunriseOidcConfig,
-  isRgwOidcConfigured,
   resolveOidcIdentity,
-  tokenExchangeForRgw,
 } from "@/lib/oidc/sunrise";
 import { getServicePolicy } from "@/lib/deployment-config";
 import {
@@ -30,12 +28,11 @@ import { getS3Endpoint } from "@/lib/s3/endpoint";
 import { assumeRoleWithIdToken, tryExtractRgwProjectRoles } from "@/lib/s3/sts";
 import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
 import {
-  isObjectStorageBackendEnabled,
   isSunriseServiceEnabled,
   type ServicePolicy,
 } from "@/lib/service-policy";
 
-const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "/";
+const SUNRISE_DASHBOARD_URL = process.env.SUNRISE_DASHBOARD_URL ?? "/";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -74,7 +71,7 @@ export async function GET(request: Request) {
     const lifetime = getSessionLifetimeState(session);
     if (lifetime.status !== "active" || !session.sessionId) {
       await session.save();
-      return NextResponse.redirect(DASHBOARD_URL, { status: 303 });
+      return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
     }
   }
 
@@ -115,23 +112,6 @@ export async function GET(request: Request) {
     tokens.id_token,
     idp,
   );
-  const exchangeRgwToken = () =>
-    tokenExchangeForRgw(tokens.access_token, idp).then(
-      (exchanged) => ({ ok: true as const, exchanged }),
-      (error: unknown) => ({ ok: false as const, error }),
-    );
-  const canStartRgwExchange = Boolean(
-    session.regionId &&
-    isSunriseServiceEnabled(
-      servicePolicy,
-      "object-storage",
-      session.regionId,
-    ) &&
-    servicePolicy.objectStorageBackends.includes("s3") &&
-    isObjectStorageBackendEnabled(servicePolicy, "s3", session.regionId) &&
-    isRgwOidcConfigured(idp),
-  );
-  const rgwExchangePromise = canStartRgwExchange ? exchangeRgwToken() : null;
   session.oidcIdentity = undefined;
   session.authRecovery = undefined;
   session.keystone_unscoped_token = undefined;
@@ -139,9 +119,6 @@ export async function GET(request: Request) {
   session.projectId = undefined;
   session.s3ProjectRoles = undefined;
   session.s3Credentials = undefined;
-  session.s3OidcRefreshToken = undefined;
-  session.s3OidcIdentityProvider = undefined;
-  session.s3OidcPendingIdentityProvider = undefined;
   session.cloudContextBootstrapId = undefined;
 
   // 1. Federate into Keystone.
@@ -163,7 +140,7 @@ export async function GET(request: Request) {
     await session.save();
     const msg = e instanceof Error ? e.message : "unknown error";
     console.error("[oidc/callback] Keystone federation failed:", msg);
-    return NextResponse.redirect(DASHBOARD_URL, { status: 303 });
+    return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
   }
 
   let resolution: KeystoneSessionResolution;
@@ -182,12 +159,12 @@ export async function GET(request: Request) {
     await session.save();
     const msg = e instanceof Error ? e.message : "unknown error";
     console.error("[oidc/callback] Keystone session finalize failed:", msg);
-    return NextResponse.redirect(DASHBOARD_URL, { status: 303 });
+    return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
   }
 
   if (resolution.status !== "ready") {
     await session.save();
-    return NextResponse.redirect(DASHBOARD_URL, { status: 303 });
+    return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
   }
 
   session.authRecovery = undefined;
@@ -202,7 +179,8 @@ export async function GET(request: Request) {
       undefined,
   });
 
-  // 2. Token-exchange + STS only when S3 is selected for this region.
+  // 2. STS only when S3 is selected for this region. The primary Sunrise
+  // access token is also the RGW web-identity token.
   const objectStorage =
     resolution.catalog &&
     session.regionId &&
@@ -215,21 +193,9 @@ export async function GET(request: Request) {
       : null;
   if (objectStorage?.backend === "s3") {
     try {
-      if (!isRgwOidcConfigured(idp)) {
-        throw new Error(
-          `RGW OIDC is not configured for Identity Provider ${idp}`,
-        );
-      }
-      const exchangeResult = await (rgwExchangePromise ?? exchangeRgwToken());
-      if (!exchangeResult.ok) throw exchangeResult.error;
-      const exchanged = exchangeResult.exchanged;
-      const rgwIdToken = exchanged.id_token ?? exchanged.access_token;
       const projectRoles = tryExtractRgwProjectRoles(
-        rgwIdToken,
-        exchanged.id_token,
-        exchanged.access_token,
-        tokens.id_token,
         tokens.access_token,
+        tokens.id_token,
       );
       if (!projectRoles) {
         throw new Error("RGW project roles claim is missing from token");
@@ -252,7 +218,7 @@ export async function GET(request: Request) {
         catalog: resolution.catalog,
       });
       const creds = await assumeRoleWithIdToken(
-        rgwIdToken,
+        tokens.access_token,
         projectId,
         roleArn,
         endpoint,
@@ -263,14 +229,17 @@ export async function GET(request: Request) {
       // Non-fatal: user can still use other services. Object Storage will try
       // one server-side credential refresh before showing its recovery state.
       const msg = e instanceof Error ? e.message : "unknown error";
-      console.error("[oidc/callback] STS exchange failed (non-fatal):", msg);
+      console.error("[oidc/callback] STS setup failed (non-fatal):", msg);
     }
   }
 
   await session.save();
-  const response = NextResponse.redirect(new URL(returnTo, DASHBOARD_URL), {
-    status: 303,
-  });
+  const response = NextResponse.redirect(
+    new URL(returnTo, SUNRISE_DASHBOARD_URL),
+    {
+      status: 303,
+    },
+  );
   response.cookies.set(SESSION_EXPIRY_NOTICE_COOKIE, "", {
     expires: new Date(0),
     path: "/",

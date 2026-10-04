@@ -9,12 +9,10 @@ import type { SunriseIdentity } from "@/lib/session";
  * Sunrise itself acts as the OIDC Relying Party against Keycloak using a
  * confidential client (`sunrise-server`). The user-driven Authorization Code
  * + PKCE flow yields the user's real Keycloak id/access/refresh tokens, which
- * we then:
- *   1. Federate into Keystone (bearer-token federation endpoint) to obtain
- *      an unscoped Keystone token.
- *   2. Exchange (RFC 8693 token-exchange) for an `rgw-client-public-browser`
- *      audience id_token, fed to RGW STS AssumeRoleWithWebIdentity to get
- *      S3 temp credentials.
+ * we then use to federate into Keystone and, when S3 is enabled, obtain RGW
+ * STS credentials with AssumeRoleWithWebIdentity. The confidential client is
+ * registered as an RGW OIDC audience and carries the required role and session
+ * tag claims, so both cloud sessions share one refresh-token lifecycle.
  *
  * One user-visible login → both Keystone session and S3 STS creds.
  */
@@ -29,8 +27,7 @@ export type SunriseOidcConfig = {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
-  rgwAudience?: string;
-  rgwStsDurationSeconds?: number;
+  rgwStsDurationSeconds: number;
 };
 
 export type OidcAuthorizationPrompt = "login" | "select_account";
@@ -39,8 +36,8 @@ export function getSunriseOidcConfig(
   identityProvider: string,
 ): SunriseOidcConfig {
   const provider = getFederationProviderConfig(identityProvider);
-  const dashboardUrl = process.env.DASHBOARD_URL;
-  if (!dashboardUrl) throw new Error("DASHBOARD_URL not set");
+  const dashboardUrl = process.env.SUNRISE_DASHBOARD_URL;
+  if (!dashboardUrl) throw new Error("SUNRISE_DASHBOARD_URL not set");
   return {
     identityProvider,
     protocol: provider.protocol,
@@ -48,13 +45,8 @@ export function getSunriseOidcConfig(
     clientId: provider.clientId,
     clientSecret: provider.clientSecret,
     redirectUri: `${dashboardUrl}${OIDC_CALLBACK_PATH}`,
-    rgwAudience: provider.rgw?.clientId,
-    rgwStsDurationSeconds: provider.rgw?.stsDurationSeconds,
+    rgwStsDurationSeconds: provider.rgwStsDurationSeconds,
   };
-}
-
-export function isRgwOidcConfigured(identityProvider: string) {
-  return Boolean(getSunriseOidcConfig(identityProvider).rgwAudience);
 }
 
 type OidcDiscovery = {
@@ -271,62 +263,6 @@ export async function refreshAccessToken(
     throw new Error(`OIDC refresh failed: ${res.status} ${text}`);
   }
   return (await res.json()) as RefreshTokenResult;
-}
-
-export type TokenExchangeResult = {
-  access_token: string;
-  id_token?: string;
-  issued_token_type: string;
-  token_type: string;
-  expires_in?: number;
-};
-
-/**
- * RFC 8693 token-exchange. Asks Keycloak to mint a token whose `aud` matches
- * the RGW STS client. Authenticates with the confidential `sunrise-server`
- * client. Requires that Keycloak token-exchange feature is enabled and that
- * `sunrise-server` is permitted to exchange to the target audience.
- */
-export async function tokenExchangeForRgw(
-  subjectAccessToken: string,
-  identityProvider: string,
-): Promise<TokenExchangeResult> {
-  const { token_endpoint } = await discoverOidc(identityProvider);
-  const { clientId, clientSecret, rgwAudience } =
-    getSunriseOidcConfig(identityProvider);
-  if (!rgwAudience) {
-    throw new Error(
-      `RGW OIDC is not configured for Identity Provider ${identityProvider}`,
-    );
-  }
-  const body = new URLSearchParams({
-    grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
-    subject_token: subjectAccessToken,
-    subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
-    // Keycloak < 26 (legacy token-exchange) cannot mint id_tokens here and
-    // returns `requested_token_type unsupported`. We request access_token
-    // instead; RGW STS validates it like any other JWT (signature + aud).
-    // The audience mapper on `sunrise-server` ensures aud contains the RGW
-    // client id. Switch to id_token once Keycloak is upgraded to 26+ with
-    // `--features=token-exchange-standard-v2`.
-    requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
-    audience: rgwAudience,
-  });
-  const res = await fetch(token_endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization:
-        "Basic " +
-        Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
-    },
-    body,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Token-exchange failed: ${res.status} ${text}`);
-  }
-  return (await res.json()) as TokenExchangeResult;
 }
 
 export async function buildAuthorizeUrl(opts: {

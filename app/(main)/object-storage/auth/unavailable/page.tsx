@@ -26,9 +26,10 @@ export default async function ObjectStorageAuthUnavailablePage({
         Access could not be renewed
       </h1>
       <p className="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
-        Sunrise could not exchange the current cloud identity for fresh RGW
+        Sunrise could not use the current cloud identity to renew RGW
         credentials. Other cloud services remain available while you retry or
-        ask an administrator to review the project&apos;s Object Storage role.
+        ask an administrator to review the project&apos;s Object Storage role
+        and OIDC trust configuration.
       </p>
       <div className="mt-7 flex flex-wrap gap-3">
         <Link

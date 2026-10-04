@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { ExternalLink, Keyboard, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +29,10 @@ interface ConsoleWindowProps {
   projectId: string;
   serverName: string;
   regionId: string;
-  addresses?: Record<string, Array<{ addr: string; "OS-EXT-IPS:type"?: string; version?: number }>>;
+  addresses?: Record<
+    string,
+    Array<{ addr: string; "OS-EXT-IPS:type"?: string; version?: number }>
+  >;
   protocol: ConsoleProtocol;
   initialUrl: string | null;
   initialRawUrl: string | null;
@@ -36,7 +46,8 @@ function pickIp(
   if (!addresses) return undefined;
   for (const list of Object.values(addresses)) {
     for (const a of list) {
-      if ((a.version ?? 4) === version && a["OS-EXT-IPS:type"] === "floating") return a.addr;
+      if ((a.version ?? 4) === version && a["OS-EXT-IPS:type"] === "floating")
+        return a.addr;
     }
   }
   for (const list of Object.values(addresses)) {
@@ -89,7 +100,7 @@ export function ConsoleWindow({
   // CAVEATS:
   // - For this to work, sunrise.html MUST be served from the same origin as
   //   the Nova noVNC proxy and MUST allow our dashboard origin in its
-  //   `parentOrigin` query value. The server derives it from DASHBOARD_URL.
+  //   `parentOrigin` query value. The server derives it from SUNRISE_DASHBOARD_URL.
   // - We always send with a strict targetOrigin (the proxy origin) — never '*'
   //   — so a hijacked iframe location can't receive Ctrl+Alt+Del.
   // - The overlay uses same-origin external CSS and JS. If those assets are
@@ -132,17 +143,25 @@ export function ConsoleWindow({
         // multiple sessions open across projects in different popups; the
         // OpenStack call still scopes via the session's project token.
         void projectId;
-        const r = await getRemoteConsoleAction(serverId, protocol, undefined, regionId);
+        const r = await getRemoteConsoleAction(
+          serverId,
+          protocol,
+          undefined,
+          regionId,
+        );
         setUrl(r.url);
         setRawUrl(r.rawUrl);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to reload console");
+        setError(
+          err instanceof Error ? err.message : "Failed to reload console",
+        );
       }
     });
   };
 
   const ipv4 = pickIp(addresses, 4);
-  const canSendKeys = bridgeReadyUrl === url && url !== null && protocol === "vnc";
+  const canSendKeys =
+    bridgeReadyUrl === url && url !== null && protocol === "vnc";
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground">
@@ -201,7 +220,11 @@ export function ConsoleWindow({
           </Button>
           {(rawUrl ?? url) && (
             <Button asChild size="sm" variant="secondary" className="gap-2">
-              <a href={rawUrl ?? url ?? "#"} target="_blank" rel="noreferrer noopener">
+              <a
+                href={rawUrl ?? url ?? "#"}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
                 <ExternalLink className="h-3.5 w-3.5" />
                 Open raw
               </a>
@@ -214,18 +237,24 @@ export function ConsoleWindow({
             disabled={isPending}
             className="gap-2"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`}
+            />
             Reconnect
           </Button>
         </div>
       </div>
-      <Dialog open={confirmCtrlAltDelOpen} onOpenChange={setConfirmCtrlAltDelOpen}>
+      <Dialog
+        open={confirmCtrlAltDelOpen}
+        onOpenChange={setConfirmCtrlAltDelOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Send Ctrl+Alt+Del?</DialogTitle>
             <DialogDescription>
-              This sends Ctrl+Alt+Del to {serverName}. Depending on the guest operating
-              system, it may reboot the instance or interrupt an active login session.
+              This sends Ctrl+Alt+Del to {serverName}. Depending on the guest
+              operating system, it may reboot the instance or interrupt an
+              active login session.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -236,7 +265,11 @@ export function ConsoleWindow({
             >
               Cancel
             </Button>
-            <Button type="button" variant="destructive" onClick={confirmCtrlAltDel}>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmCtrlAltDel}
+            >
               <Keyboard className="h-4 w-4" />
               Send Ctrl+Alt+Del
             </Button>
