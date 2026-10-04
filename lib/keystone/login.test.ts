@@ -39,7 +39,12 @@ const region: Region = {
 };
 
 function session() {
-  return {} as Parameters<typeof finalizeKeystoneSession>[0];
+  return {
+    oidcIdentity: {
+      issuer: "https://identity.example.test/realms/demo",
+      subject: "user-one",
+    },
+  } as Parameters<typeof finalizeKeystoneSession>[0];
 }
 
 function requestUrl(input: string | URL | Request) {

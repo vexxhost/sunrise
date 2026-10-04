@@ -1,23 +1,29 @@
-'use server';
+"use server";
 
-import { cookies } from 'next/headers';
+import { createHash } from "node:crypto";
+import { cookies } from "next/headers";
 import {
   parseResourcePreferences,
   serializeResourcePreferences,
   type ResourcePreference,
-} from '@/lib/resource-preferences';
+} from "@/lib/resource-preferences";
 import {
   parseSunriseAppearance,
   type SunriseAppearance,
-} from '@/lib/theme-preference';
+} from "@/lib/theme-preference";
 import {
   parseFavoriteDestinationIds,
   type NavigationDestinationId,
-} from '@/lib/navigation-destinations';
+} from "@/lib/navigation-destinations";
+import type { PreferenceIdentity } from "@/lib/preference-identity";
 
-const PREFS_COOKIE = 'sunrise_prefs';
+const PREFS_COOKIE = "sunrise_prefs";
+const ACCOUNT_PREFS_COOKIE_PREFIX = `${PREFS_COOKIE}_account_`;
 const PREFS_MAX_AGE_DAYS = 365;
-const PREFS_COOKIE_SAFE_LENGTH = 3800;
+const ACCOUNT_PREFS_MAX_AGE_DAYS = 90;
+const ACCOUNT_PREFS_COOKIE_SAFE_LENGTH = 1200;
+const MAX_ACCOUNT_PREFS_COOKIES = 3;
+const ACCOUNT_PREFS_UPDATED_AT = "__updatedAt";
 
 export type SunrisePrefs = {
   appearance?: SunriseAppearance;
@@ -29,21 +35,23 @@ export type SunrisePrefs = {
   favoriteDestinations?: NavigationDestinationId[];
 };
 
-export async function readPrefs(): Promise<SunrisePrefs> {
-  const store = await cookies();
-  const raw = store.get(PREFS_COOKIE)?.value;
-  if (!raw) return {};
+type AccountPrefs = Omit<SunrisePrefs, "appearance">;
+type CookieStore = Awaited<ReturnType<typeof cookies>>;
+
+function parseCookie(value?: string): SunrisePrefs {
+  if (!value) return {};
+
   try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === "object") {
       return {
         appearance: parseSunriseAppearance(parsed.appearance),
         regionId:
-          typeof parsed.regionId === 'string' ? parsed.regionId : undefined,
+          typeof parsed.regionId === "string" ? parsed.regionId : undefined,
         projectId:
-          typeof parsed.projectId === 'string' ? parsed.projectId : undefined,
+          typeof parsed.projectId === "string" ? parsed.projectId : undefined,
         projectName:
-          typeof parsed.projectName === 'string'
+          typeof parsed.projectName === "string"
             ? parsed.projectName
             : undefined,
         recentResources: parseResourcePreferences(parsed.recentResources),
@@ -54,21 +62,42 @@ export async function readPrefs(): Promise<SunrisePrefs> {
       };
     }
   } catch {
-    // ignore malformed cookie
+    // Ignore malformed preference cookies.
   }
   return {};
 }
 
-export async function writePrefs(patch: Partial<SunrisePrefs>): Promise<void> {
-  const current = await readPrefs();
-  const next: SunrisePrefs = { ...current, ...patch };
+function accountCookieName(identity: PreferenceIdentity) {
+  const identityDigest = createHash("sha256")
+    .update(identity.issuer)
+    .update("\0")
+    .update(identity.subject)
+    .digest("hex")
+    .slice(0, 32);
+  return `${ACCOUNT_PREFS_COOKIE_PREFIX}${identityDigest}`;
+}
+
+function accountPrefs(prefs: SunrisePrefs): AccountPrefs {
+  return {
+    regionId: prefs.regionId,
+    projectId: prefs.projectId,
+    projectName: prefs.projectName,
+    recentResources: prefs.recentResources,
+    pinnedResources: prefs.pinnedResources,
+    favoriteDestinations: prefs.favoriteDestinations,
+  };
+}
+
+function serializeAccountPrefs(next: AccountPrefs) {
   const serialized = {
     ...next,
+    projectName: next.projectName?.slice(0, 256),
     recentResources: serializeResourcePreferences(next.recentResources),
     pinnedResources: serializeResourcePreferences(next.pinnedResources),
     favoriteDestinations: parseFavoriteDestinationIds(
       next.favoriteDestinations,
     ),
+    [ACCOUNT_PREFS_UPDATED_AT]: Date.now(),
   };
 
   const recent = serialized.recentResources;
@@ -76,7 +105,7 @@ export async function writePrefs(patch: Partial<SunrisePrefs>): Promise<void> {
   const favorites = serialized.favoriteDestinations;
   let value = JSON.stringify(serialized);
   while (
-    encodeURIComponent(value).length > PREFS_COOKIE_SAFE_LENGTH &&
+    encodeURIComponent(value).length > ACCOUNT_PREFS_COOKIE_SAFE_LENGTH &&
     (recent.length > 0 || pinned.length > 0 || favorites.length > 0)
   ) {
     if (recent.length > 0) recent.pop();
@@ -84,17 +113,135 @@ export async function writePrefs(patch: Partial<SunrisePrefs>): Promise<void> {
     else favorites.pop();
     value = JSON.stringify(serialized);
   }
+  if (encodeURIComponent(value).length > ACCOUNT_PREFS_COOKIE_SAFE_LENGTH) {
+    serialized.projectName = undefined;
+    value = JSON.stringify(serialized);
+  }
+  return value;
+}
+
+function accountPreferenceUpdatedAt(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    const updatedAt = parsed?.[ACCOUNT_PREFS_UPDATED_AT];
+    return typeof updatedAt === "number" && Number.isFinite(updatedAt)
+      ? updatedAt
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function pruneAccountPreferenceCookies(
+  store: CookieStore,
+  currentName: string,
+) {
+  const accountCookies = store
+    .getAll()
+    .filter(({ name }) => name.startsWith(ACCOUNT_PREFS_COOKIE_PREFIX));
+  if (accountCookies.length <= MAX_ACCOUNT_PREFS_COOKIES) return;
+
+  accountCookies.sort((left, right) => {
+    if (left.name === currentName) return 1;
+    if (right.name === currentName) return -1;
+    return (
+      accountPreferenceUpdatedAt(left.value) -
+      accountPreferenceUpdatedAt(right.value)
+    );
+  });
+
+  for (const cookie of accountCookies.slice(
+    0,
+    accountCookies.length - MAX_ACCOUNT_PREFS_COOKIES,
+  )) {
+    store.delete(cookie.name);
+  }
+}
+
+function accountPatch(patch: Partial<SunrisePrefs>) {
+  const scoped: Partial<AccountPrefs> = {};
+  if ("regionId" in patch) scoped.regionId = patch.regionId;
+  if ("projectId" in patch) scoped.projectId = patch.projectId;
+  if ("projectName" in patch) scoped.projectName = patch.projectName;
+  if ("recentResources" in patch) {
+    scoped.recentResources = patch.recentResources;
+  }
+  if ("pinnedResources" in patch) {
+    scoped.pinnedResources = patch.pinnedResources;
+  }
+  if ("favoriteDestinations" in patch) {
+    scoped.favoriteDestinations = patch.favoriteDestinations;
+  }
+  return scoped;
+}
+
+function setPreferenceCookie(
+  store: CookieStore,
+  name: string,
+  value: string,
+  httpOnly: boolean,
+  maxAgeDays = PREFS_MAX_AGE_DAYS,
+) {
+  store.set(name, value, {
+    path: "/",
+    maxAge: maxAgeDays * 24 * 60 * 60,
+    // Preserve preferences across the federated login callback.
+    sameSite: "none",
+    secure: true,
+    httpOnly,
+  });
+}
+
+export async function readPrefs(
+  identity?: PreferenceIdentity,
+): Promise<SunrisePrefs> {
+  const store = await cookies();
+  const globalPrefs = parseCookie(store.get(PREFS_COOKIE)?.value);
+  if (!identity) return { appearance: globalPrefs.appearance };
+
+  const scopedPrefs = parseCookie(
+    store.get(accountCookieName(identity))?.value,
+  );
+  return {
+    appearance: globalPrefs.appearance,
+    ...accountPrefs(scopedPrefs),
+  };
+}
+
+export async function writePrefs(
+  patch: Partial<SunrisePrefs>,
+  identity?: PreferenceIdentity,
+): Promise<void> {
+  const scopedPatch = accountPatch(patch);
+  if (Object.keys(scopedPatch).length > 0 && !identity) {
+    throw new Error("Account preference writes require an OIDC identity");
+  }
 
   const store = await cookies();
-  store.set(PREFS_COOKIE, value, {
-    path: '/',
-    maxAge: PREFS_MAX_AGE_DAYS * 24 * 60 * 60,
-    // SameSite=None + Secure is required so the cookie is sent on the
-    // cross-site POST that Keystone makes back to /auth/websso after a
-    // federated login. Browsers accept Secure cookies on http://localhost
-    // because localhost is treated as a secure context.
-    sameSite: 'none',
-    secure: true,
-    httpOnly: false, // not sensitive; allow client read if ever needed
-  });
+  const globalPrefs = parseCookie(store.get(PREFS_COOKIE)?.value);
+
+  if (patch.appearance !== undefined) {
+    globalPrefs.appearance = patch.appearance;
+  }
+  setPreferenceCookie(
+    store,
+    PREFS_COOKIE,
+    JSON.stringify({ appearance: globalPrefs.appearance }),
+    false,
+  );
+
+  if (Object.keys(scopedPatch).length === 0) return;
+  if (!identity) return;
+
+  const name = accountCookieName(identity);
+  const current = accountPrefs(parseCookie(store.get(name)?.value));
+  const next = { ...current, ...scopedPatch };
+  setPreferenceCookie(
+    store,
+    name,
+    serializeAccountPrefs(next),
+    true,
+    ACCOUNT_PREFS_MAX_AGE_DAYS,
+  );
+  pruneAccountPreferenceCookies(store, name);
 }

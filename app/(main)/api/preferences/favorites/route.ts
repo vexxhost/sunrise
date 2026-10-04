@@ -7,6 +7,7 @@ import {
 import { readPrefs, writePrefs } from "@/lib/prefs";
 import { isSameOriginRequest } from "@/lib/request-origin";
 import { getSession } from "@/lib/session";
+import { preferenceIdentityFromSession } from "@/lib/preference-identity";
 
 export async function POST(request: NextRequest) {
   if (
@@ -23,6 +24,13 @@ export async function POST(request: NextRequest) {
   if (!session.keystoneProjectToken) {
     return NextResponse.json(
       { error: "Authentication required" },
+      { status: 401 },
+    );
+  }
+  const preferenceIdentity = preferenceIdentityFromSession(session);
+  if (!preferenceIdentity) {
+    return NextResponse.json(
+      { error: "Authenticated identity required" },
       { status: 401 },
     );
   }
@@ -45,12 +53,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid destination" }, { status: 400 });
   }
 
-  const prefs = await readPrefs();
+  const prefs = await readPrefs(preferenceIdentity);
   const favoriteDestinations = toggleFavoriteDestination(
     parseFavoriteDestinationIds(prefs.favoriteDestinations),
     destinationId,
   );
-  await writePrefs({ favoriteDestinations });
+  await writePrefs({ favoriteDestinations }, preferenceIdentity);
 
   return NextResponse.json({ favoriteDestinations });
 }

@@ -15,6 +15,11 @@ vi.mock("@/lib/prefs", () => ({
 
 import { POST } from "./route";
 
+const preferenceIdentity = {
+  issuer: "https://identity.example.test/realms/demo",
+  subject: "user-one",
+};
+
 function favoriteRequest(destinationId: unknown, origin?: string) {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (origin) headers.set("Origin", origin);
@@ -28,7 +33,10 @@ function favoriteRequest(destinationId: unknown, origin?: string) {
 describe("destination favorites route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSession.mockResolvedValue({ keystoneProjectToken: "token" });
+    mocks.getSession.mockResolvedValue({
+      keystoneProjectToken: "token",
+      oidcIdentity: preferenceIdentity,
+    });
     mocks.readPrefs.mockResolvedValue({
       favoriteDestinations: ["compute.instances"],
     });
@@ -44,9 +52,12 @@ describe("destination favorites route", () => {
     expect(await response.json()).toEqual({
       favoriteDestinations: ["compute.volumes", "compute.instances"],
     });
-    expect(mocks.writePrefs).toHaveBeenCalledWith({
-      favoriteDestinations: ["compute.volumes", "compute.instances"],
-    });
+    expect(mocks.writePrefs).toHaveBeenCalledWith(
+      {
+        favoriteDestinations: ["compute.volumes", "compute.instances"],
+      },
+      preferenceIdentity,
+    );
   });
 
   it("removes an existing destination favorite", async () => {
@@ -73,6 +84,18 @@ describe("destination favorites route", () => {
 
     expect(response.status).toBe(403);
     expect(mocks.getSession).not.toHaveBeenCalled();
+    expect(mocks.writePrefs).not.toHaveBeenCalled();
+  });
+
+  it("rejects preference writes when the session has no stable identity", async () => {
+    mocks.getSession.mockResolvedValue({ keystoneProjectToken: "token" });
+
+    const response = await POST(
+      favoriteRequest("compute.instances", "http://localhost"),
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.readPrefs).not.toHaveBeenCalled();
     expect(mocks.writePrefs).not.toHaveBeenCalled();
   });
 });

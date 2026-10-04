@@ -7,6 +7,7 @@ import {
   getSession,
 } from "@/lib/session";
 import { writePrefs } from "@/lib/prefs";
+import { preferenceIdentityFromSession } from "@/lib/preference-identity";
 import type { Region, Project } from "@/types/openstack";
 import { getProjectScopedToken } from "@/lib/keystone/login";
 import { refreshActiveProjectS3Credentials } from "@/lib/s3/session";
@@ -29,7 +30,10 @@ export async function setRegion(region: Region) {
   // invalidate them so the user re-auths against the new region.
   clearS3Credentials(session);
   await session.save();
-  await writePrefs({ regionId: region.id });
+  const preferenceIdentity = preferenceIdentityFromSession(session);
+  if (preferenceIdentity) {
+    await writePrefs({ regionId: region.id }, preferenceIdentity);
+  }
 
   // Revalidate all pages to pick up new region
   revalidatePath("/", "layout");
@@ -100,7 +104,13 @@ export async function setProject(project: Project) {
   }
 
   await session.save();
-  await writePrefs({ projectId: project.id, projectName: project.name });
+  const preferenceIdentity = preferenceIdentityFromSession(session);
+  if (preferenceIdentity) {
+    await writePrefs(
+      { projectId: project.id, projectName: project.name },
+      preferenceIdentity,
+    );
+  }
 
   // Revalidate all pages to pick up new project
   revalidatePath("/", "layout");
