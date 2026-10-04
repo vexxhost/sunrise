@@ -64,6 +64,26 @@ describe("Keystone auth refresh route", () => {
     );
   });
 
+  it("uses the persisted provider when OIDC identity enrichment is unavailable", async () => {
+    mocks.getSession.mockResolvedValue({
+      ...session(),
+      federationIdentityProvider: "atmosphere",
+      oidcIdentity: undefined,
+    });
+    mocks.refreshKeystoneSession.mockResolvedValue("reauthenticate");
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/refresh?returnTo=%2Fobject-storage%2Fbuckets",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/auth/oidc/login?idp=atmosphere&returnTo=%2Fobject-storage%2Fbuckets&continuation=1",
+    );
+  });
+
   it("does not renew an expired Sunrise session", async () => {
     mocks.getSession.mockResolvedValue({
       ...session(),

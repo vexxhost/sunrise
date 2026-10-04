@@ -21,7 +21,9 @@ export async function GET(request: Request) {
   if (session.sessionExpiryReason) {
     return NextResponse.redirect(new URL("/", DASHBOARD_URL), { status: 303 });
   }
-  const identityProvider = session.oidcIdentity?.identityProvider;
+  const identityProvider =
+    session.federationIdentityProvider ??
+    session.oidcIdentity?.identityProvider;
 
   try {
     const result = await refreshKeystoneSession(session);

@@ -14,6 +14,7 @@ import {
 } from "@/lib/session-lifetime";
 import {
   exchangeCodeForTokens,
+  getSunriseOidcConfig,
   isRgwOidcConfigured,
   resolveOidcIdentity,
   tokenExchangeForRgw,
@@ -35,8 +36,6 @@ import {
 } from "@/lib/service-policy";
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL ?? "/";
-const PROTOCOL =
-  process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDER_PROTOCOL ?? "openid";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -80,8 +79,10 @@ export async function GET(request: Request) {
   }
 
   let servicePolicy: ServicePolicy;
+  let oidcConfig: ReturnType<typeof getSunriseOidcConfig>;
   try {
     servicePolicy = getServicePolicy();
+    oidcConfig = getSunriseOidcConfig(idp);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Invalid service policy";
@@ -93,7 +94,7 @@ export async function GET(request: Request) {
 
   let tokens;
   try {
-    tokens = await exchangeCodeForTokens(code, verifier);
+    tokens = await exchangeCodeForTokens(code, verifier, idp);
   } catch (e) {
     await session.save();
     const msg = e instanceof Error ? e.message : "unknown error";
@@ -108,13 +109,14 @@ export async function GET(request: Request) {
   }
 
   session.keycloakRefreshToken = tokens.refresh_token;
+  session.federationIdentityProvider = idp;
   const identityPromise = resolveOidcIdentity(
     tokens.access_token,
     tokens.id_token,
     idp,
   );
   const exchangeRgwToken = () =>
-    tokenExchangeForRgw(tokens.access_token).then(
+    tokenExchangeForRgw(tokens.access_token, idp).then(
       (exchanged) => ({ ok: true as const, exchanged }),
       (error: unknown) => ({ ok: false as const, error }),
     );
@@ -127,7 +129,7 @@ export async function GET(request: Request) {
     ) &&
     servicePolicy.objectStorageBackends.includes("s3") &&
     isObjectStorageBackendEnabled(servicePolicy, "s3", session.regionId) &&
-    isRgwOidcConfigured(),
+    isRgwOidcConfigured(idp),
   );
   const rgwExchangePromise = canStartRgwExchange ? exchangeRgwToken() : null;
   session.oidcIdentity = undefined;
@@ -138,6 +140,8 @@ export async function GET(request: Request) {
   session.s3ProjectRoles = undefined;
   session.s3Credentials = undefined;
   session.s3OidcRefreshToken = undefined;
+  session.s3OidcIdentityProvider = undefined;
+  session.s3OidcPendingIdentityProvider = undefined;
   session.cloudContextBootstrapId = undefined;
 
   // 1. Federate into Keystone.
@@ -145,7 +149,7 @@ export async function GET(request: Request) {
   try {
     const [identityResult, federationResult] = await Promise.allSettled([
       identityPromise,
-      federateOidcWithKeystone(tokens.access_token, idp, PROTOCOL),
+      federateOidcWithKeystone(tokens.access_token, idp, oidcConfig.protocol),
     ]);
     if (identityResult.status === "fulfilled") {
       session.oidcIdentity = identityResult.value ?? undefined;
@@ -211,9 +215,9 @@ export async function GET(request: Request) {
       : null;
   if (objectStorage?.backend === "s3") {
     try {
-      if (!isRgwOidcConfigured()) {
+      if (!isRgwOidcConfigured(idp)) {
         throw new Error(
-          "KEYCLOAK_S3_CLIENT_ID is required for the selected S3 backend",
+          `RGW OIDC is not configured for Identity Provider ${idp}`,
         );
       }
       const exchangeResult = await (rgwExchangePromise ?? exchangeRgwToken());
@@ -252,6 +256,7 @@ export async function GET(request: Request) {
         projectId,
         roleArn,
         endpoint,
+        oidcConfig.rgwStsDurationSeconds,
       );
       setS3CredentialsForProject(session, creds);
     } catch (e) {

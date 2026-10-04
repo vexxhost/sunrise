@@ -5,12 +5,9 @@ import {
   federateOidcWithKeystone,
   finalizeKeystoneSession,
 } from "@/lib/keystone/login";
-import { refreshAccessToken } from "@/lib/oidc/sunrise";
+import { getSunriseOidcConfig, refreshAccessToken } from "@/lib/oidc/sunrise";
 import type { SunriseSession } from "@/lib/session";
 import { getSessionLifetimeState } from "@/lib/session-lifetime";
-
-const PROTOCOL =
-  process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDER_PROTOCOL ?? "openid";
 
 export type KeystoneRenewalResult =
   "ready" | "no-projects" | "no-role" | "reauthenticate" | "expired";
@@ -21,12 +18,16 @@ export async function refreshKeystoneSession(
   if (getSessionLifetimeState(session).status !== "active") return "expired";
 
   const refreshToken = session.keycloakRefreshToken;
-  const identityProvider = session.oidcIdentity?.identityProvider;
+  const identityProvider =
+    session.federationIdentityProvider ??
+    session.oidcIdentity?.identityProvider;
   if (!refreshToken || !identityProvider) return "reauthenticate";
 
   let refreshed;
+  let protocol: string;
   try {
-    refreshed = await refreshAccessToken(refreshToken);
+    protocol = getSunriseOidcConfig(identityProvider).protocol;
+    refreshed = await refreshAccessToken(refreshToken, identityProvider);
   } catch (error) {
     console.warn("[keystone/session] failed to refresh Keycloak token", {
       error: error instanceof Error ? error.message : String(error),
@@ -41,7 +42,7 @@ export async function refreshKeystoneSession(
   const unscopedToken = await federateOidcWithKeystone(
     refreshed.access_token,
     identityProvider,
-    PROTOCOL,
+    protocol,
   );
   const resolution = await finalizeKeystoneSession(session, unscopedToken);
 

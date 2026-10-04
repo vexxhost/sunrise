@@ -41,7 +41,12 @@ export async function GET(request: Request) {
   session.oidcSessionContinuation = continuation || undefined;
   await session.save();
 
-  const authorizeUrl = await buildAuthorizeUrl({ challenge, state, prompt });
+  const authorizeUrl = await buildAuthorizeUrl({
+    identityProvider: idp,
+    challenge,
+    state,
+    prompt,
+  });
   const response = NextResponse.redirect(authorizeUrl);
   response.cookies.set(AUTH_PROMPT_COOKIE, "", {
     expires: new Date(0),

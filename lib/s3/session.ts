@@ -9,7 +9,11 @@ import {
   type SunriseSession,
 } from "@/lib/session";
 import { getSessionLifetimeState } from "@/lib/session-lifetime";
-import { refreshS3Tokens, type S3OidcRefreshResult } from "@/lib/s3/oidc";
+import {
+  getOidcConfig,
+  refreshS3Tokens,
+  type S3OidcRefreshResult,
+} from "@/lib/s3/oidc";
 import { assumeRoleWithIdToken, tryExtractRgwProjectRoles } from "@/lib/s3/sts";
 
 export class S3ProjectRoleUnavailableError extends Error {
@@ -27,10 +31,18 @@ export async function refreshActiveProjectS3Credentials(
   const projectId = normalizeProjectId(session.projectId);
   if (!projectId) return undefined;
   if (!session.s3OidcRefreshToken) return undefined;
+  const identityProvider =
+    session.s3OidcIdentityProvider ??
+    session.federationIdentityProvider ??
+    session.oidcIdentity?.identityProvider;
+  if (!identityProvider) return undefined;
 
   let refreshed: S3OidcRefreshResult;
   try {
-    refreshed = await refreshS3Tokens(session.s3OidcRefreshToken);
+    refreshed = await refreshS3Tokens(
+      session.s3OidcRefreshToken,
+      identityProvider,
+    );
     if (!refreshed.id_token) {
       throw new Error("S3 OIDC refresh did not return an ID token");
     }
@@ -45,6 +57,10 @@ export async function refreshActiveProjectS3Credentials(
 
   if (refreshed.refresh_token) {
     session.s3OidcRefreshToken = refreshed.refresh_token;
+    sessionChanged = true;
+  }
+  if (session.s3OidcIdentityProvider !== identityProvider) {
+    session.s3OidcIdentityProvider = identityProvider;
     sessionChanged = true;
   }
 
@@ -71,10 +87,13 @@ export async function refreshActiveProjectS3Credentials(
     throw new S3ProjectRoleUnavailableError(projectId);
   }
 
+  const { stsDurationSeconds } = getOidcConfig(identityProvider);
   const creds = await assumeRoleWithIdToken(
     refreshed.id_token,
     projectId,
     roleArn,
+    undefined,
+    stsDurationSeconds,
   );
   setS3CredentialsForProject(session, creds);
   await session.save();

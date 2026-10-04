@@ -47,6 +47,7 @@ describe("OIDC login route", () => {
       "https://identity.example.test/authorize",
     );
     expect(mocks.buildAuthorizeUrl).toHaveBeenCalledWith({
+      identityProvider: "demo",
       challenge: "pkce-challenge",
       state: "oidc-state",
       prompt: "select_account",

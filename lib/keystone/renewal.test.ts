@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   federateOidcWithKeystone: vi.fn(),
   finalizeKeystoneSession: vi.fn(),
+  getSunriseOidcConfig: vi.fn(),
   refreshAccessToken: vi.fn(),
 }));
 
@@ -12,6 +13,7 @@ vi.mock("@/lib/keystone/login", () => ({
   finalizeKeystoneSession: mocks.finalizeKeystoneSession,
 }));
 vi.mock("@/lib/oidc/sunrise", () => ({
+  getSunriseOidcConfig: mocks.getSunriseOidcConfig,
   refreshAccessToken: mocks.refreshAccessToken,
 }));
 
@@ -21,6 +23,7 @@ function session() {
   const now = Date.now();
   return {
     keycloakRefreshToken: "old-refresh-token",
+    federationIdentityProvider: "demo",
     oidcIdentity: { identityProvider: "demo" },
     authRecovery: { reason: "session-unavailable" },
     sessionSignedInAt: now - 1_000,
@@ -36,6 +39,7 @@ describe("Keystone session renewal", () => {
       access_token: "new-access-token",
       refresh_token: "rotated-refresh-token",
     });
+    mocks.getSunriseOidcConfig.mockReturnValue({ protocol: "demo-openid" });
     mocks.federateOidcWithKeystone.mockResolvedValue("new-unscoped-token");
     mocks.finalizeKeystoneSession.mockResolvedValue({ status: "ready" });
   });
@@ -46,11 +50,14 @@ describe("Keystone session renewal", () => {
     await expect(refreshKeystoneSession(current as never)).resolves.toBe(
       "ready",
     );
-    expect(mocks.refreshAccessToken).toHaveBeenCalledWith("old-refresh-token");
+    expect(mocks.refreshAccessToken).toHaveBeenCalledWith(
+      "old-refresh-token",
+      "demo",
+    );
     expect(mocks.federateOidcWithKeystone).toHaveBeenCalledWith(
       "new-access-token",
       "demo",
-      "openid",
+      "demo-openid",
     );
     expect(mocks.finalizeKeystoneSession).toHaveBeenCalledWith(
       current,
