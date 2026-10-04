@@ -1,7 +1,8 @@
 import "server-only";
 
 import type { IronSession } from "iron-session";
-import { getSunriseOidcConfig, refreshAccessToken } from "@/lib/oidc/sunrise";
+import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
+import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
 import {
   getActiveS3Credentials,
   normalizeProjectId,
@@ -33,21 +34,14 @@ async function refreshRgwIdentity(
   if (!session.keycloakRefreshToken) return undefined;
 
   try {
-    const refreshed = await refreshAccessToken(
-      session.keycloakRefreshToken,
-      identityProvider,
-    );
-    let sessionChanged = false;
-
-    if (refreshed.refresh_token) {
-      session.keycloakRefreshToken = refreshed.refresh_token;
-      sessionChanged = true;
-    }
+    const previousRefreshToken = session.keycloakRefreshToken;
+    const refreshed = await refreshSessionOidcTokens(session, identityProvider);
+    if (!refreshed) return undefined;
 
     return {
       token: refreshed.access_token,
       roleTokens: [refreshed.access_token, refreshed.id_token],
-      sessionChanged,
+      sessionChanged: session.keycloakRefreshToken !== previousRefreshToken,
     };
   } catch (error) {
     console.warn("[s3/session] failed to renew RGW access from Sunrise OIDC", {

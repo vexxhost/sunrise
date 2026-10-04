@@ -4,6 +4,7 @@ import {
   isServiceEnabled,
   isSunriseServiceEnabled,
   parseServicePolicy,
+  regionEnvironmentSuffix,
 } from "@/lib/service-policy";
 
 describe("service policy", () => {
@@ -97,6 +98,12 @@ describe("service policy", () => {
 
     expect(isServiceEnabled(policy, "dns", "Region-One")).toBe(false);
     expect(isServiceEnabled(policy, "dns", "RegionTwo")).toBe(true);
+  });
+
+  it("normalizes long region separators in linear time", () => {
+    expect(regionEnvironmentSuffix(`region${"_- ".repeat(10_000)}one`)).toBe(
+      "REGION_ONE",
+    );
   });
 
   it("rejects region suffix collisions", () => {

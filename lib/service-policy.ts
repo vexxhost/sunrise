@@ -86,11 +86,22 @@ function parseServiceList(value: unknown, source: string) {
 }
 
 export function regionEnvironmentSuffix(regionId: string) {
-  const suffix = regionId
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  let suffix = "";
+  let pendingSeparator = false;
+
+  for (const character of regionId.trim().toUpperCase()) {
+    const codePoint = character.charCodeAt(0);
+    const isAsciiLetter = codePoint >= 65 && codePoint <= 90;
+    const isDigit = codePoint >= 48 && codePoint <= 57;
+
+    if (isAsciiLetter || isDigit) {
+      if (pendingSeparator && suffix) suffix += "_";
+      suffix += character;
+      pendingSeparator = false;
+    } else if (suffix) {
+      pendingSeparator = true;
+    }
+  }
 
   if (!suffix) {
     throw new Error(
