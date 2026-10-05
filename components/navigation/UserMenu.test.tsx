@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
       message: "Object Storage access is active",
     },
     objectStorage: { backend: "s3" },
+    services: [{ id: "identity" }],
   },
 }));
 
@@ -71,6 +72,19 @@ describe("UserMenu", () => {
       expect(html).toContain('title="role-20"');
     } finally {
       mocks.context.user.roles = originalRoles;
+    }
+  });
+
+  it("hides the Identity shortcut when the service is disabled", () => {
+    const originalServices = mocks.context.services;
+    mocks.context.services = [];
+
+    try {
+      const html = renderToStaticMarkup(<UserMenu />);
+
+      expect(html).not.toContain('href="/identity"');
+    } finally {
+      mocks.context.services = originalServices;
     }
   });
 });

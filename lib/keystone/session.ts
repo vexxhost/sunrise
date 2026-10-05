@@ -71,7 +71,12 @@ export async function getKeystoneSessionState(
     return unscoped;
   }
 
-  if (session.projectId && !session.keystoneProjectToken) {
+  if (
+    session.projectId &&
+    (!session.keystoneProjectToken ||
+      session.keystoneProjectRoles === undefined)
+  ) {
+    const existingProjectToken = session.keystoneProjectToken;
     const context = await getProjectScopedTokenContext(
       session.keystone_unscoped_token,
       session.projectId,
@@ -81,7 +86,7 @@ export async function getKeystoneSessionState(
       session.keystoneProjectToken = context.value;
       session.keystoneProjectRoles = context.roles;
       await session.save();
-    } else {
+    } else if (!existingProjectToken) {
       return {
         status: "unknown",
         reason: "Session has a project selection but no project-scoped token",

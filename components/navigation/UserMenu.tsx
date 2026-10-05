@@ -19,7 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export function UserMenu() {
-  const { user, project, role, objectStorage } = useCloudContext();
+  const { user, project, role, objectStorage, services } = useCloudContext();
   const userName = user.name;
   if (!userName) {
     return null;
@@ -37,6 +37,7 @@ export function UserMenu() {
       : role.status === "authentication-required"
         ? "Sign-in required"
         : "Not available";
+  const identityEnabled = services.some(({ id }) => id === "identity");
 
   return (
     <>
@@ -141,15 +142,17 @@ export function UserMenu() {
               </div>
             </div>
             <ul className="pt-1">
-              <li>
-                <Link
-                  href="/identity"
-                  className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs transition-colors hover:bg-accent"
-                >
-                  <IdCard className="h-3.5 w-3.5" />
-                  Identity
-                </Link>
-              </li>
+              {identityEnabled ? (
+                <li>
+                  <Link
+                    href="/identity"
+                    className="flex w-full items-center gap-2 rounded-md p-2 text-left text-xs transition-colors hover:bg-accent"
+                  >
+                    <IdCard className="h-3.5 w-3.5" />
+                    Identity
+                  </Link>
+                </li>
+              ) : null}
               <li>
                 {/*
                 Use a plain <a> (not next/link) so logout performs a full page
