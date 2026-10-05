@@ -110,6 +110,10 @@ describe("cloud context snapshot", () => {
         projectId: projectTwoId,
         regionId: "RegionOne",
         keystoneProjectToken: "keystone-token",
+        keystoneProjectRoles: [
+          { id: "member-id", name: "member" },
+          { id: "reader-id", name: "reader" },
+        ],
         s3ProjectRoles: {
           [normalizedProjectOne]:
             "arn:aws:iam::RGW11111111111111111:role/service-roles/ProjectOneReadWrite",
@@ -143,6 +147,10 @@ describe("cloud context snapshot", () => {
       status: "active",
     });
     expect(snapshot.role.arn).toContain("RGW22222222222222222");
+    expect(snapshot.user.roles.map(({ name }) => name)).toEqual([
+      "member",
+      "reader",
+    ]);
     expect(snapshot.personalResources.pinned.map(({ id }) => id)).toEqual([
       "current",
     ]);

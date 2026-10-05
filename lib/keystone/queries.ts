@@ -1,5 +1,5 @@
 import { getSession } from '@/lib/session';
-import { getProjectScopedToken } from '@/lib/keystone/login';
+import { getProjectScopedTokenContext } from '@/lib/keystone/login';
 import { isKeystoneAuthFailure } from '@/lib/keystone/session';
 import type { Region, Project } from '@/types/openstack';
 import { redirect } from 'next/navigation';
@@ -90,14 +90,15 @@ export async function getProjects(): Promise<Project[]> {
 
     if (!session.projectId && projects.length > 0) {
       const project = projects[0];
-      const scopedToken = await getProjectScopedToken(
+      const scopedContext = await getProjectScopedTokenContext(
         session.keystone_unscoped_token,
         project.id
       );
 
-      if (scopedToken) {
+      if (scopedContext) {
         session.projectId = project.id;
-        session.keystoneProjectToken = scopedToken;
+        session.keystoneProjectToken = scopedContext.value;
+        session.keystoneProjectRoles = scopedContext.roles;
         await session.save();
       }
     }

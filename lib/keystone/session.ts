@@ -1,6 +1,6 @@
 import "server-only";
 import type { IronSession } from "iron-session";
-import { getProjectScopedToken } from "@/lib/keystone/login";
+import { getProjectScopedTokenContext } from "@/lib/keystone/login";
 import type { SunriseSession } from "@/lib/session";
 
 const KEYSTONE_API = process.env.KEYSTONE_API;
@@ -72,13 +72,14 @@ export async function getKeystoneSessionState(
   }
 
   if (session.projectId && !session.keystoneProjectToken) {
-    const token = await getProjectScopedToken(
+    const context = await getProjectScopedTokenContext(
       session.keystone_unscoped_token,
       session.projectId,
     );
 
-    if (token) {
-      session.keystoneProjectToken = token;
+    if (context) {
+      session.keystoneProjectToken = context.value;
+      session.keystoneProjectRoles = context.roles;
       await session.save();
     } else {
       return {
@@ -90,6 +91,7 @@ export async function getKeystoneSessionState(
 
   if (!session.projectId && session.keystoneProjectToken) {
     session.keystoneProjectToken = undefined;
+    session.keystoneProjectRoles = undefined;
     await session.save();
   }
 

@@ -12,7 +12,7 @@ function cloudContext(
   overrides: Partial<CloudContextSnapshot> = {},
 ): CloudContextSnapshot {
   return {
-    user: { name: "Sunrise Operator" },
+    user: { name: "Sunrise Operator", roles: [] },
     project: { id: "project-a", name: "Project A", status: "selected" },
     region: { id: "RegionOne", name: "RegionOne", status: "selected" },
     role: {

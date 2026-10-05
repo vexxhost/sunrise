@@ -116,6 +116,7 @@ export async function GET(request: Request) {
   session.authRecovery = undefined;
   session.keystone_unscoped_token = undefined;
   session.keystoneProjectToken = undefined;
+  session.keystoneProjectRoles = undefined;
   session.projectId = undefined;
   session.s3ProjectRoles = undefined;
   session.s3Credentials = undefined;

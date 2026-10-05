@@ -1,10 +1,11 @@
 import 'server-only';
 import type { IronSession } from 'iron-session';
 import type { OpenStackCatalogService } from '@/lib/openstack/catalog';
+import { normalizeTokenRoles } from '@/lib/openstack/application-credential-schema';
 import type { SunriseSession } from '@/lib/session';
 import { readPrefs, writePrefs } from '@/lib/prefs';
 import { preferenceIdentityFromSession } from '@/lib/preference-identity';
-import type { Project, Region } from '@/types/openstack/keystone';
+import type { KeystoneRole, Project, Region } from '@/types/openstack/keystone';
 
 function keystoneApi() {
   return process.env.KEYSTONE_API;
@@ -37,6 +38,7 @@ type ProjectScopedToken = {
   value: string;
   catalog?: OpenStackCatalogService[];
   userName?: string;
+  roles: KeystoneRole[];
 };
 
 function setupError(operation: string, status: number) {
@@ -185,6 +187,7 @@ async function requestProjectScopedToken(
     | {
         token?: {
           catalog?: OpenStackCatalogService[];
+          roles?: unknown;
           user?: { name?: string };
         };
       }
@@ -205,15 +208,16 @@ async function requestProjectScopedToken(
       typeof payload?.token?.user?.name === 'string'
         ? payload.token.user.name
         : undefined,
+    roles: normalizeTokenRoles(payload?.token?.roles),
   };
 }
 
-export async function getProjectScopedToken(
+export async function getProjectScopedTokenContext(
   unscopedToken: string,
   projectId: string,
-): Promise<string | undefined> {
+): Promise<ProjectScopedToken | undefined> {
   try {
-    return (await requestProjectScopedToken(unscopedToken, projectId)).value;
+    return await requestProjectScopedToken(unscopedToken, projectId);
   } catch (e) {
     console.error('Error fetching project-scoped token:', e);
     return undefined;
@@ -265,6 +269,7 @@ export async function finalizeKeystoneSession(
       selectedProject = project;
       session.projectId = project.id;
       session.keystoneProjectToken = scopedToken.value;
+      session.keystoneProjectRoles = scopedToken.roles;
       break;
     } catch (error) {
       if (
@@ -280,6 +285,7 @@ export async function finalizeKeystoneSession(
   if (!selectedProject) {
     session.projectId = undefined;
     session.keystoneProjectToken = undefined;
+    session.keystoneProjectRoles = undefined;
   }
 
   const previousRegionId = session.regionId ?? prefs.regionId;
