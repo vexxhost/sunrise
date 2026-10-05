@@ -10,6 +10,7 @@ import {
   getSessionLifetimeState,
   type SessionExpiryReason,
 } from "@/lib/session-lifetime";
+import type { KeystoneRole } from "@/types/openstack";
 
 export const SESSION_COOKIE_NAME = "sunrise";
 export const SESSION_ACTIVITY_COOKIE_NAME = "sunrise-activity";
@@ -45,6 +46,7 @@ export type AuthRecoveryIssue = {
 export type SunriseSession = {
   keystone_unscoped_token?: string;
   keystoneProjectToken?: string;
+  keystoneProjectRoles?: KeystoneRole[];
   regionId?: string;
   projectId?: string;
   s3ProjectRoles?: Record<string, string>;
@@ -120,6 +122,7 @@ export function hasAuthenticatedSession(session: SunriseSession): boolean {
 function denyExpiredCredentials(session: IronSession<SunriseSession>) {
   session.keystone_unscoped_token = undefined;
   session.keystoneProjectToken = undefined;
+  session.keystoneProjectRoles = undefined;
   session.keycloakRefreshToken = undefined;
   session.s3Credentials = undefined;
 }

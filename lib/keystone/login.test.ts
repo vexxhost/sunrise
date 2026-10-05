@@ -114,6 +114,10 @@ describe("Keystone session finalization", () => {
             {
               token: {
                 user: { name: "Sunrise Operator" },
+                roles: [
+                  { id: "member-id", name: "member" },
+                  { id: "reader-id", name: "reader" },
+                ],
                 catalog: [
                   {
                     name: "s3",
@@ -147,6 +151,10 @@ describe("Keystone session finalization", () => {
     });
     expect(current.projectId).toBe(second.id);
     expect(current.keystoneProjectToken).toBe("project-b-token");
+    expect(current.keystoneProjectRoles).toEqual([
+      { id: "member-id", name: "member" },
+      { id: "reader-id", name: "reader" },
+    ]);
   });
 
   it("classifies identities whose project roles all reject scoping", async () => {

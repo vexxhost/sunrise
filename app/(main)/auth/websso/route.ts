@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     console.error("Missing token in WebSSO response");
     session.keystone_unscoped_token = undefined;
     session.keystoneProjectToken = undefined;
+    session.keystoneProjectRoles = undefined;
     session.projectId = undefined;
     session.regionId = undefined;
     await session.save();

@@ -9,7 +9,7 @@ import {
 import { writePrefs } from "@/lib/prefs";
 import { preferenceIdentityFromSession } from "@/lib/preference-identity";
 import type { Region, Project } from "@/types/openstack";
-import { getProjectScopedToken } from "@/lib/keystone/login";
+import { getProjectScopedTokenContext } from "@/lib/keystone/login";
 import { refreshActiveProjectS3Credentials } from "@/lib/s3/session";
 import { getServicePolicy } from "@/lib/deployment-config";
 import { getServiceCatalog } from "@/lib/openstack/catalog";
@@ -51,12 +51,12 @@ export async function setProject(project: Project) {
     return;
   }
 
-  const token = await getProjectScopedToken(
+  const context = await getProjectScopedTokenContext(
     session.keystone_unscoped_token,
     project.id,
   );
 
-  if (!token) {
+  if (!context) {
     console.error(
       "[keystone] failed to switch project: scoped token unavailable",
       {
@@ -68,7 +68,8 @@ export async function setProject(project: Project) {
   }
 
   session.projectId = project.id;
-  session.keystoneProjectToken = token;
+  session.keystoneProjectToken = context.value;
+  session.keystoneProjectRoles = context.roles;
   clearS3Credentials(session);
 
   const servicePolicy = getServicePolicy();
@@ -81,7 +82,7 @@ export async function setProject(project: Project) {
     ) &&
     servicePolicy.objectStorageBackends.includes("s3") &&
     isObjectStorageBackendEnabled(servicePolicy, "s3", session.regionId)
-      ? await getServiceCatalog(token)
+      ? await getServiceCatalog(context.value)
       : null;
   const objectStorage =
     catalog && session.regionId

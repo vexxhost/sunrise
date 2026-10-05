@@ -22,7 +22,7 @@ import {
   normalizeProjectId,
   type SunriseSession,
 } from "@/lib/session";
-import type { Project, Region } from "@/types/openstack";
+import type { KeystoneRole, Project, Region } from "@/types/openstack";
 import {
   defaultServicePolicy,
   isServiceEnabled,
@@ -58,7 +58,7 @@ export type CloudObjectStorage = {
 };
 
 export type CloudContextSnapshot = {
-  user: { name: string | null };
+  user: { name: string | null; roles: KeystoneRole[] };
   project: CloudSelection;
   region: CloudSelection;
   role: CloudRole;
@@ -293,6 +293,7 @@ export function buildCloudContextSnapshot({
         session.oidcIdentity?.preferredUsername ??
         session.oidcIdentity?.displayName ??
         null,
+      roles: session.keystoneProjectRoles ?? [],
     },
     project: {
       id: session.projectId ?? null,
