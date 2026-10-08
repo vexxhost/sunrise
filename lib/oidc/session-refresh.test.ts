@@ -42,6 +42,7 @@ describe("OIDC session token refresh", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     process.env.SUNRISE_SESSION_SECRET = originalSessionSecret;
   });
 
@@ -89,6 +90,54 @@ describe("OIDC session token refresh", () => {
     expect(client.eval).toHaveBeenCalledOnce();
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
     expect(current.keycloakRefreshToken).toBe("shared-refresh-token");
+  });
+
+  it("aborts the token exchange when the distributed lease is lost", async () => {
+    vi.useFakeTimers();
+    const client = {
+      get: vi.fn().mockResolvedValue(null),
+      eval: vi.fn(
+        async (
+          _script: string,
+          options: { keys: string[]; arguments: string[] },
+        ) => {
+          if (options.keys.length === 2) return 1;
+          if (options.arguments[1] === "20000") return 0;
+          return 1;
+        },
+      ),
+      hIncrBy: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockImplementation(
+      async (_token: string, _provider: string, signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    );
+
+    const refresh = refreshSessionOidcTokens(
+      session("lost-distributed-lease") as never,
+      "demo",
+    );
+    const rejection = expect(refresh).rejects.toThrow(
+      "Lost the distributed OIDC refresh lease",
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.refreshAccessToken).toHaveBeenCalledWith(
+      "old-refresh-token",
+      "demo",
+      expect.any(AbortSignal),
+    );
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await rejection;
   });
 
   it("coalesces concurrent refreshes and applies the same rotated token", async () => {

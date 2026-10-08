@@ -62,6 +62,70 @@ end
 return 1
 `;
 
+const MERGE_CACHE_TAGS_SCRIPT = `
+local entryKey = KEYS[1]
+local tagPrefix = ARGV[1]
+local payload = redis.call("GET", entryKey)
+
+if not payload then
+  return nil
+end
+
+local decodedOk, decoded = pcall(cjson.decode, payload)
+if not decodedOk then
+  return payload
+end
+
+local function refreshTagExpiration(tagKey)
+  if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
+    redis.call("PERSIST", tagKey)
+    return
+  end
+
+  local latest = redis.call("ZREVRANGE", tagKey, 0, 0, "WITHSCORES")
+  if #latest == 0 then
+    redis.call("DEL", tagKey)
+  else
+    redis.call("PEXPIREAT", tagKey, math.floor(tonumber(latest[2])))
+  end
+end
+
+decoded.tags = decoded.tags or {}
+local knownTags = {}
+for _, tag in ipairs(decoded.tags) do
+  knownTags[tag] = true
+end
+
+local ttlMs = redis.call("PTTL", entryKey)
+local expiresAt = 0
+if ttlMs >= 0 then
+  local now = redis.call("TIME")
+  expiresAt = tonumber(now[1]) * 1000
+    + math.floor(tonumber(now[2]) / 1000)
+    + ttlMs
+end
+
+local changed = false
+for index = 2, #ARGV do
+  local tag = ARGV[index]
+  if not knownTags[tag] then
+    decoded.tags[#decoded.tags + 1] = tag
+    knownTags[tag] = true
+    local observedTagKey = tagPrefix .. tag
+    redis.call("ZADD", observedTagKey, expiresAt, entryKey)
+    refreshTagExpiration(observedTagKey)
+    changed = true
+  end
+end
+
+if changed then
+  payload = cjson.encode(decoded)
+  redis.call("SET", entryKey, payload, "KEEPTTL")
+end
+
+return payload
+`;
+
 const REVALIDATE_TAGS_SCRIPT = `
 local tagPrefix = ARGV[1]
 local visited = {}
@@ -277,12 +341,25 @@ function tagsFor(data, context) {
 }
 
 module.exports = class SunriseCacheHandler {
-  async get(key) {
-    if (cacheBackend() !== "redis") return memoryCache.get(key) || null;
+  async get(key, context) {
+    const observedTags = [...new Set(context?.tags || [])];
+    if (cacheBackend() !== "redis") {
+      const entry = memoryCache.get(key);
+      if (!entry) return null;
+      for (const tag of observedTags) {
+        if (!entry.tags.includes(tag)) entry.tags.push(tag);
+      }
+      return entry;
+    }
 
     try {
       const value = await runCommand(async (current) => {
-        const cached = await current.get(cacheKey(key));
+        const cached = observedTags.length
+          ? await current.eval(MERGE_CACHE_TAGS_SCRIPT, {
+              keys: [cacheKey(key)],
+              arguments: [`${keyPrefix()}:tag:`, ...observedTags],
+            })
+          : await current.get(cacheKey(key));
         await current.hIncrBy(metricsKey(), cached ? "hits" : "misses", 1);
         return cached;
       });

@@ -217,4 +217,32 @@ describe("Sunrise OIDC", () => {
       fetchMock.mock.calls.some(([input]) => String(input).endsWith("/token")),
     ).toBe(true);
   });
+
+  it("cancels a refresh when its external lease signal aborts", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(init.signal?.reason),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const refresh = refreshAccessToken(
+      "current-refresh-token",
+      "workforce",
+      controller.signal,
+    );
+    const rejection = expect(refresh).rejects.toThrow("lease lost");
+    await Promise.resolve();
+    controller.abort(new Error("lease lost"));
+
+    await rejection;
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
 });

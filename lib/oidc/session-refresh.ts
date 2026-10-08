@@ -15,9 +15,7 @@ import {
 } from "@/lib/redis";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
-const REFRESH_RESULT_REUSE_SECONDS = Math.ceil(
-  REFRESH_RESULT_REUSE_MS / 1_000,
-);
+const REFRESH_RESULT_REUSE_SECONDS = Math.ceil(REFRESH_RESULT_REUSE_MS / 1_000);
 const MAX_REFRESH_ENTRIES = 256;
 const DISTRIBUTED_REFRESH_LOCK_MS = 20_000;
 const DISTRIBUTED_REFRESH_RENEW_MS = 5_000;
@@ -115,9 +113,7 @@ function isRefreshResult(value: unknown): value is RefreshTokenResult {
   );
 }
 
-export async function sealDistributedRefreshResult(
-  result: RefreshTokenResult,
-) {
+export async function sealDistributedRefreshResult(result: RefreshTokenResult) {
   return sealData(result, {
     password: sessionPassword(),
     ttl: REFRESH_RESULT_REUSE_SECONDS,
@@ -155,15 +151,29 @@ async function renewDistributedLock(key: string, owner: string) {
 function maintainDistributedLock(key: string, owner: string) {
   let lost = false;
   let renewal: Promise<void> | undefined;
+  const controller = new AbortController();
+
+  const loseLease = (reason: Error) => {
+    if (lost) return;
+    lost = true;
+    controller.abort(reason);
+  };
 
   const timer = setInterval(() => {
     if (renewal || lost) return;
     renewal = renewDistributedLock(key, owner)
       .then((renewed) => {
-        if (!renewed) lost = true;
+        if (!renewed) {
+          loseLease(new Error("Lost the distributed OIDC refresh lease"));
+        }
       })
       .catch((error) => {
         console.warn("[oidc/refresh] failed to renew Redis lock:", error);
+        loseLease(
+          new Error("Could not renew the distributed OIDC refresh lease", {
+            cause: error,
+          }),
+        );
       })
       .finally(() => {
         renewal = undefined;
@@ -172,6 +182,7 @@ function maintainDistributedLock(key: string, owner: string) {
   timer.unref();
 
   return {
+    signal: controller.signal,
     isLost: () => lost,
     async stop() {
       clearInterval(timer);
@@ -242,7 +253,11 @@ async function distributedRefresh(
       await recordDistributedRefresh("leaders");
       const lease = maintainDistributedLock(keys.lock, owner);
       try {
-        const result = await refreshAccessToken(refreshToken, identityProvider);
+        const result = await refreshAccessToken(
+          refreshToken,
+          identityProvider,
+          lease.signal,
+        );
         if (lease.isLost()) {
           throw new Error("Lost the distributed OIDC refresh lease");
         }

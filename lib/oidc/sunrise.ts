@@ -243,8 +243,12 @@ export async function exchangeCodeForTokens(
 export async function refreshAccessToken(
   refreshToken: string,
   identityProvider: string,
+  leaseSignal?: AbortSignal,
 ): Promise<RefreshTokenResult> {
-  const signal = AbortSignal.timeout(OIDC_REFRESH_TIMEOUT_MS);
+  const timeoutSignal = AbortSignal.timeout(OIDC_REFRESH_TIMEOUT_MS);
+  const signal = leaseSignal
+    ? AbortSignal.any([leaseSignal, timeoutSignal])
+    : timeoutSignal;
   const { token_endpoint } = await discoverOidc(identityProvider, signal);
   const { clientId, clientSecret } = getSunriseOidcConfig(identityProvider);
   const body = new URLSearchParams({

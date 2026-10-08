@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 type CacheEntry = { value: { kind: string }; tags: string[] };
 type CacheHandler = {
-  get(key: string): Promise<CacheEntry | null>;
+  get(key: string, context?: { tags?: string[] }): Promise<CacheEntry | null>;
   set(
     key: string,
     data: { kind: string },
@@ -42,5 +42,24 @@ describe("Next.js cache handler", () => {
 
     await handler.revalidateTag("test-tag");
     await expect(handler.get("test-entry")).resolves.toBeNull();
+  });
+
+  it("tracks tags observed by later reads of the same cache key", async () => {
+    process.env.SUNRISE_NEXT_CACHE_BACKEND = "memory";
+    const handler = new SunriseCacheHandler();
+
+    await handler.set(
+      "shared-fetch-entry",
+      { kind: "FETCH" },
+      { tags: ["first-tag"] },
+    );
+    await expect(
+      handler.get("shared-fetch-entry", { tags: ["second-tag"] }),
+    ).resolves.toMatchObject({
+      tags: ["first-tag", "second-tag"],
+    });
+
+    await handler.revalidateTag("second-tag");
+    await expect(handler.get("shared-fetch-entry")).resolves.toBeNull();
   });
 });
