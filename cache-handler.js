@@ -8,6 +8,120 @@ const memoryCache = new Map();
 let client;
 let connecting;
 
+const SET_CACHE_ENTRY_SCRIPT = `
+local entryKey = KEYS[1]
+local payload = ARGV[1]
+local ttlSeconds = ARGV[2]
+local tagPrefix = ARGV[3]
+local existing = redis.call("GET", entryKey)
+local now = redis.call("TIME")
+local expiresAt = 0
+
+if ttlSeconds ~= "" then
+  expiresAt = tonumber(now[1]) * 1000
+    + math.floor(tonumber(now[2]) / 1000)
+    + tonumber(ttlSeconds) * 1000
+end
+
+local function refreshTagExpiration(tagKey)
+  if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
+    redis.call("PERSIST", tagKey)
+    return
+  end
+
+  local latest = redis.call("ZREVRANGE", tagKey, 0, 0, "WITHSCORES")
+  if #latest == 0 then
+    redis.call("DEL", tagKey)
+  else
+    redis.call("PEXPIREAT", tagKey, math.floor(tonumber(latest[2])))
+  end
+end
+
+if existing then
+  local decodedOk, decoded = pcall(cjson.decode, existing)
+  if decodedOk and decoded.tags then
+    for _, tag in ipairs(decoded.tags) do
+      local oldTagKey = tagPrefix .. tag
+      redis.call("ZREM", oldTagKey, entryKey)
+      refreshTagExpiration(oldTagKey)
+    end
+  end
+end
+
+if ttlSeconds ~= "" then
+  redis.call("SET", entryKey, payload, "EX", ttlSeconds)
+else
+  redis.call("SET", entryKey, payload)
+end
+
+for index = 4, #ARGV do
+  local tagKey = tagPrefix .. ARGV[index]
+  redis.call("ZADD", tagKey, expiresAt, entryKey)
+  refreshTagExpiration(tagKey)
+end
+return 1
+`;
+
+const REVALIDATE_TAGS_SCRIPT = `
+local tagPrefix = ARGV[1]
+local visited = {}
+local requested = {}
+
+local function refreshTagExpiration(tagKey)
+  if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
+    redis.call("PERSIST", tagKey)
+    return
+  end
+
+  local latest = redis.call("ZREVRANGE", tagKey, 0, 0, "WITHSCORES")
+  if #latest == 0 then
+    redis.call("DEL", tagKey)
+  else
+    redis.call("PEXPIREAT", tagKey, math.floor(tonumber(latest[2])))
+  end
+end
+
+for _, requestedTagKey in ipairs(KEYS) do
+  requested[requestedTagKey] = true
+end
+
+for _, requestedTagKey in ipairs(KEYS) do
+  local members = redis.call("ZRANGE", requestedTagKey, 0, -1)
+  for _, entryKey in ipairs(members) do
+    if not visited[entryKey] then
+      local payload = redis.call("GET", entryKey)
+      if payload then
+        local decodedOk, decoded = pcall(cjson.decode, payload)
+        if decodedOk and decoded.tags then
+          local shouldDelete = false
+          for _, tag in ipairs(decoded.tags) do
+            local relatedTagKey = tagPrefix .. tag
+            if requested[relatedTagKey] then
+              shouldDelete = true
+            end
+          end
+          if shouldDelete then
+            for _, tag in ipairs(decoded.tags) do
+              local relatedTagKey = tagPrefix .. tag
+              if not requested[relatedTagKey] then
+                redis.call("ZREM", relatedTagKey, entryKey)
+                refreshTagExpiration(relatedTagKey)
+              end
+            end
+            redis.call("DEL", entryKey)
+          end
+        else
+          redis.call("DEL", entryKey)
+        end
+      end
+      visited[entryKey] = true
+    end
+  end
+  redis.call("DEL", requestedTagKey)
+end
+return 1
+`;
+
 function cacheBackend() {
   return (process.env.SUNRISE_NEXT_CACHE_BACKEND || "memory")
     .trim()
@@ -196,17 +310,20 @@ module.exports = class SunriseCacheHandler {
     }
 
     const expire = context?.cacheControl?.expire;
-    const options = Number.isFinite(expire)
-      ? { expiration: { type: "EX", value: Math.max(1, Math.ceil(expire)) } }
-      : {};
+    const ttlSeconds = Number.isFinite(expire)
+      ? Math.max(1, Math.ceil(expire))
+      : null;
     try {
       await runCommand(async (current) => {
-        await current.set(cacheKey(key), serialize(entry), options);
-        if (tags.length) {
-          await Promise.all(
-            tags.map((tag) => current.sAdd(tagKey(tag), cacheKey(key))),
-          );
-        }
+        await current.eval(SET_CACHE_ENTRY_SCRIPT, {
+          keys: [cacheKey(key)],
+          arguments: [
+            serialize(entry),
+            ttlSeconds?.toString() || "",
+            `${keyPrefix()}:tag:`,
+            ...tags,
+          ],
+        });
         await current.hIncrBy(metricsKey(), "sets", 1);
       });
     } catch (error) {
@@ -228,13 +345,11 @@ module.exports = class SunriseCacheHandler {
     }
 
     await runCommand(async (current) => {
-      for (const tag of normalized) {
-        const index = tagKey(tag);
-        const keys = await current.sMembers(index);
-        if (keys.length) {
-          await Promise.all(keys.map((key) => current.del(key)));
-        }
-        await current.del(index);
+      if (normalized.length) {
+        await current.eval(REVALIDATE_TAGS_SCRIPT, {
+          keys: normalized.map(tagKey),
+          arguments: [`${keyPrefix()}:tag:`],
+        });
       }
       await current.hIncrBy(metricsKey(), "revalidations", 1);
     });

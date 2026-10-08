@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(),
@@ -9,7 +9,13 @@ vi.mock("@/lib/oidc/sunrise", () => ({
   refreshAccessToken: mocks.refreshAccessToken,
 }));
 
-import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
+import {
+  refreshSessionOidcTokens,
+  sealDistributedRefreshResult,
+  unsealDistributedRefreshResult,
+} from "@/lib/oidc/session-refresh";
+
+const originalSessionSecret = process.env.SUNRISE_SESSION_SECRET;
 
 function session(sessionId: string, refreshToken = "old-refresh-token") {
   return {
@@ -21,6 +27,29 @@ function session(sessionId: string, refreshToken = "old-refresh-token") {
 describe("OIDC session token refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.SUNRISE_SESSION_SECRET =
+      "test-session-secret-that-is-at-least-thirty-two-characters";
+  });
+
+  afterEach(() => {
+    process.env.SUNRISE_SESSION_SECRET = originalSessionSecret;
+  });
+
+  it("encrypts distributed refresh results before sharing them", async () => {
+    const result = {
+      access_token: "sensitive-access-token",
+      refresh_token: "sensitive-refresh-token",
+      expires_in: 300,
+      token_type: "Bearer",
+    };
+
+    const sealed = await sealDistributedRefreshResult(result);
+
+    expect(sealed).not.toContain(result.access_token);
+    expect(sealed).not.toContain(result.refresh_token);
+    await expect(unsealDistributedRefreshResult(sealed)).resolves.toEqual(
+      result,
+    );
   });
 
   it("coalesces concurrent refreshes and applies the same rotated token", async () => {

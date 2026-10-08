@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import type { IronSession } from "iron-session";
+import { sealData, unsealData, type IronSession } from "iron-session";
 import {
   refreshAccessToken,
   type RefreshTokenResult,
@@ -14,13 +14,32 @@ import {
 } from "@/lib/redis";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
+const REFRESH_RESULT_REUSE_SECONDS = Math.ceil(
+  REFRESH_RESULT_REUSE_MS / 1_000,
+);
 const MAX_REFRESH_ENTRIES = 256;
 const DISTRIBUTED_REFRESH_LOCK_MS = 20_000;
+const DISTRIBUTED_REFRESH_RENEW_MS = 5_000;
 const DISTRIBUTED_REFRESH_WAIT_MS = 15_000;
 
 const RELEASE_LOCK_SCRIPT = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   return redis.call("DEL", KEYS[1])
+end
+return 0
+`;
+
+const RENEW_LOCK_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+`;
+
+const PUBLISH_REFRESH_RESULT_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
+  return 1
 end
 return 0
 `;
@@ -69,9 +88,38 @@ async function recordDistributedRefresh(metric: string) {
   ).catch(() => undefined);
 }
 
-function parseRefreshResult(value: string | null) {
+function sessionPassword() {
+  const value = process.env.SUNRISE_SESSION_SECRET;
+  if (!value) throw new Error("SUNRISE_SESSION_SECRET is required");
+  return value;
+}
+
+function isRefreshResult(value: unknown): value is RefreshTokenResult {
+  if (!value || typeof value !== "object") return false;
+  const result = value as Partial<RefreshTokenResult>;
+  return (
+    typeof result.access_token === "string" &&
+    typeof result.expires_in === "number" &&
+    typeof result.token_type === "string"
+  );
+}
+
+export async function sealDistributedRefreshResult(
+  result: RefreshTokenResult,
+) {
+  return sealData(result, {
+    password: sessionPassword(),
+    ttl: REFRESH_RESULT_REUSE_SECONDS,
+  });
+}
+
+export async function unsealDistributedRefreshResult(value: string | null) {
   if (!value) return undefined;
-  return JSON.parse(value) as RefreshTokenResult;
+  const result = await unsealData<RefreshTokenResult>(value, {
+    password: sessionPassword(),
+    ttl: REFRESH_RESULT_REUSE_SECONDS,
+  });
+  return isRefreshResult(result) ? result : undefined;
 }
 
 async function releaseDistributedLock(key: string, owner: string) {
@@ -81,6 +129,60 @@ async function releaseDistributedLock(key: string, owner: string) {
       arguments: [owner],
     }),
   );
+}
+
+async function renewDistributedLock(key: string, owner: string) {
+  const renewed = await runRedisCommand((client) =>
+    client.eval(RENEW_LOCK_SCRIPT, {
+      keys: [key],
+      arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
+    }),
+  );
+  return Number(renewed) === 1;
+}
+
+function maintainDistributedLock(key: string, owner: string) {
+  let lost = false;
+  let renewal: Promise<void> | undefined;
+
+  const timer = setInterval(() => {
+    if (renewal || lost) return;
+    renewal = renewDistributedLock(key, owner)
+      .then((renewed) => {
+        if (!renewed) lost = true;
+      })
+      .catch((error) => {
+        console.warn("[oidc/refresh] failed to renew Redis lock:", error);
+      })
+      .finally(() => {
+        renewal = undefined;
+      });
+  }, DISTRIBUTED_REFRESH_RENEW_MS);
+  timer.unref();
+
+  return {
+    isLost: () => lost,
+    async stop() {
+      clearInterval(timer);
+      await renewal;
+    },
+  };
+}
+
+async function publishDistributedRefreshResult(
+  lockKey: string,
+  resultKey: string,
+  owner: string,
+  result: RefreshTokenResult,
+) {
+  const sealed = await sealDistributedRefreshResult(result);
+  const published = await runRedisCommand((client) =>
+    client.eval(PUBLISH_REFRESH_RESULT_SCRIPT, {
+      keys: [lockKey, resultKey],
+      arguments: [owner, sealed, REFRESH_RESULT_REUSE_MS.toString()],
+    }),
+  );
+  return Number(published) === 1;
 }
 
 function wait(delayMs: number) {
@@ -93,7 +195,7 @@ async function distributedRefresh(
   identityProvider: string,
 ) {
   const keys = distributedRefreshKeys(key);
-  const cached = parseRefreshResult(
+  const cached = await unsealDistributedRefreshResult(
     await runRedisCommand((client) => client.get(keys.result)),
   );
   if (cached) {
@@ -114,15 +216,24 @@ async function distributedRefresh(
     );
     if (acquired === "OK") {
       await recordDistributedRefresh("leaders");
+      const lease = maintainDistributedLock(keys.lock, owner);
       try {
         const result = await refreshAccessToken(refreshToken, identityProvider);
-        await runRedisCommand((client) =>
-          client.set(keys.result, JSON.stringify(result), {
-            expiration: { type: "PX", value: REFRESH_RESULT_REUSE_MS },
-          }),
+        if (lease.isLost()) {
+          throw new Error("Lost the distributed OIDC refresh lease");
+        }
+        const published = await publishDistributedRefreshResult(
+          keys.lock,
+          keys.result,
+          owner,
+          result,
         );
+        if (!published) {
+          throw new Error("Lost the distributed OIDC refresh lease");
+        }
         return result;
       } finally {
+        await lease.stop();
         await releaseDistributedLock(keys.lock, owner).catch((error) => {
           console.warn("[oidc/refresh] failed to release Redis lock:", error);
         });
@@ -130,7 +241,7 @@ async function distributedRefresh(
     }
 
     await wait(delayMs);
-    const result = parseRefreshResult(
+    const result = await unsealDistributedRefreshResult(
       await runRedisCommand((client) => client.get(keys.result)),
     );
     if (result) {
