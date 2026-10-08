@@ -5,11 +5,13 @@ import {
   type SessionOptions,
 } from "iron-session";
 import { cookies } from "next/headers";
+import { destroyRedisSession, getRedisSession } from "@/lib/session-store";
 import {
   getSessionLifetimePolicy,
   getSessionLifetimeState,
   type SessionExpiryReason,
 } from "@/lib/session-lifetime";
+import { getSessionBackend } from "@/lib/redis";
 import type { KeystoneRole } from "@/types/openstack";
 
 export const SESSION_COOKIE_NAME = "sunrise";
@@ -214,10 +216,12 @@ export async function getSession(
   options: GetSessionOptions = {},
 ): Promise<IronSession<SunriseSession>> {
   const cookieStore = await cookies();
-  const session = await getIronSession<SunriseSession>(
-    cookieStore,
-    sessionOptions(SESSION_COOKIE_NAME, true),
-  );
+  const backend = getSessionBackend();
+  const sessionOptionsValue = sessionOptions(SESSION_COOKIE_NAME, true);
+  const session =
+    backend === "redis"
+      ? await getRedisSession(cookieStore, sessionOptionsValue)
+      : await getIronSession<SunriseSession>(cookieStore, sessionOptionsValue);
 
   if (session.sessionId) {
     const activity = await getIronSession<SessionActivity>(
@@ -242,4 +246,12 @@ export async function getSession(
   setTransient(session, "sessionExpiryReason", lifetime.reason);
   if (!options.allowExpired) denyExpiredCredentials(session);
   return session;
+}
+
+export async function destroySession(session: IronSession<SunriseSession>) {
+  if (getSessionBackend() === "redis") {
+    await destroyRedisSession(session);
+    return;
+  }
+  session.destroy();
 }

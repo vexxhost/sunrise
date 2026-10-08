@@ -1,0 +1,282 @@
+import { randomUUID } from "node:crypto";
+import {
+  getIronSession,
+  sealData,
+  unsealData,
+  type CookieStore,
+  type IronSession,
+  type SessionOptions,
+} from "iron-session";
+import { getSessionLifetimePolicy } from "@/lib/session-lifetime";
+import type { SunriseSession } from "@/lib/session";
+import { getRedisKeyPrefix, runRedisCommand } from "@/lib/redis";
+
+type StoredSessionReference = {
+  backend?: "redis";
+  key?: string;
+};
+
+type StoredSessionRecord = {
+  version: number;
+  data: SunriseSession;
+};
+
+const MAX_SAVE_ATTEMPTS = 4;
+const PRE_AUTH_SESSION_TTL_SECONDS = 10 * 60;
+
+const SAVE_SESSION_SCRIPT = `
+if redis.call("EXISTS", KEYS[2]) == 1 then
+  return -1
+end
+local current = redis.call("HGET", KEYS[1], "version")
+if ARGV[1] == "" then
+  if current then return 0 end
+elseif current ~= ARGV[1] then
+  return 0
+end
+redis.call("HSET", KEYS[1], "version", ARGV[2], "data", ARGV[3])
+redis.call("EXPIRE", KEYS[1], ARGV[4])
+return 1
+`;
+
+const REVOKE_SESSION_SCRIPT = `
+redis.call("SET", KEYS[2], "1", "EX", ARGV[1])
+redis.call("DEL", KEYS[1])
+return 1
+`;
+
+const destroyers = new WeakMap<object, () => Promise<void>>();
+
+function sessionKey(id: string) {
+  return `${getRedisKeyPrefix()}:session:{${id}}`;
+}
+
+function revokedKey(id: string) {
+  return `${getRedisKeyPrefix()}:session-revoked:{${id}}`;
+}
+
+export function storedSessionTtlSeconds(
+  data: SunriseSession,
+  now = Date.now(),
+) {
+  const { absoluteTimeoutSeconds, absoluteTimeoutMs } =
+    getSessionLifetimePolicy();
+  if (!data.sessionSignedInAt) {
+    return Math.min(absoluteTimeoutSeconds, PRE_AUTH_SESSION_TTL_SECONDS);
+  }
+  return Math.max(
+    1,
+    Math.ceil((data.sessionSignedInAt + absoluteTimeoutMs - now) / 1_000),
+  );
+}
+
+export function mergeStoredSession(
+  current: SunriseSession,
+  source: SunriseSession,
+  changed: ReadonlySet<keyof SunriseSession>,
+  deleted: ReadonlySet<keyof SunriseSession>,
+): SunriseSession {
+  const merged = { ...current };
+  for (const key of changed) {
+    const value = source[key];
+    if (value === undefined) delete merged[key];
+    else Object.assign(merged, { [key]: value });
+  }
+  for (const key of deleted) delete merged[key];
+  return merged;
+}
+
+function sessionPassword() {
+  const value = process.env.SUNRISE_SESSION_SECRET;
+  if (!value) throw new Error("SUNRISE_SESSION_SECRET is required");
+  return value;
+}
+
+async function readStoredSession(
+  id: string,
+): Promise<StoredSessionRecord | null> {
+  const record = await runRedisCommand((client) =>
+    client.hGetAll(sessionKey(id)),
+  );
+  if (!record.version || !record.data) return null;
+
+  const version = Number(record.version);
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new Error("Stored Sunrise session has an invalid version");
+  }
+
+  const { absoluteTimeoutSeconds } = getSessionLifetimePolicy();
+  const data = await unsealData<SunriseSession>(record.data, {
+    password: sessionPassword(),
+    ttl: absoluteTimeoutSeconds + 60,
+  });
+  return { version, data };
+}
+
+function enumerableSessionData(session: SunriseSession): SunriseSession {
+  return Object.fromEntries(
+    Object.entries(session).filter(([, value]) => value !== undefined),
+  ) as SunriseSession;
+}
+
+async function persistStoredSession(
+  id: string,
+  expectedVersion: number | null,
+  data: SunriseSession,
+) {
+  const nextVersion = (expectedVersion ?? 0) + 1;
+  const ttl = storedSessionTtlSeconds(data);
+  const sealed = await sealData(enumerableSessionData(data), {
+    password: sessionPassword(),
+    ttl: ttl + 60,
+  });
+  const result = await runRedisCommand((client) =>
+    client.eval(SAVE_SESSION_SCRIPT, {
+      keys: [sessionKey(id), revokedKey(id)],
+      arguments: [
+        expectedVersion?.toString() ?? "",
+        nextVersion.toString(),
+        sealed,
+        ttl.toString(),
+      ],
+    }),
+  );
+  return Number(result) as -1 | 0 | 1;
+}
+
+async function revokeStoredSession(id: string) {
+  const { absoluteTimeoutSeconds } = getSessionLifetimePolicy();
+  await runRedisCommand((client) =>
+    client.eval(REVOKE_SESSION_SCRIPT, {
+      keys: [sessionKey(id), revokedKey(id)],
+      arguments: [absoluteTimeoutSeconds.toString()],
+    }),
+  );
+}
+
+function referenceData(
+  reference: IronSession<StoredSessionReference & SunriseSession>,
+) {
+  return Object.fromEntries(
+    Object.entries(reference).filter(
+      ([key, value]) =>
+        key !== "backend" && key !== "key" && value !== undefined,
+    ),
+  ) as SunriseSession;
+}
+
+function clearLegacyReferenceData(
+  reference: IronSession<StoredSessionReference & SunriseSession>,
+) {
+  for (const key of Object.keys(reference)) {
+    if (key !== "backend" && key !== "key") {
+      delete reference[key as keyof typeof reference];
+    }
+  }
+}
+
+export async function getRedisSession(
+  cookieStore: CookieStore,
+  options: SessionOptions,
+): Promise<IronSession<SunriseSession>> {
+  const reference = await getIronSession<
+    StoredSessionReference & SunriseSession
+  >(cookieStore, { ...options, chunk: false });
+  let id = reference.backend === "redis" ? reference.key : undefined;
+  let loaded = id ? await readStoredSession(id) : null;
+  const initialData = loaded?.data ?? referenceData(reference);
+  const target = { ...initialData } as SunriseSession;
+  const changed = new Set<keyof SunriseSession>();
+  const deleted = new Set<keyof SunriseSession>();
+  let destroyed = false;
+
+  const session = new Proxy(target, {
+    set(object, property, value) {
+      if (typeof property === "string") {
+        const key = property as keyof SunriseSession;
+        changed.add(key);
+        if (value === undefined) deleted.add(key);
+        else deleted.delete(key);
+      }
+      return Reflect.set(object, property, value, object);
+    },
+    deleteProperty(object, property) {
+      if (typeof property === "string") {
+        const key = property as keyof SunriseSession;
+        changed.delete(key);
+        deleted.add(key);
+      }
+      return Reflect.deleteProperty(object, property);
+    },
+  }) as IronSession<SunriseSession>;
+
+  async function save() {
+    if (destroyed) {
+      throw new Error("Cannot save a destroyed Sunrise session");
+    }
+    id ??= randomUUID();
+
+    for (let attempt = 0; attempt < MAX_SAVE_ATTEMPTS; attempt += 1) {
+      const current = loaded?.data ?? {};
+      const candidate = loaded
+        ? mergeStoredSession(current, target, changed, deleted)
+        : enumerableSessionData(target);
+      const result = await persistStoredSession(
+        id,
+        loaded?.version ?? null,
+        candidate,
+      );
+      if (result === -1) {
+        throw new Error("Cannot save a revoked Sunrise session");
+      }
+      if (result === 1) {
+        loaded = {
+          version: (loaded?.version ?? 0) + 1,
+          data: candidate,
+        };
+        changed.clear();
+        deleted.clear();
+        clearLegacyReferenceData(reference);
+        reference.backend = "redis";
+        reference.key = id;
+        await reference.save();
+        return;
+      }
+      loaded = await readStoredSession(id);
+    }
+
+    throw new Error("Sunrise session changed too many times while saving");
+  }
+
+  function destroy() {
+    if (destroyed) return;
+    destroyed = true;
+    for (const key of Object.keys(target))
+      delete target[key as keyof SunriseSession];
+    reference.destroy();
+  }
+
+  Object.defineProperties(target, {
+    save: { value: save },
+    destroy: { value: destroy },
+    updateConfig: { value: reference.updateConfig.bind(reference) },
+  });
+
+  destroyers.set(session, async () => {
+    const storedId = id;
+    destroy();
+    if (storedId) await revokeStoredSession(storedId);
+  });
+  return session;
+}
+
+export async function destroyRedisSession(
+  session: IronSession<SunriseSession>,
+) {
+  const destroy = destroyers.get(session);
+  if (!destroy) {
+    session.destroy();
+    return;
+  }
+  await destroy();
+}

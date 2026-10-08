@@ -1,15 +1,29 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { IronSession } from "iron-session";
 import {
   refreshAccessToken,
   type RefreshTokenResult,
 } from "@/lib/oidc/sunrise";
 import type { SunriseSession } from "@/lib/session";
+import {
+  getSessionBackend,
+  getRedisKeyPrefix,
+  runRedisCommand,
+} from "@/lib/redis";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
 const MAX_REFRESH_ENTRIES = 256;
+const DISTRIBUTED_REFRESH_LOCK_MS = 20_000;
+const DISTRIBUTED_REFRESH_WAIT_MS = 15_000;
+
+const RELEASE_LOCK_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`;
 
 type RefreshEntry = {
   promise: Promise<RefreshTokenResult>;
@@ -34,6 +48,100 @@ function refreshKey(
 ) {
   const sessionKey = session.sessionId ?? `legacy:${refreshTokenDigest}`;
   return `${identityProvider}\0${sessionKey}`;
+}
+
+function distributedRefreshKeys(key: string) {
+  const digest = createHash("sha256").update(key).digest("base64url");
+  const prefix = getRedisKeyPrefix();
+  return {
+    lock: `${prefix}:oidc-refresh-lock:${digest}`,
+    result: `${prefix}:oidc-refresh-result:${digest}`,
+  };
+}
+
+function distributedRefreshMetricsKey() {
+  return `${getRedisKeyPrefix()}:oidc-refresh-metrics`;
+}
+
+async function recordDistributedRefresh(metric: string) {
+  await runRedisCommand((client) =>
+    client.hIncrBy(distributedRefreshMetricsKey(), metric, 1),
+  ).catch(() => undefined);
+}
+
+function parseRefreshResult(value: string | null) {
+  if (!value) return undefined;
+  return JSON.parse(value) as RefreshTokenResult;
+}
+
+async function releaseDistributedLock(key: string, owner: string) {
+  await runRedisCommand((client) =>
+    client.eval(RELEASE_LOCK_SCRIPT, {
+      keys: [key],
+      arguments: [owner],
+    }),
+  );
+}
+
+function wait(delayMs: number) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function distributedRefresh(
+  key: string,
+  refreshToken: string,
+  identityProvider: string,
+) {
+  const keys = distributedRefreshKeys(key);
+  const cached = parseRefreshResult(
+    await runRedisCommand((client) => client.get(keys.result)),
+  );
+  if (cached) {
+    await recordDistributedRefresh("result_reuse");
+    return cached;
+  }
+
+  const deadline = Date.now() + DISTRIBUTED_REFRESH_WAIT_MS;
+  const owner = randomUUID();
+  let delayMs = 40;
+
+  while (Date.now() < deadline) {
+    const acquired = await runRedisCommand((client) =>
+      client.set(keys.lock, owner, {
+        expiration: { type: "PX", value: DISTRIBUTED_REFRESH_LOCK_MS },
+        condition: "NX",
+      }),
+    );
+    if (acquired === "OK") {
+      await recordDistributedRefresh("leaders");
+      try {
+        const result = await refreshAccessToken(refreshToken, identityProvider);
+        await runRedisCommand((client) =>
+          client.set(keys.result, JSON.stringify(result), {
+            expiration: { type: "PX", value: REFRESH_RESULT_REUSE_MS },
+          }),
+        );
+        return result;
+      } finally {
+        await releaseDistributedLock(keys.lock, owner).catch((error) => {
+          console.warn("[oidc/refresh] failed to release Redis lock:", error);
+        });
+      }
+    }
+
+    await wait(delayMs);
+    const result = parseRefreshResult(
+      await runRedisCommand((client) => client.get(keys.result)),
+    );
+    if (result) {
+      await recordDistributedRefresh("followers");
+      return result;
+    }
+    delayMs = Math.min(delayMs * 2, 250);
+  }
+
+  await recordDistributedRefresh("timeouts");
+  throw new Error("Timed out waiting for the distributed OIDC refresh result");
 }
 
 function pruneRefreshEntries(now: number) {
@@ -94,7 +202,10 @@ export async function refreshSessionOidcTokens(
     return result;
   }
 
-  const refreshPromise = refreshAccessToken(refreshToken, identityProvider);
+  const refreshPromise =
+    getSessionBackend() === "redis"
+      ? distributedRefresh(key, refreshToken, identityProvider)
+      : refreshAccessToken(refreshToken, identityProvider);
   const entry: RefreshEntry = {
     promise: refreshPromise,
   };

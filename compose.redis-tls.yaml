@@ -1,0 +1,91 @@
+services:
+  redis-certificates:
+    image: ${SUNRISE_REDIS_IMAGE:-valkey/valkey:9.1.2-alpine}
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        set -eu
+        if [ ! -s /tls/ca.crt ] || [ ! -s /tls/server.crt ] || [ ! -s /tls/server.key ]; then
+          umask 077
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout /tls/ca.key -out /tls/ca.crt -days 365 \
+            -subj "/CN=Sunrise local Redis CA"
+          openssl req -newkey rsa:2048 -nodes \
+            -keyout /tls/server.key -out /tmp/server.csr \
+            -subj "/CN=redis"
+          printf '%s\n' \
+            'subjectAltName=DNS:redis,DNS:localhost,IP:127.0.0.1' \
+            'extendedKeyUsage=serverAuth' > /tmp/server.ext
+          openssl x509 -req -in /tmp/server.csr \
+            -CA /tls/ca.crt -CAkey /tls/ca.key -CAcreateserial \
+            -out /tls/server.crt -days 365 -extfile /tmp/server.ext
+        fi
+        chown 999:1000 /tls/server.key
+        chmod 0400 /tls/server.key
+        chmod 0444 /tls/ca.crt /tls/server.crt
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    volumes:
+      - redis-tls:/tls
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+
+  redis:
+    depends_on:
+      redis-certificates:
+        condition: service_completed_successfully
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        if command -v valkey-server >/dev/null 2>&1; then
+          server=valkey-server
+        else
+          server=redis-server
+        fi
+        set -- "$$server" \
+          --port 0 \
+          --tls-port 6379 \
+          --tls-cert-file /run/redis-tls/server.crt \
+          --tls-key-file /run/redis-tls/server.key \
+          --tls-ca-cert-file /run/redis-tls/ca.crt \
+          --tls-auth-clients no \
+          --appendonly no \
+          --save "" \
+          --maxmemory-policy noeviction
+        if [ -n "$${SUNRISE_REDIS_PASSWORD:-}" ]; then
+          set -- "$$@" --requirepass "$$SUNRISE_REDIS_PASSWORD"
+        fi
+        exec "$$@"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'if command -v valkey-cli >/dev/null 2>&1; then cli=valkey-cli; else cli=redis-cli; fi; if [ -n "$${SUNRISE_REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$$SUNRISE_REDIS_PASSWORD"; fi; "$$cli" --tls --cacert /run/redis-tls/ca.crt -h redis ping',
+        ]
+    volumes:
+      - redis-tls:/run/redis-tls:ro
+
+  sunrise:
+    environment:
+      SUNRISE_REDIS_URL: rediss://redis:6379
+      SUNRISE_REDIS_CA_FILE: /run/redis-tls/ca.crt
+    volumes:
+      - redis-tls:/run/redis-tls:ro
+
+  sunrise-replica:
+    environment:
+      SUNRISE_REDIS_URL: rediss://redis:6379
+      SUNRISE_REDIS_CA_FILE: /run/redis-tls/ca.crt
+    volumes:
+      - redis-tls:/run/redis-tls:ro
+
+volumes:
+  redis-tls:

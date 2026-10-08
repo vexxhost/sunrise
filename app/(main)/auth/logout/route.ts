@@ -7,6 +7,7 @@ import {
 } from "@/lib/oidc/sunrise";
 import {
   destroySessionActivity,
+  destroySession,
   getSession,
   SESSION_ACTIVITY_COOKIE_NAME,
   SESSION_COOKIE_NAME,
@@ -118,7 +119,7 @@ async function performLogout(
     ? null
     : await providerLogoutUrl(identityProvider, idTokenHint);
 
-  session.destroy();
+  await destroySession(session);
   await destroySessionActivity();
 
   const destination =
