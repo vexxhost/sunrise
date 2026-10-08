@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getNextCacheBackend,
   getRedisCa,
   getSessionBackend,
   getRedisCommandTimeoutMs,
@@ -14,6 +15,14 @@ describe("Redis deployment configuration", () => {
     expect(getSessionBackend(" REDIS ")).toBe("redis");
     expect(() => getSessionBackend("memory")).toThrow(
       "SUNRISE_SESSION_BACKEND must be cookie or redis",
+    );
+  });
+
+  it("validates the shared Next.js cache backend", () => {
+    expect(getNextCacheBackend(undefined)).toBe("memory");
+    expect(getNextCacheBackend(" REDIS ")).toBe("redis");
+    expect(() => getNextCacheBackend("redsi")).toThrow(
+      "SUNRISE_NEXT_CACHE_BACKEND must be memory or redis",
     );
   });
 

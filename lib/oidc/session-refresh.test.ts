@@ -140,6 +140,109 @@ describe("OIDC session token refresh", () => {
     await rejection;
   });
 
+  it("aborts a stalled renewal before the distributed lease expires", async () => {
+    vi.useFakeTimers();
+    const client = {
+      get: vi.fn().mockResolvedValue(null),
+      eval: vi.fn(
+        async (
+          _script: string,
+          options: { keys: string[]; arguments: string[] },
+        ) => {
+          if (options.keys.length === 2) return 1;
+          if (options.arguments[1] === "20000") {
+            return new Promise<never>(() => undefined);
+          }
+          return 1;
+        },
+      ),
+      hIncrBy: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      async (
+        operation: (current: typeof client) => Promise<unknown>,
+        maximumTimeoutMs?: number,
+      ) => {
+        const result = operation(client);
+        if (maximumTimeoutMs === undefined) return result;
+        return Promise.race([
+          result,
+          new Promise((_, reject) => {
+            setTimeout(
+              () => reject(new Error("Redis command timed out")),
+              maximumTimeoutMs,
+            );
+          }),
+        ]);
+      },
+    );
+    mocks.refreshAccessToken.mockImplementation(
+      async (_token: string, _provider: string, signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    );
+
+    const refresh = refreshSessionOidcTokens(
+      session("stalled-distributed-renewal") as never,
+      "demo",
+    );
+    const rejection = expect(refresh).rejects.toThrow(
+      "Could not renew the distributed OIDC refresh lease",
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(mocks.runRedisCommand).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      2_000,
+    );
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await rejection;
+  });
+
+  it("starts token refresh without waiting for leader metrics", async () => {
+    const result = {
+      access_token: "new-access-token",
+      refresh_token: "rotated-refresh-token",
+      expires_in: 300,
+      token_type: "Bearer",
+    };
+    const client = {
+      get: vi.fn().mockResolvedValue(null),
+      eval: vi.fn(
+        async (
+          _script: string,
+          options: { keys: string[]; arguments: string[] },
+        ) => {
+          if (options.keys.length === 2 && options.arguments.length === 2) {
+            return 1;
+          }
+          return 1;
+        },
+      ),
+      hIncrBy: vi.fn(() => new Promise<never>(() => undefined)),
+    };
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(result);
+
+    await expect(
+      refreshSessionOidcTokens(
+        session("non-blocking-leader-metrics") as never,
+        "demo",
+      ),
+    ).resolves.toEqual(result);
+
+    expect(client.hIncrBy).toHaveBeenCalledOnce();
+    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
+  });
+
   it("coalesces concurrent refreshes and applies the same rotated token", async () => {
     let resolveRefresh:
       | ((value: {

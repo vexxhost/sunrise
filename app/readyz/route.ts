@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server";
-import { getSessionBackend, pingRedis } from "@/lib/redis";
+import {
+  getNextCacheBackend,
+  getRedisKeyPrefix,
+  getSessionBackend,
+  pingRedis,
+} from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const sessionBackend = getSessionBackend();
-    const redisLatencyMs =
-      sessionBackend === "redis" ? await pingRedis() : null;
+    const nextCacheBackend = getNextCacheBackend();
+    const redisRequired =
+      sessionBackend === "redis" || nextCacheBackend === "redis";
+    if (redisRequired) getRedisKeyPrefix();
+    const redisLatencyMs = redisRequired ? await pingRedis() : null;
     return NextResponse.json(
       {
         status: "ready",
         sessionBackend,
+        nextCacheBackend,
         redisLatencyMs,
       },
       { headers: { "Cache-Control": "no-store" } },

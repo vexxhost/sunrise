@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createClient, type RedisClientType } from "@redis/client";
 
 export type SessionBackend = "cookie" | "redis";
+export type NextCacheBackend = "memory" | "redis";
 
 type RedisRuntime = {
   client?: RedisClientType;
@@ -21,6 +22,14 @@ export function getSessionBackend(
   const normalized = value?.trim().toLowerCase() || "cookie";
   if (normalized === "cookie" || normalized === "redis") return normalized;
   throw new Error("SUNRISE_SESSION_BACKEND must be cookie or redis");
+}
+
+export function getNextCacheBackend(
+  value = process.env.SUNRISE_NEXT_CACHE_BACKEND,
+): NextCacheBackend {
+  const normalized = value?.trim().toLowerCase() || "memory";
+  if (normalized === "memory" || normalized === "redis") return normalized;
+  throw new Error("SUNRISE_NEXT_CACHE_BACKEND must be memory or redis");
 }
 
 export function getRedisKeyPrefix(
@@ -52,9 +61,7 @@ export function getRedisCommandTimeoutMs(
 export function getRedisUrl(value = process.env.SUNRISE_REDIS_URL) {
   const normalized = value?.trim();
   if (!normalized) {
-    throw new Error(
-      "SUNRISE_REDIS_URL is required when SUNRISE_SESSION_BACKEND=redis",
-    );
+    throw new Error("SUNRISE_REDIS_URL is required by Redis-backed features");
   }
 
   const parsed = new URL(normalized);
@@ -147,9 +154,14 @@ export async function getRedisClient(): Promise<RedisClientType> {
 
 export async function runRedisCommand<T>(
   command: (client: RedisClientType) => Promise<T>,
+  maximumTimeoutMs?: number,
 ): Promise<T> {
   const client = await getRedisClient();
-  const timeoutMs = getRedisCommandTimeoutMs();
+  const configuredTimeoutMs = getRedisCommandTimeoutMs();
+  const timeoutMs =
+    maximumTimeoutMs === undefined
+      ? configuredTimeoutMs
+      : Math.min(configuredTimeoutMs, maximumTimeoutMs);
   const abortController = new AbortController();
   const bounded = client.withAbortSignal(
     abortController.signal,

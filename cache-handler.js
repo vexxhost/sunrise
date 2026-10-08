@@ -195,14 +195,24 @@ function cacheBackend() {
 }
 
 function commandTimeoutMs() {
-  const value = Number(process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS || "2000");
-  return Number.isSafeInteger(value) && value >= 100 && value <= 30_000
-    ? value
-    : 2_000;
+  const normalized = process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS?.trim();
+  if (!normalized) return 2_000;
+  const value = Number(normalized);
+  if (!Number.isSafeInteger(value) || value < 100 || value > 30_000) {
+    throw new Error(
+      "SUNRISE_REDIS_COMMAND_TIMEOUT_MS must be an integer from 100 to 30000",
+    );
+  }
+  return value;
 }
 
 function keyPrefix() {
-  const namespace = process.env.SUNRISE_REDIS_KEY_PREFIX || "sunrise";
+  const namespace = process.env.SUNRISE_REDIS_KEY_PREFIX?.trim() || "sunrise";
+  if (!/^[A-Za-z0-9_.-]+$/.test(namespace)) {
+    throw new Error(
+      "SUNRISE_REDIS_KEY_PREFIX may contain only letters, digits, dots, underscores, and hyphens",
+    );
+  }
   const deployment = process.env.SUNRISE_DEPLOYMENT_ID || "development";
   return `${namespace}:next-cache:${deployment}`;
 }
@@ -263,6 +273,13 @@ function connectionOptions() {
         : {}),
     },
   };
+}
+
+function validateRedisConfiguration() {
+  if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) return;
+  commandTimeoutMs();
+  keyPrefix();
+  connectionOptions();
 }
 
 function serialize(entry) {
@@ -336,15 +353,23 @@ async function runCommand(operation) {
 }
 
 function tagsFor(data, context) {
-  const headerTags = (data.headers?.[NEXT_CACHE_TAGS_HEADER] || "")
+  const headerTags = (data?.headers?.[NEXT_CACHE_TAGS_HEADER] || "")
     .split(",")
     .filter(Boolean);
-  return [...new Set([...(context?.tags || []), ...headerTags])];
+  return [
+    ...new Set([
+      ...(context?.tags || []),
+      ...(context?.softTags || []),
+      ...headerTags,
+    ]),
+  ];
 }
 
 module.exports = class SunriseCacheHandler {
   async get(key, context) {
-    const observedTags = [...new Set(context?.tags || [])];
+    const observedTags = [
+      ...new Set([...(context?.tags || []), ...(context?.softTags || [])]),
+    ];
     if (cacheBackend() !== "redis") {
       const entry = memoryCache.get(key);
       if (!entry) return null;
@@ -353,6 +378,7 @@ module.exports = class SunriseCacheHandler {
       }
       return entry;
     }
+    validateRedisConfiguration();
 
     try {
       const value = await runCommand(async (current) => {
@@ -375,7 +401,6 @@ module.exports = class SunriseCacheHandler {
   }
 
   async set(key, data, context) {
-    if (!data) return;
     const tags = tagsFor(data, context);
     const entry = { value: data, lastModified: Date.now(), tags };
     if (cacheBackend() !== "redis") {
@@ -387,6 +412,7 @@ module.exports = class SunriseCacheHandler {
       memoryCache.set(key, entry);
       return;
     }
+    validateRedisConfiguration();
 
     const expire = context?.cacheControl?.expire;
     const ttlSeconds = Number.isFinite(expire)
@@ -422,6 +448,7 @@ module.exports = class SunriseCacheHandler {
       }
       return;
     }
+    validateRedisConfiguration();
 
     await runCommand(async (current) => {
       if (normalized.length) {

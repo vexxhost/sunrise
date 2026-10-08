@@ -76,9 +76,9 @@ encrypt traffic, while TLS without authentication does not authorize clients;
 use both, network isolation, and a narrowly scoped ACL for production.
 
 Sunrise is available at [http://localhost:9990](http://localhost:9990).
-`/healthz` checks only the application process; `/readyz` checks the configured
-session backend and removes an unhealthy replica from service when Redis is
-unavailable.
+`/healthz` checks only the application process; `/readyz` checks Redis whenever
+server-side sessions or the shared Next.js cache requires it and removes an
+unhealthy replica from service when Redis is unavailable.
 
 Run the repeatable local probe baseline after the stack becomes healthy:
 

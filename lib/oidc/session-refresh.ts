@@ -19,6 +19,9 @@ const REFRESH_RESULT_REUSE_SECONDS = Math.ceil(REFRESH_RESULT_REUSE_MS / 1_000);
 const MAX_REFRESH_ENTRIES = 256;
 const DISTRIBUTED_REFRESH_LOCK_MS = 20_000;
 const DISTRIBUTED_REFRESH_RENEW_MS = 5_000;
+// Coordination must fail well before the current lease can expire, even when
+// the general Redis command budget is configured at its 30-second maximum.
+const DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS = 2_000;
 const DISTRIBUTED_REFRESH_WAIT_MS = OIDC_REFRESH_TIMEOUT_MS + 5_000;
 
 const RELEASE_LOCK_SCRIPT = `
@@ -139,11 +142,13 @@ async function releaseDistributedLock(key: string, owner: string) {
 }
 
 async function renewDistributedLock(key: string, owner: string) {
-  const renewed = await runRedisCommand((client) =>
-    client.eval(RENEW_LOCK_SCRIPT, {
-      keys: [key],
-      arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
-    }),
+  const renewed = await runRedisCommand(
+    (client) =>
+      client.eval(RENEW_LOCK_SCRIPT, {
+        keys: [key],
+        arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
+      }),
+    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
   );
   return Number(renewed) === 1;
 }
@@ -231,11 +236,13 @@ async function distributedRefresh(
 
   while (Date.now() < deadline) {
     const acquisition = Number(
-      await runRedisCommand((client) =>
-        client.eval(ACQUIRE_LOCK_SCRIPT, {
-          keys: [keys.lock, keys.result],
-          arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
-        }),
+      await runRedisCommand(
+        (client) =>
+          client.eval(ACQUIRE_LOCK_SCRIPT, {
+            keys: [keys.lock, keys.result],
+            arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
+          }),
+        DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
       ),
     );
     if (acquisition === 2) {
@@ -250,8 +257,8 @@ async function distributedRefresh(
       continue;
     }
     if (acquisition === 1) {
-      await recordDistributedRefresh("leaders");
       const lease = maintainDistributedLock(keys.lock, owner);
+      void recordDistributedRefresh("leaders");
       try {
         const result = await refreshAccessToken(
           refreshToken,

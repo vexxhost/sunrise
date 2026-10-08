@@ -1,12 +1,15 @@
 import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 
-type CacheEntry = { value: { kind: string }; tags: string[] };
+type CacheEntry = { value: { kind: string } | null; tags: string[] };
 type CacheHandler = {
-  get(key: string, context?: { tags?: string[] }): Promise<CacheEntry | null>;
+  get(
+    key: string,
+    context?: { tags?: string[]; softTags?: string[] },
+  ): Promise<CacheEntry | null>;
   set(
     key: string,
-    data: { kind: string },
+    data: { kind: string } | null,
     context: { tags: string[] },
   ): Promise<void>;
   revalidateTag(tags: string | string[]): Promise<void>;
@@ -18,9 +21,20 @@ const SunriseCacheHandler = localRequire(
   "./cache-handler.js",
 ) as CacheHandlerConstructor;
 const originalBackend = process.env.SUNRISE_NEXT_CACHE_BACKEND;
+const originalRedisUrl = process.env.SUNRISE_REDIS_URL;
+const originalRedisTimeout = process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS;
+const originalRedisPrefix = process.env.SUNRISE_REDIS_KEY_PREFIX;
+
+function restoreEnvironment(name: string, value: string | undefined) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
 
 afterEach(() => {
-  process.env.SUNRISE_NEXT_CACHE_BACKEND = originalBackend;
+  restoreEnvironment("SUNRISE_NEXT_CACHE_BACKEND", originalBackend);
+  restoreEnvironment("SUNRISE_REDIS_URL", originalRedisUrl);
+  restoreEnvironment("SUNRISE_REDIS_COMMAND_TIMEOUT_MS", originalRedisTimeout);
+  restoreEnvironment("SUNRISE_REDIS_KEY_PREFIX", originalRedisPrefix);
 });
 
 describe("Next.js cache handler", () => {
@@ -30,6 +44,29 @@ describe("Next.js cache handler", () => {
 
     await expect(handler.get("test-entry")).rejects.toThrow(
       "SUNRISE_NEXT_CACHE_BACKEND must be memory or redis",
+    );
+  });
+
+  it("rejects malformed Redis configuration before treating it as a miss", async () => {
+    process.env.SUNRISE_NEXT_CACHE_BACKEND = "redis";
+    process.env.SUNRISE_REDIS_URL = "redis://cache:6379";
+    process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS = "fast";
+    const handler = new SunriseCacheHandler();
+
+    await expect(handler.get("test-entry")).rejects.toThrow(
+      "SUNRISE_REDIS_COMMAND_TIMEOUT_MS",
+    );
+
+    process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS = "2000";
+    process.env.SUNRISE_REDIS_KEY_PREFIX = "shared:prefix";
+    await expect(
+      handler.set("test-entry", { kind: "APP_ROUTE" }, { tags: [] }),
+    ).rejects.toThrow("SUNRISE_REDIS_KEY_PREFIX");
+
+    process.env.SUNRISE_REDIS_KEY_PREFIX = "sunrise";
+    delete process.env.SUNRISE_REDIS_URL;
+    await expect(handler.revalidateTag("test-tag")).rejects.toThrow(
+      "SUNRISE_REDIS_URL is required",
     );
   });
 
@@ -70,5 +107,37 @@ describe("Next.js cache handler", () => {
 
     await handler.revalidateTag("second-tag");
     await expect(handler.get("shared-fetch-entry")).resolves.toBeNull();
+  });
+
+  it("tracks soft tags observed by later reads", async () => {
+    process.env.SUNRISE_NEXT_CACHE_BACKEND = "memory";
+    const handler = new SunriseCacheHandler();
+
+    await handler.set(
+      "soft-tag-entry",
+      { kind: "FETCH" },
+      { tags: ["initial-tag"] },
+    );
+    await handler.get("soft-tag-entry", { softTags: ["path-tag"] });
+
+    await handler.revalidateTag("path-tag");
+    await expect(handler.get("soft-tag-entry")).resolves.toBeNull();
+  });
+
+  it("replaces an existing value when Next.js writes a null entry", async () => {
+    process.env.SUNRISE_NEXT_CACHE_BACKEND = "memory";
+    const handler = new SunriseCacheHandler();
+
+    await handler.set(
+      "null-entry",
+      { kind: "APP_ROUTE" },
+      { tags: ["route-tag"] },
+    );
+    await handler.set("null-entry", null, { tags: [] });
+
+    await expect(handler.get("null-entry")).resolves.toMatchObject({
+      value: null,
+      tags: [],
+    });
   });
 });
