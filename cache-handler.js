@@ -187,9 +187,11 @@ return 1
 `;
 
 function cacheBackend() {
-  return (process.env.SUNRISE_NEXT_CACHE_BACKEND || "memory")
+  const normalized = (process.env.SUNRISE_NEXT_CACHE_BACKEND || "memory")
     .trim()
     .toLowerCase();
+  if (normalized === "memory" || normalized === "redis") return normalized;
+  throw new Error("SUNRISE_NEXT_CACHE_BACKEND must be memory or redis");
 }
 
 function commandTimeoutMs() {

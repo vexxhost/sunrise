@@ -24,6 +24,15 @@ afterEach(() => {
 });
 
 describe("Next.js cache handler", () => {
+  it("rejects an unsupported cache backend", async () => {
+    process.env.SUNRISE_NEXT_CACHE_BACKEND = "redsi";
+    const handler = new SunriseCacheHandler();
+
+    await expect(handler.get("test-entry")).rejects.toThrow(
+      "SUNRISE_NEXT_CACHE_BACKEND must be memory or redis",
+    );
+  });
+
   it("stores and invalidates entries in the bounded local fallback", async () => {
     process.env.SUNRISE_NEXT_CACHE_BACKEND = "memory";
     const handler = new SunriseCacheHandler();
