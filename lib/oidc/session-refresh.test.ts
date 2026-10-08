@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/oidc/sunrise", () => ({
+  OIDC_REFRESH_TIMEOUT_MS: 30_000,
   refreshAccessToken: mocks.refreshAccessToken,
 }));
 vi.mock("@/lib/redis", () => ({

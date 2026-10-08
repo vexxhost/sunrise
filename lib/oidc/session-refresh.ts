@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { sealData, unsealData, type IronSession } from "iron-session";
 import {
+  OIDC_REFRESH_TIMEOUT_MS,
   refreshAccessToken,
   type RefreshTokenResult,
 } from "@/lib/oidc/sunrise";
@@ -20,7 +21,7 @@ const REFRESH_RESULT_REUSE_SECONDS = Math.ceil(
 const MAX_REFRESH_ENTRIES = 256;
 const DISTRIBUTED_REFRESH_LOCK_MS = 20_000;
 const DISTRIBUTED_REFRESH_RENEW_MS = 5_000;
-const DISTRIBUTED_REFRESH_WAIT_MS = 15_000;
+const DISTRIBUTED_REFRESH_WAIT_MS = OIDC_REFRESH_TIMEOUT_MS + 5_000;
 
 const RELEASE_LOCK_SCRIPT = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
