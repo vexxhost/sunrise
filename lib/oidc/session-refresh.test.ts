@@ -2,11 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(),
+  getSessionBackend: vi.fn(() => "cookie"),
+  getRedisKeyPrefix: vi.fn(() => "sunrise"),
+  runRedisCommand: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/oidc/sunrise", () => ({
   refreshAccessToken: mocks.refreshAccessToken,
+}));
+vi.mock("@/lib/redis", () => ({
+  getSessionBackend: mocks.getSessionBackend,
+  getRedisKeyPrefix: mocks.getRedisKeyPrefix,
+  runRedisCommand: mocks.runRedisCommand,
 }));
 
 import {
@@ -27,6 +35,7 @@ function session(sessionId: string, refreshToken = "old-refresh-token") {
 describe("OIDC session token refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getSessionBackend.mockReturnValue("cookie");
     process.env.SUNRISE_SESSION_SECRET =
       "test-session-secret-that-is-at-least-thirty-two-characters";
   });
@@ -50,6 +59,35 @@ describe("OIDC session token refresh", () => {
     await expect(unsealDistributedRefreshResult(sealed)).resolves.toEqual(
       result,
     );
+  });
+
+  it("reuses a result published before the distributed lock is acquired", async () => {
+    const result = {
+      access_token: "shared-access-token",
+      refresh_token: "shared-refresh-token",
+      expires_in: 300,
+      token_type: "Bearer",
+    };
+    const sealed = await sealDistributedRefreshResult(result);
+    const client = {
+      get: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(sealed),
+      eval: vi.fn().mockResolvedValue(2),
+      hIncrBy: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    const current = session("distributed-result-race");
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).resolves.toEqual(result);
+
+    expect(client.eval).toHaveBeenCalledOnce();
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(current.keycloakRefreshToken).toBe("shared-refresh-token");
   });
 
   it("coalesces concurrent refreshes and applies the same rotated token", async () => {

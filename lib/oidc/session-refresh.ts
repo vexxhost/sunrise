@@ -29,6 +29,16 @@ end
 return 0
 `;
 
+const ACQUIRE_LOCK_SCRIPT = `
+if redis.call("EXISTS", KEYS[2]) == 1 then
+  return 2
+end
+if redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2], "NX") then
+  return 1
+end
+return 0
+`;
+
 const RENEW_LOCK_SCRIPT = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   return redis.call("PEXPIRE", KEYS[1], ARGV[2])
@@ -208,13 +218,26 @@ async function distributedRefresh(
   let delayMs = 40;
 
   while (Date.now() < deadline) {
-    const acquired = await runRedisCommand((client) =>
-      client.set(keys.lock, owner, {
-        expiration: { type: "PX", value: DISTRIBUTED_REFRESH_LOCK_MS },
-        condition: "NX",
-      }),
+    const acquisition = Number(
+      await runRedisCommand((client) =>
+        client.eval(ACQUIRE_LOCK_SCRIPT, {
+          keys: [keys.lock, keys.result],
+          arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
+        }),
+      ),
     );
-    if (acquired === "OK") {
+    if (acquisition === 2) {
+      const result = await unsealDistributedRefreshResult(
+        await runRedisCommand((client) => client.get(keys.result)),
+      );
+      if (result) {
+        await recordDistributedRefresh("result_reuse");
+        return result;
+      }
+      await runRedisCommand((client) => client.del(keys.result));
+      continue;
+    }
+    if (acquisition === 1) {
       await recordDistributedRefresh("leaders");
       const lease = maintainDistributedLock(keys.lock, owner);
       try {
