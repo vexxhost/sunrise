@@ -22,6 +22,7 @@ import {
 import type { OidcRefreshCheckpoint, SunriseSession } from "@/lib/session";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
+const ACCESS_TOKEN_REUSE_MARGIN_MS = 5_000;
 const MAX_REFRESH_ENTRIES = 256;
 const MAX_DISTRIBUTED_REFRESH_LEADERS = 3;
 const MAX_DISTRIBUTED_SAVE_ATTEMPTS = 3;
@@ -118,6 +119,22 @@ function applyRotatedRefreshToken(
     return true;
   }
   return false;
+}
+
+function checkpointReuseUntil(
+  result: RefreshTokenResult,
+  checkpointPersistenceMs: number,
+  now = Date.now(),
+) {
+  const publicationWindow =
+    now + REFRESH_RESULT_REUSE_MS + checkpointPersistenceMs;
+  const expiresInSeconds = Number.isFinite(result.expires_in)
+    ? Math.max(0, result.expires_in)
+    : 0;
+  const accessTokenLifetimeMs = expiresInSeconds * 1_000;
+  const accessTokenWindow =
+    now + Math.max(0, accessTokenLifetimeMs - ACCESS_TOKEN_REUSE_MARGIN_MS);
+  return Math.min(publicationWindow, accessTokenWindow);
 }
 
 async function releaseDistributedLock(key: string, owner: string) {
@@ -304,8 +321,7 @@ async function distributedRefresh(
           result,
           // Keep the checkpoint reusable for the full bounded publication
           // window plus the normal reuse period after publication.
-          reuseUntil:
-            Date.now() + REFRESH_RESULT_REUSE_MS + checkpointPersistenceMs,
+          reuseUntil: checkpointReuseUntil(result, checkpointPersistenceMs),
         };
         // After Keycloak consumes a single-use token, preserving its result is
         // safer than discarding it on an uncertain lease renewal. Session CAS
