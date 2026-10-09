@@ -23,6 +23,7 @@ type StoredSessionRecord = {
 };
 
 export const REDIS_SESSION_MAX_SAVE_ATTEMPTS = 4;
+const REDIS_SESSION_MAX_PERSIST_ATTEMPTS = 2;
 const REDIS_SESSION_MAX_REVOKE_ATTEMPTS = 2;
 const REDIS_SESSION_MAX_ROTATE_ATTEMPTS = 2;
 const PRE_AUTH_SESSION_TTL_SECONDS = 10 * 60;
@@ -30,6 +31,7 @@ const PRE_AUTH_SESSION_TTL_SECONDS = 10 * 60;
 type RedisSessionSaveOptions = {
   beforeConflictRetry?: () => Promise<void>;
   maximumCommandTimeoutMs?: number;
+  recoverRotatedSession?: boolean;
   validateConflictRetry?: (
     authoritative: Readonly<SunriseSession>,
   ) => void;
@@ -40,12 +42,16 @@ if redis.call("EXISTS", KEYS[2]) == 1 then
   return -1
 end
 local current = redis.call("HGET", KEYS[1], "version")
+local currentWrite = redis.call("HGET", KEYS[1], "write")
+if current == ARGV[2] and currentWrite == ARGV[5] then
+  return 1
+end
 if ARGV[1] == "" then
   if current then return 0 end
 elseif current ~= ARGV[1] then
   return 0
 end
-redis.call("HSET", KEYS[1], "version", ARGV[2], "data", ARGV[3])
+redis.call("HSET", KEYS[1], "version", ARGV[2], "data", ARGV[3], "write", ARGV[5])
 redis.call("EXPIRE", KEYS[1], ARGV[4])
 return 1
 `;
@@ -209,19 +215,36 @@ async function persistStoredSession(
     password: sessionPassword(),
     ttl: ttl + 60,
   });
-  const result = await runRedisCommand((client) =>
-    client.eval(SAVE_SESSION_SCRIPT, {
-      keys: [sessionKey(id), revokedKey(id)],
-      arguments: [
-        expectedVersion?.toString() ?? "",
-        nextVersion.toString(),
-        sealed,
-        ttl.toString(),
-      ],
-    }),
-    maximumCommandTimeoutMs,
-  );
-  return Number(result) as -1 | 0 | 1;
+  const writeId = randomUUID();
+  let lastError: unknown;
+
+  for (
+    let attempt = 0;
+    attempt < REDIS_SESSION_MAX_PERSIST_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      const result = await runRedisCommand(
+        (client) =>
+          client.eval(SAVE_SESSION_SCRIPT, {
+            keys: [sessionKey(id), revokedKey(id)],
+            arguments: [
+              expectedVersion?.toString() ?? "",
+              nextVersion.toString(),
+              sealed,
+              ttl.toString(),
+              writeId,
+            ],
+          }),
+        maximumCommandTimeoutMs,
+      );
+      return Number(result) as -1 | 0 | 1;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 }
 
 async function revokeStoredSession(id: string) {
@@ -396,6 +419,18 @@ export async function getRedisSession(
         options.maximumCommandTimeoutMs,
       );
       if (result === -1) {
+        if (options.recoverRotatedSession) {
+          const staleId: string = id;
+          const recovered = await resolveStoredSession(
+            staleId,
+            options.maximumCommandTimeoutMs,
+          );
+          if (recovered.id !== staleId) {
+            id = recovered.id;
+            loaded = recovered.record;
+            continue;
+          }
+        }
         throw new StoredSessionSupersededError(
           "Cannot save a revoked Sunrise session",
         );

@@ -7,6 +7,8 @@ import {
   parseOidcAuthorizationPrompt,
 } from "@/lib/auth-prompt";
 import { getSession } from "@/lib/session";
+import { isStoredSessionSupersededError } from "@/lib/session-errors";
+import { saveRedisSession } from "@/lib/session-store";
 import { SESSION_EXPIRY_NOTICE_COOKIE } from "@/lib/session-lifetime";
 import {
   buildAuthorizeUrl,
@@ -41,7 +43,14 @@ export async function GET(request: Request) {
   session.oidcIdProvider = idp;
   session.oidcReturnTo = returnTo === "/" ? undefined : returnTo;
   session.oidcSessionContinuation = continuation || undefined;
-  await session.save();
+  try {
+    await saveRedisSession(session, { recoverRotatedSession: true });
+  } catch (error) {
+    if (isStoredSessionSupersededError(error)) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    throw error;
+  }
 
   const authorizeUrl = await buildAuthorizeUrl({
     identityProvider: idp,

@@ -7,10 +7,14 @@ const mocks = vi.hoisted(() => {
     generatePkce: vi.fn(),
     generateState: vi.fn(),
     getSession: vi.fn(),
+    saveRedisSession: vi.fn(),
   };
 });
 
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
+}));
 vi.mock("@/lib/oidc/sunrise", () => ({
   buildAuthorizeUrl: mocks.buildAuthorizeUrl,
   generatePkce: mocks.generatePkce,
@@ -18,6 +22,7 @@ vi.mock("@/lib/oidc/sunrise", () => ({
 }));
 
 import { GET } from "./route";
+import { StoredSessionSupersededError } from "@/lib/session-errors";
 
 describe("OIDC login route", () => {
   beforeEach(() => {
@@ -30,6 +35,7 @@ describe("OIDC login route", () => {
     mocks.buildAuthorizeUrl.mockResolvedValue(
       "https://identity.example.test/authorize",
     );
+    mocks.saveRedisSession.mockImplementation((session) => session.save());
   });
 
   it("forwards the account-selection prompt and clears its one-shot cookie", async () => {
@@ -60,6 +66,9 @@ describe("OIDC login route", () => {
       oidcReturnTo: "/object-storage/buckets",
     });
     expect(session.save).toHaveBeenCalledOnce();
+    expect(mocks.saveRedisSession).toHaveBeenCalledWith(session, {
+      recoverRotatedSession: true,
+    });
     expect(response.headers.get("set-cookie")).toContain(
       "sunrise-auth-prompt=",
     );
@@ -95,6 +104,24 @@ describe("OIDC login route", () => {
       "https://sunrise.example.test/",
     );
     expect(session.save).not.toHaveBeenCalled();
+    expect(mocks.buildAuthorizeUrl).not.toHaveBeenCalled();
+  });
+
+  it("returns to Sunrise when a concurrent callback supersedes login", async () => {
+    const session = { save: vi.fn().mockResolvedValue(undefined) };
+    mocks.getSession.mockResolvedValue(session);
+    mocks.saveRedisSession.mockRejectedValueOnce(
+      new StoredSessionSupersededError("Concurrent callback won"),
+    );
+
+    const response = await GET(
+      new Request("https://sunrise.example.test/auth/oidc/login?idp=demo"),
+    );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
     expect(mocks.buildAuthorizeUrl).not.toHaveBeenCalled();
   });
 

@@ -215,6 +215,49 @@ describe("Redis session storage", () => {
     );
   });
 
+  it("recognizes a save committed before its Redis reply was lost", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      projectId: "legacy-project",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const client = {
+      eval: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Redis response was lost"))
+        .mockResolvedValueOnce(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    await expect(session.save()).resolves.toBeUndefined();
+
+    const firstAttempt = client.eval.mock.calls[0][1] as {
+      arguments: string[];
+      keys: string[];
+    };
+    const retry = client.eval.mock.calls[1][1] as {
+      arguments: string[];
+      keys: string[];
+    };
+    expect(retry.keys).toEqual(firstAttempt.keys);
+    expect(retry.arguments).toEqual(firstAttempt.arguments);
+    expect(firstAttempt.arguments).toHaveLength(5);
+    expect(firstAttempt.arguments[4]).not.toBe("");
+    expect(reference).toEqual(
+      expect.objectContaining({ backend: "redis", key: expect.any(String) }),
+    );
+    expect(saveReference).toHaveBeenCalledOnce();
+  });
+
   it("recreates an expired referenced session without rewriting its cookie", async () => {
     const saveReference = vi.fn();
     const reference = {
@@ -285,6 +328,79 @@ describe("Redis session storage", () => {
     expect(saveOptions.keys[0]).toContain("recorded-session-successor");
     expect(saveOptions.keys[1]).toContain("recorded-session-successor");
     expect(reference.key).toBe("recorded-session-successor");
+    expect(saveReference).toHaveBeenCalledOnce();
+  });
+
+  it("moves an OIDC login save to a concurrently rotated successor", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "login-predecessor",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const predecessor = await sealData(
+      {
+        oidcFlowId: "older-flow",
+        projectId: "project-old",
+        sessionSignedInAt: Date.now(),
+      },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const successor = await sealData(
+      {
+        keystoneProjectToken: "authenticated-token",
+        projectId: "project-current",
+        sessionSignedInAt: Date.now(),
+      },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi
+        .fn()
+        .mockResolvedValueOnce({ version: "1", data: predecessor })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ version: "2", data: successor }),
+      get: vi.fn().mockResolvedValueOnce("login-successor"),
+      eval: vi.fn().mockResolvedValueOnce(-1).mockResolvedValueOnce(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    session.oidcFlowId = "newer-flow";
+    session.oidcState = "newer-state";
+    await saveRedisSession(session, { recoverRotatedSession: true });
+
+    const predecessorSave = client.eval.mock.calls[0][1] as {
+      keys: string[];
+    };
+    const successorSave = client.eval.mock.calls[1][1] as {
+      arguments: string[];
+      keys: string[];
+    };
+    expect(predecessorSave.keys[0]).toContain("login-predecessor");
+    expect(successorSave.keys[0]).toContain("login-successor");
+    expect(successorSave.arguments[0]).toBe("2");
+    expect(session).toMatchObject({
+      keystoneProjectToken: "authenticated-token",
+      oidcFlowId: "newer-flow",
+      oidcState: "newer-state",
+      projectId: "project-current",
+    });
+    expect(reference.key).toBe("login-successor");
     expect(saveReference).toHaveBeenCalledOnce();
   });
 
