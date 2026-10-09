@@ -33,6 +33,8 @@ vi.mock("@/lib/session-store", () => ({
 }));
 
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
+import { OidcSessionSupersededError } from "@/lib/oidc/session-authority";
+import { StoredSessionSupersededError } from "@/lib/session-errors";
 
 function digest(token: string) {
   return createHash("sha256").update(token).digest("base64url");
@@ -483,6 +485,45 @@ describe("OIDC session token refresh", () => {
       client.eval.mock.calls.filter(([script]) => script.includes("PEXPIRE")),
     ).toHaveLength(3);
     expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("treats a rotated session during reload as OIDC supersession", async () => {
+    const current = session("redis-rotated-before-refresh");
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.reloadRedisSession.mockRejectedValueOnce(
+      new StoredSessionSupersededError(
+        "Cannot reload a missing or revoked Sunrise session",
+      ),
+    );
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).rejects.toBeInstanceOf(OidcSessionSupersededError);
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("does not retry checkpoint publication after session rotation", async () => {
+    const current = session("redis-rotated-during-save");
+    const client = redisClient((script) =>
+      script.includes('"NX"') ? 1 : 1,
+    );
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+    mocks.saveRedisSession.mockRejectedValue(
+      new StoredSessionSupersededError(
+        "Cannot save a revoked Sunrise session",
+      ),
+    );
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).rejects.toBeInstanceOf(OidcSessionSupersededError);
+    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
+    expect(mocks.saveRedisSession).toHaveBeenCalledOnce();
   });
 
   it("preserves a continuation token published during a refresh", async () => {

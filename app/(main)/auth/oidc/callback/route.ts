@@ -33,6 +33,7 @@ import {
   type ServicePolicy,
 } from "@/lib/service-policy";
 import { saveRedisSession } from "@/lib/session-store";
+import { isStoredSessionSupersededError } from "@/lib/session-errors";
 import {
   isOidcSessionSupersededError,
   OidcSessionSupersededError,
@@ -58,7 +59,12 @@ async function saveOidcFlow(
     });
     return true;
   } catch (error) {
-    if (isOidcSessionSupersededError(error)) return false;
+    if (
+      isOidcSessionSupersededError(error) ||
+      isStoredSessionSupersededError(error)
+    ) {
+      return false;
+    }
     throw error;
   }
 }
@@ -167,10 +173,17 @@ export async function GET(request: Request) {
     return new NextResponse(`Login failed: ${msg}`, { status: 500 });
   }
 
-  if (continuation && session.sessionId) {
-    await saveSessionActivity(session.sessionId);
-  } else {
-    await startSessionLifetime(session);
+  try {
+    if (continuation && session.sessionId) {
+      await saveSessionActivity(session.sessionId);
+    } else {
+      await startSessionLifetime(session);
+    }
+  } catch (error) {
+    if (isStoredSessionSupersededError(error)) {
+      return supersededFlowResponse();
+    }
+    throw error;
   }
 
   session.keycloakRefreshToken = tokens.refresh_token;

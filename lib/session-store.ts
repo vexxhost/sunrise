@@ -10,6 +10,7 @@ import {
 import { getSessionLifetimePolicy } from "@/lib/session-lifetime";
 import type { SunriseSession } from "@/lib/session";
 import { getRedisKeyPrefix, runRedisCommand } from "@/lib/redis";
+import { StoredSessionSupersededError } from "@/lib/session-errors";
 
 type StoredSessionReference = {
   backend?: "redis";
@@ -386,7 +387,9 @@ export async function getRedisSession(
         options.maximumCommandTimeoutMs,
       );
       if (result === -1) {
-        throw new Error("Cannot save a revoked Sunrise session");
+        throw new StoredSessionSupersededError(
+          "Cannot save a revoked Sunrise session",
+        );
       }
       if (result === 1) {
         loaded = {
@@ -409,7 +412,9 @@ export async function getRedisSession(
       await options.beforeConflictRetry?.();
       loaded = await readStoredSession(id, options.maximumCommandTimeoutMs);
       if (!loaded) {
-        throw new Error("Cannot save a missing or revoked Sunrise session");
+        throw new StoredSessionSupersededError(
+          "Cannot save a missing or revoked Sunrise session",
+        );
       }
       options.validateConflictRetry?.(loaded.data);
     }
@@ -438,7 +443,9 @@ export async function getRedisSession(
     }
     const current = await readStoredSession(id);
     if (!current) {
-      throw new Error("Cannot reload a missing or revoked Sunrise session");
+      throw new StoredSessionSupersededError(
+        "Cannot reload a missing or revoked Sunrise session",
+      );
     }
     const merged = mergeStoredSession(current.data, target, changed, deleted);
     replaceSessionData(target, merged);
@@ -456,7 +463,9 @@ export async function getRedisSession(
           randomUUID(),
         );
         if (!successorId) {
-          throw new Error("Cannot rotate a missing or revoked Sunrise session");
+          throw new StoredSessionSupersededError(
+            "Cannot rotate a missing or revoked Sunrise session",
+          );
         }
         id = successorId;
         loaded = null;

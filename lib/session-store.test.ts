@@ -26,6 +26,7 @@ import {
 } from "@/lib/session-store";
 import { sealData } from "iron-session";
 import type { SunriseSession } from "@/lib/session";
+import { StoredSessionSupersededError } from "@/lib/session-errors";
 
 const originalIdleTimeout = process.env.SUNRISE_SESSION_IDLE_TIMEOUT_SECONDS;
 const originalAbsoluteTimeout =
@@ -358,8 +359,8 @@ describe("Redis session storage", () => {
     const session = await getRedisSession({} as never, {} as never);
     session.oidcState = "new-login-state";
 
-    await expect(session.save()).rejects.toThrow(
-      "Cannot save a revoked Sunrise session",
+    await expect(session.save()).rejects.toBeInstanceOf(
+      StoredSessionSupersededError,
     );
     const saveOptions = client.eval.mock.calls[0][1] as { keys: string[] };
     expect(saveOptions.keys[0]).toContain("revoked-rotation-successor");

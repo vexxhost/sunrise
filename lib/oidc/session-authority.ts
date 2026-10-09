@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type { IronSession } from "iron-session";
 import type { SunriseSession } from "@/lib/session";
 import { saveRedisSession } from "@/lib/session-store";
+import { isStoredSessionSupersededError } from "@/lib/session-errors";
 
 export type OidcSessionAuthority = {
   generation?: string;
@@ -66,8 +67,15 @@ export async function saveOidcSessionIfAuthoritative(
   session: IronSession<SunriseSession>,
   expected: Readonly<OidcSessionAuthority>,
 ) {
-  await saveRedisSession(session, {
-    validateConflictRetry: (authoritative) =>
-      assertOidcSessionAuthority(authoritative, expected),
-  });
+  try {
+    await saveRedisSession(session, {
+      validateConflictRetry: (authoritative) =>
+        assertOidcSessionAuthority(authoritative, expected),
+    });
+  } catch (error) {
+    if (isStoredSessionSupersededError(error)) {
+      throw new OidcSessionSupersededError();
+    }
+    throw error;
+  }
 }

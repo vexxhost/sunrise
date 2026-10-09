@@ -63,6 +63,7 @@ vi.mock("@/lib/s3/endpoint", () => ({
 }));
 
 import { GET } from "./route";
+import { StoredSessionSupersededError } from "@/lib/session-errors";
 
 const identity = {
   subject: "user-123",
@@ -489,6 +490,63 @@ describe("OIDC callback recovery", () => {
     );
     expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
     expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("redirects when a newer callback rotates the stored session", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES_REGIONONE = "object-storage-s3";
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
+      activeSession.projectId = "project-1";
+      activeSession.regionId = "RegionOne";
+      activeSession.keystoneProjectToken = "project-token";
+      return readyResolution();
+    });
+    mocks.saveRedisSession
+      .mockImplementationOnce(
+        async (activeSession: { save: () => Promise<void> }) =>
+          activeSession.save(),
+      )
+      .mockRejectedValueOnce(
+        new StoredSessionSupersededError(
+          "Cannot save a revoked Sunrise session",
+        ),
+      );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("redirects when the login boundary was already rotated", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.startSessionLifetime.mockRejectedValueOnce(
+      new StoredSessionSupersededError(
+        "Cannot rotate a missing or revoked Sunrise session",
+      ),
+    );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.federateOidcWithKeystone).not.toHaveBeenCalled();
   });
 
   it("waits for the Keystone project context before starting STS", async () => {

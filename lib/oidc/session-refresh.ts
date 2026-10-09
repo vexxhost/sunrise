@@ -25,6 +25,7 @@ import {
   isOidcSessionSupersededError,
   OidcSessionSupersededError,
 } from "@/lib/oidc/session-authority";
+import { isStoredSessionSupersededError } from "@/lib/session-errors";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
 const ACCESS_TOKEN_REUSE_MARGIN_MS = 5_000;
@@ -519,7 +520,12 @@ async function saveDistributedRefresh(
       });
       return;
     } catch (error) {
-      if (isOidcSessionSupersededError(error)) throw error;
+      if (
+        isOidcSessionSupersededError(error) ||
+        isStoredSessionSupersededError(error)
+      ) {
+        throw error;
+      }
       lastError = error;
       if (attempt === MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) break;
       try {
@@ -803,10 +809,14 @@ export async function refreshSessionOidcTokens(
 ): Promise<RefreshTokenResult | undefined> {
   if (!session.keycloakRefreshToken) return undefined;
   const authority = captureRefreshIdentityAuthority(session, identityProvider);
-  return refreshSessionOidcTokensForAuthority(
-    session,
-    authority,
-  );
+  try {
+    return await refreshSessionOidcTokensForAuthority(session, authority);
+  } catch (error) {
+    if (isStoredSessionSupersededError(error)) {
+      throw new OidcSessionSupersededError();
+    }
+    throw error;
+  }
 }
 
 async function refreshSessionOidcTokensForAuthority(
