@@ -201,11 +201,13 @@ async function publishDistributedRefreshResult(
   result: RefreshTokenResult,
 ) {
   const sealed = await sealDistributedRefreshResult(result);
-  const published = await runRedisCommand((client) =>
-    client.eval(PUBLISH_REFRESH_RESULT_SCRIPT, {
-      keys: [lockKey, resultKey],
-      arguments: [owner, sealed, REFRESH_RESULT_REUSE_MS.toString()],
-    }),
+  const published = await runRedisCommand(
+    (client) =>
+      client.eval(PUBLISH_REFRESH_RESULT_SCRIPT, {
+        keys: [lockKey, resultKey],
+        arguments: [owner, sealed, REFRESH_RESULT_REUSE_MS.toString()],
+      }),
+    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
   );
   return Number(published) === 1;
 }

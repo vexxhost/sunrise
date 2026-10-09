@@ -333,6 +333,11 @@ describe("OIDC session token refresh", () => {
       ),
     ).resolves.toEqual(result);
 
+    expect(mocks.runRedisCommand).toHaveBeenNthCalledWith(
+      3,
+      expect.any(Function),
+      2_000,
+    );
     expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
   });
 
