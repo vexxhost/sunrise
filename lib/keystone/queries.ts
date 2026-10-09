@@ -14,6 +14,7 @@ import {
  */
 export async function getRegions(): Promise<Region[]> {
   const session = await getSession();
+  const authority = captureOidcSessionAuthority(session);
 
   if (!session.keystone_unscoped_token) {
     return [];
@@ -46,7 +47,7 @@ export async function getRegions(): Promise<Region[]> {
 
     if (!session.regionId && regions.length > 0) {
       session.regionId = regions[0].id;
-      await session.save();
+      await saveOidcSessionIfAuthoritative(session, authority);
     }
 
     return regions;

@@ -17,7 +17,7 @@ vi.mock("@/lib/keystone/login", () => ({
   getProjectScopedTokenContext: mocks.getProjectScopedTokenContext,
 }));
 
-import { getProjects } from "@/lib/keystone/queries";
+import { getProjects, getRegions } from "@/lib/keystone/queries";
 
 function session() {
   return {
@@ -74,6 +74,28 @@ describe("Keystone context queries", () => {
     });
 
     await expect(getProjects()).resolves.toEqual([]);
+    expect(current.save).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a concurrently selected region with the default", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          regions: [{ id: "RegionOne", description: "Primary region" }],
+        }),
+      ),
+    );
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        regionId: "RegionTwo",
+      });
+    });
+
+    await expect(getRegions()).resolves.toEqual([]);
     expect(current.save).not.toHaveBeenCalled();
   });
 });
