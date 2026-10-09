@@ -3,6 +3,7 @@ import {
   finalizeKeystoneSession,
   KeystoneSessionSetupError,
 } from "@/lib/keystone/login";
+import { isStoredSessionSupersededError } from "@/lib/session-errors";
 
 const SUNRISE_DASHBOARD_URL = process.env.SUNRISE_DASHBOARD_URL ?? "/";
 
@@ -33,6 +34,9 @@ export async function POST(request: Request) {
     session.authRecovery =
       resolution.status === "ready" ? undefined : { reason: resolution.status };
   } catch (error) {
+    if (isStoredSessionSupersededError(error)) {
+      return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
+    }
     session.authRecovery = {
       reason:
         error instanceof KeystoneSessionSetupError
@@ -44,7 +48,14 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : "unknown error",
     );
   }
-  await session.save();
+  try {
+    await session.save();
+  } catch (error) {
+    if (isStoredSessionSupersededError(error)) {
+      return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
+    }
+    throw error;
+  }
 
   return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
 }

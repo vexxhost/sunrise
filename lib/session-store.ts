@@ -60,18 +60,22 @@ return successor or ""
 const ROTATE_SESSION_SCRIPT = `
 local successor = redis.call("GET", KEYS[3])
 if successor then
-  return successor
+  if successor == ARGV[3] then
+    return successor
+  end
+  return ""
 end
 if redis.call("EXISTS", KEYS[2]) == 1 then
   return ""
 end
-if redis.call("EXISTS", KEYS[1]) == 0 then
+local current = redis.call("HGET", KEYS[1], "version")
+if not current or current ~= ARGV[2] then
   return ""
 end
-redis.call("SET", KEYS[3], ARGV[2], "EX", ARGV[1])
+redis.call("SET", KEYS[3], ARGV[3], "EX", ARGV[1])
 redis.call("SET", KEYS[2], "1", "EX", ARGV[1])
 redis.call("DEL", KEYS[1])
-return ARGV[2]
+return ARGV[3]
 `;
 
 const destroyers = new WeakMap<object, () => Promise<void>>();
@@ -259,7 +263,11 @@ async function revokeStoredSession(id: string) {
   throw new Error("Sunrise session rotation contains a cycle");
 }
 
-async function rotateStoredSession(id: string, proposedSuccessor: string) {
+async function rotateStoredSession(
+  id: string,
+  expectedVersion: number,
+  proposedSuccessor: string,
+) {
   const { absoluteTimeoutSeconds } = getSessionLifetimePolicy();
   let lastError: unknown;
 
@@ -274,6 +282,7 @@ async function rotateStoredSession(id: string, proposedSuccessor: string) {
           keys: [sessionKey(id), revokedKey(id), rotatedKey(id)],
           arguments: [
             absoluteTimeoutSeconds.toString(),
+            expectedVersion.toString(),
             proposedSuccessor,
           ],
         }),
@@ -458,8 +467,19 @@ export async function getRedisSession(
       rotating = (async () => {
         const storedId = id;
         if (!storedId) return;
+        // The loaded version covers the encrypted session data, including an
+        // authentication flow's ownership marker. Requiring it in the Lua
+        // rotation makes the ownership check and predecessor revocation one
+        // atomic operation without exposing session fields to Redis.
+        const expectedVersion = loaded?.version;
+        if (!expectedVersion) {
+          throw new StoredSessionSupersededError(
+            "Cannot rotate a missing or revoked Sunrise session",
+          );
+        }
         const successorId = await rotateStoredSession(
           storedId,
+          expectedVersion,
           randomUUID(),
         );
         if (!successorId) {

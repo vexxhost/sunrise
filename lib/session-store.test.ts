@@ -631,7 +631,7 @@ describe("Redis session storage", () => {
         .fn()
         .mockImplementationOnce(
           (_script: string, options: { arguments: string[] }) =>
-            Promise.resolve(options.arguments[1]),
+            Promise.resolve(options.arguments[2]),
         )
         .mockResolvedValueOnce(1),
     };
@@ -654,8 +654,9 @@ describe("Redis session storage", () => {
     expect(rotation.keys[0]).toContain("pre-auth-session-id");
     expect(rotation.keys[1]).toContain("pre-auth-session-id");
     expect(rotation.keys[2]).toContain("pre-auth-session-id");
-    expect(rotation.arguments).toHaveLength(2);
+    expect(rotation.arguments).toHaveLength(3);
     expect(rotation.arguments[0]).toBe("3600");
+    expect(rotation.arguments[1]).toBe("1");
     expect(save.keys[0]).not.toContain("pre-auth-session-id");
     expect(reference.key).not.toBe("pre-auth-session-id");
     expect(saveReference).toHaveBeenCalledOnce();
@@ -709,6 +710,115 @@ describe("Redis session storage", () => {
     },
   );
 
+  it("cannot rotate after a newer request changes the stored session", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "superseded-rotation-session-id",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const sealed = await sealData(
+      { oidcFlowId: "callback-owner" },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({ version: "4", data: sealed }),
+      // Redis has already advanced to version 5 for a newer login flow.
+      eval: vi.fn().mockResolvedValue(""),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+
+    await expect(rotateRedisSession(session)).rejects.toBeInstanceOf(
+      StoredSessionSupersededError,
+    );
+    const rotation = client.eval.mock.calls[0][1] as {
+      arguments: string[];
+    };
+    expect(rotation.arguments[1]).toBe("4");
+    expect(reference.key).toBe("superseded-rotation-session-id");
+    expect(saveReference).not.toHaveBeenCalled();
+  });
+
+  it("does not adopt a successor created by another rotation", async () => {
+    const firstReference = {
+      backend: "redis",
+      key: "shared-pre-auth-session-id",
+    };
+    const secondReference = {
+      backend: "redis",
+      key: "shared-pre-auth-session-id",
+    };
+    for (const reference of [firstReference, secondReference]) {
+      Object.defineProperties(reference, {
+        save: { value: vi.fn() },
+        destroy: { value: vi.fn() },
+        updateConfig: { value: vi.fn() },
+      });
+    }
+    const sealed = await sealData(
+      { oidcState: "expected-state", oidcVerifier: "verifier" },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    let recordedSuccessor: string | undefined;
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({ version: "1", data: sealed }),
+      eval: vi.fn().mockImplementation(
+        (_script: string, options: { arguments: string[] }) => {
+          const proposedSuccessor = options.arguments[2];
+          if (!recordedSuccessor) {
+            recordedSuccessor = proposedSuccessor;
+            return Promise.resolve(recordedSuccessor);
+          }
+          return Promise.resolve(
+            recordedSuccessor === proposedSuccessor ? recordedSuccessor : "",
+          );
+        },
+      ),
+    };
+    mocks.getIronSession
+      .mockResolvedValueOnce(firstReference)
+      .mockResolvedValueOnce(secondReference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const firstSession = await getRedisSession({} as never, {} as never);
+    const secondSession = await getRedisSession({} as never, {} as never);
+    await rotateRedisSession(firstSession);
+
+    await expect(rotateRedisSession(secondSession)).rejects.toBeInstanceOf(
+      StoredSessionSupersededError,
+    );
+    const firstRotation = client.eval.mock.calls[0][1] as {
+      arguments: string[];
+    };
+    const secondRotation = client.eval.mock.calls[1][1] as {
+      arguments: string[];
+    };
+    expect(firstRotation.arguments[2]).not.toBe(secondRotation.arguments[2]);
+    // Rotation is server-side until the winning request saves and publishes
+    // its opaque successor reference to the browser.
+    expect(firstReference.key).toBe("shared-pre-auth-session-id");
+    expect(secondReference.key).toBe("shared-pre-auth-session-id");
+  });
+
   it("recovers the successor after an ambiguously committed rotation", async () => {
     const saveReference = vi.fn();
     const reference = {
@@ -734,7 +844,7 @@ describe("Redis session storage", () => {
         .mockRejectedValueOnce(new Error("Redis response was lost"))
         .mockImplementationOnce(
           (_script: string, options: { arguments: string[] }) =>
-            Promise.resolve(options.arguments[1]),
+            Promise.resolve(options.arguments[2]),
         )
         .mockResolvedValueOnce(1),
     };
@@ -757,9 +867,9 @@ describe("Redis session storage", () => {
       arguments: string[];
       keys: string[];
     };
-    expect(recoveredRotation.arguments[1]).toBe(firstRotation.arguments[1]);
+    expect(recoveredRotation.arguments[2]).toBe(firstRotation.arguments[2]);
     expect(recoveredRotation.keys).toEqual(firstRotation.keys);
-    expect(reference.key).toBe(firstRotation.arguments[1]);
+    expect(reference.key).toBe(firstRotation.arguments[2]);
     expect(saveReference).toHaveBeenCalledOnce();
   });
 
@@ -798,7 +908,7 @@ describe("Redis session storage", () => {
         (_script: string, options: { arguments: string[]; keys: string[] }) => {
           const call = client.eval.mock.calls.length;
           if (call === 1) {
-            successorId = options.arguments[1];
+            successorId = options.arguments[2];
             return Promise.resolve(successorId);
           }
           if (call === 2) return Promise.resolve(successorId);
