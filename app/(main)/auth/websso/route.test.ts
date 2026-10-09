@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => {
     getSession: vi.fn(),
     startSessionLifetime: vi.fn(),
     finalizeKeystoneSession: vi.fn(),
-    isStoredSessionSupersededError: vi.fn(),
+    saveRedisSession: vi.fn(),
   };
 });
 
@@ -22,11 +22,12 @@ vi.mock("@/lib/keystone/login", () => ({
     }
   },
 }));
-vi.mock("@/lib/session-errors", () => ({
-  isStoredSessionSupersededError: mocks.isStoredSessionSupersededError,
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
 }));
 
 import { KeystoneSessionSetupError } from "@/lib/keystone/login";
+import { StoredSessionSupersededError } from "@/lib/session-errors";
 import { POST } from "./route";
 
 function request() {
@@ -41,7 +42,9 @@ describe("legacy WebSSO recovery", () => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.startSessionLifetime.mockResolvedValue(undefined);
-    mocks.isStoredSessionSupersededError.mockReturnValue(false);
+    mocks.saveRedisSession.mockImplementation(async (current) =>
+      current.save(),
+    );
   });
 
   it("redirects no-project identities into the recovery experience", async () => {
@@ -80,13 +83,10 @@ describe("legacy WebSSO recovery", () => {
   });
 
   it("does not save recovery state through a superseded login boundary", async () => {
-    const superseded = new Error("superseded");
+    const superseded = new StoredSessionSupersededError("superseded");
     const session = { save: vi.fn() };
     mocks.getSession.mockResolvedValue(session);
     mocks.startSessionLifetime.mockRejectedValue(superseded);
-    mocks.isStoredSessionSupersededError.mockImplementation(
-      (error: unknown) => error === superseded,
-    );
 
     const response = await POST(request());
 
@@ -96,17 +96,29 @@ describe("legacy WebSSO recovery", () => {
   });
 
   it("redirects when the final session save was superseded", async () => {
-    const superseded = new Error("superseded");
+    const superseded = new StoredSessionSupersededError("superseded");
     const session = { save: vi.fn().mockRejectedValue(superseded) };
     mocks.getSession.mockResolvedValue(session);
     mocks.finalizeKeystoneSession.mockResolvedValue({ status: "ready" });
-    mocks.isStoredSessionSupersededError.mockImplementation(
-      (error: unknown) => error === superseded,
-    );
 
     const response = await POST(request());
 
     expect(response.status).toBe(303);
     expect(session.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not merge credentials into a successor changed after rotation", async () => {
+    const session = { save: vi.fn() };
+    mocks.getSession.mockResolvedValue(session);
+    mocks.finalizeKeystoneSession.mockResolvedValue({ status: "ready" });
+    mocks.saveRedisSession.mockImplementation(async (_current, options) => {
+      options.validateConflictRetry({ oidcFlowId: "newer-login-flow" });
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(303);
+    expect(session.save).not.toHaveBeenCalled();
+    expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
   });
 });

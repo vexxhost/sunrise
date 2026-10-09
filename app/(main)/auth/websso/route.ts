@@ -3,7 +3,11 @@ import {
   finalizeKeystoneSession,
   KeystoneSessionSetupError,
 } from "@/lib/keystone/login";
-import { isStoredSessionSupersededError } from "@/lib/session-errors";
+import {
+  isStoredSessionSupersededError,
+  StoredSessionSupersededError,
+} from "@/lib/session-errors";
+import { saveRedisSession } from "@/lib/session-store";
 
 const SUNRISE_DASHBOARD_URL = process.env.SUNRISE_DASHBOARD_URL ?? "/";
 
@@ -49,7 +53,16 @@ export async function POST(request: Request) {
     );
   }
   try {
-    await session.save();
+    await saveRedisSession(session, {
+      // Rotation gives this callback an empty successor. Any record created
+      // there before credential publication belongs to a newer request, so a
+      // full authentication result must never be conflict-merged into it.
+      validateConflictRetry: () => {
+        throw new StoredSessionSupersededError(
+          "WebSSO authentication was superseded by a newer session update",
+        );
+      },
+    });
   } catch (error) {
     if (isStoredSessionSupersededError(error)) {
       return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
