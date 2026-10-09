@@ -151,6 +151,7 @@ describe("OIDC session token refresh", () => {
 
   it("persists a rotated token and checkpoint before releasing the lease", async () => {
     const current = session("redis-leader");
+    const startedAt = Date.now();
     const client = redisClient((script) => {
       if (script.includes('"NX"')) return 1;
       return 1;
@@ -175,6 +176,13 @@ describe("OIDC session token refresh", () => {
         result: refreshedTokens(),
       },
     });
+    expect(
+      (
+        current as typeof current & {
+          oidcRefreshCheckpoint: { reuseUntil: number };
+        }
+      ).oidcRefreshCheckpoint.reuseUntil,
+    ).toBeGreaterThanOrEqual(startedAt + 42_000);
     expect(current.save).toHaveBeenCalledOnce();
     expect(current.save.mock.invocationCallOrder[0]).toBeLessThan(
       client.eval.mock.invocationCallOrder.at(-1)!,

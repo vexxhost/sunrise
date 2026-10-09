@@ -101,6 +101,49 @@ describe("Redis session storage", () => {
     expect(storedSessionTtlSeconds({})).toBe(600);
   });
 
+  it("migrates a legacy chunk-capable cookie to an opaque reference", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      projectId: "legacy-project",
+      keycloakRefreshToken: "legacy-refresh-token",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const client = {
+      eval: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession(
+      {} as never,
+      { chunk: true } as never,
+    );
+    expect(session).toMatchObject({
+      projectId: "legacy-project",
+      keycloakRefreshToken: "legacy-refresh-token",
+    });
+
+    await session.save();
+
+    expect(mocks.getIronSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ chunk: true }),
+    );
+    expect(reference).toEqual(
+      expect.objectContaining({ backend: "redis", key: expect.any(String) }),
+    );
+    expect(reference).not.toHaveProperty("projectId");
+    expect(reference).not.toHaveProperty("keycloakRefreshToken");
+    expect(saveReference).toHaveBeenCalledOnce();
+  });
+
   it("rotates a referenced session ID when its Redis record is gone", async () => {
     const saveReference = vi.fn();
     const reference = {

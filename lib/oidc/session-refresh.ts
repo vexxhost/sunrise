@@ -146,11 +146,12 @@ function distributedRefreshTiming() {
   const sessionCommandTimeoutMs = getRedisCommandTimeoutMs();
   const lockTimeoutMs =
     OIDC_REFRESH_TIMEOUT_MS + sessionCommandTimeoutMs + 5_000;
+  const checkpointPersistenceMs =
+    MAX_DISTRIBUTED_SAVE_ATTEMPTS * (sessionCommandTimeoutMs + 2_000);
   return {
+    checkpointPersistenceMs,
     lockTimeoutMs,
-    leaderWaitMs:
-      lockTimeoutMs +
-      MAX_DISTRIBUTED_SAVE_ATTEMPTS * (sessionCommandTimeoutMs + 2_000),
+    leaderWaitMs: lockTimeoutMs + checkpointPersistenceMs,
   };
 }
 
@@ -208,7 +209,8 @@ async function distributedRefresh(
   identityProvider: string,
   refreshTokenDigest: string,
 ): Promise<RefreshTokenResult> {
-  const { lockTimeoutMs, leaderWaitMs } = distributedRefreshTiming();
+  const { checkpointPersistenceMs, lockTimeoutMs, leaderWaitMs } =
+    distributedRefreshTiming();
   const existing = await reloadCheckpoint(
     session,
     identityProvider,
@@ -274,7 +276,10 @@ async function distributedRefresh(
           identityProvider,
           issuedTokenDigest: tokenDigest(result.refresh_token ?? refreshToken),
           result,
-          reuseUntil: Date.now() + REFRESH_RESULT_REUSE_MS,
+          // Keep the checkpoint reusable for the full bounded publication
+          // window plus the normal reuse period after publication.
+          reuseUntil:
+            Date.now() + REFRESH_RESULT_REUSE_MS + checkpointPersistenceMs,
         };
         // After Keycloak consumes a single-use token, preserving its result is
         // safer than discarding it on an uncertain lease renewal. Session CAS

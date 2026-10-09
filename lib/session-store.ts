@@ -190,7 +190,7 @@ export async function getRedisSession(
 ): Promise<IronSession<SunriseSession>> {
   const reference = await getIronSession<
     StoredSessionReference & SunriseSession
-  >(cookieStore, { ...options, chunk: false });
+  >(cookieStore, options);
   const hasStoredReference = reference.backend === "redis";
   let id = hasStoredReference ? reference.key : undefined;
   let loaded = id ? await readStoredSession(id) : null;
