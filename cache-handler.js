@@ -4,6 +4,7 @@ const { PHASE_PRODUCTION_BUILD } = require("next/constants");
 
 const NEXT_CACHE_TAGS_HEADER = "x-next-cache-tags";
 const MAX_MEMORY_ENTRIES = 512;
+const METRICS_TIMEOUT_MS = 2_000;
 const memoryCache = new Map();
 let client;
 let connecting;
@@ -343,10 +344,14 @@ async function getClient() {
   return connecting;
 }
 
-async function runCommand(operation) {
+async function runCommand(operation, maximumTimeoutMs) {
   const current = await getClient();
   if (!current) return undefined;
-  const timeoutMs = commandTimeoutMs();
+  const configuredTimeoutMs = commandTimeoutMs();
+  const timeoutMs =
+    maximumTimeoutMs === undefined
+      ? configuredTimeoutMs
+      : Math.min(configuredTimeoutMs, maximumTimeoutMs);
   let timeout;
   const timeoutPromise = new Promise((_, reject) => {
     timeout = setTimeout(() => {
@@ -360,6 +365,17 @@ async function runCommand(operation) {
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+}
+
+function recordMetric(metric) {
+  void runCommand(
+    (current) => current.hIncrBy(metricsKey(), metric, 1),
+    METRICS_TIMEOUT_MS,
+  ).catch((error) => {
+    if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
+      console.warn("[next-cache] metric failed:", error.message);
+    }
+  });
 }
 
 function tagsFor(data, context) {
@@ -392,15 +408,14 @@ module.exports = class SunriseCacheHandler {
 
     try {
       const value = await runCommand(async (current) => {
-        const cached = observedTags.length
+        return observedTags.length
           ? await current.eval(MERGE_CACHE_TAGS_SCRIPT, {
               keys: [cacheKey(key)],
               arguments: [`${keyPrefix()}:tag:`, ...observedTags],
             })
           : await current.get(cacheKey(key));
-        await current.hIncrBy(metricsKey(), cached ? "hits" : "misses", 1);
-        return cached;
       });
+      recordMetric(value ? "hits" : "misses");
       return value ? deserialize(value) : null;
     } catch (error) {
       if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
@@ -429,8 +444,8 @@ module.exports = class SunriseCacheHandler {
       ? Math.max(1, Math.ceil(expire))
       : null;
     try {
-      await runCommand(async (current) => {
-        await current.eval(SET_CACHE_ENTRY_SCRIPT, {
+      await runCommand((current) =>
+        current.eval(SET_CACHE_ENTRY_SCRIPT, {
           keys: [cacheKey(key)],
           arguments: [
             serialize(entry),
@@ -438,9 +453,9 @@ module.exports = class SunriseCacheHandler {
             `${keyPrefix()}:tag:`,
             ...tags,
           ],
-        });
-        await current.hIncrBy(metricsKey(), "sets", 1);
-      });
+        }),
+      );
+      recordMetric("sets");
     } catch (error) {
       if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
         console.warn("[next-cache] set failed:", error.message);
@@ -467,8 +482,8 @@ module.exports = class SunriseCacheHandler {
           arguments: [`${keyPrefix()}:tag:`],
         });
       }
-      await current.hIncrBy(metricsKey(), "revalidations", 1);
     });
+    recordMetric("revalidations");
   }
 
   resetRequestCache() {}
