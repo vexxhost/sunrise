@@ -254,6 +254,29 @@ export async function runRedisCommand<T>(
   }
 }
 
+export async function getRedisServerTimeMs(maximumTimeoutMs?: number) {
+  const [secondsValue, microsecondsValue] = await runRedisCommand(
+    (client) => client.time(),
+    maximumTimeoutMs,
+  );
+  const seconds = Number(secondsValue);
+  const microseconds = Number(microsecondsValue);
+  if (
+    !Number.isSafeInteger(seconds) ||
+    seconds < 0 ||
+    !Number.isSafeInteger(microseconds) ||
+    microseconds < 0 ||
+    microseconds >= 1_000_000
+  ) {
+    throw new Error("Redis returned an invalid server time");
+  }
+  const milliseconds = seconds * 1_000 + Math.floor(microseconds / 1_000);
+  if (!Number.isSafeInteger(milliseconds)) {
+    throw new Error("Redis returned an unsupported server time");
+  }
+  return milliseconds;
+}
+
 export async function probeRedisReadiness() {
   const startedAt = performance.now();
   const prefix = getRedisKeyPrefix();

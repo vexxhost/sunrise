@@ -218,16 +218,15 @@ export async function getRedisSession(
   const hasStoredReference = reference.backend === "redis";
   let id = hasStoredReference ? reference.key : undefined;
   let loaded = id ? await readStoredSession(id) : null;
-  let persistedReferenceId = hasStoredReference && loaded ? id : undefined;
+  // Keep an existing opaque reference even when its data record is absent.
+  // Recreating that same ID is guarded by the revocation tombstone in the
+  // atomic save script. Minting a different ID here would let a request that
+  // raced with logout bypass the tombstone and overwrite the logout cookie.
+  let persistedReferenceId = hasStoredReference ? id : undefined;
   let referenceNeedsCleanup = Boolean(
     persistedReferenceId && hasLegacyReferenceData(reference),
   );
   const missingStoredReference = hasStoredReference && !loaded;
-  if (missingStoredReference) {
-    id = undefined;
-    delete reference.backend;
-    delete reference.key;
-  }
   const initialData =
     loaded?.data ?? (missingStoredReference ? {} : referenceData(reference));
   const target = { ...initialData } as SunriseSession;

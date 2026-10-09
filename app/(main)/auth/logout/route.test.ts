@@ -69,6 +69,12 @@ describe("Sunrise logout route", () => {
       "refresh-token",
       "demo",
     );
+    expect(mocks.destroySession.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.refreshAccessToken.mock.invocationCallOrder[0],
+    );
+    expect(
+      mocks.destroySessionActivity.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.refreshAccessToken.mock.invocationCallOrder[0]);
     expect(current.destroy).toHaveBeenCalledOnce();
     expect(mocks.getSession).toHaveBeenCalledWith({ allowExpired: true });
     expect(mocks.destroySessionActivity).toHaveBeenCalledOnce();

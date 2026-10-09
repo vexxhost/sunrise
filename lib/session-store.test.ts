@@ -214,12 +214,11 @@ describe("Redis session storage", () => {
     );
   });
 
-  it("rotates a referenced session ID when its Redis record is gone", async () => {
+  it("recreates an expired referenced session without rewriting its cookie", async () => {
     const saveReference = vi.fn();
     const reference = {
       backend: "redis",
       key: "expired-session-id",
-      projectId: "stale-project",
     };
     Object.defineProperties(reference, {
       save: { value: saveReference },
@@ -244,10 +243,46 @@ describe("Redis session storage", () => {
     const saveOptions = client.eval.mock.calls[0][1] as {
       keys: string[];
     };
-    expect(saveOptions.keys[0]).not.toContain("expired-session-id");
-    expect(reference.key).not.toBe("expired-session-id");
+    expect(saveOptions.keys[0]).toContain("expired-session-id");
+    expect(saveOptions.keys[1]).toContain("expired-session-id");
+    expect(reference.key).toBe("expired-session-id");
     expect(reference.backend).toBe("redis");
-    expect(saveReference).toHaveBeenCalledOnce();
+    expect(saveReference).not.toHaveBeenCalled();
+  });
+
+  it("cannot remint a reference revoked after its record disappeared", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "revoked-missing-session-id",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({}),
+      // The atomic save observes the tombstone written by a concurrent logout.
+      eval: vi.fn().mockResolvedValue(-1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    session.oidcState = "new-login-state";
+
+    await expect(session.save()).rejects.toThrow(
+      "Cannot save a revoked Sunrise session",
+    );
+    const saveOptions = client.eval.mock.calls[0][1] as { keys: string[] };
+    expect(saveOptions.keys[0]).toContain("revoked-missing-session-id");
+    expect(saveOptions.keys[1]).toContain("revoked-missing-session-id");
+    expect(reference.key).toBe("revoked-missing-session-id");
+    expect(saveReference).not.toHaveBeenCalled();
   });
 
   it("rejects a save when its record disappears after a CAS conflict", async () => {

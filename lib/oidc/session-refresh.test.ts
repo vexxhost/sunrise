@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getSessionBackend: vi.fn(() => "cookie"),
   getRedisCommandTimeoutMs: vi.fn(() => 2_000),
   getRedisKeyPrefix: vi.fn(() => "sunrise"),
+  getRedisServerTimeMs: vi.fn(() => Promise.resolve(Date.now())),
   reloadRedisSession: vi.fn(),
   saveRedisSession: vi.fn(),
   runIsolatedRedisCommand: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("@/lib/redis", () => ({
   getSessionBackend: mocks.getSessionBackend,
   getRedisCommandTimeoutMs: mocks.getRedisCommandTimeoutMs,
   getRedisKeyPrefix: mocks.getRedisKeyPrefix,
+  getRedisServerTimeMs: mocks.getRedisServerTimeMs,
   runIsolatedRedisCommand: mocks.runIsolatedRedisCommand,
   runRedisCommand: mocks.runRedisCommand,
 }));
@@ -71,6 +73,7 @@ describe("OIDC session token refresh", () => {
     vi.clearAllMocks();
     mocks.getSessionBackend.mockReturnValue("cookie");
     mocks.getRedisCommandTimeoutMs.mockReturnValue(2_000);
+    mocks.getRedisServerTimeMs.mockImplementation(async () => Date.now());
     mocks.reloadRedisSession.mockResolvedValue(undefined);
     mocks.saveRedisSession.mockImplementation((current) => current.save());
     mocks.runIsolatedRedisCommand.mockImplementation(
@@ -164,6 +167,90 @@ describe("OIDC session token refresh", () => {
     expect(mocks.runRedisCommand).not.toHaveBeenCalled();
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
     expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
+  });
+
+  it("evaluates shared checkpoints using Redis time on a fast-clock replica", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(9_000_000);
+    const redisNow = 1_000_000;
+    const result = refreshedTokens();
+    const current = session("redis-fast-local-clock", "rotated-refresh-token");
+    Object.assign(current, {
+      oidcRefreshCheckpoint: {
+        consumedTokenDigest: digest("old-refresh-token"),
+        identityProvider: "demo",
+        issuedTokenDigest: digest("rotated-refresh-token"),
+        result,
+        reuseUntil: redisNow + 30_000,
+      },
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.getRedisServerTimeMs.mockResolvedValue(redisNow);
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).resolves.toEqual(result);
+
+    expect(mocks.getRedisServerTimeMs).toHaveBeenCalledWith(2_000);
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("rejects an expired shared checkpoint on a slow-clock replica", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(500_000);
+    const redisNow = 1_000_000;
+    const current = session("redis-slow-local-clock", "rotated-refresh-token");
+    Object.assign(current, {
+      oidcRefreshCheckpoint: {
+        consumedTokenDigest: digest("old-refresh-token"),
+        identityProvider: "demo",
+        issuedTokenDigest: digest("rotated-refresh-token"),
+        result: refreshedTokens(),
+        reuseUntil: redisNow - 1,
+      },
+    });
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.getRedisServerTimeMs.mockResolvedValue(redisNow);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).resolves.toEqual(refreshedTokens());
+
+    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
+  });
+
+  it("refreshes when Redis expires a locally cached checkpoint", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(9_000_000);
+    let redisNow = 1_000_000;
+    const current = session("redis-local-clock-revalidation");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.getRedisServerTimeMs.mockImplementation(async () => redisNow);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await refreshSessionOidcTokens(current as never, "demo");
+    redisNow = 1_200_000;
+    vi.setSystemTime(9_001_000);
+    await refreshSessionOidcTokens(current as never, "demo");
+
+    expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(2);
   });
 
   it("rejects a checkpoint superseded by a continuation token", async () => {

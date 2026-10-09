@@ -105,6 +105,13 @@ async function performLogout(
     expiryReason && prompt === "login" && identityProvider,
   );
 
+  // Revoke the server-side Sunrise session before contacting Keystone or the
+  // identity provider. Remote cleanup can be slow or unavailable, but a user
+  // who has initiated logout must not retain a usable local session while it
+  // is in progress. Everything needed below has already been snapshotted.
+  await destroySession(session);
+  await destroySessionActivity();
+
   // An expired Sunrise session may begin a fresh local session from a still
   // valid Keycloak SSO session. Explicit sign-out and account switching still
   // terminate the provider session.
@@ -118,9 +125,6 @@ async function performLogout(
   const endSessionUrl = reuseProviderSession
     ? null
     : await providerLogoutUrl(identityProvider, idTokenHint);
-
-  await destroySession(session);
-  await destroySessionActivity();
 
   const destination =
     reuseProviderSession && identityProvider

@@ -11,6 +11,7 @@ import {
   getSessionBackend,
   getRedisCommandTimeoutMs,
   getRedisKeyPrefix,
+  getRedisServerTimeMs,
   runIsolatedRedisCommand,
   runRedisCommand,
 } from "@/lib/redis";
@@ -89,7 +90,7 @@ function reusableCheckpoint(
   session: SunriseSession,
   identityProvider: string,
   refreshTokenDigest: string,
-  now = Date.now(),
+  now: number,
 ): OidcRefreshCheckpoint | undefined {
   const checkpoint = session.oidcRefreshCheckpoint;
   if (
@@ -196,7 +197,7 @@ function reusableCheckpointForResult(
   session: SunriseSession,
   identityProvider: string,
   result: RefreshTokenResult,
-  now = Date.now(),
+  now: number,
 ) {
   const checkpoint = session.oidcRefreshCheckpoint;
   if (
@@ -322,10 +323,14 @@ async function reloadCheckpoint(
   refreshTokenDigest: string,
 ) {
   await reloadRedisSession(session);
+  const redisNow = await getRedisServerTimeMs(
+    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
+  );
   const checkpoint = reusableCheckpoint(
     session,
     identityProvider,
     refreshTokenDigest,
+    redisNow,
   );
   if (checkpoint) assertCheckpointStillAuthoritative(session, checkpoint);
   return checkpoint;
@@ -454,6 +459,14 @@ async function distributedRefresh(
             );
           }
 
+          // Shared checkpoint deadlines must use the same clock on every
+          // replica. Sample Redis before the exchange so a TIME failure cannot
+          // strand an already-consumed rotating refresh token. This is
+          // intentionally conservative by the duration of the OIDC request.
+          const refreshStartedAtRedisMs = await getRedisServerTimeMs(
+            DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
+          );
+
           const exchanged = await refreshAccessToken(
             refreshToken,
             identityProvider,
@@ -486,6 +499,7 @@ async function distributedRefresh(
             reuseUntil: checkpointReuseUntil(
               exchanged,
               checkpointPersistenceMs,
+              refreshStartedAtRedisMs,
             ),
           };
           // After Keycloak consumes a single-use token, preserving its result is
@@ -514,10 +528,14 @@ async function distributedRefresh(
           // authority once more before returning or choosing the next token so
           // the downstream request never proceeds under superseded identity.
           await reloadRedisSession(session);
+          const redisNow = await getRedisServerTimeMs(
+            DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
+          );
           const persistedCheckpoint = reusableCheckpointForResult(
             session,
             identityProvider,
             exchanged,
+            redisNow,
           );
           if (persistedCheckpoint) {
             assertCheckpointStillAuthoritative(session, persistedCheckpoint);
@@ -619,18 +637,32 @@ export async function refreshSessionOidcTokens(
     const result = await existing.promise;
     if (sessionBackend === "redis") {
       await reloadRedisSession(session);
+      const redisNow = await getRedisServerTimeMs(
+        DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
+      );
       const checkpoint = reusableCheckpointForResult(
         session,
         identityProvider,
         result,
+        redisNow,
       );
-      try {
-        assertCheckpointStillAuthoritative(session, checkpoint);
-      } catch (error) {
-        if (refreshEntries.get(key) === existing) refreshEntries.delete(key);
-        throw error;
+      if (checkpoint) {
+        try {
+          assertCheckpointStillAuthoritative(session, checkpoint);
+          return checkpoint.result;
+        } catch (error) {
+          if (refreshEntries.get(key) === existing) refreshEntries.delete(key);
+          throw error;
+        }
       }
-      return checkpoint!.result;
+
+      // The local reuse window is only an optimization. Redis remains the
+      // authority, so an expired or replaced checkpoint must fall through to
+      // another distributed refresh instead of surfacing as a continuation
+      // error. Re-entering reads the authoritative (possibly rotated) token
+      // that reloadRedisSession just installed on this session.
+      if (refreshEntries.get(key) === existing) refreshEntries.delete(key);
+      return refreshSessionOidcTokens(session, identityProvider);
     }
     if (applyRotatedRefreshToken(session, result)) {
       await session.save();
@@ -657,15 +689,37 @@ export async function refreshSessionOidcTokens(
       : refreshAccessToken(refreshToken, identityProvider);
   const entry: RefreshEntry = { promise: refreshPromise };
   entry.promise = refreshPromise
-    .then((result) => {
-      const localReuseUntil = checkpointReuseUntil(result, 0);
-      entry.reuseUntil =
-        sessionBackend === "redis"
-          ? Math.min(
-              localReuseUntil,
-              session.oidcRefreshCheckpoint?.reuseUntil ?? 0,
-            )
-          : localReuseUntil;
+    .then(async (result) => {
+      if (sessionBackend === "redis") {
+        try {
+          const observedAt = Date.now();
+          const redisNow = await getRedisServerTimeMs(
+            DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
+          );
+          const checkpoint = reusableCheckpointForResult(
+            session,
+            identityProvider,
+            result,
+            redisNow,
+          );
+          const remainingMs = checkpoint
+            ? Math.max(0, checkpoint.reuseUntil - redisNow)
+            : 0;
+          entry.reuseUntil =
+            observedAt + Math.min(REFRESH_RESULT_REUSE_MS, remainingMs);
+        } catch (error) {
+          // The distributed result was already validated before returning.
+          // Skip completed local reuse if the shared clock cannot be sampled;
+          // a later request can recover through the normal Redis path.
+          entry.reuseUntil = Date.now();
+          console.warn(
+            "[oidc/refresh] could not derive local reuse from Redis time:",
+            error,
+          );
+        }
+      } else {
+        entry.reuseUntil = checkpointReuseUntil(result, 0);
+      }
       return result;
     })
     .catch((error) => {

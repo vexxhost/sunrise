@@ -15,6 +15,7 @@ import {
   getRedisCommandTimeoutMs,
   getRedisCredentials,
   getRedisKeyPrefix,
+  getRedisServerTimeMs,
   getRedisUrl,
   probeRedisReadiness,
   runIsolatedRedisCommand,
@@ -47,6 +48,7 @@ function redisClient(command: () => Promise<unknown>) {
     withAbortSignal: vi.fn(() => client),
     eval: vi.fn(async (_script: string, _options?: unknown) => command()),
     get: vi.fn(command),
+    time: vi.fn(command),
   };
   return client;
 }
@@ -110,6 +112,15 @@ describe("Redis deployment configuration", () => {
     expect(() => getRedisCredentials("sunrise", undefined)).toThrow(
       "SUNRISE_REDIS_PASSWORD",
     );
+  });
+
+  it("converts the Redis server clock to epoch milliseconds", async () => {
+    const client = redisClient(async () => ["1791552345", "987654"]);
+    mocks.createClient.mockReturnValue(client);
+
+    await expect(getRedisServerTimeMs()).resolves.toBe(1_791_552_345_987);
+
+    expect(client.time).toHaveBeenCalledOnce();
   });
 
   it("loads private certificate authorities only for TLS connections", () => {
