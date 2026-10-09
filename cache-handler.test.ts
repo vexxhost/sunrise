@@ -12,7 +12,10 @@ type CacheHandler = {
     data: { kind: string } | null,
     context: { tags: string[] },
   ): Promise<void>;
-  revalidateTag(tags: string | string[]): Promise<void>;
+  revalidateTag(
+    tags: string | string[],
+    durations?: { expire?: number },
+  ): Promise<void>;
 };
 type CacheHandlerConstructor = new () => CacheHandler;
 type CacheHandlerModule = CacheHandlerConstructor & {
@@ -26,6 +29,11 @@ const localRequire = createRequire(import.meta.url);
 const SunriseCacheHandler = localRequire(
   "./cache-handler.js",
 ) as CacheHandlerModule;
+const { tagsManifest } = localRequire(
+  "next/dist/server/lib/incremental-cache/tags-manifest.external",
+) as {
+  tagsManifest: Map<string, { stale?: number; expired?: number }>;
+};
 const originalBackend = process.env.SUNRISE_NEXT_CACHE_BACKEND;
 const originalRedisUrl = process.env.SUNRISE_REDIS_URL;
 const originalRedisTimeout = process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS;
@@ -43,6 +51,7 @@ function setEnvironment(name: string, value: string) {
 }
 
 afterEach(() => {
+  tagsManifest.clear();
   restoreEnvironment("SUNRISE_NEXT_CACHE_BACKEND", originalBackend);
   restoreEnvironment("SUNRISE_REDIS_URL", originalRedisUrl);
   restoreEnvironment("SUNRISE_REDIS_COMMAND_TIMEOUT_MS", originalRedisTimeout);
@@ -141,6 +150,27 @@ describe("Next.js cache handler", () => {
 
     await handler.revalidateTag("test-tag");
     await expect(handler.get("test-entry")).resolves.toBeNull();
+  });
+
+  it("preserves entries for profiled stale-while-revalidate", async () => {
+    process.env.SUNRISE_NEXT_CACHE_BACKEND = "memory";
+    const handler = new SunriseCacheHandler();
+    await handler.set(
+      "profiled-entry",
+      { kind: "APP_ROUTE" },
+      { tags: ["profiled-tag"] },
+    );
+    const invalidatedAt = Date.now();
+
+    await handler.revalidateTag("profiled-tag", { expire: 60 });
+
+    await expect(handler.get("profiled-entry")).resolves.toMatchObject({
+      value: { kind: "APP_ROUTE" },
+      tags: ["profiled-tag"],
+    });
+    const state = tagsManifest.get("profiled-tag");
+    expect(state?.stale).toBeGreaterThanOrEqual(invalidatedAt);
+    expect(state?.expired).toBe((state?.stale ?? 0) + 60_000);
   });
 
   it("tracks tags observed by later reads of the same cache key", async () => {

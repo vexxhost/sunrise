@@ -1,11 +1,16 @@
 const { createClient } = require("@redis/client");
 const { readFileSync } = require("node:fs");
 const { PHASE_PRODUCTION_BUILD } = require("next/constants");
+const {
+  tagsManifest,
+} = require("next/dist/server/lib/incremental-cache/tags-manifest.external");
 
 const NEXT_CACHE_TAGS_HEADER = "x-next-cache-tags";
 const MAX_MEMORY_ENTRIES = 512;
 const FETCH_CACHE_STALE_RETENTION_SECONDS = 24 * 60 * 60;
 const MAX_FETCH_CACHE_TTL_SECONDS = 365 * 24 * 60 * 60;
+const TAG_STALE_MEMBER = "__sunrise_tag_stale__";
+const TAG_EXPIRED_MEMBER = "__sunrise_tag_expired__";
 const memoryCache = new Map();
 let client;
 let connecting;
@@ -32,7 +37,10 @@ local function refreshTagExpiration(tagKey)
     return
   end
 
-  local latest = redis.call("ZREVRANGE", tagKey, 0, 0, "WITHSCORES")
+  local latest = redis.call(
+    "ZREVRANGEBYSCORE", tagKey, "+inf", 1,
+    "WITHSCORES", "LIMIT", 0, 1
+  )
   if #latest == 0 then
     redis.call("DEL", tagKey)
   else
@@ -68,6 +76,8 @@ return 1
 const MERGE_CACHE_TAGS_SCRIPT = `
 local entryKey = KEYS[1]
 local tagPrefix = ARGV[1]
+local staleMember = "${TAG_STALE_MEMBER}"
+local expiredMember = "${TAG_EXPIRED_MEMBER}"
 local payload = redis.call("GET", entryKey)
 
 if not payload then
@@ -76,7 +86,7 @@ end
 
 local decodedOk, decoded = pcall(cjson.decode, payload)
 if not decodedOk then
-  return payload
+  return { payload }
 end
 
 local now = redis.call("TIME")
@@ -90,7 +100,10 @@ local function refreshTagExpiration(tagKey)
     return
   end
 
-  local latest = redis.call("ZREVRANGE", tagKey, 0, 0, "WITHSCORES")
+  local latest = redis.call(
+    "ZREVRANGEBYSCORE", tagKey, "+inf", 1,
+    "WITHSCORES", "LIMIT", 0, 1
+  )
   if #latest == 0 then
     redis.call("DEL", tagKey)
   else
@@ -128,11 +141,28 @@ if changed then
   redis.call("SET", entryKey, payload, "KEEPTTL")
 end
 
-return payload
+local result = { payload }
+for _, tag in ipairs(decoded.tags) do
+  local stateKey = tagPrefix .. tag
+  local staleScore = redis.call("ZSCORE", stateKey, staleMember)
+  local expiredScore = redis.call("ZSCORE", stateKey, expiredMember)
+  if staleScore or expiredScore then
+    result[#result + 1] = tag
+    result[#result + 1] = staleScore and tostring(-tonumber(staleScore)) or "0"
+    result[#result + 1] = expiredScore and tostring(-tonumber(expiredScore)) or "0"
+  end
+end
+
+return result
 `;
 
 const REVALIDATE_TAGS_SCRIPT = `
 local tagPrefix = ARGV[1]
+local mode = ARGV[2]
+local staleAt = tonumber(ARGV[3])
+local expiredAt = ARGV[4] ~= "" and tonumber(ARGV[4]) or nil
+local staleMember = "${TAG_STALE_MEMBER}"
+local expiredMember = "${TAG_EXPIRED_MEMBER}"
 local visited = {}
 local requested = {}
 local now = redis.call("TIME")
@@ -146,7 +176,10 @@ local function refreshTagExpiration(tagKey)
     return
   end
 
-  local latest = redis.call("ZREVRANGE", tagKey, 0, 0, "WITHSCORES")
+  local latest = redis.call(
+    "ZREVRANGEBYSCORE", tagKey, "+inf", 1,
+    "WITHSCORES", "LIMIT", 0, 1
+  )
   if #latest == 0 then
     redis.call("DEL", tagKey)
   else
@@ -160,38 +193,51 @@ end
 
 for _, requestedTagKey in ipairs(KEYS) do
   refreshTagExpiration(requestedTagKey)
-  local members = redis.call("ZRANGE", requestedTagKey, 0, -1)
-  for _, entryKey in ipairs(members) do
-    if not visited[entryKey] then
-      local payload = redis.call("GET", entryKey)
-      if payload then
-        local decodedOk, decoded = pcall(cjson.decode, payload)
-        if decodedOk and decoded.tags then
-          local shouldDelete = false
-          for _, tag in ipairs(decoded.tags) do
-            local relatedTagKey = tagPrefix .. tag
-            if requested[relatedTagKey] then
-              shouldDelete = true
-            end
-          end
-          if shouldDelete then
-            for _, tag in ipairs(decoded.tags) do
-              local relatedTagKey = tagPrefix .. tag
-              if not requested[relatedTagKey] then
-                redis.call("ZREM", relatedTagKey, entryKey)
-                refreshTagExpiration(relatedTagKey)
+  if mode == "profiled" then
+    local entryCount = redis.call("ZCOUNT", requestedTagKey, 0, "+inf")
+    if entryCount > 0 then
+      redis.call("ZADD", requestedTagKey, -staleAt, staleMember)
+      if expiredAt then
+        redis.call("ZADD", requestedTagKey, -expiredAt, expiredMember)
+      end
+      refreshTagExpiration(requestedTagKey)
+    end
+  else
+    local members = redis.call("ZRANGE", requestedTagKey, 0, -1)
+    for _, entryKey in ipairs(members) do
+      if entryKey ~= staleMember and entryKey ~= expiredMember then
+        if not visited[entryKey] then
+          local payload = redis.call("GET", entryKey)
+          if payload then
+            local decodedOk, decoded = pcall(cjson.decode, payload)
+            if decodedOk and decoded.tags then
+              local shouldDelete = false
+              for _, tag in ipairs(decoded.tags) do
+                local relatedTagKey = tagPrefix .. tag
+                if requested[relatedTagKey] then
+                  shouldDelete = true
+                end
               end
+              if shouldDelete then
+                for _, tag in ipairs(decoded.tags) do
+                  local relatedTagKey = tagPrefix .. tag
+                  if not requested[relatedTagKey] then
+                    redis.call("ZREM", relatedTagKey, entryKey)
+                    refreshTagExpiration(relatedTagKey)
+                  end
+                end
+                redis.call("DEL", entryKey)
+              end
+            else
+              redis.call("DEL", entryKey)
             end
-            redis.call("DEL", entryKey)
           end
-        else
-          redis.call("DEL", entryKey)
+          visited[entryKey] = true
         end
       end
-      visited[entryKey] = true
     end
+    redis.call("DEL", requestedTagKey)
   end
-  redis.call("DEL", requestedTagKey)
 end
 return 1
 `;
@@ -317,6 +363,45 @@ function deserialize(text) {
   });
 }
 
+function updateLocalTagState(tags, durations, staleAt = Date.now()) {
+  for (const tag of tags) {
+    const existing = tagsManifest.get(tag) || {};
+    if (durations) {
+      const updates = { ...existing, stale: staleAt };
+      if (durations.expire !== undefined) {
+        updates.expired = staleAt + durations.expire * 1_000;
+      }
+      tagsManifest.set(tag, updates);
+    } else {
+      tagsManifest.set(tag, { ...existing, expired: staleAt });
+    }
+  }
+}
+
+function deserializeRedisCacheResult(value) {
+  if (!Array.isArray(value) || typeof value[0] !== "string") return null;
+
+  for (let index = 1; index + 2 < value.length; index += 3) {
+    const tag = value[index];
+    const staleAt = Number(value[index + 1]);
+    const expiredAt = Number(value[index + 2]);
+    if (typeof tag !== "string" || !Number.isFinite(staleAt) || staleAt <= 0) {
+      continue;
+    }
+
+    const existing = tagsManifest.get(tag) || {};
+    if ((existing.stale || 0) <= staleAt) {
+      const updates = { ...existing, stale: staleAt };
+      if (Number.isFinite(expiredAt) && expiredAt > 0) {
+        updates.expired = expiredAt;
+      }
+      tagsManifest.set(tag, updates);
+    }
+  }
+
+  return deserialize(value[0]);
+}
+
 function clearClient(current) {
   if (client === current) client = undefined;
   connecting = undefined;
@@ -419,15 +504,13 @@ class SunriseCacheHandler {
     validateRedisConfiguration();
 
     try {
-      const value = await runCommand(async (current) => {
-        return observedTags.length
-          ? await current.eval(MERGE_CACHE_TAGS_SCRIPT, {
-              keys: [cacheKey(key)],
-              arguments: [`${keyPrefix()}:tag:`, ...observedTags],
-            })
-          : await current.get(cacheKey(key));
-      });
-      return value ? deserialize(value) : null;
+      const value = await runCommand((current) =>
+        current.eval(MERGE_CACHE_TAGS_SCRIPT, {
+          keys: [cacheKey(key)],
+          arguments: [`${keyPrefix()}:tag:`, ...observedTags],
+        }),
+      );
+      return deserializeRedisCacheResult(value);
     } catch (error) {
       if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
         console.warn("[next-cache] get failed:", error.message);
@@ -470,26 +553,42 @@ class SunriseCacheHandler {
     }
   }
 
-  async revalidateTag(tags) {
+  async revalidateTag(tags, durations) {
     const normalized = [tags].flat();
     if (cacheBackend() !== "redis") {
-      for (const [key, entry] of memoryCache) {
-        if (entry.tags.some((tag) => normalized.includes(tag))) {
-          memoryCache.delete(key);
+      if (durations) {
+        updateLocalTagState(normalized, durations);
+      } else {
+        for (const [key, entry] of memoryCache) {
+          if (entry.tags.some((tag) => normalized.includes(tag))) {
+            memoryCache.delete(key);
+          }
         }
+        updateLocalTagState(normalized);
       }
       return;
     }
     validateRedisConfiguration();
 
-    await runCommand(async (current) => {
-      if (normalized.length) {
-        await current.eval(REVALIDATE_TAGS_SCRIPT, {
-          keys: normalized.map(tagKey),
-          arguments: [`${keyPrefix()}:tag:`],
-        });
-      }
-    });
+    if (!normalized.length) return;
+
+    const staleAt = Date.now();
+    const expiredAt =
+      durations?.expire === undefined
+        ? ""
+        : (staleAt + durations.expire * 1_000).toString();
+    await runCommand((current) =>
+      current.eval(REVALIDATE_TAGS_SCRIPT, {
+        keys: normalized.map(tagKey),
+        arguments: [
+          `${keyPrefix()}:tag:`,
+          durations ? "profiled" : "expire",
+          staleAt.toString(),
+          expiredAt,
+        ],
+      }),
+    );
+    updateLocalTagState(normalized, durations, staleAt);
   }
 
   resetRequestCache() {}

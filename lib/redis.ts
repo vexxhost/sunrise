@@ -52,6 +52,7 @@ redis.call("PTTL", KEYS[1])
 
 redis.call("ZADD", KEYS[2], 0, KEYS[1])
 redis.call("PEXPIREAT", KEYS[2], expiresAt)
+redis.call("ZSCORE", KEYS[2], KEYS[1])
 redis.call("ZCOUNT", KEYS[2], 0, 0)
 redis.call("ZRANGE", KEYS[2], 0, -1)
 redis.call("ZREVRANGE", KEYS[2], 0, 0, "WITHSCORES")
