@@ -9,6 +9,7 @@ import {
 } from "@/lib/oidc/sunrise";
 import {
   getSessionBackend,
+  getRedisCommandTimeoutMs,
   getRedisKeyPrefix,
   runIsolatedRedisCommand,
   runRedisCommand,
@@ -18,11 +19,9 @@ import type { OidcRefreshCheckpoint, SunriseSession } from "@/lib/session";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
 const MAX_REFRESH_ENTRIES = 256;
-const DISTRIBUTED_REFRESH_LOCK_MS = OIDC_REFRESH_TIMEOUT_MS + 5_000;
 const MAX_DISTRIBUTED_REFRESH_LEADERS = 3;
 const MAX_DISTRIBUTED_SAVE_ATTEMPTS = 3;
 const DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS = 2_000;
-const DISTRIBUTED_REFRESH_WAIT_MS = OIDC_REFRESH_TIMEOUT_MS + 5_000;
 
 const ACQUIRE_LOCK_SCRIPT = `
 local current = redis.call("GET", KEYS[1])
@@ -127,16 +126,32 @@ async function releaseDistributedLock(key: string, owner: string) {
   );
 }
 
-async function renewDistributedLock(key: string, owner: string) {
+async function renewDistributedLock(
+  key: string,
+  owner: string,
+  lockTimeoutMs: number,
+) {
   const renewed = await runIsolatedRedisCommand(
     (client) =>
       client.eval(RENEW_LOCK_SCRIPT, {
         keys: [key],
-        arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
+        arguments: [owner, lockTimeoutMs.toString()],
       }),
     DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
   );
   return Number(renewed) === 1;
+}
+
+function distributedRefreshTiming() {
+  const sessionCommandTimeoutMs = getRedisCommandTimeoutMs();
+  const lockTimeoutMs =
+    OIDC_REFRESH_TIMEOUT_MS + sessionCommandTimeoutMs + 5_000;
+  return {
+    lockTimeoutMs,
+    leaderWaitMs:
+      lockTimeoutMs +
+      (MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) * (sessionCommandTimeoutMs + 2_000),
+  };
 }
 
 function wait(delayMs: number) {
@@ -156,6 +171,7 @@ async function saveDistributedRefresh(
   session: IronSession<SunriseSession>,
   lockKey: string,
   owner: string,
+  lockTimeoutMs: number,
 ) {
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_DISTRIBUTED_SAVE_ATTEMPTS; attempt += 1) {
@@ -165,10 +181,16 @@ async function saveDistributedRefresh(
     } catch (error) {
       lastError = error;
       if (attempt === MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) break;
-      if (!(await renewDistributedLock(lockKey, owner))) {
-        throw new Error(
-          "Lost the distributed OIDC refresh lease while saving its result",
-          { cause: error },
+      try {
+        if (!(await renewDistributedLock(lockKey, owner, lockTimeoutMs))) {
+          console.warn(
+            "[oidc/refresh] lease was lost while preserving a rotated token",
+          );
+        }
+      } catch (renewalError) {
+        console.warn(
+          "[oidc/refresh] could not renew the lease while preserving a rotated token:",
+          renewalError,
         );
       }
       await wait(50 * 2 ** attempt);
@@ -186,6 +208,7 @@ async function distributedRefresh(
   identityProvider: string,
   refreshTokenDigest: string,
 ): Promise<RefreshTokenResult> {
+  const { lockTimeoutMs, leaderWaitMs } = distributedRefreshTiming();
   const existing = await reloadCheckpoint(
     session,
     identityProvider,
@@ -206,8 +229,8 @@ async function distributedRefresh(
   const lockKey = distributedRefreshLockKey(key);
   const startedAt = Date.now();
   const maximumDeadline =
-    startedAt + DISTRIBUTED_REFRESH_WAIT_MS * MAX_DISTRIBUTED_REFRESH_LEADERS;
-  let followerDeadline = startedAt + DISTRIBUTED_REFRESH_WAIT_MS;
+    startedAt + leaderWaitMs * MAX_DISTRIBUTED_REFRESH_LEADERS;
+  let followerDeadline = startedAt + leaderWaitMs;
   const observedLeaders = new Set<string>();
   const owner = randomUUID();
   let delayMs = 40;
@@ -217,7 +240,7 @@ async function distributedRefresh(
       (client) =>
         client.eval(ACQUIRE_LOCK_SCRIPT, {
           keys: [lockKey],
-          arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
+          arguments: [owner, lockTimeoutMs.toString()],
         }),
       DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
     );
@@ -238,12 +261,13 @@ async function distributedRefresh(
             "The OIDC refresh token changed while acquiring its lease",
           );
         }
-
-        const result = await refreshAccessToken(refreshToken, identityProvider);
-        if (!(await renewDistributedLock(lockKey, owner))) {
-          throw new Error("Lost the distributed OIDC refresh lease");
+        if (!(await renewDistributedLock(lockKey, owner, lockTimeoutMs))) {
+          throw new Error(
+            "Lost the distributed OIDC refresh lease before token exchange",
+          );
         }
 
+        const result = await refreshAccessToken(refreshToken, identityProvider);
         applyRotatedRefreshToken(session, result);
         session.oidcRefreshCheckpoint = {
           consumedTokenDigest: refreshTokenDigest,
@@ -252,7 +276,22 @@ async function distributedRefresh(
           result,
           reuseUntil: Date.now() + REFRESH_RESULT_REUSE_MS,
         };
-        await saveDistributedRefresh(session, lockKey, owner);
+        // After Keycloak consumes a single-use token, preserving its result is
+        // safer than discarding it on an uncertain lease renewal. Session CAS
+        // and revocation checks remain the authority for the following write.
+        try {
+          if (!(await renewDistributedLock(lockKey, owner, lockTimeoutMs))) {
+            console.warn(
+              "[oidc/refresh] lease expired after token rotation; preserving the result",
+            );
+          }
+        } catch (error) {
+          console.warn(
+            "[oidc/refresh] could not renew the lease after token rotation; preserving the result:",
+            error,
+          );
+        }
+        await saveDistributedRefresh(session, lockKey, owner, lockTimeoutMs);
         return result;
       } finally {
         await releaseDistributedLock(lockKey, owner).catch((error) => {
@@ -261,15 +300,14 @@ async function distributedRefresh(
       }
     }
 
-    if (
-      typeof acquisitionResult === "string" &&
-      !observedLeaders.has(acquisitionResult) &&
-      observedLeaders.size < MAX_DISTRIBUTED_REFRESH_LEADERS
-    ) {
-      observedLeaders.add(acquisitionResult);
+    if (typeof acquisitionResult === "string") {
+      if (!observedLeaders.has(acquisitionResult)) {
+        if (observedLeaders.size >= MAX_DISTRIBUTED_REFRESH_LEADERS) break;
+        observedLeaders.add(acquisitionResult);
+      }
       followerDeadline = Math.min(
         maximumDeadline,
-        Math.max(followerDeadline, Date.now() + DISTRIBUTED_REFRESH_WAIT_MS),
+        Math.max(followerDeadline, Date.now() + leaderWaitMs),
       );
     }
 
