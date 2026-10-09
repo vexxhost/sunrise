@@ -145,6 +145,75 @@ describe("Redis session storage", () => {
     expect(saveReference).toHaveBeenCalledOnce();
   });
 
+  it("does not rewrite an unchanged session reference", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "stable-session-id",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const sealed = await sealData(
+      { projectId: "project-old", sessionSignedInAt: Date.now() },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({ version: "1", data: sealed }),
+      eval: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    session.projectId = "project-new";
+    await session.save();
+
+    expect(client.eval).toHaveBeenCalledOnce();
+    expect(reference.key).toBe("stable-session-id");
+    expect(saveReference).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed new session reference write", async () => {
+    const saveReference = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Cookie write failed"))
+      .mockResolvedValueOnce(undefined);
+    const reference = {
+      projectId: "legacy-project",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const client = {
+      eval: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    await expect(session.save()).rejects.toThrow("Cookie write failed");
+    await expect(session.save()).resolves.toBeUndefined();
+
+    expect(saveReference).toHaveBeenCalledTimes(2);
+    expect(reference).toEqual(
+      expect.objectContaining({ backend: "redis", key: expect.any(String) }),
+    );
+  });
+
   it("rotates a referenced session ID when its Redis record is gone", async () => {
     const saveReference = vi.fn();
     const reference = {

@@ -200,6 +200,14 @@ function clearLegacyReferenceData(
   }
 }
 
+function hasLegacyReferenceData(
+  reference: IronSession<StoredSessionReference & SunriseSession>,
+) {
+  return Object.keys(reference).some(
+    (key) => key !== "backend" && key !== "key",
+  );
+}
+
 export async function getRedisSession(
   cookieStore: CookieStore,
   options: SessionOptions,
@@ -210,6 +218,10 @@ export async function getRedisSession(
   const hasStoredReference = reference.backend === "redis";
   let id = hasStoredReference ? reference.key : undefined;
   let loaded = id ? await readStoredSession(id) : null;
+  let persistedReferenceId = hasStoredReference && loaded ? id : undefined;
+  let referenceNeedsCleanup = Boolean(
+    persistedReferenceId && hasLegacyReferenceData(reference),
+  );
   const missingStoredReference = hasStoredReference && !loaded;
   if (missingStoredReference) {
     id = undefined;
@@ -275,10 +287,14 @@ export async function getRedisSession(
         replaceSessionData(target, candidate);
         changed.clear();
         deleted.clear();
-        clearLegacyReferenceData(reference);
-        reference.backend = "redis";
-        reference.key = id;
-        await reference.save();
+        if (persistedReferenceId !== id || referenceNeedsCleanup) {
+          clearLegacyReferenceData(reference);
+          reference.backend = "redis";
+          reference.key = id;
+          await reference.save();
+          persistedReferenceId = id;
+          referenceNeedsCleanup = false;
+        }
         return;
       }
       await options.beforeConflictRetry?.();
