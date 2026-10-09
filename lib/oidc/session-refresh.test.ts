@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getRedisCommandTimeoutMs: vi.fn(() => 2_000),
   getRedisKeyPrefix: vi.fn(() => "sunrise"),
   reloadRedisSession: vi.fn(),
+  saveRedisSession: vi.fn(),
   runIsolatedRedisCommand: vi.fn(),
   runRedisCommand: vi.fn(),
 }));
@@ -24,7 +25,9 @@ vi.mock("@/lib/redis", () => ({
   runRedisCommand: mocks.runRedisCommand,
 }));
 vi.mock("@/lib/session-store", () => ({
+  REDIS_SESSION_MAX_SAVE_ATTEMPTS: 4,
   reloadRedisSession: mocks.reloadRedisSession,
+  saveRedisSession: mocks.saveRedisSession,
 }));
 
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
@@ -69,6 +72,7 @@ describe("OIDC session token refresh", () => {
     mocks.getSessionBackend.mockReturnValue("cookie");
     mocks.getRedisCommandTimeoutMs.mockReturnValue(2_000);
     mocks.reloadRedisSession.mockResolvedValue(undefined);
+    mocks.saveRedisSession.mockImplementation((current) => current.save());
     mocks.runIsolatedRedisCommand.mockImplementation(
       (
         operation: (client: unknown) => Promise<unknown>,
@@ -215,6 +219,35 @@ describe("OIDC session token refresh", () => {
       expect.any(Function),
       2_000,
     );
+  });
+
+  it("renews the refresh lease inside a session CAS retry", async () => {
+    const current = session("redis-cas-retry");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.saveRedisSession.mockImplementation(async (active, options) => {
+      await options.beforeConflictRetry();
+      await active.save();
+    });
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await refreshSessionOidcTokens(current as never, "demo");
+
+    expect(mocks.saveRedisSession).toHaveBeenCalledWith(current, {
+      beforeConflictRetry: expect.any(Function),
+      maximumCommandTimeoutMs: 2_000,
+    });
+    expect(
+      client.eval.mock.calls.filter(([script]) => script.includes("PEXPIRE")),
+    ).toHaveLength(3);
+    expect(current.save).toHaveBeenCalledOnce();
   });
 
   it("persists a rotated token when post-exchange lease renewal fails", async () => {

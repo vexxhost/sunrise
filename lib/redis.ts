@@ -7,6 +7,7 @@ export type SessionBackend = "cookie" | "redis";
 type RedisRuntime = {
   client?: RedisClientType;
   connecting?: Promise<RedisClientType>;
+  connectingClient?: RedisClientType;
 };
 
 const runtime = globalThis as typeof globalThis & {
@@ -122,7 +123,10 @@ export function getRedisCa(
 
 function clearClient(client: RedisClientType) {
   if (state.client === client) state.client = undefined;
-  state.connecting = undefined;
+  if (state.connectingClient === client) {
+    state.connecting = undefined;
+    state.connectingClient = undefined;
+  }
   if (client.isOpen) client.destroy();
 }
 
@@ -153,11 +157,15 @@ export async function getRedisClient(): Promise<RedisClientType> {
 
   const client = createRedisConnection("[redis]");
   state.client = client;
+  state.connectingClient = client;
 
   state.connecting = client
     .connect()
     .then(() => {
-      state.connecting = undefined;
+      if (state.connectingClient === client) {
+        state.connecting = undefined;
+        state.connectingClient = undefined;
+      }
       return client;
     })
     .catch((error) => {
@@ -271,5 +279,6 @@ export async function closeRedisForTests() {
   const client = state.client;
   state.client = undefined;
   state.connecting = undefined;
+  state.connectingClient = undefined;
   if (client?.isOpen) client.destroy();
 }

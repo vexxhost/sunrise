@@ -21,8 +21,13 @@ type StoredSessionRecord = {
   data: SunriseSession;
 };
 
-const MAX_SAVE_ATTEMPTS = 4;
+export const REDIS_SESSION_MAX_SAVE_ATTEMPTS = 4;
 const PRE_AUTH_SESSION_TTL_SECONDS = 10 * 60;
+
+type RedisSessionSaveOptions = {
+  beforeConflictRetry?: () => Promise<void>;
+  maximumCommandTimeoutMs?: number;
+};
 
 const SAVE_SESSION_SCRIPT = `
 if redis.call("EXISTS", KEYS[2]) == 1 then
@@ -48,6 +53,10 @@ return 1
 const destroyers = new WeakMap<object, () => Promise<void>>();
 const rotators = new WeakMap<object, () => Promise<void>>();
 const reloaders = new WeakMap<object, () => Promise<void>>();
+const savers = new WeakMap<
+  object,
+  (options?: RedisSessionSaveOptions) => Promise<void>
+>();
 
 function sessionKey(id: string) {
   return `${getRedisKeyPrefix()}:session:{${id}}`;
@@ -96,9 +105,11 @@ function sessionPassword() {
 
 async function readStoredSession(
   id: string,
+  maximumCommandTimeoutMs?: number,
 ): Promise<StoredSessionRecord | null> {
   const record = await runRedisCommand((client) =>
     client.hGetAll(sessionKey(id)),
+    maximumCommandTimeoutMs,
   );
   if (!record.version || !record.data) return null;
 
@@ -132,6 +143,7 @@ async function persistStoredSession(
   id: string,
   expectedVersion: number | null,
   data: SunriseSession,
+  maximumCommandTimeoutMs?: number,
 ) {
   const nextVersion = (expectedVersion ?? 0) + 1;
   const ttl = storedSessionTtlSeconds(data);
@@ -149,6 +161,7 @@ async function persistStoredSession(
         ttl.toString(),
       ],
     }),
+    maximumCommandTimeoutMs,
   );
   return Number(result) as -1 | 0 | 1;
 }
@@ -227,13 +240,17 @@ export async function getRedisSession(
     },
   }) as IronSession<SunriseSession>;
 
-  async function save() {
+  async function save(options: RedisSessionSaveOptions = {}) {
     if (destroyed) {
       throw new Error("Cannot save a destroyed Sunrise session");
     }
     id ??= randomUUID();
 
-    for (let attempt = 0; attempt < MAX_SAVE_ATTEMPTS; attempt += 1) {
+    for (
+      let attempt = 0;
+      attempt < REDIS_SESSION_MAX_SAVE_ATTEMPTS;
+      attempt += 1
+    ) {
       const current = loaded?.data ?? {};
       const candidate = loaded
         ? mergeStoredSession(current, target, changed, deleted)
@@ -242,6 +259,7 @@ export async function getRedisSession(
         id,
         loaded?.version ?? null,
         candidate,
+        options.maximumCommandTimeoutMs,
       );
       if (result === -1) {
         throw new Error("Cannot save a revoked Sunrise session");
@@ -260,7 +278,8 @@ export async function getRedisSession(
         await reference.save();
         return;
       }
-      loaded = await readStoredSession(id);
+      await options.beforeConflictRetry?.();
+      loaded = await readStoredSession(id, options.maximumCommandTimeoutMs);
       if (!loaded) {
         throw new Error("Cannot save a missing or revoked Sunrise session");
       }
@@ -278,10 +297,11 @@ export async function getRedisSession(
   }
 
   Object.defineProperties(target, {
-    save: { value: save },
+    save: { value: () => save() },
     destroy: { value: destroy },
     updateConfig: { value: reference.updateConfig.bind(reference) },
   });
+  savers.set(session, save);
 
   reloaders.set(session, async () => {
     if (destroyed || !id) {
@@ -326,6 +346,18 @@ export async function rotateRedisSession(session: IronSession<SunriseSession>) {
 export async function reloadRedisSession(session: IronSession<SunriseSession>) {
   const reload = reloaders.get(session);
   if (reload) await reload();
+}
+
+export async function saveRedisSession(
+  session: IronSession<SunriseSession>,
+  options: RedisSessionSaveOptions = {},
+) {
+  const save = savers.get(session);
+  if (save) {
+    await save(options);
+    return;
+  }
+  await session.save();
 }
 
 export async function destroyRedisSession(

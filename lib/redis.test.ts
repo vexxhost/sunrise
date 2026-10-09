@@ -33,13 +33,16 @@ function restoreEnvironment(name: string, value: string | undefined) {
 function redisClient(command: () => Promise<unknown>) {
   const client = {
     isOpen: false,
+    isReady: false,
     on: vi.fn(),
     connect: vi.fn(async () => {
       client.isOpen = true;
+      client.isReady = true;
       return client;
     }),
     destroy: vi.fn(() => {
       client.isOpen = false;
+      client.isReady = false;
     }),
     withAbortSignal: vi.fn(() => client),
     eval: vi.fn(async (_script: string, _options?: unknown) => command()),
@@ -161,6 +164,50 @@ describe("Redis deployment configuration", () => {
 
     expect(client.connect).toHaveBeenCalledOnce();
     expect(client.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("does not clear a replacement connection from an older timeout", async () => {
+    process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS = "100";
+    const oldClient = redisClient(() => new Promise(() => undefined));
+    let finishReplacementConnect: (() => void) | undefined;
+    const replacement = redisClient(async () => "recovered");
+    replacement.connect.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishReplacementConnect = () => {
+            replacement.isOpen = true;
+            replacement.isReady = true;
+            resolve(replacement);
+          };
+        }),
+    );
+    mocks.createClient
+      .mockReturnValueOnce(oldClient)
+      .mockReturnValueOnce(replacement);
+
+    const first = runRedisCommand((client) => client.get("first"));
+    const firstRejection = expect(first).rejects.toThrow(
+      "Redis command timed out after 100ms",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = runRedisCommand((client) => client.get("second"));
+    const secondRejection = expect(second).rejects.toThrow(
+      "Redis command timed out after 100ms",
+    );
+    await firstRejection;
+
+    const third = runRedisCommand((client) => client.get("third"));
+    await secondRejection;
+    const fourth = runRedisCommand((client) => client.get("fourth"));
+    finishReplacementConnect?.();
+
+    await expect(Promise.all([third, fourth])).resolves.toEqual([
+      "recovered",
+      "recovered",
+    ]);
+    expect(mocks.createClient).toHaveBeenCalledTimes(2);
+    expect(replacement.connect).toHaveBeenCalledOnce();
+    expect(replacement.destroy).not.toHaveBeenCalled();
   });
 
   it("probes the runtime session and refresh ACL namespaces", async () => {

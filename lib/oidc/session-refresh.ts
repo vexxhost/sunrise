@@ -14,7 +14,11 @@ import {
   runIsolatedRedisCommand,
   runRedisCommand,
 } from "@/lib/redis";
-import { reloadRedisSession } from "@/lib/session-store";
+import {
+  REDIS_SESSION_MAX_SAVE_ATTEMPTS,
+  reloadRedisSession,
+  saveRedisSession,
+} from "@/lib/session-store";
 import type { OidcRefreshCheckpoint, SunriseSession } from "@/lib/session";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
@@ -149,9 +153,17 @@ function distributedRefreshTiming() {
     OIDC_REFRESH_TIMEOUT_MS +
     sessionCommandTimeoutMs +
     DISTRIBUTED_REFRESH_TIMING_MARGIN_MS;
+  const refreshRedisOperationBudgetMs =
+    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS + 2_000;
+  const sessionSaveOperationCount =
+    REDIS_SESSION_MAX_SAVE_ATTEMPTS +
+    (REDIS_SESSION_MAX_SAVE_ATTEMPTS - 1) * 2;
+  const sessionSaveBudgetMs =
+    sessionSaveOperationCount * refreshRedisOperationBudgetMs +
+    DISTRIBUTED_REFRESH_TIMING_MARGIN_MS;
   const checkpointPersistenceMs =
-    MAX_DISTRIBUTED_SAVE_ATTEMPTS *
-      (sessionCommandTimeoutMs + DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS) +
+    MAX_DISTRIBUTED_SAVE_ATTEMPTS * sessionSaveBudgetMs +
+    (MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) * refreshRedisOperationBudgetMs +
     DISTRIBUTED_REFRESH_TIMING_MARGIN_MS;
   return {
     checkpointPersistenceMs,
@@ -182,7 +194,16 @@ async function saveDistributedRefresh(
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_DISTRIBUTED_SAVE_ATTEMPTS; attempt += 1) {
     try {
-      await session.save();
+      await saveRedisSession(session, {
+        beforeConflictRetry: async () => {
+          if (!(await renewDistributedLock(lockKey, owner, lockTimeoutMs))) {
+            throw new Error(
+              "Lost the distributed OIDC refresh lease during a session conflict",
+            );
+          }
+        },
+        maximumCommandTimeoutMs: DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
+      });
       return;
     } catch (error) {
       lastError = error;

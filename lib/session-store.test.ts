@@ -21,6 +21,7 @@ import {
   mergeStoredSession,
   reloadRedisSession,
   rotateRedisSession,
+  saveRedisSession,
   storedSessionTtlSeconds,
 } from "@/lib/session-store";
 import { sealData } from "iron-session";
@@ -276,6 +277,7 @@ describe("Redis session storage", () => {
   });
 
   it("exposes fields merged from a concurrent save", async () => {
+    const beforeConflictRetry = vi.fn().mockResolvedValue(undefined);
     const reference = {
       backend: "redis",
       key: "concurrent-session-id",
@@ -314,12 +316,23 @@ describe("Redis session storage", () => {
 
     const session = await getRedisSession({} as never, {} as never);
     session.regionId = "RegionTwo";
-    await session.save();
+    await saveRedisSession(session, {
+      beforeConflictRetry,
+      maximumCommandTimeoutMs: 2_000,
+    });
 
     expect(session).toMatchObject({
       projectId: "project-new",
       regionId: "RegionTwo",
     });
+    expect(beforeConflictRetry).toHaveBeenCalledOnce();
+    expect(beforeConflictRetry.mock.invocationCallOrder[0]).toBeLessThan(
+      client.hGetAll.mock.invocationCallOrder[1],
+    );
+    expect(mocks.runRedisCommand).toHaveBeenLastCalledWith(
+      expect.any(Function),
+      2_000,
+    );
   });
 
   it("revokes a live pre-authentication reference before authentication", async () => {
