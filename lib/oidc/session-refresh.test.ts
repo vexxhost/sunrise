@@ -303,6 +303,46 @@ describe("OIDC session token refresh", () => {
     expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
   });
 
+  it("returns a published refresh result without waiting for lock release", async () => {
+    const result = {
+      access_token: "new-access-token",
+      refresh_token: "rotated-refresh-token",
+      expires_in: 300,
+      token_type: "Bearer",
+    };
+    const client = {
+      get: vi.fn().mockResolvedValue(null),
+      eval: vi.fn(
+        async (
+          _script: string,
+          options: { keys: string[]; arguments: string[] },
+        ) => {
+          if (options.keys.length === 1) {
+            return new Promise<never>(() => undefined);
+          }
+          return 1;
+        },
+      ),
+      hIncrBy: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(result);
+
+    await expect(
+      refreshSessionOidcTokens(
+        session("non-blocking-lock-release") as never,
+        "demo",
+      ),
+    ).resolves.toEqual(result);
+
+    expect(client.eval).toHaveBeenCalledTimes(3);
+    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
+  });
+
   it("coalesces concurrent refreshes and applies the same rotated token", async () => {
     let resolveRefresh:
       | ((value: {

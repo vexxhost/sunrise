@@ -95,8 +95,9 @@ function distributedRefreshMetricsKey() {
 }
 
 async function recordDistributedRefresh(metric: string) {
-  await runRedisCommand((client) =>
-    client.hIncrBy(distributedRefreshMetricsKey(), metric, 1),
+  await runRedisCommand(
+    (client) => client.hIncrBy(distributedRefreshMetricsKey(), metric, 1),
+    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
   ).catch(() => undefined);
 }
 
@@ -133,11 +134,13 @@ export async function unsealDistributedRefreshResult(value: string | null) {
 }
 
 async function releaseDistributedLock(key: string, owner: string) {
-  await runRedisCommand((client) =>
-    client.eval(RELEASE_LOCK_SCRIPT, {
-      keys: [key],
-      arguments: [owner],
-    }),
+  await runRedisCommand(
+    (client) =>
+      client.eval(RELEASE_LOCK_SCRIPT, {
+        keys: [key],
+        arguments: [owner],
+      }),
+    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
   );
 }
 
@@ -280,7 +283,7 @@ async function distributedRefresh(
         return result;
       } finally {
         await lease.stop();
-        await releaseDistributedLock(keys.lock, owner).catch((error) => {
+        void releaseDistributedLock(keys.lock, owner).catch((error) => {
           console.warn("[oidc/refresh] failed to release Redis lock:", error);
         });
       }
