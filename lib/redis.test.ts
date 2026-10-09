@@ -1,4 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  createClient: vi.fn(),
+}));
+
+vi.mock("@redis/client", () => ({
+  createClient: mocks.createClient,
+}));
+
 import {
   getNextCacheBackend,
   getNextCacheDeploymentId,
@@ -8,7 +17,45 @@ import {
   getRedisCredentials,
   getRedisKeyPrefix,
   getRedisUrl,
+  runIsolatedRedisCommand,
 } from "@/lib/redis";
+
+const originalRedisUrl = process.env.SUNRISE_REDIS_URL;
+const originalRedisTimeout = process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS;
+
+function restoreEnvironment(name: string, value: string | undefined) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
+
+function redisClient(command: () => Promise<unknown>) {
+  const client = {
+    isOpen: false,
+    on: vi.fn(),
+    connect: vi.fn(async () => {
+      client.isOpen = true;
+      return client;
+    }),
+    destroy: vi.fn(() => {
+      client.isOpen = false;
+    }),
+    withAbortSignal: vi.fn(() => client),
+    get: vi.fn(command),
+  };
+  return client;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  process.env.SUNRISE_REDIS_URL = "redis://cache:6379";
+  process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS = "2000";
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  restoreEnvironment("SUNRISE_REDIS_URL", originalRedisUrl);
+  restoreEnvironment("SUNRISE_REDIS_COMMAND_TIMEOUT_MS", originalRedisTimeout);
+});
 
 describe("Redis deployment configuration", () => {
   it("uses the cookie backend unless Redis is selected explicitly", () => {
@@ -85,5 +132,36 @@ describe("Redis deployment configuration", () => {
     expect(() =>
       getRedisCa("redis://cache:6379", "/run/redis/ca.crt", readFile),
     ).toThrow("requires a rediss://");
+  });
+
+  it("closes an isolated connection after a successful command", async () => {
+    const client = redisClient(async () => "value");
+    mocks.createClient.mockReturnValue(client);
+
+    await expect(
+      runIsolatedRedisCommand((current) => current.get("key"), 500),
+    ).resolves.toBe("value");
+
+    expect(client.connect).toHaveBeenCalledOnce();
+    expect(client.get).toHaveBeenCalledWith("key");
+    expect(client.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("destroys only the isolated connection when its command times out", async () => {
+    vi.useFakeTimers();
+    const client = redisClient(() => new Promise(() => undefined));
+    mocks.createClient.mockReturnValue(client);
+
+    const command = runIsolatedRedisCommand(
+      (current) => current.get("key"),
+      500,
+    );
+    const rejection = expect(command).rejects.toThrow(
+      "Redis command timed out after 500ms",
+    );
+    await vi.advanceTimersByTimeAsync(500);
+
+    await rejection;
+    expect(client.destroy).toHaveBeenCalledOnce();
   });
 });

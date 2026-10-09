@@ -4,7 +4,6 @@ const { PHASE_PRODUCTION_BUILD } = require("next/constants");
 
 const NEXT_CACHE_TAGS_HEADER = "x-next-cache-tags";
 const MAX_MEMORY_ENTRIES = 512;
-const METRICS_TIMEOUT_MS = 2_000;
 const memoryCache = new Map();
 let client;
 let connecting;
@@ -236,10 +235,6 @@ function tagKey(tag) {
   return `${keyPrefix()}:tag:${tag}`;
 }
 
-function metricsKey() {
-  return `${keyPrefix()}:metrics`;
-}
-
 function connectionOptions() {
   const url = process.env.SUNRISE_REDIS_URL?.trim();
   if (!url) {
@@ -344,14 +339,10 @@ async function getClient() {
   return connecting;
 }
 
-async function runCommand(operation, maximumTimeoutMs) {
+async function runCommand(operation) {
   const current = await getClient();
   if (!current) return undefined;
-  const configuredTimeoutMs = commandTimeoutMs();
-  const timeoutMs =
-    maximumTimeoutMs === undefined
-      ? configuredTimeoutMs
-      : Math.min(configuredTimeoutMs, maximumTimeoutMs);
+  const timeoutMs = commandTimeoutMs();
   let timeout;
   const timeoutPromise = new Promise((_, reject) => {
     timeout = setTimeout(() => {
@@ -365,17 +356,6 @@ async function runCommand(operation, maximumTimeoutMs) {
   } finally {
     if (timeout) clearTimeout(timeout);
   }
-}
-
-function recordMetric(metric) {
-  void runCommand(
-    (current) => current.hIncrBy(metricsKey(), metric, 1),
-    METRICS_TIMEOUT_MS,
-  ).catch((error) => {
-    if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
-      console.warn("[next-cache] metric failed:", error.message);
-    }
-  });
 }
 
 function tagsFor(data, context) {
@@ -415,7 +395,6 @@ module.exports = class SunriseCacheHandler {
             })
           : await current.get(cacheKey(key));
       });
-      recordMetric(value ? "hits" : "misses");
       return value ? deserialize(value) : null;
     } catch (error) {
       if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
@@ -455,7 +434,6 @@ module.exports = class SunriseCacheHandler {
           ],
         }),
       );
-      recordMetric("sets");
     } catch (error) {
       if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
         console.warn("[next-cache] set failed:", error.message);
@@ -483,7 +461,6 @@ module.exports = class SunriseCacheHandler {
         });
       }
     });
-    recordMetric("revalidations");
   }
 
   resetRequestCache() {}

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(),
   getSessionBackend: vi.fn(() => "cookie"),
   getRedisKeyPrefix: vi.fn(() => "sunrise"),
+  runIsolatedRedisCommand: vi.fn(),
   runRedisCommand: vi.fn(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock("@/lib/oidc/sunrise", () => ({
 vi.mock("@/lib/redis", () => ({
   getSessionBackend: mocks.getSessionBackend,
   getRedisKeyPrefix: mocks.getRedisKeyPrefix,
+  runIsolatedRedisCommand: mocks.runIsolatedRedisCommand,
   runRedisCommand: mocks.runRedisCommand,
 }));
 
@@ -37,6 +39,12 @@ describe("OIDC session token refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSessionBackend.mockReturnValue("cookie");
+    mocks.runIsolatedRedisCommand.mockImplementation(
+      (
+        operation: (client: unknown) => Promise<unknown>,
+        maximumTimeoutMs?: number,
+      ) => mocks.runRedisCommand(operation, maximumTimeoutMs),
+    );
     process.env.SUNRISE_SESSION_SECRET =
       "test-session-secret-that-is-at-least-thirty-two-characters";
   });
@@ -74,7 +82,6 @@ describe("OIDC session token refresh", () => {
     const client = {
       get: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(sealed),
       eval: vi.fn().mockResolvedValue(2),
-      hIncrBy: vi.fn().mockResolvedValue(1),
     };
     mocks.getSessionBackend.mockReturnValue("redis");
     mocks.runRedisCommand.mockImplementation(
@@ -92,7 +99,7 @@ describe("OIDC session token refresh", () => {
     expect(current.keycloakRefreshToken).toBe("shared-refresh-token");
   });
 
-  it("returns a cached distributed result without waiting for metrics", async () => {
+  it("returns a cached distributed result", async () => {
     const result = {
       access_token: "cached-access-token",
       refresh_token: "cached-refresh-token",
@@ -102,7 +109,6 @@ describe("OIDC session token refresh", () => {
     const sealed = await sealDistributedRefreshResult(result);
     const client = {
       get: vi.fn().mockResolvedValue(sealed),
-      hIncrBy: vi.fn(() => new Promise<never>(() => undefined)),
     };
     mocks.getSessionBackend.mockReturnValue("redis");
     mocks.runRedisCommand.mockImplementation(
@@ -117,11 +123,10 @@ describe("OIDC session token refresh", () => {
       ),
     ).resolves.toEqual(result);
 
-    expect(client.hIncrBy).toHaveBeenCalledOnce();
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
   });
 
-  it("returns a follower result without waiting for metrics", async () => {
+  it("returns a result published while following another leader", async () => {
     vi.useFakeTimers();
     const result = {
       access_token: "follower-access-token",
@@ -133,7 +138,6 @@ describe("OIDC session token refresh", () => {
     const client = {
       get: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(sealed),
       eval: vi.fn().mockResolvedValue(0),
-      hIncrBy: vi.fn(() => new Promise<never>(() => undefined)),
     };
     mocks.getSessionBackend.mockReturnValue("redis");
     mocks.runRedisCommand.mockImplementation(
@@ -148,7 +152,40 @@ describe("OIDC session token refresh", () => {
     await vi.advanceTimersByTimeAsync(40);
 
     await expect(refresh).resolves.toEqual(result);
-    expect(client.hIncrBy).toHaveBeenCalledOnce();
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("extends the follower wait when a replacement leader takes over", async () => {
+    vi.useFakeTimers();
+    const result = {
+      access_token: "replacement-access-token",
+      refresh_token: "replacement-refresh-token",
+      expires_in: 300,
+      token_type: "Bearer",
+    };
+    const sealed = await sealDistributedRefreshResult(result);
+    const startedAt = Date.now();
+    const client = {
+      get: vi.fn(async () =>
+        Date.now() - startedAt >= 49_000 ? sealed : null,
+      ),
+      eval: vi.fn(async () =>
+        Date.now() - startedAt < 20_000 ? "leader-one" : "leader-two",
+      ),
+    };
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const refresh = refreshSessionOidcTokens(
+      session("replacement-leader") as never,
+      "demo",
+    );
+    await vi.advanceTimersByTimeAsync(50_000);
+
+    await expect(refresh).resolves.toEqual(result);
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
   });
 
@@ -166,7 +203,6 @@ describe("OIDC session token refresh", () => {
           return 1;
         },
       ),
-      hIncrBy: vi.fn().mockResolvedValue(1),
     };
     mocks.getSessionBackend.mockReturnValue("redis");
     mocks.runRedisCommand.mockImplementation(
@@ -216,7 +252,6 @@ describe("OIDC session token refresh", () => {
           return 1;
         },
       ),
-      hIncrBy: vi.fn().mockResolvedValue(1),
     };
     mocks.getSessionBackend.mockReturnValue("redis");
     mocks.runRedisCommand.mockImplementation(
@@ -263,7 +298,7 @@ describe("OIDC session token refresh", () => {
     await rejection;
   });
 
-  it("starts token refresh without waiting for leader metrics", async () => {
+  it("refreshes and publishes a result as the leader", async () => {
     const result = {
       access_token: "new-access-token",
       refresh_token: "rotated-refresh-token",
@@ -283,7 +318,6 @@ describe("OIDC session token refresh", () => {
           return 1;
         },
       ),
-      hIncrBy: vi.fn(() => new Promise<never>(() => undefined)),
     };
     mocks.getSessionBackend.mockReturnValue("redis");
     mocks.runRedisCommand.mockImplementation(
@@ -299,7 +333,6 @@ describe("OIDC session token refresh", () => {
       ),
     ).resolves.toEqual(result);
 
-    expect(client.hIncrBy).toHaveBeenCalledOnce();
     expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
   });
 
@@ -323,7 +356,6 @@ describe("OIDC session token refresh", () => {
           return 1;
         },
       ),
-      hIncrBy: vi.fn().mockResolvedValue(1),
     };
     mocks.getSessionBackend.mockReturnValue("redis");
     mocks.runRedisCommand.mockImplementation(
@@ -340,6 +372,7 @@ describe("OIDC session token refresh", () => {
     ).resolves.toEqual(result);
 
     expect(client.eval).toHaveBeenCalledTimes(3);
+    expect(mocks.runIsolatedRedisCommand).toHaveBeenCalledOnce();
     expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
   });
 

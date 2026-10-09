@@ -163,12 +163,7 @@ function clearClient(client: RedisClientType) {
   if (client.isOpen) client.destroy();
 }
 
-export async function getRedisClient(): Promise<RedisClientType> {
-  if (state.client?.isReady) return state.client;
-  if (state.connecting) return state.connecting;
-
-  if (state.client) clearClient(state.client);
-
+function createRedisConnection(errorPrefix: string) {
   const url = getRedisUrl();
   const ca = getRedisCa(url);
   const client = createClient({
@@ -181,10 +176,20 @@ export async function getRedisClient(): Promise<RedisClientType> {
       ...(ca ? { tls: true as const, ca } : {}),
     },
   });
-  state.client = client;
   client.on("error", (error) => {
-    console.error("[redis] connection error:", error.message);
+    console.error(`${errorPrefix} connection error:`, error.message);
   });
+  return client;
+}
+
+export async function getRedisClient(): Promise<RedisClientType> {
+  if (state.client?.isReady) return state.client;
+  if (state.connecting) return state.connecting;
+
+  if (state.client) clearClient(state.client);
+
+  const client = createRedisConnection("[redis]");
+  state.client = client;
 
   state.connecting = client
     .connect()
@@ -198,6 +203,42 @@ export async function getRedisClient(): Promise<RedisClientType> {
     });
 
   return state.connecting;
+}
+
+export async function runIsolatedRedisCommand<T>(
+  command: (client: RedisClientType) => Promise<T>,
+  maximumTimeoutMs?: number,
+): Promise<T> {
+  const client = createRedisConnection("[redis/isolated]");
+
+  try {
+    await client.connect();
+    const configuredTimeoutMs = getRedisCommandTimeoutMs();
+    const timeoutMs =
+      maximumTimeoutMs === undefined
+        ? configuredTimeoutMs
+        : Math.min(configuredTimeoutMs, maximumTimeoutMs);
+    const abortController = new AbortController();
+    const bounded = client.withAbortSignal(
+      abortController.signal,
+    ) as RedisClientType;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error(`Redis command timed out after ${timeoutMs}ms`));
+        abortController.abort();
+        if (client.isOpen) client.destroy();
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([command(bounded), timeoutPromise]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  } finally {
+    if (client.isOpen) client.destroy();
+  }
 }
 
 export async function runRedisCommand<T>(

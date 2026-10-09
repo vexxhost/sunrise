@@ -11,6 +11,7 @@ import type { SunriseSession } from "@/lib/session";
 import {
   getSessionBackend,
   getRedisKeyPrefix,
+  runIsolatedRedisCommand,
   runRedisCommand,
 } from "@/lib/redis";
 
@@ -19,6 +20,7 @@ const REFRESH_RESULT_REUSE_SECONDS = Math.ceil(REFRESH_RESULT_REUSE_MS / 1_000);
 const MAX_REFRESH_ENTRIES = 256;
 const DISTRIBUTED_REFRESH_LOCK_MS = 20_000;
 const DISTRIBUTED_REFRESH_RENEW_MS = 5_000;
+const MAX_DISTRIBUTED_REFRESH_LEADERS = 3;
 // Coordination must fail well before the current lease can expire, even when
 // the general Redis command budget is configured at its 30-second maximum.
 const DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS = 2_000;
@@ -35,10 +37,14 @@ const ACQUIRE_LOCK_SCRIPT = `
 if redis.call("EXISTS", KEYS[2]) == 1 then
   return 2
 end
+local current = redis.call("GET", KEYS[1])
+if current then
+  return current
+end
 if redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2], "NX") then
   return 1
 end
-return 0
+return redis.call("GET", KEYS[1]) or 0
 `;
 
 const RENEW_LOCK_SCRIPT = `
@@ -90,17 +96,6 @@ function distributedRefreshKeys(key: string) {
   };
 }
 
-function distributedRefreshMetricsKey() {
-  return `${getRedisKeyPrefix()}:oidc-refresh-metrics`;
-}
-
-async function recordDistributedRefresh(metric: string) {
-  await runRedisCommand(
-    (client) => client.hIncrBy(distributedRefreshMetricsKey(), metric, 1),
-    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
-  ).catch(() => undefined);
-}
-
 function sessionPassword() {
   const value = process.env.SUNRISE_SESSION_SECRET;
   if (!value) throw new Error("SUNRISE_SESSION_SECRET is required");
@@ -134,7 +129,7 @@ export async function unsealDistributedRefreshResult(value: string | null) {
 }
 
 async function releaseDistributedLock(key: string, owner: string) {
-  await runRedisCommand(
+  await runIsolatedRedisCommand(
     (client) =>
       client.eval(RELEASE_LOCK_SCRIPT, {
         keys: [key],
@@ -229,31 +224,32 @@ async function distributedRefresh(
     await runRedisCommand((client) => client.get(keys.result)),
   );
   if (cached) {
-    void recordDistributedRefresh("result_reuse");
     return cached;
   }
 
-  const deadline = Date.now() + DISTRIBUTED_REFRESH_WAIT_MS;
+  const startedAt = Date.now();
+  const maximumDeadline =
+    startedAt + DISTRIBUTED_REFRESH_WAIT_MS * MAX_DISTRIBUTED_REFRESH_LEADERS;
+  let followerDeadline = startedAt + DISTRIBUTED_REFRESH_WAIT_MS;
+  const observedLeaders = new Set<string>();
   const owner = randomUUID();
   let delayMs = 40;
 
-  while (Date.now() < deadline) {
-    const acquisition = Number(
-      await runRedisCommand(
-        (client) =>
-          client.eval(ACQUIRE_LOCK_SCRIPT, {
-            keys: [keys.lock, keys.result],
-            arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
-          }),
-        DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
-      ),
+  while (Date.now() < followerDeadline) {
+    const acquisitionResult = await runRedisCommand(
+      (client) =>
+        client.eval(ACQUIRE_LOCK_SCRIPT, {
+          keys: [keys.lock, keys.result],
+          arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
+        }),
+      DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
     );
+    const acquisition = Number(acquisitionResult);
     if (acquisition === 2) {
       const result = await unsealDistributedRefreshResult(
         await runRedisCommand((client) => client.get(keys.result)),
       );
       if (result) {
-        void recordDistributedRefresh("result_reuse");
         return result;
       }
       await runRedisCommand((client) => client.del(keys.result));
@@ -261,7 +257,6 @@ async function distributedRefresh(
     }
     if (acquisition === 1) {
       const lease = maintainDistributedLock(keys.lock, owner);
-      void recordDistributedRefresh("leaders");
       try {
         const result = await refreshAccessToken(
           refreshToken,
@@ -289,18 +284,28 @@ async function distributedRefresh(
       }
     }
 
+    if (
+      typeof acquisitionResult === "string" &&
+      !observedLeaders.has(acquisitionResult) &&
+      observedLeaders.size < MAX_DISTRIBUTED_REFRESH_LEADERS
+    ) {
+      observedLeaders.add(acquisitionResult);
+      followerDeadline = Math.min(
+        maximumDeadline,
+        Math.max(followerDeadline, Date.now() + DISTRIBUTED_REFRESH_WAIT_MS),
+      );
+    }
+
     await wait(delayMs);
     const result = await unsealDistributedRefreshResult(
       await runRedisCommand((client) => client.get(keys.result)),
     );
     if (result) {
-      void recordDistributedRefresh("followers");
       return result;
     }
     delayMs = Math.min(delayMs * 2, 250);
   }
 
-  void recordDistributedRefresh("timeouts");
   throw new Error("Timed out waiting for the distributed OIDC refresh result");
 }
 
