@@ -434,6 +434,39 @@ describe("OIDC session token refresh", () => {
     expect(current.save).toHaveBeenCalledOnce();
   });
 
+  it("aborts when a continuation starts after checkpoint persistence", async () => {
+    const current = session("redis-post-persistence-continuation");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    let reloadCount = 0;
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.reloadRedisSession.mockImplementation(async () => {
+      reloadCount += 1;
+      if (reloadCount === 4) {
+        Object.assign(current, {
+          keycloakRefreshToken: "interactive-continuation-token",
+          oidcRefreshCheckpoint: undefined,
+          oidcSessionContinuation: true,
+        });
+      }
+    });
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).rejects.toThrow("superseded by an interactive continuation");
+    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
+    expect(current.keycloakRefreshToken).toBe(
+      "interactive-continuation-token",
+    );
+  });
+
   it("does not reuse a checkpoint past the access-token lifetime", async () => {
     const current = session("redis-short-access-token");
     const client = redisClient((script) => {
@@ -476,7 +509,7 @@ describe("OIDC session token refresh", () => {
         operation(client),
     );
     mocks.saveRedisSession.mockImplementation(async (active) => {
-      vi.setSystemTime(startedAt + 56_000);
+      vi.setSystemTime(startedAt + 40_000);
       await active.save();
     });
     mocks.refreshAccessToken.mockResolvedValue({
@@ -485,9 +518,130 @@ describe("OIDC session token refresh", () => {
     });
 
     await refreshSessionOidcTokens(current as never, "demo");
+    vi.setSystemTime(startedAt + 56_000);
     await refreshSessionOidcTokens(current as never, "demo");
 
     expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-refreshes when persistence outlives the access token", async () => {
+    vi.useFakeTimers();
+    const startedAt = Date.now();
+    const current = session("redis-expired-during-persistence");
+    const firstResult = {
+      ...refreshedTokens(),
+      access_token: "first-access-token",
+      refresh_token: "first-rotated-refresh-token",
+      expires_in: 60,
+    };
+    const finalResult = {
+      ...refreshedTokens(),
+      access_token: "final-access-token",
+      refresh_token: "final-rotated-refresh-token",
+    };
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    let saveCount = 0;
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.saveRedisSession.mockImplementation(async (active) => {
+      saveCount += 1;
+      if (saveCount === 1) vi.setSystemTime(startedAt + 56_000);
+      await active.save();
+    });
+    mocks.refreshAccessToken
+      .mockResolvedValueOnce(firstResult)
+      .mockResolvedValueOnce(finalResult);
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).resolves.toEqual(finalResult);
+
+    expect(mocks.refreshAccessToken).toHaveBeenNthCalledWith(
+      1,
+      "old-refresh-token",
+      "demo",
+    );
+    expect(mocks.refreshAccessToken).toHaveBeenNthCalledWith(
+      2,
+      "first-rotated-refresh-token",
+      "demo",
+    );
+    expect(current.keycloakRefreshToken).toBe(
+      "final-rotated-refresh-token",
+    );
+    expect(current.save).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares a re-refreshed result with local followers", async () => {
+    vi.useFakeTimers();
+    const startedAt = Date.now();
+    const leader = session("redis-local-generation-follower");
+    const follower = session("redis-local-generation-follower");
+    const leaderWithCheckpoint = leader as typeof leader & {
+      oidcRefreshCheckpoint?: {
+        result: { access_token: string };
+      };
+    };
+    const firstResult = {
+      ...refreshedTokens(),
+      access_token: "first-access-token",
+      refresh_token: "first-rotated-refresh-token",
+      expires_in: 60,
+    };
+    const finalResult = {
+      ...refreshedTokens(),
+      access_token: "final-access-token",
+      refresh_token: "final-rotated-refresh-token",
+    };
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    let saveCount = 0;
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.reloadRedisSession.mockImplementation(async (active) => {
+      if (
+        active === follower &&
+        leaderWithCheckpoint.oidcRefreshCheckpoint?.result.access_token ===
+          finalResult.access_token
+      ) {
+        Object.assign(active, {
+          keycloakRefreshToken: leader.keycloakRefreshToken,
+          oidcRefreshCheckpoint: leaderWithCheckpoint.oidcRefreshCheckpoint,
+        });
+      }
+    });
+    mocks.saveRedisSession.mockImplementation(async (active) => {
+      saveCount += 1;
+      if (saveCount === 1) vi.setSystemTime(startedAt + 56_000);
+      await active.save();
+    });
+    mocks.refreshAccessToken
+      .mockResolvedValueOnce(firstResult)
+      .mockResolvedValueOnce(finalResult);
+
+    await expect(
+      Promise.all([
+        refreshSessionOidcTokens(leader as never, "demo"),
+        refreshSessionOidcTokens(follower as never, "demo"),
+      ]),
+    ).resolves.toEqual([finalResult, finalResult]);
+
+    expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(2);
+    expect(follower.keycloakRefreshToken).toBe(
+      "final-rotated-refresh-token",
+    );
+    expect(follower.save).not.toHaveBeenCalled();
   });
 
   it("persists a rotated token when post-exchange lease renewal fails", async () => {
@@ -548,6 +702,55 @@ describe("OIDC session token refresh", () => {
     await expect(refresh).resolves.toEqual(result);
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
     expect(current.save).not.toHaveBeenCalled();
+  });
+
+  it("restarts a follower with an authoritative rotated token", async () => {
+    vi.useFakeTimers();
+    const current = session("redis-expired-follower-checkpoint");
+    const result = {
+      ...refreshedTokens(),
+      refresh_token: "second-rotated-refresh-token",
+    };
+    let acquisitionCount = 0;
+    let reloadCount = 0;
+    const client = redisClient((script) => {
+      if (!script.includes('"NX"')) return 1;
+      acquisitionCount += 1;
+      return acquisitionCount === 1 ? "slow-owner" : 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.reloadRedisSession.mockImplementation(async () => {
+      reloadCount += 1;
+      if (reloadCount === 2) {
+        current.keycloakRefreshToken = "first-rotated-refresh-token";
+        Object.assign(current, {
+          oidcRefreshCheckpoint: {
+            consumedTokenDigest: digest("old-refresh-token"),
+            identityProvider: "demo",
+            issuedTokenDigest: digest("first-rotated-refresh-token"),
+            result: refreshedTokens(),
+            reuseUntil: Date.now() - 1,
+          },
+        });
+      }
+    });
+    mocks.refreshAccessToken.mockResolvedValue(result);
+
+    const refresh = refreshSessionOidcTokens(current as never, "demo");
+    await vi.advanceTimersByTimeAsync(40);
+
+    await expect(refresh).resolves.toEqual(result);
+    expect(mocks.refreshAccessToken).toHaveBeenCalledWith(
+      "first-rotated-refresh-token",
+      "demo",
+    );
+    expect(current.keycloakRefreshToken).toBe(
+      "second-rotated-refresh-token",
+    );
   });
 
   it("waits through every checkpoint save attempt in the Redis budget", async () => {
