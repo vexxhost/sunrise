@@ -5,7 +5,11 @@ import {
   type SessionOptions,
 } from "iron-session";
 import { cookies } from "next/headers";
-import { destroyRedisSession, getRedisSession } from "@/lib/session-store";
+import {
+  destroyRedisSession,
+  getRedisSession,
+  rotateRedisSession,
+} from "@/lib/session-store";
 import {
   getSessionLifetimePolicy,
   getSessionLifetimeState,
@@ -140,6 +144,7 @@ export async function startSessionLifetime(
   session: IronSession<SunriseSession>,
   now = Date.now(),
 ) {
+  await rotateRedisSession(session);
   const sessionId = randomUUID();
   session.sessionId = sessionId;
   session.sessionSignedInAt = now;

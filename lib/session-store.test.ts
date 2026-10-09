@@ -19,6 +19,7 @@ import {
   destroyRedisSession,
   getRedisSession,
   mergeStoredSession,
+  rotateRedisSession,
   storedSessionTtlSeconds,
 } from "@/lib/session-store";
 import { sealData } from "iron-session";
@@ -175,6 +176,48 @@ describe("Redis session storage", () => {
     expect(firstSave.keys[0]).toContain("evicted-during-save");
     expect(secondSave.keys[0]).not.toContain("evicted-during-save");
     expect(reference.key).not.toBe("evicted-during-save");
+    expect(saveReference).toHaveBeenCalledOnce();
+  });
+
+  it("revokes a live pre-authentication reference before authentication", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "pre-auth-session-id",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const sealed = await sealData(
+      { oidcState: "expected-state", oidcVerifier: "verifier" },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({ version: "1", data: sealed }),
+      eval: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    await rotateRedisSession(session);
+    session.keystoneProjectToken = "authenticated-token";
+    await session.save();
+
+    const revoke = client.eval.mock.calls[0][1] as { keys: string[] };
+    const save = client.eval.mock.calls[1][1] as { keys: string[] };
+    expect(revoke.keys[0]).toContain("pre-auth-session-id");
+    expect(revoke.keys[1]).toContain("pre-auth-session-id");
+    expect(save.keys[0]).not.toContain("pre-auth-session-id");
+    expect(reference.key).not.toBe("pre-auth-session-id");
     expect(saveReference).toHaveBeenCalledOnce();
   });
 

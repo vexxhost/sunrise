@@ -46,6 +46,7 @@ return 1
 `;
 
 const destroyers = new WeakMap<object, () => Promise<void>>();
+const rotators = new WeakMap<object, () => Promise<void>>();
 
 function sessionKey(id: string) {
   return `${getRedisKeyPrefix()}:session:{${id}}`;
@@ -271,12 +272,31 @@ export async function getRedisSession(
     updateConfig: { value: reference.updateConfig.bind(reference) },
   });
 
+  let rotating: Promise<void> | undefined;
+  rotators.set(session, () => {
+    if (!rotating) {
+      rotating = (async () => {
+        const storedId = id;
+        if (!storedId) return;
+        await revokeStoredSession(storedId);
+        id = randomUUID();
+        loaded = null;
+      })().finally(() => {
+        rotating = undefined;
+      });
+    }
+    return rotating;
+  });
   destroyers.set(session, async () => {
     const storedId = id;
     if (storedId) await revokeStoredSession(storedId);
     destroy();
   });
   return session;
+}
+
+export async function rotateRedisSession(session: IronSession<SunriseSession>) {
+  await rotators.get(session)?.();
 }
 
 export async function destroyRedisSession(
