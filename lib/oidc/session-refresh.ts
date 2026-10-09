@@ -20,6 +20,7 @@ const REFRESH_RESULT_REUSE_MS = 30_000;
 const MAX_REFRESH_ENTRIES = 256;
 const DISTRIBUTED_REFRESH_LOCK_MS = OIDC_REFRESH_TIMEOUT_MS + 5_000;
 const MAX_DISTRIBUTED_REFRESH_LEADERS = 3;
+const MAX_DISTRIBUTED_SAVE_ATTEMPTS = 3;
 const DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS = 2_000;
 const DISTRIBUTED_REFRESH_WAIT_MS = OIDC_REFRESH_TIMEOUT_MS + 5_000;
 
@@ -151,6 +152,33 @@ async function reloadCheckpoint(
   return reusableCheckpoint(session, identityProvider, refreshTokenDigest);
 }
 
+async function saveDistributedRefresh(
+  session: IronSession<SunriseSession>,
+  lockKey: string,
+  owner: string,
+) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < MAX_DISTRIBUTED_SAVE_ATTEMPTS; attempt += 1) {
+    try {
+      await session.save();
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) break;
+      if (!(await renewDistributedLock(lockKey, owner))) {
+        throw new Error(
+          "Lost the distributed OIDC refresh lease while saving its result",
+          { cause: error },
+        );
+      }
+      await wait(50 * 2 ** attempt);
+    }
+  }
+  throw new Error("Could not persist the distributed OIDC refresh result", {
+    cause: lastError,
+  });
+}
+
 async function distributedRefresh(
   session: IronSession<SunriseSession>,
   key: string,
@@ -224,7 +252,7 @@ async function distributedRefresh(
           result,
           reuseUntil: Date.now() + REFRESH_RESULT_REUSE_MS,
         };
-        await session.save();
+        await saveDistributedRefresh(session, lockKey, owner);
         return result;
       } finally {
         await releaseDistributedLock(lockKey, owner).catch((error) => {

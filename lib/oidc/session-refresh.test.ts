@@ -178,6 +178,34 @@ describe("OIDC session token refresh", () => {
     );
   });
 
+  it("retries a transient checkpoint save while retaining the lease", async () => {
+    const current = session("redis-save-retry");
+    current.save
+      .mockRejectedValueOnce(new Error("Redis connection reset"))
+      .mockResolvedValueOnce(undefined);
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).resolves.toEqual(refreshedTokens());
+
+    expect(current.save).toHaveBeenCalledTimes(2);
+    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
+    expect(mocks.runIsolatedRedisCommand).toHaveBeenCalledWith(
+      expect.any(Function),
+      2_000,
+    );
+  });
+
   it("follows another leader by reloading the session checkpoint", async () => {
     vi.useFakeTimers();
     const current = session("redis-follower");
