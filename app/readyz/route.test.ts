@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getNextCacheBackend: vi.fn(),
+  getNextCacheDeploymentId: vi.fn(),
   getRedisKeyPrefix: vi.fn(),
   getSessionBackend: vi.fn(),
   pingRedis: vi.fn(),
@@ -17,6 +18,7 @@ describe("readiness route", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.getSessionBackend.mockReturnValue("cookie");
     mocks.getNextCacheBackend.mockReturnValue("memory");
+    mocks.getNextCacheDeploymentId.mockReturnValue("build-123");
     mocks.getRedisKeyPrefix.mockReturnValue("sunrise");
     mocks.pingRedis.mockResolvedValue(1.25);
   });
@@ -41,7 +43,20 @@ describe("readiness route", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.getRedisKeyPrefix).toHaveBeenCalledOnce();
+    expect(mocks.getNextCacheDeploymentId).toHaveBeenCalledOnce();
     expect(mocks.pingRedis).toHaveBeenCalledOnce();
+  });
+
+  it("fails readiness when a production cache deployment ID is missing", async () => {
+    mocks.getNextCacheBackend.mockReturnValue("redis");
+    mocks.getNextCacheDeploymentId.mockImplementation(() => {
+      throw new Error("SUNRISE_DEPLOYMENT_ID is required");
+    });
+
+    const response = await GET();
+
+    expect(response.status).toBe(503);
+    expect(mocks.pingRedis).not.toHaveBeenCalled();
   });
 
   it("fails readiness when Redis cache configuration is invalid", async () => {

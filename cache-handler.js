@@ -213,7 +213,17 @@ function keyPrefix() {
       "SUNRISE_REDIS_KEY_PREFIX may contain only letters, digits, dots, underscores, and hyphens",
     );
   }
-  const deployment = process.env.SUNRISE_DEPLOYMENT_ID || "development";
+  const configuredDeployment = process.env.SUNRISE_DEPLOYMENT_ID?.trim();
+  if (
+    !configuredDeployment &&
+    process.env.NODE_ENV === "production" &&
+    process.env.NEXT_PHASE !== PHASE_PRODUCTION_BUILD
+  ) {
+    throw new Error(
+      "SUNRISE_DEPLOYMENT_ID is required when SUNRISE_NEXT_CACHE_BACKEND=redis in production",
+    );
+  }
+  const deployment = configuredDeployment || "development";
   return `${namespace}:next-cache:${deployment}`;
 }
 

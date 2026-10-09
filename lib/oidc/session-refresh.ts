@@ -226,7 +226,7 @@ async function distributedRefresh(
     await runRedisCommand((client) => client.get(keys.result)),
   );
   if (cached) {
-    await recordDistributedRefresh("result_reuse");
+    void recordDistributedRefresh("result_reuse");
     return cached;
   }
 
@@ -250,7 +250,7 @@ async function distributedRefresh(
         await runRedisCommand((client) => client.get(keys.result)),
       );
       if (result) {
-        await recordDistributedRefresh("result_reuse");
+        void recordDistributedRefresh("result_reuse");
         return result;
       }
       await runRedisCommand((client) => client.del(keys.result));
@@ -291,13 +291,13 @@ async function distributedRefresh(
       await runRedisCommand((client) => client.get(keys.result)),
     );
     if (result) {
-      await recordDistributedRefresh("followers");
+      void recordDistributedRefresh("followers");
       return result;
     }
     delayMs = Math.min(delayMs * 2, 250);
   }
 
-  await recordDistributedRefresh("timeouts");
+  void recordDistributedRefresh("timeouts");
   throw new Error("Timed out waiting for the distributed OIDC refresh result");
 }
 

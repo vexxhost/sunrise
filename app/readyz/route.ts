@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getNextCacheBackend,
+  getNextCacheDeploymentId,
   getRedisKeyPrefix,
   getSessionBackend,
   pingRedis,
@@ -15,6 +16,7 @@ export async function GET() {
     const redisRequired =
       sessionBackend === "redis" || nextCacheBackend === "redis";
     if (redisRequired) getRedisKeyPrefix();
+    if (nextCacheBackend === "redis") getNextCacheDeploymentId();
     const redisLatencyMs = redisRequired ? await pingRedis() : null;
     return NextResponse.json(
       {

@@ -92,6 +92,66 @@ describe("OIDC session token refresh", () => {
     expect(current.keycloakRefreshToken).toBe("shared-refresh-token");
   });
 
+  it("returns a cached distributed result without waiting for metrics", async () => {
+    const result = {
+      access_token: "cached-access-token",
+      refresh_token: "cached-refresh-token",
+      expires_in: 300,
+      token_type: "Bearer",
+    };
+    const sealed = await sealDistributedRefreshResult(result);
+    const client = {
+      get: vi.fn().mockResolvedValue(sealed),
+      hIncrBy: vi.fn(() => new Promise<never>(() => undefined)),
+    };
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    await expect(
+      refreshSessionOidcTokens(
+        session("non-blocking-cached-result-metrics") as never,
+        "demo",
+      ),
+    ).resolves.toEqual(result);
+
+    expect(client.hIncrBy).toHaveBeenCalledOnce();
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("returns a follower result without waiting for metrics", async () => {
+    vi.useFakeTimers();
+    const result = {
+      access_token: "follower-access-token",
+      refresh_token: "follower-refresh-token",
+      expires_in: 300,
+      token_type: "Bearer",
+    };
+    const sealed = await sealDistributedRefreshResult(result);
+    const client = {
+      get: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(sealed),
+      eval: vi.fn().mockResolvedValue(0),
+      hIncrBy: vi.fn(() => new Promise<never>(() => undefined)),
+    };
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const refresh = refreshSessionOidcTokens(
+      session("non-blocking-follower-metrics") as never,
+      "demo",
+    );
+    await vi.advanceTimersByTimeAsync(40);
+
+    await expect(refresh).resolves.toEqual(result);
+    expect(client.hIncrBy).toHaveBeenCalledOnce();
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
   it("aborts the token exchange when the distributed lease is lost", async () => {
     vi.useFakeTimers();
     const client = {

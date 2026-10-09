@@ -24,10 +24,16 @@ const originalBackend = process.env.SUNRISE_NEXT_CACHE_BACKEND;
 const originalRedisUrl = process.env.SUNRISE_REDIS_URL;
 const originalRedisTimeout = process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS;
 const originalRedisPrefix = process.env.SUNRISE_REDIS_KEY_PREFIX;
+const originalDeploymentId = process.env.SUNRISE_DEPLOYMENT_ID;
+const originalNodeEnv = process.env.NODE_ENV;
 
 function restoreEnvironment(name: string, value: string | undefined) {
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
+}
+
+function setEnvironment(name: string, value: string) {
+  process.env[name] = value;
 }
 
 afterEach(() => {
@@ -35,6 +41,8 @@ afterEach(() => {
   restoreEnvironment("SUNRISE_REDIS_URL", originalRedisUrl);
   restoreEnvironment("SUNRISE_REDIS_COMMAND_TIMEOUT_MS", originalRedisTimeout);
   restoreEnvironment("SUNRISE_REDIS_KEY_PREFIX", originalRedisPrefix);
+  restoreEnvironment("SUNRISE_DEPLOYMENT_ID", originalDeploymentId);
+  restoreEnvironment("NODE_ENV", originalNodeEnv);
 });
 
 describe("Next.js cache handler", () => {
@@ -67,6 +75,18 @@ describe("Next.js cache handler", () => {
     delete process.env.SUNRISE_REDIS_URL;
     await expect(handler.revalidateTag("test-tag")).rejects.toThrow(
       "SUNRISE_REDIS_URL is required",
+    );
+  });
+
+  it("rejects a production Redis cache without a deployment ID", async () => {
+    setEnvironment("NODE_ENV", "production");
+    process.env.SUNRISE_NEXT_CACHE_BACKEND = "redis";
+    process.env.SUNRISE_REDIS_URL = "redis://cache:6379";
+    delete process.env.SUNRISE_DEPLOYMENT_ID;
+    const handler = new SunriseCacheHandler();
+
+    await expect(handler.get("test-entry")).rejects.toThrow(
+      "SUNRISE_DEPLOYMENT_ID is required",
     );
   });
 

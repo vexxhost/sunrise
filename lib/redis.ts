@@ -32,6 +32,20 @@ export function getNextCacheBackend(
   throw new Error("SUNRISE_NEXT_CACHE_BACKEND must be memory or redis");
 }
 
+export function getNextCacheDeploymentId(
+  value = process.env.SUNRISE_DEPLOYMENT_ID,
+  nodeEnv = process.env.NODE_ENV,
+) {
+  const normalized = value?.trim();
+  if (normalized) return normalized;
+  if (nodeEnv === "production") {
+    throw new Error(
+      "SUNRISE_DEPLOYMENT_ID is required when SUNRISE_NEXT_CACHE_BACKEND=redis in production",
+    );
+  }
+  return "development";
+}
+
 export function getRedisKeyPrefix(
   value = process.env.SUNRISE_REDIS_KEY_PREFIX,
 ) {

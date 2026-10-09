@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getNextCacheBackend,
+  getNextCacheDeploymentId,
   getRedisCa,
   getSessionBackend,
   getRedisCommandTimeoutMs,
@@ -23,6 +24,18 @@ describe("Redis deployment configuration", () => {
     expect(getNextCacheBackend(" REDIS ")).toBe("redis");
     expect(() => getNextCacheBackend("redsi")).toThrow(
       "SUNRISE_NEXT_CACHE_BACKEND must be memory or redis",
+    );
+  });
+
+  it("requires a build-specific cache deployment ID in production", () => {
+    expect(getNextCacheDeploymentId(undefined, "development")).toBe(
+      "development",
+    );
+    expect(getNextCacheDeploymentId(" build-123 ", "production")).toBe(
+      "build-123",
+    );
+    expect(() => getNextCacheDeploymentId(undefined, "production")).toThrow(
+      "SUNRISE_DEPLOYMENT_ID is required",
     );
   });
 
