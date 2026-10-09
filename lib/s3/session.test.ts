@@ -77,6 +77,7 @@ describe("Object Storage credential renewal", () => {
     });
     mocks.refreshSessionOidcTokens.mockImplementation(async (current) => {
       current.keycloakRefreshToken = "rotated-primary-refresh-token";
+      await current.save();
       return {
         access_token: "refreshed-primary-access-token",
         id_token: "refreshed-primary-id-token",
@@ -122,7 +123,7 @@ describe("Object Storage credential renewal", () => {
     await expect(
       ensureActiveProjectS3Credentials(current as never),
     ).rejects.toBeInstanceOf(S3ProjectRoleUnavailableError);
-    expect(current.save).toHaveBeenCalledOnce();
+    expect(current.save).toHaveBeenCalledTimes(2);
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 

@@ -49,6 +49,22 @@ export type AuthRecoveryIssue = {
   reason: AuthRecoveryReason;
 };
 
+export type OidcRefreshResult = {
+  access_token: string;
+  id_token?: string;
+  refresh_token?: string;
+  expires_in: number;
+  token_type: string;
+};
+
+export type OidcRefreshCheckpoint = {
+  consumedTokenDigest: string;
+  identityProvider: string;
+  issuedTokenDigest: string;
+  result: OidcRefreshResult;
+  reuseUntil: number;
+};
+
 export type SunriseSession = {
   keystone_unscoped_token?: string;
   keystoneProjectToken?: string;
@@ -66,6 +82,7 @@ export type SunriseSession = {
   federationIdentityProvider?: string;
   authRecovery?: AuthRecoveryIssue;
   keycloakRefreshToken?: string;
+  oidcRefreshCheckpoint?: OidcRefreshCheckpoint;
   cloudContextBootstrapId?: string;
   sessionId?: string;
   sessionSignedInAt?: number;
@@ -130,6 +147,7 @@ function denyExpiredCredentials(session: IronSession<SunriseSession>) {
   session.keystoneProjectToken = undefined;
   session.keystoneProjectRoles = undefined;
   session.keycloakRefreshToken = undefined;
+  session.oidcRefreshCheckpoint = undefined;
   session.s3Credentials = undefined;
 }
 
@@ -148,6 +166,7 @@ export async function startSessionLifetime(
   const sessionId = randomUUID();
   session.sessionId = sessionId;
   session.sessionSignedInAt = now;
+  session.oidcRefreshCheckpoint = undefined;
   setTransient(session, "sessionLastActivityAt", now);
   setTransient(session, "sessionExpiryReason", undefined);
   await saveSessionActivity(sessionId, now);

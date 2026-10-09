@@ -38,13 +38,6 @@ export async function refreshKeystoneSession(
 
   if (!refreshed) return "reauthenticate";
 
-  // Keycloak may rotate refresh tokens as single-use credentials. Persist the
-  // replacement before slower downstream work so another replica never falls
-  // back to the consumed token if Keystone fails or stalls.
-  if (session.keycloakRefreshToken !== refreshToken) {
-    await session.save();
-  }
-
   const unscopedToken = await federateOidcWithKeystone(
     refreshed.access_token,
     identityProvider,

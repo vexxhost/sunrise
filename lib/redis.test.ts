@@ -10,8 +10,6 @@ vi.mock("@redis/client", () => ({
 
 import {
   closeRedisForTests,
-  getNextCacheBackend,
-  getNextCacheDeploymentId,
   getRedisCa,
   getSessionBackend,
   getRedisCommandTimeoutMs,
@@ -26,7 +24,6 @@ import {
 const originalRedisUrl = process.env.SUNRISE_REDIS_URL;
 const originalRedisTimeout = process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS;
 const originalRedisPrefix = process.env.SUNRISE_REDIS_KEY_PREFIX;
-const originalDeploymentId = process.env.SUNRISE_DEPLOYMENT_ID;
 
 function restoreEnvironment(name: string, value: string | undefined) {
   if (value === undefined) delete process.env[name];
@@ -63,7 +60,6 @@ afterEach(async () => {
   restoreEnvironment("SUNRISE_REDIS_URL", originalRedisUrl);
   restoreEnvironment("SUNRISE_REDIS_COMMAND_TIMEOUT_MS", originalRedisTimeout);
   restoreEnvironment("SUNRISE_REDIS_KEY_PREFIX", originalRedisPrefix);
-  restoreEnvironment("SUNRISE_DEPLOYMENT_ID", originalDeploymentId);
 });
 
 describe("Redis deployment configuration", () => {
@@ -72,26 +68,6 @@ describe("Redis deployment configuration", () => {
     expect(getSessionBackend(" REDIS ")).toBe("redis");
     expect(() => getSessionBackend("memory")).toThrow(
       "SUNRISE_SESSION_BACKEND must be cookie or redis",
-    );
-  });
-
-  it("validates the shared Next.js cache backend", () => {
-    expect(getNextCacheBackend(undefined)).toBe("memory");
-    expect(getNextCacheBackend(" REDIS ")).toBe("redis");
-    expect(() => getNextCacheBackend("redsi")).toThrow(
-      "SUNRISE_NEXT_CACHE_BACKEND must be memory or redis",
-    );
-  });
-
-  it("requires a build-specific cache deployment ID in production", () => {
-    expect(getNextCacheDeploymentId(undefined, "development")).toBe(
-      "development",
-    );
-    expect(getNextCacheDeploymentId(" build-123 ", "production")).toBe(
-      "build-123",
-    );
-    expect(() => getNextCacheDeploymentId(undefined, "production")).toThrow(
-      "SUNRISE_DEPLOYMENT_ID is required",
     );
   });
 
@@ -187,34 +163,21 @@ describe("Redis deployment configuration", () => {
     expect(client.destroy).toHaveBeenCalledOnce();
   });
 
-  it("probes the runtime session, refresh, and cache ACL namespaces", async () => {
+  it("probes the runtime session and refresh ACL namespaces", async () => {
     process.env.SUNRISE_REDIS_KEY_PREFIX = "atmosphere";
-    process.env.SUNRISE_DEPLOYMENT_ID = "build-123";
     const client = redisClient(async () => 1);
     mocks.createClient.mockReturnValue(client);
 
-    await expect(
-      probeRedisReadiness({ sessions: true, nextCache: true }),
-    ).resolves.toEqual(expect.any(Number));
+    await expect(probeRedisReadiness()).resolves.toEqual(expect.any(Number));
 
-    expect(client.eval).toHaveBeenCalledTimes(2);
-    expect(client.eval).toHaveBeenNthCalledWith(1, expect.any(String), {
+    expect(client.eval).toHaveBeenCalledOnce();
+    expect(client.eval).toHaveBeenCalledWith(expect.any(String), {
       keys: [
         expect.stringMatching(/^atmosphere:session:\{[^}]+\}$/),
         expect.stringMatching(/^atmosphere:session-revoked:\{[^}]+\}$/),
         expect.stringMatching(/^atmosphere:oidc-refresh-lock:[^:]+$/),
-        expect.stringMatching(/^atmosphere:oidc-refresh-result:[^:]+$/),
       ],
       arguments: [expect.any(String)],
     });
-    expect(client.eval).toHaveBeenNthCalledWith(2, expect.any(String), {
-      keys: [
-        expect.stringMatching(/^atmosphere:next-cache:build-123:entry:[^:]+$/),
-        expect.stringMatching(/^atmosphere:next-cache:build-123:tag:[^:]+$/),
-      ],
-      arguments: [expect.any(String)],
-    });
-    const nextCacheProbe = client.eval.mock.calls[1][0] as string;
-    expect(nextCacheProbe).toContain("ZREVRANGEBYSCORE");
   });
 });

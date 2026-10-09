@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { createClient, type RedisClientType } from "@redis/client";
 
 export type SessionBackend = "cookie" | "redis";
-export type NextCacheBackend = "memory" | "redis";
 
 type RedisRuntime = {
   client?: RedisClientType;
@@ -32,40 +31,7 @@ redis.call("SET", KEYS[3], value, "PX", 5000)
 redis.call("GET", KEYS[3])
 redis.call("PEXPIRE", KEYS[3], 5000)
 
-redis.call("SET", KEYS[4], value, "PX", 5000)
-redis.call("GET", KEYS[4])
-
-redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4])
-return 1
-`;
-
-const NEXT_CACHE_READINESS_SCRIPT = `
-local value = ARGV[1]
-local now = redis.call("TIME")
-local expiresAt = tonumber(now[1]) * 1000
-  + math.floor(tonumber(now[2]) / 1000)
-  + 5000
-
-redis.call("SET", KEYS[1], value, "PX", 5000)
-redis.call("GET", KEYS[1])
-redis.call("PTTL", KEYS[1])
-
-redis.call("ZADD", KEYS[2], 0, KEYS[1])
-redis.call("PEXPIREAT", KEYS[2], expiresAt)
-redis.call("ZSCORE", KEYS[2], KEYS[1])
-redis.call("ZCOUNT", KEYS[2], 0, 0)
-redis.call("ZRANGE", KEYS[2], 0, -1)
-redis.call(
-  "ZREVRANGEBYSCORE", KEYS[2], "+inf", 1,
-  "WITHSCORES", "LIMIT", 0, 1
-)
-redis.call("ZREM", KEYS[2], KEYS[1])
-redis.call("ZADD", KEYS[2], expiresAt, KEYS[1])
-redis.call("ZREMRANGEBYSCORE", KEYS[2], 1, expiresAt - 1)
-redis.call("PERSIST", KEYS[2])
-redis.call("PEXPIREAT", KEYS[2], expiresAt)
-
-redis.call("DEL", KEYS[1], KEYS[2])
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3])
 return 1
 `;
 
@@ -75,28 +41,6 @@ export function getSessionBackend(
   const normalized = value?.trim().toLowerCase() || "cookie";
   if (normalized === "cookie" || normalized === "redis") return normalized;
   throw new Error("SUNRISE_SESSION_BACKEND must be cookie or redis");
-}
-
-export function getNextCacheBackend(
-  value = process.env.SUNRISE_NEXT_CACHE_BACKEND,
-): NextCacheBackend {
-  const normalized = value?.trim().toLowerCase() || "memory";
-  if (normalized === "memory" || normalized === "redis") return normalized;
-  throw new Error("SUNRISE_NEXT_CACHE_BACKEND must be memory or redis");
-}
-
-export function getNextCacheDeploymentId(
-  value = process.env.SUNRISE_DEPLOYMENT_ID,
-  nodeEnv = process.env.NODE_ENV,
-) {
-  const normalized = value?.trim();
-  if (normalized) return normalized;
-  if (nodeEnv === "production") {
-    throw new Error(
-      "SUNRISE_DEPLOYMENT_ID is required when SUNRISE_NEXT_CACHE_BACKEND=redis in production",
-    );
-  }
-  return "development";
 }
 
 export function getRedisKeyPrefix(
@@ -302,46 +246,22 @@ export async function runRedisCommand<T>(
   }
 }
 
-export async function probeRedisReadiness(options: {
-  sessions: boolean;
-  nextCache: boolean;
-}) {
+export async function probeRedisReadiness() {
   const startedAt = performance.now();
   const prefix = getRedisKeyPrefix();
-  const nextCachePrefix = options.nextCache
-    ? `${prefix}:next-cache:${getNextCacheDeploymentId()}`
-    : undefined;
   const probeId = randomUUID();
   const value = Date.now().toString();
-  const responses = await runRedisCommand(async (client) => {
-    const results: unknown[] = [];
-    if (options.sessions) {
-      results.push(
-        await client.eval(SESSION_READINESS_SCRIPT, {
-          keys: [
-            `${prefix}:session:{${probeId}}`,
-            `${prefix}:session-revoked:{${probeId}}`,
-            `${prefix}:oidc-refresh-lock:${probeId}`,
-            `${prefix}:oidc-refresh-result:${probeId}`,
-          ],
-          arguments: [value],
-        }),
-      );
-    }
-    if (nextCachePrefix) {
-      results.push(
-        await client.eval(NEXT_CACHE_READINESS_SCRIPT, {
-          keys: [
-            `${nextCachePrefix}:entry:${probeId}`,
-            `${nextCachePrefix}:tag:${probeId}`,
-          ],
-          arguments: [value],
-        }),
-      );
-    }
-    return results;
-  });
-  if (responses.some((response) => Number(response) !== 1)) {
+  const response = await runRedisCommand((client) =>
+    client.eval(SESSION_READINESS_SCRIPT, {
+      keys: [
+        `${prefix}:session:{${probeId}}`,
+        `${prefix}:session-revoked:{${probeId}}`,
+        `${prefix}:oidc-refresh-lock:${probeId}`,
+      ],
+      arguments: [value],
+    }),
+  );
+  if (Number(response) !== 1) {
     throw new Error("Redis readiness capability probe failed");
   }
   return Math.round((performance.now() - startedAt) * 100) / 100;

@@ -1,42 +1,29 @@
 import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
-import { sealData, unsealData, type IronSession } from "iron-session";
+import type { IronSession } from "iron-session";
 import {
   OIDC_REFRESH_TIMEOUT_MS,
   refreshAccessToken,
   type RefreshTokenResult,
 } from "@/lib/oidc/sunrise";
-import type { SunriseSession } from "@/lib/session";
 import {
   getSessionBackend,
   getRedisKeyPrefix,
   runIsolatedRedisCommand,
   runRedisCommand,
 } from "@/lib/redis";
+import { reloadRedisSession } from "@/lib/session-store";
+import type { OidcRefreshCheckpoint, SunriseSession } from "@/lib/session";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
-const REFRESH_RESULT_REUSE_SECONDS = Math.ceil(REFRESH_RESULT_REUSE_MS / 1_000);
 const MAX_REFRESH_ENTRIES = 256;
-const DISTRIBUTED_REFRESH_LOCK_MS = 20_000;
-const DISTRIBUTED_REFRESH_RENEW_MS = 5_000;
+const DISTRIBUTED_REFRESH_LOCK_MS = OIDC_REFRESH_TIMEOUT_MS + 5_000;
 const MAX_DISTRIBUTED_REFRESH_LEADERS = 3;
-// Coordination must fail well before the current lease can expire, even when
-// the general Redis command budget is configured at its 30-second maximum.
 const DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS = 2_000;
 const DISTRIBUTED_REFRESH_WAIT_MS = OIDC_REFRESH_TIMEOUT_MS + 5_000;
 
-const RELEASE_LOCK_SCRIPT = `
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`;
-
 const ACQUIRE_LOCK_SCRIPT = `
-if redis.call("EXISTS", KEYS[2]) == 1 then
-  return 2
-end
 local current = redis.call("GET", KEYS[1])
 if current then
   return current
@@ -54,10 +41,9 @@ end
 return 0
 `;
 
-const PUBLISH_REFRESH_RESULT_SCRIPT = `
+const RELEASE_LOCK_SCRIPT = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
-  redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
-  return 1
+  return redis.call("DEL", KEYS[1])
 end
 return 0
 `;
@@ -87,45 +73,46 @@ function refreshKey(
   return `${identityProvider}\0${sessionKey}`;
 }
 
-function distributedRefreshKeys(key: string) {
+function distributedRefreshLockKey(key: string) {
   const digest = createHash("sha256").update(key).digest("base64url");
-  const prefix = getRedisKeyPrefix();
-  return {
-    lock: `${prefix}:oidc-refresh-lock:${digest}`,
-    result: `${prefix}:oidc-refresh-result:${digest}`,
-  };
+  return `${getRedisKeyPrefix()}:oidc-refresh-lock:${digest}`;
 }
 
-function sessionPassword() {
-  const value = process.env.SUNRISE_SESSION_SECRET;
-  if (!value) throw new Error("SUNRISE_SESSION_SECRET is required");
-  return value;
+function reusableCheckpoint(
+  session: SunriseSession,
+  identityProvider: string,
+  refreshTokenDigest: string,
+  now = Date.now(),
+): OidcRefreshCheckpoint | undefined {
+  const checkpoint = session.oidcRefreshCheckpoint;
+  if (
+    !checkpoint ||
+    checkpoint.identityProvider !== identityProvider ||
+    checkpoint.reuseUntil <= now
+  ) {
+    return undefined;
+  }
+  if (
+    checkpoint.consumedTokenDigest !== refreshTokenDigest &&
+    checkpoint.issuedTokenDigest !== refreshTokenDigest
+  ) {
+    return undefined;
+  }
+  return checkpoint;
 }
 
-function isRefreshResult(value: unknown): value is RefreshTokenResult {
-  if (!value || typeof value !== "object") return false;
-  const result = value as Partial<RefreshTokenResult>;
-  return (
-    typeof result.access_token === "string" &&
-    typeof result.expires_in === "number" &&
-    typeof result.token_type === "string"
-  );
-}
-
-export async function sealDistributedRefreshResult(result: RefreshTokenResult) {
-  return sealData(result, {
-    password: sessionPassword(),
-    ttl: REFRESH_RESULT_REUSE_SECONDS,
-  });
-}
-
-export async function unsealDistributedRefreshResult(value: string | null) {
-  if (!value) return undefined;
-  const result = await unsealData<RefreshTokenResult>(value, {
-    password: sessionPassword(),
-    ttl: REFRESH_RESULT_REUSE_SECONDS,
-  });
-  return isRefreshResult(result) ? result : undefined;
+function applyRotatedRefreshToken(
+  session: IronSession<SunriseSession>,
+  result: RefreshTokenResult,
+) {
+  if (
+    result.refresh_token &&
+    session.keycloakRefreshToken !== result.refresh_token
+  ) {
+    session.keycloakRefreshToken = result.refresh_token;
+    return true;
+  }
+  return false;
 }
 
 async function releaseDistributedLock(key: string, owner: string) {
@@ -151,84 +138,44 @@ async function renewDistributedLock(key: string, owner: string) {
   return Number(renewed) === 1;
 }
 
-function maintainDistributedLock(key: string, owner: string) {
-  let lost = false;
-  let renewal: Promise<void> | undefined;
-  const controller = new AbortController();
-
-  const loseLease = (reason: Error) => {
-    if (lost) return;
-    lost = true;
-    controller.abort(reason);
-  };
-
-  const timer = setInterval(() => {
-    if (renewal || lost) return;
-    renewal = renewDistributedLock(key, owner)
-      .then((renewed) => {
-        if (!renewed) {
-          loseLease(new Error("Lost the distributed OIDC refresh lease"));
-        }
-      })
-      .catch((error) => {
-        console.warn("[oidc/refresh] failed to renew Redis lock:", error);
-        loseLease(
-          new Error("Could not renew the distributed OIDC refresh lease", {
-            cause: error,
-          }),
-        );
-      })
-      .finally(() => {
-        renewal = undefined;
-      });
-  }, DISTRIBUTED_REFRESH_RENEW_MS);
-  timer.unref();
-
-  return {
-    signal: controller.signal,
-    isLost: () => lost,
-    async stop() {
-      clearInterval(timer);
-      await renewal;
-    },
-  };
-}
-
-async function publishDistributedRefreshResult(
-  lockKey: string,
-  resultKey: string,
-  owner: string,
-  result: RefreshTokenResult,
-) {
-  const sealed = await sealDistributedRefreshResult(result);
-  const published = await runRedisCommand(
-    (client) =>
-      client.eval(PUBLISH_REFRESH_RESULT_SCRIPT, {
-        keys: [lockKey, resultKey],
-        arguments: [owner, sealed, REFRESH_RESULT_REUSE_MS.toString()],
-      }),
-    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
-  );
-  return Number(published) === 1;
-}
-
 function wait(delayMs: number) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
+async function reloadCheckpoint(
+  session: IronSession<SunriseSession>,
+  identityProvider: string,
+  refreshTokenDigest: string,
+) {
+  await reloadRedisSession(session);
+  return reusableCheckpoint(session, identityProvider, refreshTokenDigest);
+}
+
 async function distributedRefresh(
+  session: IronSession<SunriseSession>,
   key: string,
   refreshToken: string,
   identityProvider: string,
-) {
-  const keys = distributedRefreshKeys(key);
-  const cached = await unsealDistributedRefreshResult(
-    await runRedisCommand((client) => client.get(keys.result)),
+  refreshTokenDigest: string,
+): Promise<RefreshTokenResult> {
+  const existing = await reloadCheckpoint(
+    session,
+    identityProvider,
+    refreshTokenDigest,
   );
-  if (cached) {
-    return cached;
+  if (existing) return existing.result;
+
+  const authoritativeToken = session.keycloakRefreshToken;
+  if (!authoritativeToken) {
+    throw new Error("The authoritative Sunrise session has no refresh token");
+  }
+  if (tokenDigest(authoritativeToken) !== refreshTokenDigest) {
+    refreshToken = authoritativeToken;
+    refreshTokenDigest = tokenDigest(authoritativeToken);
+    key = refreshKey(session, identityProvider, refreshTokenDigest);
   }
 
+  const lockKey = distributedRefreshLockKey(key);
   const startedAt = Date.now();
   const maximumDeadline =
     startedAt + DISTRIBUTED_REFRESH_WAIT_MS * MAX_DISTRIBUTED_REFRESH_LEADERS;
@@ -241,46 +188,46 @@ async function distributedRefresh(
     const acquisitionResult = await runRedisCommand(
       (client) =>
         client.eval(ACQUIRE_LOCK_SCRIPT, {
-          keys: [keys.lock, keys.result],
+          keys: [lockKey],
           arguments: [owner, DISTRIBUTED_REFRESH_LOCK_MS.toString()],
         }),
       DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
     );
-    const acquisition = Number(acquisitionResult);
-    if (acquisition === 2) {
-      const result = await unsealDistributedRefreshResult(
-        await runRedisCommand((client) => client.get(keys.result)),
-      );
-      if (result) {
-        return result;
-      }
-      await runRedisCommand((client) => client.del(keys.result));
-      continue;
-    }
-    if (acquisition === 1) {
-      const lease = maintainDistributedLock(keys.lock, owner);
+
+    if (Number(acquisitionResult) === 1) {
       try {
-        const result = await refreshAccessToken(
-          refreshToken,
+        const checkpoint = await reloadCheckpoint(
+          session,
           identityProvider,
-          lease.signal,
+          refreshTokenDigest,
         );
-        if (lease.isLost()) {
+        if (checkpoint) return checkpoint.result;
+        if (
+          !session.keycloakRefreshToken ||
+          tokenDigest(session.keycloakRefreshToken) !== refreshTokenDigest
+        ) {
+          throw new Error(
+            "The OIDC refresh token changed while acquiring its lease",
+          );
+        }
+
+        const result = await refreshAccessToken(refreshToken, identityProvider);
+        if (!(await renewDistributedLock(lockKey, owner))) {
           throw new Error("Lost the distributed OIDC refresh lease");
         }
-        const published = await publishDistributedRefreshResult(
-          keys.lock,
-          keys.result,
-          owner,
+
+        applyRotatedRefreshToken(session, result);
+        session.oidcRefreshCheckpoint = {
+          consumedTokenDigest: refreshTokenDigest,
+          identityProvider,
+          issuedTokenDigest: tokenDigest(result.refresh_token ?? refreshToken),
           result,
-        );
-        if (!published) {
-          throw new Error("Lost the distributed OIDC refresh lease");
-        }
+          reuseUntil: Date.now() + REFRESH_RESULT_REUSE_MS,
+        };
+        await session.save();
         return result;
       } finally {
-        await lease.stop();
-        void releaseDistributedLock(keys.lock, owner).catch((error) => {
+        await releaseDistributedLock(lockKey, owner).catch((error) => {
           console.warn("[oidc/refresh] failed to release Redis lock:", error);
         });
       }
@@ -299,12 +246,12 @@ async function distributedRefresh(
     }
 
     await wait(delayMs);
-    const result = await unsealDistributedRefreshResult(
-      await runRedisCommand((client) => client.get(keys.result)),
+    const checkpoint = await reloadCheckpoint(
+      session,
+      identityProvider,
+      refreshTokenDigest,
     );
-    if (result) {
-      return result;
-    }
+    if (checkpoint) return checkpoint.result;
     delayMs = Math.min(delayMs * 2, 250);
   }
 
@@ -331,20 +278,10 @@ function pruneRefreshEntries(now: number) {
   }
 }
 
-function applyRotatedRefreshToken(
-  session: IronSession<SunriseSession>,
-  result: RefreshTokenResult,
-) {
-  if (result.refresh_token) {
-    session.keycloakRefreshToken = result.refresh_token;
-  }
-}
-
 /**
- * Coalesces OIDC refresh-token rotation for requests carrying the same
- * encrypted Sunrise session. A completed result remains reusable briefly so
- * a request that started with the previous cookie cannot replay an already
- * rotated Keycloak refresh token.
+ * Coalesces OIDC refresh-token rotation for requests using one logical
+ * Sunrise session. Redis-backed leaders persist the rotated token and reusable
+ * result in the versioned session record before releasing their lease.
  */
 export async function refreshSessionOidcTokens(
   session: IronSession<SunriseSession>,
@@ -355,9 +292,10 @@ export async function refreshSessionOidcTokens(
 
   const now = Date.now();
   pruneRefreshEntries(now);
+  const sessionBackend = getSessionBackend();
 
-  const inputTokenDigest = tokenDigest(refreshToken);
-  const key = refreshKey(session, identityProvider, inputTokenDigest);
+  const refreshTokenDigest = tokenDigest(refreshToken);
+  const key = refreshKey(session, identityProvider, refreshTokenDigest);
   const existing = refreshEntries.get(key);
   const canReuseExisting =
     existing &&
@@ -365,17 +303,30 @@ export async function refreshSessionOidcTokens(
 
   if (canReuseExisting) {
     const result = await existing.promise;
-    applyRotatedRefreshToken(session, result);
+    if (applyRotatedRefreshToken(session, result)) {
+      await session.save();
+    }
     return result;
   }
 
+  if (
+    sessionBackend === "cookie" &&
+    refreshEntries.size >= MAX_REFRESH_ENTRIES
+  ) {
+    throw new Error("Too many concurrent OIDC session refreshes");
+  }
+
   const refreshPromise =
-    getSessionBackend() === "redis"
-      ? distributedRefresh(key, refreshToken, identityProvider)
+    sessionBackend === "redis"
+      ? distributedRefresh(
+          session,
+          key,
+          refreshToken,
+          identityProvider,
+          refreshTokenDigest,
+        )
       : refreshAccessToken(refreshToken, identityProvider);
-  const entry: RefreshEntry = {
-    promise: refreshPromise,
-  };
+  const entry: RefreshEntry = { promise: refreshPromise };
   entry.promise = refreshPromise
     .then((result) => {
       entry.reuseUntil = Date.now() + REFRESH_RESULT_REUSE_MS;
@@ -385,9 +336,13 @@ export async function refreshSessionOidcTokens(
       if (refreshEntries.get(key) === entry) refreshEntries.delete(key);
       throw error;
     });
-  refreshEntries.set(key, entry);
+  if (refreshEntries.size < MAX_REFRESH_ENTRIES) {
+    refreshEntries.set(key, entry);
+  }
 
   const result = await entry.promise;
-  applyRotatedRefreshToken(session, result);
+  if (applyRotatedRefreshToken(session, result)) {
+    await session.save();
+  }
   return result;
 }

@@ -47,6 +47,7 @@ return 1
 
 const destroyers = new WeakMap<object, () => Promise<void>>();
 const rotators = new WeakMap<object, () => Promise<void>>();
+const reloaders = new WeakMap<object, () => Promise<void>>();
 
 function sessionKey(id: string) {
   return `${getRedisKeyPrefix()}:session:{${id}}`;
@@ -118,6 +119,13 @@ function enumerableSessionData(session: SunriseSession): SunriseSession {
   return Object.fromEntries(
     Object.entries(session).filter(([, value]) => value !== undefined),
   ) as SunriseSession;
+}
+
+function replaceSessionData(target: SunriseSession, source: SunriseSession) {
+  for (const key of Object.keys(target)) {
+    delete target[key as keyof SunriseSession];
+  }
+  Object.assign(target, source);
 }
 
 async function persistStoredSession(
@@ -243,6 +251,7 @@ export async function getRedisSession(
           version: (loaded?.version ?? 0) + 1,
           data: candidate,
         };
+        replaceSessionData(target, candidate);
         changed.clear();
         deleted.clear();
         clearLegacyReferenceData(reference);
@@ -252,7 +261,9 @@ export async function getRedisSession(
         return;
       }
       loaded = await readStoredSession(id);
-      if (!loaded) id = randomUUID();
+      if (!loaded) {
+        throw new Error("Cannot save a missing or revoked Sunrise session");
+      }
     }
 
     throw new Error("Sunrise session changed too many times while saving");
@@ -270,6 +281,19 @@ export async function getRedisSession(
     save: { value: save },
     destroy: { value: destroy },
     updateConfig: { value: reference.updateConfig.bind(reference) },
+  });
+
+  reloaders.set(session, async () => {
+    if (destroyed || !id) {
+      throw new Error("Cannot reload a missing or destroyed Sunrise session");
+    }
+    const current = await readStoredSession(id);
+    if (!current) {
+      throw new Error("Cannot reload a missing or revoked Sunrise session");
+    }
+    const merged = mergeStoredSession(current.data, target, changed, deleted);
+    replaceSessionData(target, merged);
+    loaded = current;
   });
 
   let rotating: Promise<void> | undefined;
@@ -297,6 +321,11 @@ export async function getRedisSession(
 
 export async function rotateRedisSession(session: IronSession<SunriseSession>) {
   await rotators.get(session)?.();
+}
+
+export async function reloadRedisSession(session: IronSession<SunriseSession>) {
+  const reload = reloaders.get(session);
+  if (reload) await reload();
 }
 
 export async function destroyRedisSession(

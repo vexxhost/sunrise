@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   refreshAccessToken: vi.fn(),
   getSessionBackend: vi.fn(() => "cookie"),
   getRedisKeyPrefix: vi.fn(() => "sunrise"),
+  reloadRedisSession: vi.fn(),
   runIsolatedRedisCommand: vi.fn(),
   runRedisCommand: vi.fn(),
 }));
@@ -19,19 +21,43 @@ vi.mock("@/lib/redis", () => ({
   runIsolatedRedisCommand: mocks.runIsolatedRedisCommand,
   runRedisCommand: mocks.runRedisCommand,
 }));
+vi.mock("@/lib/session-store", () => ({
+  reloadRedisSession: mocks.reloadRedisSession,
+}));
 
-import {
-  refreshSessionOidcTokens,
-  sealDistributedRefreshResult,
-  unsealDistributedRefreshResult,
-} from "@/lib/oidc/session-refresh";
+import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
 
-const originalSessionSecret = process.env.SUNRISE_SESSION_SECRET;
+function digest(token: string) {
+  return createHash("sha256").update(token).digest("base64url");
+}
+
+function refreshedTokens() {
+  return {
+    access_token: "new-access-token",
+    refresh_token: "rotated-refresh-token",
+    expires_in: 300,
+    token_type: "Bearer",
+  };
+}
 
 function session(sessionId: string, refreshToken = "old-refresh-token") {
   return {
     sessionId,
     keycloakRefreshToken: refreshToken,
+    save: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function redisClient(
+  evaluate: (script: string, options: { arguments: string[] }) => unknown,
+) {
+  return {
+    eval: vi.fn(
+      async (
+        script: string,
+        options: { keys: string[]; arguments: string[] },
+      ) => evaluate(script, options),
+    ),
   };
 }
 
@@ -39,415 +65,226 @@ describe("OIDC session token refresh", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSessionBackend.mockReturnValue("cookie");
+    mocks.reloadRedisSession.mockResolvedValue(undefined);
     mocks.runIsolatedRedisCommand.mockImplementation(
       (
         operation: (client: unknown) => Promise<unknown>,
         maximumTimeoutMs?: number,
       ) => mocks.runRedisCommand(operation, maximumTimeoutMs),
     );
-    process.env.SUNRISE_SESSION_SECRET =
-      "test-session-secret-that-is-at-least-thirty-two-characters";
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    process.env.SUNRISE_SESSION_SECRET = originalSessionSecret;
   });
 
-  it("encrypts distributed refresh results before sharing them", async () => {
-    const result = {
-      access_token: "sensitive-access-token",
-      refresh_token: "sensitive-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    };
-
-    const sealed = await sealDistributedRefreshResult(result);
-
-    expect(sealed).not.toContain(result.access_token);
-    expect(sealed).not.toContain(result.refresh_token);
-    await expect(unsealDistributedRefreshResult(sealed)).resolves.toEqual(
-      result,
-    );
-  });
-
-  it("reuses a result published before the distributed lock is acquired", async () => {
-    const result = {
-      access_token: "shared-access-token",
-      refresh_token: "shared-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    };
-    const sealed = await sealDistributedRefreshResult(result);
-    const client = {
-      get: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(sealed),
-      eval: vi.fn().mockResolvedValue(2),
-    };
-    mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.runRedisCommand.mockImplementation(
-      (operation: (current: typeof client) => Promise<unknown>) =>
-        operation(client),
-    );
-    const current = session("distributed-result-race");
-
-    await expect(
-      refreshSessionOidcTokens(current as never, "demo"),
-    ).resolves.toEqual(result);
-
-    expect(client.eval).toHaveBeenCalledOnce();
-    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
-    expect(current.keycloakRefreshToken).toBe("shared-refresh-token");
-  });
-
-  it("returns a cached distributed result", async () => {
-    const result = {
-      access_token: "cached-access-token",
-      refresh_token: "cached-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    };
-    const sealed = await sealDistributedRefreshResult(result);
-    const client = {
-      get: vi.fn().mockResolvedValue(sealed),
-    };
-    mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.runRedisCommand.mockImplementation(
-      (operation: (current: typeof client) => Promise<unknown>) =>
-        operation(client),
-    );
-
-    await expect(
-      refreshSessionOidcTokens(
-        session("non-blocking-cached-result-metrics") as never,
-        "demo",
-      ),
-    ).resolves.toEqual(result);
-
-    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
-  });
-
-  it("returns a result published while following another leader", async () => {
-    vi.useFakeTimers();
-    const result = {
-      access_token: "follower-access-token",
-      refresh_token: "follower-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    };
-    const sealed = await sealDistributedRefreshResult(result);
-    const client = {
-      get: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(sealed),
-      eval: vi.fn().mockResolvedValue(0),
-    };
-    mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.runRedisCommand.mockImplementation(
-      (operation: (current: typeof client) => Promise<unknown>) =>
-        operation(client),
-    );
-
-    const refresh = refreshSessionOidcTokens(
-      session("non-blocking-follower-metrics") as never,
-      "demo",
-    );
-    await vi.advanceTimersByTimeAsync(40);
-
-    await expect(refresh).resolves.toEqual(result);
-    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
-  });
-
-  it("extends the follower wait when a replacement leader takes over", async () => {
-    vi.useFakeTimers();
-    const result = {
-      access_token: "replacement-access-token",
-      refresh_token: "replacement-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    };
-    const sealed = await sealDistributedRefreshResult(result);
-    const startedAt = Date.now();
-    const client = {
-      get: vi.fn(async () =>
-        Date.now() - startedAt >= 49_000 ? sealed : null,
-      ),
-      eval: vi.fn(async () =>
-        Date.now() - startedAt < 20_000 ? "leader-one" : "leader-two",
-      ),
-    };
-    mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.runRedisCommand.mockImplementation(
-      (operation: (current: typeof client) => Promise<unknown>) =>
-        operation(client),
-    );
-
-    const refresh = refreshSessionOidcTokens(
-      session("replacement-leader") as never,
-      "demo",
-    );
-    await vi.advanceTimersByTimeAsync(50_000);
-
-    await expect(refresh).resolves.toEqual(result);
-    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
-  });
-
-  it("aborts the token exchange when the distributed lease is lost", async () => {
-    vi.useFakeTimers();
-    const client = {
-      get: vi.fn().mockResolvedValue(null),
-      eval: vi.fn(
-        async (
-          _script: string,
-          options: { keys: string[]; arguments: string[] },
-        ) => {
-          if (options.keys.length === 2) return 1;
-          if (options.arguments[1] === "20000") return 0;
-          return 1;
-        },
-      ),
-    };
-    mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.runRedisCommand.mockImplementation(
-      (operation: (current: typeof client) => Promise<unknown>) =>
-        operation(client),
-    );
-    mocks.refreshAccessToken.mockImplementation(
-      async (_token: string, _provider: string, signal?: AbortSignal) =>
-        new Promise((_resolve, reject) => {
-          signal?.addEventListener("abort", () => reject(signal.reason), {
-            once: true,
-          });
-        }),
-    );
-
-    const refresh = refreshSessionOidcTokens(
-      session("lost-distributed-lease") as never,
-      "demo",
-    );
-    const rejection = expect(refresh).rejects.toThrow(
-      "Lost the distributed OIDC refresh lease",
-    );
-    await vi.advanceTimersByTimeAsync(0);
-    expect(mocks.refreshAccessToken).toHaveBeenCalledWith(
-      "old-refresh-token",
-      "demo",
-      expect.any(AbortSignal),
-    );
-
-    await vi.advanceTimersByTimeAsync(5_000);
-    await rejection;
-  });
-
-  it("aborts a stalled renewal before the distributed lease expires", async () => {
-    vi.useFakeTimers();
-    const client = {
-      get: vi.fn().mockResolvedValue(null),
-      eval: vi.fn(
-        async (
-          _script: string,
-          options: { keys: string[]; arguments: string[] },
-        ) => {
-          if (options.keys.length === 2) return 1;
-          if (options.arguments[1] === "20000") {
-            return new Promise<never>(() => undefined);
-          }
-          return 1;
-        },
-      ),
-    };
-    mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.runRedisCommand.mockImplementation(
-      async (
-        operation: (current: typeof client) => Promise<unknown>,
-        maximumTimeoutMs?: number,
-      ) => {
-        const result = operation(client);
-        if (maximumTimeoutMs === undefined) return result;
-        return Promise.race([
-          result,
-          new Promise((_, reject) => {
-            setTimeout(
-              () => reject(new Error("Redis command timed out")),
-              maximumTimeoutMs,
-            );
-          }),
-        ]);
-      },
-    );
-    mocks.refreshAccessToken.mockImplementation(
-      async (_token: string, _provider: string, signal?: AbortSignal) =>
-        new Promise((_resolve, reject) => {
-          signal?.addEventListener("abort", () => reject(signal.reason), {
-            once: true,
-          });
-        }),
-    );
-
-    const refresh = refreshSessionOidcTokens(
-      session("stalled-distributed-renewal") as never,
-      "demo",
-    );
-    const rejection = expect(refresh).rejects.toThrow(
-      "Could not renew the distributed OIDC refresh lease",
-    );
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(mocks.runIsolatedRedisCommand).toHaveBeenLastCalledWith(
-      expect.any(Function),
-      2_000,
-    );
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    await rejection;
-  });
-
-  it("refreshes and publishes a result as the leader", async () => {
-    const result = {
-      access_token: "new-access-token",
-      refresh_token: "rotated-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    };
-    const client = {
-      get: vi.fn().mockResolvedValue(null),
-      eval: vi.fn(
-        async (
-          _script: string,
-          options: { keys: string[]; arguments: string[] },
-        ) => {
-          if (options.keys.length === 2 && options.arguments.length === 2) {
-            return 1;
-          }
-          return 1;
-        },
-      ),
-    };
-    mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.runRedisCommand.mockImplementation(
-      (operation: (current: typeof client) => Promise<unknown>) =>
-        operation(client),
-    );
-    mocks.refreshAccessToken.mockResolvedValue(result);
-
-    await expect(
-      refreshSessionOidcTokens(
-        session("non-blocking-leader-metrics") as never,
-        "demo",
-      ),
-    ).resolves.toEqual(result);
-
-    expect(mocks.runRedisCommand).toHaveBeenNthCalledWith(
-      3,
-      expect.any(Function),
-      2_000,
-    );
-    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
-  });
-
-  it("returns a published refresh result without waiting for lock release", async () => {
-    const result = {
-      access_token: "new-access-token",
-      refresh_token: "rotated-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    };
-    const client = {
-      get: vi.fn().mockResolvedValue(null),
-      eval: vi.fn(
-        async (
-          _script: string,
-          options: { keys: string[]; arguments: string[] },
-        ) => {
-          if (options.keys.length === 1) {
-            return new Promise<never>(() => undefined);
-          }
-          return 1;
-        },
-      ),
-    };
-    mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.runRedisCommand.mockImplementation(
-      (operation: (current: typeof client) => Promise<unknown>) =>
-        operation(client),
-    );
-    mocks.refreshAccessToken.mockResolvedValue(result);
-
-    await expect(
-      refreshSessionOidcTokens(
-        session("non-blocking-lock-release") as never,
-        "demo",
-      ),
-    ).resolves.toEqual(result);
-
-    expect(client.eval).toHaveBeenCalledTimes(3);
-    expect(mocks.runIsolatedRedisCommand).toHaveBeenCalledOnce();
-    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
-  });
-
-  it("coalesces concurrent refreshes and applies the same rotated token", async () => {
+  it("coalesces concurrent cookie-session refreshes", async () => {
     let resolveRefresh:
-      | ((value: {
-          access_token: string;
-          refresh_token: string;
-          expires_in: number;
-          token_type: string;
-        }) => void)
-      | undefined;
+      ((value: ReturnType<typeof refreshedTokens>) => void) | undefined;
     mocks.refreshAccessToken.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveRefresh = resolve;
         }),
     );
+    const first = session("cookie-concurrent");
+    const second = session("cookie-concurrent");
 
-    const first = session("concurrent-session");
-    const second = session("concurrent-session");
     const firstRefresh = refreshSessionOidcTokens(first as never, "demo");
     const secondRefresh = refreshSessionOidcTokens(second as never, "demo");
-
-    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
-    resolveRefresh?.({
-      access_token: "new-access-token",
-      refresh_token: "rotated-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    });
+    resolveRefresh?.(refreshedTokens());
 
     await expect(Promise.all([firstRefresh, secondRefresh])).resolves.toEqual([
-      expect.objectContaining({ access_token: "new-access-token" }),
-      expect.objectContaining({ access_token: "new-access-token" }),
+      refreshedTokens(),
+      refreshedTokens(),
     ]);
+    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
     expect(first.keycloakRefreshToken).toBe("rotated-refresh-token");
     expect(second.keycloakRefreshToken).toBe("rotated-refresh-token");
+    expect(first.save).toHaveBeenCalledOnce();
+    expect(second.save).toHaveBeenCalledOnce();
   });
 
-  it("reuses a completed refresh for requests carrying either cookie token", async () => {
-    mocks.refreshAccessToken.mockResolvedValue({
-      access_token: "new-access-token",
-      refresh_token: "rotated-refresh-token",
-      expires_in: 300,
-      token_type: "Bearer",
-    });
-
-    const first = session("stale-cookie-session");
+  it("reuses a completed local refresh for old and rotated tokens", async () => {
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+    const first = session("cookie-reuse");
     await refreshSessionOidcTokens(first as never, "demo");
 
-    const staleCookie = session("stale-cookie-session");
-    const rotatedCookie = session(
-      "stale-cookie-session",
-      "rotated-refresh-token",
-    );
-    await refreshSessionOidcTokens(staleCookie as never, "demo");
-    await refreshSessionOidcTokens(rotatedCookie as never, "demo");
+    const stale = session("cookie-reuse");
+    const rotated = session("cookie-reuse", "rotated-refresh-token");
+    await refreshSessionOidcTokens(stale as never, "demo");
+    await refreshSessionOidcTokens(rotated as never, "demo");
 
     expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
-    expect(staleCookie.keycloakRefreshToken).toBe("rotated-refresh-token");
-    expect(rotatedCookie.keycloakRefreshToken).toBe("rotated-refresh-token");
+    expect(stale.keycloakRefreshToken).toBe("rotated-refresh-token");
+    expect(first.save).toHaveBeenCalledOnce();
+    expect(stale.save).toHaveBeenCalledOnce();
+    expect(rotated.save).not.toHaveBeenCalled();
   });
 
-  it("does nothing when the session has no refresh token", async () => {
-    const current = { sessionId: "missing-token-session" };
+  it("reuses a refresh checkpoint from the authoritative Redis session", async () => {
+    const result = refreshedTokens();
+    const current = session("redis-checkpoint");
+    Object.assign(current, {
+      oidcRefreshCheckpoint: {
+        consumedTokenDigest: digest("old-refresh-token"),
+        identityProvider: "demo",
+        issuedTokenDigest: digest("rotated-refresh-token"),
+        result,
+        reuseUntil: Date.now() + 30_000,
+      },
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
 
     await expect(
       refreshSessionOidcTokens(current as never, "demo"),
+    ).resolves.toEqual(result);
+
+    expect(mocks.reloadRedisSession).toHaveBeenCalledOnce();
+    expect(mocks.runRedisCommand).not.toHaveBeenCalled();
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
+  });
+
+  it("persists a rotated token and checkpoint before releasing the lease", async () => {
+    const current = session("redis-leader");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).resolves.toEqual(refreshedTokens());
+
+    expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
+    expect(current).toMatchObject({
+      oidcRefreshCheckpoint: {
+        consumedTokenDigest: digest("old-refresh-token"),
+        identityProvider: "demo",
+        issuedTokenDigest: digest("rotated-refresh-token"),
+        result: refreshedTokens(),
+      },
+    });
+    expect(current.save).toHaveBeenCalledOnce();
+    expect(current.save.mock.invocationCallOrder[0]).toBeLessThan(
+      client.eval.mock.invocationCallOrder.at(-1)!,
+    );
+  });
+
+  it("follows another leader by reloading the session checkpoint", async () => {
+    vi.useFakeTimers();
+    const current = session("redis-follower");
+    const result = refreshedTokens();
+    const client = redisClient(() => "other-owner");
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.reloadRedisSession
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(async () => {
+        current.keycloakRefreshToken = "rotated-refresh-token";
+        Object.assign(current, {
+          oidcRefreshCheckpoint: {
+            consumedTokenDigest: digest("old-refresh-token"),
+            identityProvider: "demo",
+            issuedTokenDigest: digest("rotated-refresh-token"),
+            result,
+            reuseUntil: Date.now() + 30_000,
+          },
+        });
+      });
+
+    const refresh = refreshSessionOidcTokens(current as never, "demo");
+    await vi.advanceTimersByTimeAsync(40);
+
+    await expect(refresh).resolves.toEqual(result);
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(current.save).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the latest token loaded before lock acquisition", async () => {
+    const current = session("redis-authoritative-token");
+    const client = redisClient((script) => (script.includes('"NX"') ? 1 : 1));
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.reloadRedisSession.mockImplementationOnce(async () => {
+      current.keycloakRefreshToken = "newer-refresh-token";
+    });
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await refreshSessionOidcTokens(current as never, "demo");
+
+    expect(mocks.refreshAccessToken).toHaveBeenCalledWith(
+      "newer-refresh-token",
+      "demo",
+    );
+  });
+
+  it("does not persist a result after losing the distributed lease", async () => {
+    const current = session("redis-lost-lease");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      if (script.includes("PEXPIRE")) return 0;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).rejects.toThrow("Lost the distributed OIDC refresh lease");
+    expect(current.save).not.toHaveBeenCalled();
+    expect(current).not.toHaveProperty("oidcRefreshCheckpoint");
+    expect(mocks.runIsolatedRedisCommand).toHaveBeenCalledWith(
+      expect.any(Function),
+      2_000,
+    );
+  });
+
+  it("does nothing when the session has no refresh token", async () => {
+    await expect(
+      refreshSessionOidcTokens({ sessionId: "missing-token" } as never, "demo"),
     ).resolves.toBeUndefined();
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when cookie refresh coalescing is saturated", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + 60_000);
+    let resolveRefresh:
+      ((value: ReturnType<typeof refreshedTokens>) => void) | undefined;
+    const pendingRefresh = new Promise<ReturnType<typeof refreshedTokens>>(
+      (resolve) => {
+        resolveRefresh = resolve;
+      },
+    );
+    mocks.refreshAccessToken.mockReturnValue(pendingRefresh);
+
+    const active = Array.from({ length: 256 }, (_, index) =>
+      refreshSessionOidcTokens(session(`capacity-${index}`) as never, "demo"),
+    );
+    await expect(
+      refreshSessionOidcTokens(session("capacity-overflow") as never, "demo"),
+    ).rejects.toThrow("Too many concurrent OIDC session refreshes");
+
+    resolveRefresh?.(refreshedTokens());
+    await expect(Promise.all(active)).resolves.toHaveLength(256);
+    expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(256);
   });
 });

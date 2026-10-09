@@ -40,6 +40,7 @@ describe("Keystone session renewal", () => {
     vi.clearAllMocks();
     mocks.refreshSessionOidcTokens.mockImplementation(async (current) => {
       current.keycloakRefreshToken = "rotated-refresh-token";
+      await current.save();
       return {
         access_token: "new-access-token",
         refresh_token: "rotated-refresh-token",

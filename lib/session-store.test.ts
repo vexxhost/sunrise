@@ -19,6 +19,7 @@ import {
   destroyRedisSession,
   getRedisSession,
   mergeStoredSession,
+  reloadRedisSession,
   rotateRedisSession,
   storedSessionTtlSeconds,
 } from "@/lib/session-store";
@@ -136,7 +137,7 @@ describe("Redis session storage", () => {
     expect(saveReference).toHaveBeenCalledOnce();
   });
 
-  it("rotates the session ID when its record disappears during a save", async () => {
+  it("rejects a save when its record disappears after a CAS conflict", async () => {
     const saveReference = vi.fn();
     const reference = {
       backend: "redis",
@@ -169,14 +170,113 @@ describe("Redis session storage", () => {
 
     const session = await getRedisSession({} as never, {} as never);
     session.projectId = "project-new";
-    await session.save();
+    await expect(session.save()).rejects.toThrow(
+      "Cannot save a missing or revoked Sunrise session",
+    );
 
     const firstSave = client.eval.mock.calls[0][1] as { keys: string[] };
-    const secondSave = client.eval.mock.calls[1][1] as { keys: string[] };
     expect(firstSave.keys[0]).toContain("evicted-during-save");
-    expect(secondSave.keys[0]).not.toContain("evicted-during-save");
-    expect(reference.key).not.toBe("evicted-during-save");
-    expect(saveReference).toHaveBeenCalledOnce();
+    expect(client.eval).toHaveBeenCalledOnce();
+    expect(reference.key).toBe("evicted-during-save");
+    expect(saveReference).not.toHaveBeenCalled();
+  });
+
+  it("reloads remote fields while preserving unsaved request changes", async () => {
+    const reference = {
+      backend: "redis",
+      key: "shared-session-id",
+    };
+    Object.defineProperties(reference, {
+      save: { value: vi.fn() },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const initial = await sealData(
+      { projectId: "project-old", regionId: "RegionOne" },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const refreshed = await sealData(
+      {
+        projectId: "project-new",
+        regionId: "RegionOne",
+        keycloakRefreshToken: "rotated-token",
+      },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi
+        .fn()
+        .mockResolvedValueOnce({ version: "1", data: initial })
+        .mockResolvedValueOnce({ version: "2", data: refreshed }),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    session.regionId = "RegionTwo";
+    await reloadRedisSession(session);
+
+    expect(session).toMatchObject({
+      projectId: "project-new",
+      regionId: "RegionTwo",
+      keycloakRefreshToken: "rotated-token",
+    });
+  });
+
+  it("exposes fields merged from a concurrent save", async () => {
+    const reference = {
+      backend: "redis",
+      key: "concurrent-session-id",
+    };
+    Object.defineProperties(reference, {
+      save: { value: vi.fn() },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const initial = await sealData(
+      { projectId: "project-old", regionId: "RegionOne" },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const concurrent = await sealData(
+      { projectId: "project-new", regionId: "RegionOne" },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi
+        .fn()
+        .mockResolvedValueOnce({ version: "1", data: initial })
+        .mockResolvedValueOnce({ version: "2", data: concurrent }),
+      eval: vi.fn().mockResolvedValueOnce(0).mockResolvedValueOnce(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    session.regionId = "RegionTwo";
+    await session.save();
+
+    expect(session).toMatchObject({
+      projectId: "project-new",
+      regionId: "RegionTwo",
+    });
   });
 
   it("revokes a live pre-authentication reference before authentication", async () => {

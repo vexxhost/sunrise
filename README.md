@@ -47,10 +47,10 @@ cases.
 
 Sunrise currently uses only the shared Redis OSS 7.2 command and RESP surface,
 which Valkey supports with ordinary Redis clients. Keep implementation-specific
-modules and newer vendor-only commands out of the session and cache layers if
-this switchability is required. The local data directory is ephemeral by
-design; do not reuse Redis 7.4+ or Redis 8 persistence files with Valkey during
-a production migration.
+modules and newer vendor-only commands out of the session layer if this
+switchability is required. The local data directory is ephemeral by design; do
+not reuse Redis 7.4+ or Redis 8 persistence files with Valkey during a
+production migration.
 
 The default local topology is intentionally plain and unauthenticated. The same
 Compose setup also provides three production-oriented connection exercises:
@@ -76,11 +76,11 @@ encrypt traffic, while TLS without authentication does not authorize clients;
 use both, network isolation, and a narrowly scoped ACL for production.
 
 Sunrise is available at [http://localhost:9990](http://localhost:9990).
-`/healthz` checks only the application process; `/readyz` checks Redis whenever
-server-side sessions or the shared Next.js cache requires it. The readiness
-probe performs short-lived Lua writes for the selected features, so read-only
-endpoints and ACLs missing required data commands remove the replica from
-service instead of accepting traffic it cannot handle.
+`/healthz` checks only the application process; `/readyz` checks Redis when
+server-side sessions require it. The readiness probe performs short-lived Lua
+writes across the session and refresh namespaces, so read-only endpoints and
+ACLs missing required data commands remove the replica from service instead of
+accepting traffic it cannot handle.
 
 Run the repeatable local probe baseline after the stack becomes healthy:
 
@@ -91,7 +91,7 @@ docker stats --no-stream sunrise-local-sunrise-1 sunrise-local-redis-1
 ```
 
 Start a second independent Sunrise process against the same Redis sessions
-and Next.js cache with:
+with:
 
 ```bash
 docker compose --profile replica up -d sunrise-replica
@@ -113,14 +113,19 @@ may be provided by a managed service, a Kubernetes operator, or a Sentinel
 deployment that exposes the elected primary through stable DNS. Do not point
 `SUNRISE_REDIS_URL` at a Sentinel port. Native Sentinel discovery and Redis
 Cluster sharding remain separate deployment features; neither is required for
-the expected session and cache workload, and neither is enabled by this local
-Compose topology.
+the expected session workload, and neither is enabled by this local Compose
+topology.
 
 For production sessions, high availability alone is not the whole contract:
 the selected Redis service must provide acceptable durability for login, token
-rotation, and logout-revocation writes. Losing a shared cache entry merely
-causes a miss; losing a recent session revocation has different security
-consequences and must be covered by failover testing.
+rotation, and logout-revocation writes. Losing a recent session revocation has
+security consequences and must be covered by failover testing.
+
+Redis is deliberately limited to security-bearing session state in this
+iteration. Sunrise's OpenStack requests are non-cacheable, so each replica uses
+Next.js's local server cache rather than maintaining a custom distributed cache
+and tag-invalidation protocol. Revisit shared application caching only when a
+measured cacheable workload justifies that separate consistency boundary.
 
 Set `SUNRISE_SESSION_BACKEND=cookie` to use the single-process development
 fallback. That mode is not suitable for horizontally scaled production
