@@ -182,9 +182,17 @@ export async function getRedisSession(
   const reference = await getIronSession<
     StoredSessionReference & SunriseSession
   >(cookieStore, { ...options, chunk: false });
-  let id = reference.backend === "redis" ? reference.key : undefined;
+  const hasStoredReference = reference.backend === "redis";
+  let id = hasStoredReference ? reference.key : undefined;
   let loaded = id ? await readStoredSession(id) : null;
-  const initialData = loaded?.data ?? referenceData(reference);
+  const missingStoredReference = hasStoredReference && !loaded;
+  if (missingStoredReference) {
+    id = undefined;
+    delete reference.backend;
+    delete reference.key;
+  }
+  const initialData =
+    loaded?.data ?? (missingStoredReference ? {} : referenceData(reference));
   const target = { ...initialData } as SunriseSession;
   const changed = new Set<keyof SunriseSession>();
   const deleted = new Set<keyof SunriseSession>();
@@ -243,6 +251,7 @@ export async function getRedisSession(
         return;
       }
       loaded = await readStoredSession(id);
+      if (!loaded) id = randomUUID();
     }
 
     throw new Error("Sunrise session changed too many times while saving");

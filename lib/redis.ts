@@ -42,6 +42,7 @@ if ARGV[3] == "1" then
   redis.call("ZREVRANGE", KEYS[3], 0, 0, "WITHSCORES")
   redis.call("ZREM", KEYS[3], ARGV[1])
   redis.call("ZADD", KEYS[3], expiresAt, ARGV[1])
+  redis.call("ZREMRANGEBYSCORE", KEYS[3], 1, expiresAt - 1)
   redis.call("PERSIST", KEYS[3])
   redis.call("PEXPIREAT", KEYS[3], expiresAt)
 end

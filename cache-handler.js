@@ -15,15 +15,16 @@ local ttlSeconds = ARGV[2]
 local tagPrefix = ARGV[3]
 local existing = redis.call("GET", entryKey)
 local now = redis.call("TIME")
+local nowMs = tonumber(now[1]) * 1000
+  + math.floor(tonumber(now[2]) / 1000)
 local expiresAt = 0
 
 if ttlSeconds ~= "" then
-  expiresAt = tonumber(now[1]) * 1000
-    + math.floor(tonumber(now[2]) / 1000)
-    + tonumber(ttlSeconds) * 1000
+  expiresAt = nowMs + tonumber(ttlSeconds) * 1000
 end
 
 local function refreshTagExpiration(tagKey)
+  redis.call("ZREMRANGEBYSCORE", tagKey, 1, nowMs)
   if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
     redis.call("PERSIST", tagKey)
     return
@@ -76,7 +77,12 @@ if not decodedOk then
   return payload
 end
 
+local now = redis.call("TIME")
+local nowMs = tonumber(now[1]) * 1000
+  + math.floor(tonumber(now[2]) / 1000)
+
 local function refreshTagExpiration(tagKey)
+  redis.call("ZREMRANGEBYSCORE", tagKey, 1, nowMs)
   if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
     redis.call("PERSIST", tagKey)
     return
@@ -99,10 +105,7 @@ end
 local ttlMs = redis.call("PTTL", entryKey)
 local expiresAt = 0
 if ttlMs >= 0 then
-  local now = redis.call("TIME")
-  expiresAt = tonumber(now[1]) * 1000
-    + math.floor(tonumber(now[2]) / 1000)
-    + ttlMs
+  expiresAt = nowMs + ttlMs
 end
 
 local changed = false
@@ -130,8 +133,12 @@ const REVALIDATE_TAGS_SCRIPT = `
 local tagPrefix = ARGV[1]
 local visited = {}
 local requested = {}
+local now = redis.call("TIME")
+local nowMs = tonumber(now[1]) * 1000
+  + math.floor(tonumber(now[2]) / 1000)
 
 local function refreshTagExpiration(tagKey)
+  redis.call("ZREMRANGEBYSCORE", tagKey, 1, nowMs)
   if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
     redis.call("PERSIST", tagKey)
     return
@@ -150,6 +157,7 @@ for _, requestedTagKey in ipairs(KEYS) do
 end
 
 for _, requestedTagKey in ipairs(KEYS) do
+  refreshTagExpiration(requestedTagKey)
   local members = redis.call("ZRANGE", requestedTagKey, 0, -1)
   for _, entryKey in ipairs(members) do
     if not visited[entryKey] then
