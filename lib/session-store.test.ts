@@ -527,6 +527,53 @@ describe("Redis session storage", () => {
     expect(saveReference).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    { result: -1, state: "revoked by logout" },
+    { result: 0, state: "missing after expiry" },
+  ])(
+    "cannot rotate a pre-authentication reference $state",
+    async ({ result }) => {
+      const saveReference = vi.fn();
+      const reference = {
+        backend: "redis",
+        key: "logged-out-pre-auth-session-id",
+      };
+      Object.defineProperties(reference, {
+        save: { value: saveReference },
+        destroy: { value: vi.fn() },
+        updateConfig: { value: vi.fn() },
+      });
+      const sealed = await sealData(
+        { oidcState: "expected-state", oidcVerifier: "verifier" },
+        {
+          password: process.env.SUNRISE_SESSION_SECRET!,
+          ttl: 3600,
+        },
+      );
+      const client = {
+        hGetAll: vi.fn().mockResolvedValue({ version: "1", data: sealed }),
+        eval: vi.fn().mockResolvedValue(result),
+      };
+      mocks.getIronSession.mockResolvedValue(reference);
+      mocks.runRedisCommand.mockImplementation(
+        (operation: (current: typeof client) => Promise<unknown>) =>
+          operation(client),
+      );
+
+      const session = await getRedisSession({} as never, {} as never);
+
+      await expect(rotateRedisSession(session)).rejects.toThrow(
+        "Cannot rotate a missing or revoked Sunrise session",
+      );
+      expect(reference.key).toBe("logged-out-pre-auth-session-id");
+      expect(saveReference).not.toHaveBeenCalled();
+
+      const rotation = client.eval.mock.calls[0][1] as { keys: string[] };
+      expect(rotation.keys[0]).toContain("logged-out-pre-auth-session-id");
+      expect(rotation.keys[1]).toContain("logged-out-pre-auth-session-id");
+    },
+  );
+
   it("keeps the session reference intact until Redis revocation succeeds", async () => {
     const destroyReference = vi.fn();
     const reference = {

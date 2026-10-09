@@ -53,6 +53,18 @@ redis.call("DEL", KEYS[1])
 return 1
 `;
 
+const ROTATE_SESSION_SCRIPT = `
+if redis.call("EXISTS", KEYS[2]) == 1 then
+  return -1
+end
+if redis.call("EXISTS", KEYS[1]) == 0 then
+  return 0
+end
+redis.call("SET", KEYS[2], "1", "EX", ARGV[1])
+redis.call("DEL", KEYS[1])
+return 1
+`;
+
 const destroyers = new WeakMap<object, () => Promise<void>>();
 const rotators = new WeakMap<object, () => Promise<void>>();
 const reloaders = new WeakMap<object, () => Promise<void>>();
@@ -177,6 +189,17 @@ async function revokeStoredSession(id: string) {
       arguments: [absoluteTimeoutSeconds.toString()],
     }),
   );
+}
+
+async function rotateStoredSession(id: string) {
+  const { absoluteTimeoutSeconds } = getSessionLifetimePolicy();
+  const result = await runRedisCommand((client) =>
+    client.eval(ROTATE_SESSION_SCRIPT, {
+      keys: [sessionKey(id), revokedKey(id)],
+      arguments: [absoluteTimeoutSeconds.toString()],
+    }),
+  );
+  return Number(result) === 1;
 }
 
 function referenceData(
@@ -341,7 +364,10 @@ export async function getRedisSession(
       rotating = (async () => {
         const storedId = id;
         if (!storedId) return;
-        await revokeStoredSession(storedId);
+        const rotated = await rotateStoredSession(storedId);
+        if (!rotated) {
+          throw new Error("Cannot rotate a missing or revoked Sunrise session");
+        }
         id = randomUUID();
         loaded = null;
       })().finally(() => {
