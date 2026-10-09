@@ -233,6 +233,7 @@ describe("Redis deployment configuration", () => {
       keys: [
         expect.stringMatching(/^atmosphere:session:\{[^}]+\}$/),
         expect.stringMatching(/^atmosphere:session-revoked:\{[^}]+\}$/),
+        expect.stringMatching(/^atmosphere:session-rotated:\{[^}]+\}$/),
         expect.stringMatching(/^atmosphere:oidc-refresh-lock:[^:]+$/),
       ],
       arguments: [expect.any(String)],

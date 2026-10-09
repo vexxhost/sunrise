@@ -22,7 +22,10 @@ type StoredSessionRecord = {
 };
 
 export const REDIS_SESSION_MAX_SAVE_ATTEMPTS = 4;
+const REDIS_SESSION_MAX_ROTATE_ATTEMPTS = 2;
+const REDIS_SESSION_MAX_REVOKE_HOPS = 16;
 const PRE_AUTH_SESSION_TTL_SECONDS = 10 * 60;
+const ROTATION_RECOVERY_TTL_SECONDS = 2 * 60;
 
 type RedisSessionSaveOptions = {
   beforeConflictRetry?: () => Promise<void>;
@@ -48,21 +51,27 @@ return 1
 `;
 
 const REVOKE_SESSION_SCRIPT = `
+local successor = redis.call("GET", KEYS[3])
 redis.call("SET", KEYS[2], "1", "EX", ARGV[1])
 redis.call("DEL", KEYS[1])
-return 1
+return successor or ""
 `;
 
 const ROTATE_SESSION_SCRIPT = `
+local successor = redis.call("GET", KEYS[3])
+if successor then
+  return successor
+end
 if redis.call("EXISTS", KEYS[2]) == 1 then
-  return -1
+  return ""
 end
 if redis.call("EXISTS", KEYS[1]) == 0 then
-  return 0
+  return ""
 end
+redis.call("SET", KEYS[3], ARGV[2], "EX", ARGV[3])
 redis.call("SET", KEYS[2], "1", "EX", ARGV[1])
 redis.call("DEL", KEYS[1])
-return 1
+return ARGV[2]
 `;
 
 const destroyers = new WeakMap<object, () => Promise<void>>();
@@ -79,6 +88,10 @@ function sessionKey(id: string) {
 
 function revokedKey(id: string) {
   return `${getRedisKeyPrefix()}:session-revoked:{${id}}`;
+}
+
+function rotatedKey(id: string) {
+  return `${getRedisKeyPrefix()}:session-rotated:{${id}}`;
 }
 
 export function storedSessionTtlSeconds(
@@ -183,23 +196,53 @@ async function persistStoredSession(
 
 async function revokeStoredSession(id: string) {
   const { absoluteTimeoutSeconds } = getSessionLifetimePolicy();
-  await runRedisCommand((client) =>
-    client.eval(REVOKE_SESSION_SCRIPT, {
-      keys: [sessionKey(id), revokedKey(id)],
-      arguments: [absoluteTimeoutSeconds.toString()],
-    }),
-  );
+  let currentId = id;
+
+  for (let hop = 0; hop < REDIS_SESSION_MAX_REVOKE_HOPS; hop += 1) {
+    const successor = await runRedisCommand((client) =>
+      client.eval(REVOKE_SESSION_SCRIPT, {
+        keys: [
+          sessionKey(currentId),
+          revokedKey(currentId),
+          rotatedKey(currentId),
+        ],
+        arguments: [absoluteTimeoutSeconds.toString()],
+      }),
+    );
+    if (typeof successor !== "string" || !successor) return;
+    currentId = successor;
+  }
+
+  throw new Error("Sunrise session rotated too many times while revoking");
 }
 
-async function rotateStoredSession(id: string) {
+async function rotateStoredSession(id: string, proposedSuccessor: string) {
   const { absoluteTimeoutSeconds } = getSessionLifetimePolicy();
-  const result = await runRedisCommand((client) =>
-    client.eval(ROTATE_SESSION_SCRIPT, {
-      keys: [sessionKey(id), revokedKey(id)],
-      arguments: [absoluteTimeoutSeconds.toString()],
-    }),
-  );
-  return Number(result) === 1;
+  let lastError: unknown;
+
+  for (
+    let attempt = 0;
+    attempt < REDIS_SESSION_MAX_ROTATE_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      const result = await runRedisCommand((client) =>
+        client.eval(ROTATE_SESSION_SCRIPT, {
+          keys: [sessionKey(id), revokedKey(id), rotatedKey(id)],
+          arguments: [
+            absoluteTimeoutSeconds.toString(),
+            proposedSuccessor,
+            ROTATION_RECOVERY_TTL_SECONDS.toString(),
+          ],
+        }),
+      );
+      return typeof result === "string" && result ? result : null;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
 }
 
 function referenceData(
@@ -364,11 +407,14 @@ export async function getRedisSession(
       rotating = (async () => {
         const storedId = id;
         if (!storedId) return;
-        const rotated = await rotateStoredSession(storedId);
-        if (!rotated) {
+        const successorId = await rotateStoredSession(
+          storedId,
+          randomUUID(),
+        );
+        if (!successorId) {
           throw new Error("Cannot rotate a missing or revoked Sunrise session");
         }
-        id = randomUUID();
+        id = successorId;
         loaded = null;
       })().finally(() => {
         rotating = undefined;

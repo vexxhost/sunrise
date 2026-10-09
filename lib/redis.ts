@@ -32,9 +32,12 @@ redis.call("EXISTS", KEYS[2])
 
 redis.call("SET", KEYS[3], value, "PX", 5000)
 redis.call("GET", KEYS[3])
-redis.call("PEXPIRE", KEYS[3], 5000)
 
-redis.call("DEL", KEYS[1], KEYS[2], KEYS[3])
+redis.call("SET", KEYS[4], value, "PX", 5000)
+redis.call("GET", KEYS[4])
+redis.call("PEXPIRE", KEYS[4], 5000)
+
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4])
 return 1
 `;
 
@@ -289,6 +292,7 @@ export async function probeRedisReadiness() {
       keys: [
         `${prefix}:session:{${probeId}}`,
         `${prefix}:session-revoked:{${probeId}}`,
+        `${prefix}:session-rotated:{${probeId}}`,
         `${prefix}:oidc-refresh-lock:${probeId}`,
       ],
       arguments: [value],
