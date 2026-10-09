@@ -150,7 +150,7 @@ function distributedRefreshTiming() {
     lockTimeoutMs,
     leaderWaitMs:
       lockTimeoutMs +
-      (MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) * (sessionCommandTimeoutMs + 2_000),
+      MAX_DISTRIBUTED_SAVE_ATTEMPTS * (sessionCommandTimeoutMs + 2_000),
   };
 }
 

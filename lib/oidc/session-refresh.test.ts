@@ -269,13 +269,13 @@ describe("OIDC session token refresh", () => {
     expect(current.save).not.toHaveBeenCalled();
   });
 
-  it("waits for checkpoint persistence using the configured Redis budget", async () => {
+  it("waits through every checkpoint save attempt in the Redis budget", async () => {
     vi.useFakeTimers();
     const current = session("redis-slow-follower");
     const result = refreshedTokens();
     const client = redisClient(() => "slow-owner");
     mocks.getSessionBackend.mockReturnValue("redis");
-    mocks.getRedisCommandTimeoutMs.mockReturnValue(5_000);
+    mocks.getRedisCommandTimeoutMs.mockReturnValue(30_000);
     mocks.runRedisCommand.mockImplementation(
       (operation: (active: typeof client) => Promise<unknown>) =>
         operation(client),
@@ -291,10 +291,10 @@ describe("OIDC session token refresh", () => {
           reuseUntil: Date.now() + 30_000,
         },
       });
-    }, 40_000);
+    }, 150_000);
 
     const refresh = refreshSessionOidcTokens(current as never, "demo");
-    await vi.advanceTimersByTimeAsync(41_000);
+    await vi.advanceTimersByTimeAsync(151_000);
 
     await expect(refresh).resolves.toEqual(result);
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
