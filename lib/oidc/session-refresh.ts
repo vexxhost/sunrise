@@ -442,7 +442,7 @@ export async function refreshSessionOidcTokens(
   const entry: RefreshEntry = { promise: refreshPromise };
   entry.promise = refreshPromise
     .then((result) => {
-      entry.reuseUntil = Date.now() + REFRESH_RESULT_REUSE_MS;
+      entry.reuseUntil = checkpointReuseUntil(result, 0);
       return result;
     })
     .catch((error) => {

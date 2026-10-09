@@ -129,6 +129,19 @@ describe("OIDC session token refresh", () => {
     expect(rotated.save).not.toHaveBeenCalled();
   });
 
+  it("does not locally reuse an access token inside its safety margin", async () => {
+    mocks.refreshAccessToken.mockResolvedValue({
+      ...refreshedTokens(),
+      expires_in: 3,
+    });
+    const current = session("cookie-short-access-token");
+
+    await refreshSessionOidcTokens(current as never, "demo");
+    await refreshSessionOidcTokens(current as never, "demo");
+
+    expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(2);
+  });
+
   it("reuses a refresh checkpoint from the authoritative Redis session", async () => {
     const result = refreshedTokens();
     const current = session("redis-checkpoint");
