@@ -381,6 +381,7 @@ describe("OIDC session token refresh", () => {
       ).oidcRefreshCheckpoint.reuseUntil,
     ).toBeGreaterThanOrEqual(startedAt + 47_000);
     expect(current.save).toHaveBeenCalledOnce();
+    expect(client.eval.mock.calls[0][1].arguments[1]).toBe("45000");
     expect(current.save.mock.invocationCallOrder[0]).toBeLessThan(
       client.eval.mock.invocationCallOrder.at(-1)!,
     );
@@ -900,6 +901,7 @@ describe("OIDC session token refresh", () => {
 
     await expect(refresh).resolves.toEqual(result);
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(client.eval.mock.calls[0][1].arguments[1]).toBe("73000");
   });
 
   it("refreshes the latest token loaded before lock acquisition", async () => {

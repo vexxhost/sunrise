@@ -152,6 +152,32 @@ async function readStoredSession(
   return { version, data };
 }
 
+async function resolveStoredSession(
+  id: string,
+  maximumCommandTimeoutMs?: number,
+) {
+  let currentId = id;
+  const visited = new Set<string>();
+
+  while (!visited.has(currentId)) {
+    visited.add(currentId);
+    const record = await readStoredSession(
+      currentId,
+      maximumCommandTimeoutMs,
+    );
+    if (record) return { id: currentId, record };
+
+    const successor = await runRedisCommand(
+      (client) => client.get(rotatedKey(currentId)),
+      maximumCommandTimeoutMs,
+    );
+    if (!successor) return { id: currentId, record: null };
+    currentId = successor;
+  }
+
+  throw new Error("Sunrise session rotation contains a cycle");
+}
+
 function enumerableSessionData(session: SunriseSession): SunriseSession {
   return Object.fromEntries(
     Object.entries(session).filter(([, value]) => value !== undefined),
@@ -281,13 +307,16 @@ export async function getRedisSession(
     StoredSessionReference & SunriseSession
   >(cookieStore, options);
   const hasStoredReference = reference.backend === "redis";
-  let id = hasStoredReference ? reference.key : undefined;
-  let loaded = id ? await readStoredSession(id) : null;
-  // Keep an existing opaque reference even when its data record is absent.
-  // Recreating that same ID is guarded by the revocation tombstone in the
-  // atomic save script. Minting a different ID here would let a request that
-  // raced with logout bypass the tombstone and overwrite the logout cookie.
-  let persistedReferenceId = hasStoredReference ? id : undefined;
+  const storedReferenceId = hasStoredReference ? reference.key : undefined;
+  let id = storedReferenceId;
+  let loaded: StoredSessionRecord | null = null;
+  if (id) {
+    ({ id, record: loaded } = await resolveStoredSession(id));
+  }
+  // Keep the browser's published ID separate from a recovered successor. A
+  // later save publishes the successor, while the atomic save script still
+  // refuses to recreate either an ordinary missing ID or a revoked successor.
+  let persistedReferenceId = storedReferenceId;
   let referenceNeedsCleanup = Boolean(
     persistedReferenceId && hasLegacyReferenceData(reference),
   );

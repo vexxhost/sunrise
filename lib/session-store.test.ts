@@ -227,6 +227,7 @@ describe("Redis session storage", () => {
     });
     const client = {
       hGetAll: vi.fn().mockResolvedValue({}),
+      get: vi.fn().mockResolvedValue(null),
       eval: vi.fn().mockResolvedValue(1),
     };
     mocks.getIronSession.mockResolvedValue(reference);
@@ -250,6 +251,123 @@ describe("Redis session storage", () => {
     expect(saveReference).not.toHaveBeenCalled();
   });
 
+  it("recovers a recorded rotation successor on a later request", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "rotated-session-root",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({}),
+      get: vi
+        .fn()
+        .mockResolvedValueOnce("recorded-session-successor")
+        .mockResolvedValueOnce(null),
+      eval: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    session.oidcState = "new-login-state";
+    await session.save();
+
+    const saveOptions = client.eval.mock.calls[0][1] as { keys: string[] };
+    expect(saveOptions.keys[0]).toContain("recorded-session-successor");
+    expect(saveOptions.keys[1]).toContain("recorded-session-successor");
+    expect(reference.key).toBe("recorded-session-successor");
+    expect(saveReference).toHaveBeenCalledOnce();
+  });
+
+  it("loads data already persisted under a recorded rotation successor", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "persisted-rotation-root",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const sealed = await sealData(
+      {
+        projectId: "recovered-project",
+        sessionSignedInAt: Date.now(),
+      },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi
+        .fn()
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ version: "1", data: sealed }),
+      get: vi.fn().mockResolvedValue("persisted-rotation-successor"),
+      eval: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+
+    expect(session.projectId).toBe("recovered-project");
+    await session.save();
+    expect(reference.key).toBe("persisted-rotation-successor");
+    expect(saveReference).toHaveBeenCalledOnce();
+  });
+
+  it("cannot recreate a revoked rotation successor", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "revoked-rotation-root",
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({}),
+      get: vi
+        .fn()
+        .mockResolvedValueOnce("revoked-rotation-successor")
+        .mockResolvedValueOnce(null),
+      eval: vi.fn().mockResolvedValue(-1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    session.oidcState = "new-login-state";
+
+    await expect(session.save()).rejects.toThrow(
+      "Cannot save a revoked Sunrise session",
+    );
+    const saveOptions = client.eval.mock.calls[0][1] as { keys: string[] };
+    expect(saveOptions.keys[0]).toContain("revoked-rotation-successor");
+    expect(saveOptions.keys[1]).toContain("revoked-rotation-successor");
+    expect(reference.key).toBe("revoked-rotation-root");
+    expect(saveReference).not.toHaveBeenCalled();
+  });
+
   it("cannot remint a reference revoked after its record disappeared", async () => {
     const saveReference = vi.fn();
     const reference = {
@@ -263,6 +381,7 @@ describe("Redis session storage", () => {
     });
     const client = {
       hGetAll: vi.fn().mockResolvedValue({}),
+      get: vi.fn().mockResolvedValue(null),
       // The atomic save observes the tombstone written by a concurrent logout.
       eval: vi.fn().mockResolvedValue(-1),
     };

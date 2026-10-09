@@ -292,12 +292,13 @@ async function renewDistributedLock(
 
 function distributedRefreshTiming() {
   const sessionCommandTimeoutMs = getRedisCommandTimeoutMs();
+  const refreshRedisOperationBudgetMs =
+    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS + 2_000;
   const lockTimeoutMs =
     OIDC_REFRESH_TIMEOUT_MS +
     sessionCommandTimeoutMs +
+    2 * refreshRedisOperationBudgetMs +
     DISTRIBUTED_REFRESH_TIMING_MARGIN_MS;
-  const refreshRedisOperationBudgetMs =
-    DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS + 2_000;
   const sessionSaveOperationCount =
     REDIS_SESSION_MAX_SAVE_ATTEMPTS +
     (REDIS_SESSION_MAX_SAVE_ATTEMPTS - 1) * 2;
