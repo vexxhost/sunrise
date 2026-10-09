@@ -157,7 +157,7 @@ async function activitySession() {
   );
 }
 
-export async function startSessionLifetime(
+export async function prepareSessionLifetime(
   session: IronSession<SunriseSession>,
   now = Date.now(),
 ) {
@@ -168,7 +168,7 @@ export async function startSessionLifetime(
   session.oidcRefreshCheckpoint = undefined;
   setTransient(session, "sessionLastActivityAt", now);
   setTransient(session, "sessionExpiryReason", undefined);
-  await saveSessionActivity(sessionId, now);
+  return { sessionId, lastActivityAt: now };
 }
 
 export async function saveSessionActivity(

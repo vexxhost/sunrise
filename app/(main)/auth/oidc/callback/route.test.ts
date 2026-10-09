@@ -4,8 +4,8 @@ const mocks = vi.hoisted(() => {
   process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
   return {
     getSession: vi.fn(),
+    prepareSessionLifetime: vi.fn(),
     saveSessionActivity: vi.fn(),
-    startSessionLifetime: vi.fn(),
     exchangeCodeForTokens: vi.fn(),
     getSunriseOidcConfig: vi.fn(),
     resolveOidcIdentity: vi.fn(),
@@ -27,8 +27,8 @@ vi.mock("@/lib/cloud-context-bootstrap", () => ({
 
 vi.mock("@/lib/session", () => ({
   getSession: mocks.getSession,
+  prepareSessionLifetime: mocks.prepareSessionLifetime,
   saveSessionActivity: mocks.saveSessionActivity,
-  startSessionLifetime: mocks.startSessionLifetime,
   normalizeProjectId: (value?: string) => value?.replaceAll("-", "") ?? "",
   setS3CredentialsForProject: vi.fn(),
 }));
@@ -130,7 +130,11 @@ describe("OIDC callback recovery", () => {
     mocks.getS3Endpoint.mockResolvedValue("https://s3.example.test");
     mocks.stashCloudContextBootstrap.mockReturnValue("bootstrap-id");
     mocks.saveSessionActivity.mockResolvedValue(undefined);
-    mocks.startSessionLifetime.mockResolvedValue(undefined);
+    mocks.prepareSessionLifetime.mockImplementation(async (session) => {
+      session.sessionId = "session-1";
+      session.sessionSignedInAt = 1_000;
+      return { sessionId: "session-1", lastActivityAt: 1_000 };
+    });
     mocks.saveRedisSession.mockImplementation(
       async (activeSession: { save: () => Promise<void> }) =>
         activeSession.save(),
@@ -161,7 +165,14 @@ describe("OIDC callback recovery", () => {
       oidcSessionGeneration: expect.any(String),
     });
     expect(current.save).toHaveBeenCalled();
-    expect(mocks.startSessionLifetime).toHaveBeenCalledWith(current);
+    expect(mocks.prepareSessionLifetime).toHaveBeenCalledWith(current);
+    expect(mocks.saveSessionActivity).toHaveBeenCalledWith(
+      "session-1",
+      1_000,
+    );
+    expect(current.save.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      mocks.saveSessionActivity.mock.invocationCallOrder[0],
+    );
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
@@ -204,8 +215,11 @@ describe("OIDC callback recovery", () => {
       ),
     );
 
-    expect(mocks.saveSessionActivity).toHaveBeenCalledWith("session-1");
-    expect(mocks.startSessionLifetime).not.toHaveBeenCalled();
+    expect(mocks.saveSessionActivity).toHaveBeenCalledWith(
+      "session-1",
+      expect.any(Number),
+    );
+    expect(mocks.prepareSessionLifetime).not.toHaveBeenCalled();
     expect(current.sessionSignedInAt).toBe(now - 1_000);
     expect(current.oidcRefreshCheckpoint).toBeUndefined();
     expect(current.oidcSessionContinuation).toBeUndefined();
@@ -490,6 +504,7 @@ describe("OIDC callback recovery", () => {
     );
     expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
     expect(current.save).toHaveBeenCalledOnce();
+    expect(mocks.saveSessionActivity).not.toHaveBeenCalled();
   });
 
   it("redirects when a newer callback rotates the stored session", async () => {
@@ -525,12 +540,13 @@ describe("OIDC callback recovery", () => {
     );
     expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
     expect(current.save).toHaveBeenCalledOnce();
+    expect(mocks.saveSessionActivity).not.toHaveBeenCalled();
   });
 
   it("redirects when the login boundary was already rotated", async () => {
     const current = session();
     mocks.getSession.mockResolvedValue(current);
-    mocks.startSessionLifetime.mockRejectedValueOnce(
+    mocks.prepareSessionLifetime.mockRejectedValueOnce(
       new StoredSessionSupersededError(
         "Cannot rotate a missing or revoked Sunrise session",
       ),

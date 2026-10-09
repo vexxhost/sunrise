@@ -1,4 +1,8 @@
-import { getSession, startSessionLifetime } from "@/lib/session";
+import {
+  getSession,
+  prepareSessionLifetime,
+  saveSessionActivity,
+} from "@/lib/session";
 import {
   finalizeKeystoneSession,
   KeystoneSessionSetupError,
@@ -55,15 +59,21 @@ export async function POST(request: Request) {
     return new Response("Invalid WebSSO response", { status: 400 });
   }
 
+  let pendingActivity: { sessionId: string; lastActivityAt: number };
   try {
-    await startSessionLifetime(session);
-    const resolution = await finalizeKeystoneSession(session, token);
-    session.authRecovery =
-      resolution.status === "ready" ? undefined : { reason: resolution.status };
+    pendingActivity = await prepareSessionLifetime(session);
   } catch (error) {
     if (isStoredSessionSupersededError(error)) {
       return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
     }
+    throw error;
+  }
+
+  try {
+    const resolution = await finalizeKeystoneSession(session, token);
+    session.authRecovery =
+      resolution.status === "ready" ? undefined : { reason: resolution.status };
+  } catch (error) {
     session.authRecovery = {
       reason:
         error instanceof KeystoneSessionSetupError
@@ -78,6 +88,10 @@ export async function POST(request: Request) {
   if (!(await saveWebSsoResult(session))) {
     return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
   }
+  await saveSessionActivity(
+    pendingActivity.sessionId,
+    pendingActivity.lastActivityAt,
+  );
 
   return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
 }

@@ -5,9 +5,9 @@ import { stashCloudContextBootstrap } from "@/lib/cloud-context-bootstrap";
 import {
   getSession,
   normalizeProjectId,
+  prepareSessionLifetime,
   saveSessionActivity,
   setS3CredentialsForProject,
-  startSessionLifetime,
 } from "@/lib/session";
 import {
   getSessionLifetimeState,
@@ -72,10 +72,15 @@ async function saveOidcFlow(
 async function finishOidcFlow(
   session: OidcCallbackSession,
   expectedFlowId: string,
+  activity?: { sessionId: string; lastActivityAt: number },
 ) {
   session.oidcFlowId = undefined;
   session.oidcSessionContinuation = undefined;
-  return saveOidcFlow(session, expectedFlowId);
+  if (!(await saveOidcFlow(session, expectedFlowId))) return false;
+  if (activity) {
+    await saveSessionActivity(activity.sessionId, activity.lastActivityAt);
+  }
+  return true;
 }
 
 function supersededFlowResponse() {
@@ -173,11 +178,15 @@ export async function GET(request: Request) {
     return new NextResponse(`Login failed: ${msg}`, { status: 500 });
   }
 
+  let pendingActivity: { sessionId: string; lastActivityAt: number };
   try {
     if (continuation && session.sessionId) {
-      await saveSessionActivity(session.sessionId);
+      pendingActivity = {
+        sessionId: session.sessionId,
+        lastActivityAt: Date.now(),
+      };
     } else {
-      await startSessionLifetime(session);
+      pendingActivity = await prepareSessionLifetime(session);
     }
   } catch (error) {
     if (isStoredSessionSupersededError(error)) {
@@ -221,7 +230,7 @@ export async function GET(request: Request) {
     unscopedToken = federationResult.value;
   } catch (e) {
     session.authRecovery = { reason: "federation-failed" };
-    if (!(await finishOidcFlow(session, callbackFlowId))) {
+    if (!(await finishOidcFlow(session, callbackFlowId, pendingActivity))) {
       return supersededFlowResponse();
     }
     const msg = e instanceof Error ? e.message : "unknown error";
@@ -242,7 +251,7 @@ export async function GET(request: Request) {
           ? e.reason
           : "session-unavailable",
     };
-    if (!(await finishOidcFlow(session, callbackFlowId))) {
+    if (!(await finishOidcFlow(session, callbackFlowId, pendingActivity))) {
       return supersededFlowResponse();
     }
     const msg = e instanceof Error ? e.message : "unknown error";
@@ -251,7 +260,7 @@ export async function GET(request: Request) {
   }
 
   if (resolution.status !== "ready") {
-    if (!(await finishOidcFlow(session, callbackFlowId))) {
+    if (!(await finishOidcFlow(session, callbackFlowId, pendingActivity))) {
       return supersededFlowResponse();
     }
     return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
@@ -323,7 +332,7 @@ export async function GET(request: Request) {
     }
   }
 
-  if (!(await finishOidcFlow(session, callbackFlowId))) {
+  if (!(await finishOidcFlow(session, callbackFlowId, pendingActivity))) {
     return supersededFlowResponse();
   }
   const response = NextResponse.redirect(

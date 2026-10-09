@@ -4,7 +4,8 @@ const mocks = vi.hoisted(() => {
   process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
   return {
     getSession: vi.fn(),
-    startSessionLifetime: vi.fn(),
+    prepareSessionLifetime: vi.fn(),
+    saveSessionActivity: vi.fn(),
     finalizeKeystoneSession: vi.fn(),
     saveRedisSession: vi.fn(),
   };
@@ -12,7 +13,8 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/session", () => ({
   getSession: mocks.getSession,
-  startSessionLifetime: mocks.startSessionLifetime,
+  prepareSessionLifetime: mocks.prepareSessionLifetime,
+  saveSessionActivity: mocks.saveSessionActivity,
 }));
 vi.mock("@/lib/keystone/login", () => ({
   finalizeKeystoneSession: mocks.finalizeKeystoneSession,
@@ -48,7 +50,12 @@ describe("legacy WebSSO recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    mocks.startSessionLifetime.mockResolvedValue(undefined);
+    mocks.prepareSessionLifetime.mockImplementation(async (session) => {
+      session.sessionId = "session-1";
+      session.sessionSignedInAt = 1_000;
+      return { sessionId: "session-1", lastActivityAt: 1_000 };
+    });
+    mocks.saveSessionActivity.mockResolvedValue(undefined);
     mocks.saveRedisSession.mockImplementation(async (current) =>
       current.save(),
     );
@@ -67,7 +74,14 @@ describe("legacy WebSSO recovery", () => {
     );
     expect(session).toMatchObject({ authRecovery: { reason: "no-projects" } });
     expect(session.save).toHaveBeenCalledOnce();
-    expect(mocks.startSessionLifetime).toHaveBeenCalledWith(session);
+    expect(mocks.prepareSessionLifetime).toHaveBeenCalledWith(session);
+    expect(mocks.saveSessionActivity).toHaveBeenCalledWith(
+      "session-1",
+      1_000,
+    );
+    expect(session.save.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.saveSessionActivity.mock.invocationCallOrder[0],
+    );
   });
 
   it("preserves an access-denied failure for the recovery screen", async () => {
@@ -93,13 +107,14 @@ describe("legacy WebSSO recovery", () => {
     const superseded = new StoredSessionSupersededError("superseded");
     const session = { save: vi.fn() };
     mocks.getSession.mockResolvedValue(session);
-    mocks.startSessionLifetime.mockRejectedValue(superseded);
+    mocks.prepareSessionLifetime.mockRejectedValue(superseded);
 
     const response = await POST(request());
 
     expect(response.status).toBe(303);
     expect(session.save).not.toHaveBeenCalled();
     expect(mocks.finalizeKeystoneSession).not.toHaveBeenCalled();
+    expect(mocks.saveSessionActivity).not.toHaveBeenCalled();
   });
 
   it("redirects when the final session save was superseded", async () => {
@@ -112,6 +127,7 @@ describe("legacy WebSSO recovery", () => {
 
     expect(response.status).toBe(303);
     expect(session.save).toHaveBeenCalledOnce();
+    expect(mocks.saveSessionActivity).not.toHaveBeenCalled();
   });
 
   it("does not merge credentials into a successor changed after rotation", async () => {
@@ -127,6 +143,7 @@ describe("legacy WebSSO recovery", () => {
     expect(response.status).toBe(303);
     expect(session.save).not.toHaveBeenCalled();
     expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
+    expect(mocks.saveSessionActivity).not.toHaveBeenCalled();
   });
 
   it("does not merge invalid-response cleanup into a newer session", async () => {
