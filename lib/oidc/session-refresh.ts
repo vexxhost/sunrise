@@ -113,12 +113,74 @@ function reusableCheckpoint(
     return undefined;
   }
   if (
-    checkpoint.consumedTokenDigest !== refreshTokenDigest &&
-    checkpoint.issuedTokenDigest !== refreshTokenDigest
+    !checkpointReferencesToken(checkpoint, refreshTokenDigest)
   ) {
     return undefined;
   }
   return checkpoint;
+}
+
+function checkpointConsumedTokenDigests(checkpoint: OidcRefreshCheckpoint) {
+  return [
+    checkpoint.consumedTokenDigest,
+    ...(checkpoint.ancestorTokenDigests ?? []),
+  ];
+}
+
+function checkpointReferencesToken(
+  checkpoint: OidcRefreshCheckpoint,
+  refreshTokenDigest: string,
+) {
+  return (
+    checkpoint.issuedTokenDigest === refreshTokenDigest ||
+    checkpointConsumedTokenDigests(checkpoint).includes(refreshTokenDigest)
+  );
+}
+
+function checkpointProvesTokenLineage(
+  checkpoint: OidcRefreshCheckpoint,
+  consumedTokenDigest: string,
+  issuedTokenDigest: string,
+) {
+  return (
+    checkpoint.issuedTokenDigest === issuedTokenDigest &&
+    checkpointConsumedTokenDigests(checkpoint).includes(consumedTokenDigest)
+  );
+}
+
+function refreshTokenAncestors(
+  session: Readonly<SunriseSession>,
+  identityProvider: string,
+  consumedTokenDigest: string,
+) {
+  const checkpoint = session.oidcRefreshCheckpoint;
+  if (
+    !checkpoint ||
+    checkpoint.identityProvider !== identityProvider ||
+    checkpoint.issuedTokenDigest !== consumedTokenDigest
+  ) {
+    return undefined;
+  }
+
+  const ancestors = checkpointConsumedTokenDigests(checkpoint)
+    .filter(
+      (digest, index, lineage) =>
+        digest !== consumedTokenDigest && lineage.indexOf(digest) === index,
+    )
+    .slice(0, MAX_DISTRIBUTED_REFRESH_GENERATIONS - 1);
+  return ancestors.length > 0 ? ancestors : undefined;
+}
+
+function sameCheckpointLineage(
+  left: OidcRefreshCheckpoint,
+  right: OidcRefreshCheckpoint,
+) {
+  const leftLineage = checkpointConsumedTokenDigests(left);
+  const rightLineage = checkpointConsumedTokenDigests(right);
+  return (
+    leftLineage.length === rightLineage.length &&
+    leftLineage.every((digest, index) => digest === rightLineage[index])
+  );
 }
 
 function applyRotatedRefreshToken(
@@ -235,8 +297,11 @@ function changedAuthoritativeRefreshToken(
   if (
     !checkpoint ||
     checkpoint.identityProvider !== authority.identityProvider ||
-    checkpoint.consumedTokenDigest !== consumedTokenDigest ||
-    checkpoint.issuedTokenDigest !== authoritative.refreshTokenDigest
+    !checkpointProvesTokenLineage(
+      checkpoint,
+      consumedTokenDigest,
+      authoritative.refreshTokenDigest,
+    )
   ) {
     throw supersededOidcRefreshError();
   }
@@ -314,6 +379,7 @@ function assertRefreshConflictIsSafe(
     authoritativeCheckpoint.identityProvider ===
       expectedCheckpoint.identityProvider &&
     authoritativeCheckpoint.consumedTokenDigest === consumedTokenDigest &&
+    sameCheckpointLineage(authoritativeCheckpoint, expectedCheckpoint) &&
     authoritativeCheckpoint.issuedTokenDigest ===
       expectedCheckpoint.issuedTokenDigest &&
     authoritativeTokenDigest === authoritativeCheckpoint.issuedTokenDigest &&
@@ -588,6 +654,11 @@ async function distributedRefresh(
           );
           applyRotatedRefreshToken(session, exchanged);
           session.oidcRefreshCheckpoint = {
+            ancestorTokenDigests: refreshTokenAncestors(
+              session,
+              identityProvider,
+              refreshTokenDigest,
+            ),
             consumedTokenDigest: refreshTokenDigest,
             identityProvider,
             issuedTokenDigest: tokenDigest(

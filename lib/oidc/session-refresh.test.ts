@@ -734,6 +734,13 @@ describe("OIDC session token refresh", () => {
     expect(current.keycloakRefreshToken).toBe(
       "final-rotated-refresh-token",
     );
+    expect(current).toMatchObject({
+      oidcRefreshCheckpoint: {
+        ancestorTokenDigests: [digest("old-refresh-token")],
+        consumedTokenDigest: digest("first-rotated-refresh-token"),
+        issuedTokenDigest: digest("final-rotated-refresh-token"),
+      },
+    });
     expect(current.save).toHaveBeenCalledTimes(2);
   });
 
@@ -1035,6 +1042,74 @@ describe("OIDC session token refresh", () => {
       "newer-refresh-token",
       "demo",
     );
+  });
+
+  it("refreshes the latest token through bounded multi-hop lineage", async () => {
+    const current = session("redis-multi-hop-lineage");
+    const client = redisClient((script) => (script.includes('"NX"') ? 1 : 1));
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.reloadRedisSession.mockImplementationOnce(async () => {
+      current.keycloakRefreshToken = "second-rotated-refresh-token";
+      Object.assign(current, {
+        oidcRefreshCheckpoint: {
+          ancestorTokenDigests: [digest("old-refresh-token")],
+          consumedTokenDigest: digest("first-rotated-refresh-token"),
+          identityProvider: "demo",
+          issuedTokenDigest: digest("second-rotated-refresh-token"),
+          result: refreshedTokens(),
+          reuseUntil: Date.now() - 1,
+        },
+      });
+    });
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await refreshSessionOidcTokens(current as never, "demo");
+
+    expect(mocks.refreshAccessToken).toHaveBeenCalledWith(
+      "second-rotated-refresh-token",
+      "demo",
+    );
+  });
+
+  it("bounds persisted lineage to the distributed refresh generation limit", async () => {
+    const current = session("redis-bounded-lineage", "current-refresh-token");
+    Object.assign(current, {
+      oidcRefreshCheckpoint: {
+        ancestorTokenDigests: [
+          digest("old-refresh-token"),
+          digest("older-refresh-token"),
+          digest("oldest-refresh-token"),
+        ],
+        consumedTokenDigest: digest("previous-refresh-token"),
+        identityProvider: "demo",
+        issuedTokenDigest: digest("current-refresh-token"),
+        result: refreshedTokens(),
+        reuseUntil: Date.now() - 1,
+      },
+    });
+    const client = redisClient((script) => (script.includes('"NX"') ? 1 : 1));
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await refreshSessionOidcTokens(current as never, "demo");
+
+    expect(current).toMatchObject({
+      oidcRefreshCheckpoint: {
+        ancestorTokenDigests: [
+          digest("previous-refresh-token"),
+          digest("old-refresh-token"),
+        ],
+        consumedTokenDigest: digest("current-refresh-token"),
+      },
+    });
   });
 
   it("does not persist a result after losing the distributed lease", async () => {

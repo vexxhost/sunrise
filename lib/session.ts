@@ -58,6 +58,7 @@ export type OidcRefreshResult = {
 };
 
 export type OidcRefreshCheckpoint = {
+  ancestorTokenDigests?: string[];
   consumedTokenDigest: string;
   identityProvider: string;
   issuedTokenDigest: string;
