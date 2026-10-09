@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getActiveS3Credentials: vi.fn(),
   getSunriseOidcConfig: vi.fn(),
   refreshSessionOidcTokens: vi.fn(),
+  saveRedisSession: vi.fn(),
   assumeRoleWithIdToken: vi.fn(),
   tryExtractRgwProjectRoles: vi.fn(),
 }));
@@ -32,6 +33,10 @@ vi.mock("@/lib/s3/sts", () => ({
   tryExtractRgwProjectRoles: mocks.tryExtractRgwProjectRoles,
 }));
 
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
+}));
+
 import {
   ensureActiveProjectS3Credentials,
   S3ProjectRoleUnavailableError,
@@ -50,6 +55,7 @@ function session(): {
   federationIdentityProvider: string;
   keycloakRefreshToken?: string;
   s3ProjectRoles: Record<string, string>;
+  oidcSessionGeneration: string;
   sessionId: string;
   sessionSignedInAt: number;
   sessionLastActivityAt: number;
@@ -61,6 +67,7 @@ function session(): {
     federationIdentityProvider: "demo",
     keycloakRefreshToken: "old-primary-refresh-token",
     s3ProjectRoles: { project1: "arn:aws:iam::account:role/access" },
+    oidcSessionGeneration: "generation-1",
     sessionId: "session-1",
     sessionSignedInAt: now - 1_000,
     sessionLastActivityAt: now - 500,
@@ -84,6 +91,9 @@ describe("Object Storage credential renewal", () => {
         refresh_token: "rotated-primary-refresh-token",
       };
     });
+    mocks.saveRedisSession.mockImplementation(async (current) =>
+      current.save(),
+    );
     mocks.tryExtractRgwProjectRoles.mockReturnValue({
       project1: "arn:aws:iam::account:role/access",
     });
@@ -138,6 +148,43 @@ describe("Object Storage credential renewal", () => {
     ).rejects.toThrow("STS temporarily unavailable");
 
     expect(current.keycloakRefreshToken).toBe("rotated-primary-refresh-token");
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not merge STS credentials over a completed continuation", async () => {
+    const current = session();
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        keycloakRefreshToken: "continuation-refresh-token",
+        oidcSessionGeneration: "generation-2",
+      });
+    });
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("superseded by a newer OIDC session");
+
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not assume a role after role claims conflict with a continuation", async () => {
+    const current = session();
+    mocks.tryExtractRgwProjectRoles.mockReturnValue({
+      project1: "arn:aws:iam::account:role/new-access",
+    });
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        oidcSessionContinuation: true,
+      });
+    });
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("superseded by a newer OIDC session");
+
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
     expect(current.save).toHaveBeenCalledOnce();
   });
 

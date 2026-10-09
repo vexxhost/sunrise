@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import { stashCloudContextBootstrap } from "@/lib/cloud-context-bootstrap";
@@ -107,6 +108,7 @@ export async function GET(request: Request) {
 
   session.keycloakRefreshToken = tokens.refresh_token;
   session.oidcRefreshCheckpoint = undefined;
+  session.oidcSessionGeneration = randomUUID();
   session.federationIdentityProvider = idp;
   const identityPromise = resolveOidcIdentity(
     tokens.access_token,

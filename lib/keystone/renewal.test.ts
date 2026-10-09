@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   finalizeKeystoneSession: vi.fn(),
   getSunriseOidcConfig: vi.fn(),
   refreshSessionOidcTokens: vi.fn(),
+  saveRedisSession: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -18,6 +19,9 @@ vi.mock("@/lib/oidc/session-refresh", () => ({
 vi.mock("@/lib/oidc/sunrise", () => ({
   getSunriseOidcConfig: mocks.getSunriseOidcConfig,
 }));
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
+}));
 
 import { refreshKeystoneSession } from "@/lib/keystone/renewal";
 
@@ -27,6 +31,7 @@ function session() {
     keycloakRefreshToken: "old-refresh-token",
     federationIdentityProvider: "demo",
     oidcIdentity: { identityProvider: "demo" },
+    oidcSessionGeneration: "generation-1",
     authRecovery: { reason: "session-unavailable" },
     sessionId: "session-1",
     sessionSignedInAt: now - 1_000,
@@ -46,6 +51,9 @@ describe("Keystone session renewal", () => {
         refresh_token: "rotated-refresh-token",
       };
     });
+    mocks.saveRedisSession.mockImplementation(async (current) =>
+      current.save(),
+    );
     mocks.getSunriseOidcConfig.mockReturnValue({ protocol: "demo-openid" });
     mocks.federateOidcWithKeystone.mockResolvedValue("new-unscoped-token");
     mocks.finalizeKeystoneSession.mockResolvedValue({ status: "ready" });
@@ -93,6 +101,23 @@ describe("Keystone session renewal", () => {
     expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
     expect(current.save).toHaveBeenCalledOnce();
     expect(calls).toEqual(["save", "federate"]);
+  });
+
+  it("does not merge Keystone credentials over a completed continuation", async () => {
+    const current = session();
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        keycloakRefreshToken: "continuation-refresh-token",
+        oidcSessionGeneration: "generation-2",
+      });
+    });
+
+    await expect(refreshKeystoneSession(current as never)).rejects.toThrow(
+      "superseded by a newer OIDC session",
+    );
+
+    expect(current.save).toHaveBeenCalledOnce();
   });
 
   it("preserves no-project recovery after a successful identity refresh", async () => {

@@ -6,6 +6,10 @@ import {
   finalizeKeystoneSession,
 } from "@/lib/keystone/login";
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
+import {
+  captureOidcSessionAuthority,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
 import type { SunriseSession } from "@/lib/session";
 import { getSessionLifetimeState } from "@/lib/session-lifetime";
@@ -37,6 +41,7 @@ export async function refreshKeystoneSession(
   }
 
   if (!refreshed) return "reauthenticate";
+  const authority = captureOidcSessionAuthority(session);
 
   const unscopedToken = await federateOidcWithKeystone(
     refreshed.access_token,
@@ -47,6 +52,6 @@ export async function refreshKeystoneSession(
 
   session.authRecovery =
     resolution.status === "ready" ? undefined : { reason: resolution.status };
-  await session.save();
+  await saveOidcSessionIfAuthoritative(session, authority);
   return resolution.status;
 }

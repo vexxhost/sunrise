@@ -83,6 +83,7 @@ export type SunriseSession = {
   authRecovery?: AuthRecoveryIssue;
   keycloakRefreshToken?: string;
   oidcRefreshCheckpoint?: OidcRefreshCheckpoint;
+  oidcSessionGeneration?: string;
   cloudContextBootstrapId?: string;
   sessionId?: string;
   sessionSignedInAt?: number;
@@ -148,6 +149,7 @@ function denyExpiredCredentials(session: IronSession<SunriseSession>) {
   session.keystoneProjectRoles = undefined;
   session.keycloakRefreshToken = undefined;
   session.oidcRefreshCheckpoint = undefined;
+  session.oidcSessionGeneration = undefined;
   session.s3Credentials = undefined;
 }
 

@@ -147,6 +147,7 @@ describe("OIDC callback recovery", () => {
       oidcIdentity: identity,
       authRecovery: { reason: "no-projects" },
       keycloakRefreshToken: "refresh-token",
+      oidcSessionGeneration: expect.any(String),
     });
     expect(current.save).toHaveBeenCalled();
     expect(mocks.startSessionLifetime).toHaveBeenCalledWith(current);

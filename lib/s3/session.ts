@@ -2,6 +2,10 @@ import "server-only";
 
 import type { IronSession } from "iron-session";
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
+import {
+  captureOidcSessionAuthority,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
 import {
   getActiveS3Credentials,
@@ -79,6 +83,7 @@ export async function refreshActiveProjectS3Credentials(
     projectId,
   );
   if (!refreshed) return undefined;
+  const authority = captureOidcSessionAuthority(session);
   let sessionChanged = false;
 
   const projectRoles = tryExtractRgwProjectRoles(...refreshed.roleTokens);
@@ -92,7 +97,7 @@ export async function refreshActiveProjectS3Credentials(
   // Persist the latest role mapping before STS discovery or role assumption
   // can fail. OIDC refresh-token rotation is persisted by the refresh helper.
   if (sessionChanged) {
-    await session.save();
+    await saveOidcSessionIfAuthoritative(session, authority);
   }
 
   const roleArn = session.s3ProjectRoles?.[projectId];
@@ -109,7 +114,7 @@ export async function refreshActiveProjectS3Credentials(
     rgwStsDurationSeconds,
   );
   setS3CredentialsForProject(session, creds);
-  await session.save();
+  await saveOidcSessionIfAuthoritative(session, authority);
   return creds;
 }
 
