@@ -188,6 +188,23 @@ describe("Object Storage credential renewal", () => {
     expect(current.save).toHaveBeenCalledOnce();
   });
 
+  it("does not assume a role after the active project changed", async () => {
+    const current = session();
+    mocks.refreshSessionOidcTokens.mockImplementation(async (active) => {
+      active.projectId = "project-2";
+      return {
+        access_token: "refreshed-primary-access-token",
+        id_token: "refreshed-primary-id-token",
+      };
+    });
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("superseded by a newer OIDC session");
+
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+  });
+
   it("returns no credentials when the Sunrise refresh token is unavailable", async () => {
     const current = session();
     delete current.keycloakRefreshToken;

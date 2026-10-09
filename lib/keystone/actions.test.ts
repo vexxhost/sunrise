@@ -112,4 +112,22 @@ describe("Keystone context actions", () => {
     expect(mocks.writePrefs).not.toHaveBeenCalled();
     expect(current.save).not.toHaveBeenCalled();
   });
+
+  it("does not let a delayed project switch replace a newer selection", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        projectId: "project-3",
+      });
+    });
+
+    await expect(setProject(project as never)).rejects.toThrow(
+      "superseded by a newer OIDC session",
+    );
+
+    expect(mocks.refreshActiveProjectS3Credentials).not.toHaveBeenCalled();
+    expect(mocks.writePrefs).not.toHaveBeenCalled();
+  });
 });

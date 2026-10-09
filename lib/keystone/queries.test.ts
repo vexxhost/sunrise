@@ -62,4 +62,18 @@ describe("Keystone context queries", () => {
     await expect(getProjects()).resolves.toEqual([]);
     expect(current.save).not.toHaveBeenCalled();
   });
+
+  it("does not replace a concurrently selected project with the default", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        projectId: "project-2",
+      });
+    });
+
+    await expect(getProjects()).resolves.toEqual([]);
+    expect(current.save).not.toHaveBeenCalled();
+  });
 });

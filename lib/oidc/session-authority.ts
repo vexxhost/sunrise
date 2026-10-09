@@ -8,6 +8,7 @@ import { saveRedisSession } from "@/lib/session-store";
 export type OidcSessionAuthority = {
   generation?: string;
   identityProvider?: string;
+  projectId?: string;
   refreshTokenDigest?: string;
 };
 
@@ -38,6 +39,7 @@ export function captureOidcSessionAuthority(
     identityProvider:
       session.federationIdentityProvider ??
       session.oidcIdentity?.identityProvider,
+    projectId: session.projectId,
     refreshTokenDigest: tokenDigest(session.keycloakRefreshToken),
   };
 }
@@ -51,6 +53,7 @@ export function assertOidcSessionAuthority(
     session.oidcSessionContinuation ||
     current.generation !== expected.generation ||
     current.identityProvider !== expected.identityProvider ||
+    current.projectId !== expected.projectId ||
     current.refreshTokenDigest !== expected.refreshTokenDigest
   ) {
     throw new OidcSessionSupersededError();

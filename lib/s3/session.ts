@@ -4,6 +4,7 @@ import type { IronSession } from "iron-session";
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
 import {
   captureOidcSessionAuthority,
+  OidcSessionSupersededError,
   saveOidcSessionIfAuthoritative,
 } from "@/lib/oidc/session-authority";
 import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
@@ -83,6 +84,9 @@ export async function refreshActiveProjectS3Credentials(
     projectId,
   );
   if (!refreshed) return undefined;
+  if (normalizeProjectId(session.projectId) !== projectId) {
+    throw new OidcSessionSupersededError();
+  }
   const authority = captureOidcSessionAuthority(session);
   let sessionChanged = false;
 
