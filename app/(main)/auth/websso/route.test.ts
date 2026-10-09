@@ -37,6 +37,13 @@ function request() {
   });
 }
 
+function invalidRequest() {
+  return new Request("https://sunrise.example.test/auth/websso", {
+    method: "POST",
+    body: new URLSearchParams(),
+  });
+}
+
 describe("legacy WebSSO recovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -120,5 +127,30 @@ describe("legacy WebSSO recovery", () => {
     expect(response.status).toBe(303);
     expect(session.save).not.toHaveBeenCalled();
     expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
+  });
+
+  it("does not merge invalid-response cleanup into a newer session", async () => {
+    const session = {
+      keystoneProjectToken: "older-token",
+      projectId: "older-project",
+      regionId: "RegionOne",
+      save: vi.fn(),
+    };
+    mocks.getSession.mockResolvedValue(session);
+    mocks.saveRedisSession.mockImplementation(async (_current, options) => {
+      options.validateConflictRetry({
+        keystoneProjectToken: "newer-token",
+        projectId: "newer-project",
+      });
+    });
+
+    const response = await POST(invalidRequest());
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(session.save).not.toHaveBeenCalled();
+    expect(mocks.finalizeKeystoneSession).not.toHaveBeenCalled();
   });
 });

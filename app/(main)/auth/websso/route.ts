@@ -11,6 +11,27 @@ import { saveRedisSession } from "@/lib/session-store";
 
 const SUNRISE_DASHBOARD_URL = process.env.SUNRISE_DASHBOARD_URL ?? "/";
 
+type WebSsoSession = Awaited<ReturnType<typeof getSession>>;
+
+async function saveWebSsoResult(session: WebSsoSession) {
+  try {
+    await saveRedisSession(session, {
+      // Rotation gives this callback an empty successor. Any record created
+      // there before a terminal save belongs to a newer request, so neither
+      // authentication fields nor invalid-response cleanup may merge into it.
+      validateConflictRetry: () => {
+        throw new StoredSessionSupersededError(
+          "WebSSO result was superseded by a newer session update",
+        );
+      },
+    });
+    return true;
+  } catch (error) {
+    if (isStoredSessionSupersededError(error)) return false;
+    throw error;
+  }
+}
+
 /**
  * Legacy Keystone WebSSO POST callback. Kept as a fallback for setups still
  * driving login through Keystone's federation endpoint. The unified Sunrise
@@ -28,7 +49,9 @@ export async function POST(request: Request) {
     session.keystoneProjectRoles = undefined;
     session.projectId = undefined;
     session.regionId = undefined;
-    await session.save();
+    if (!(await saveWebSsoResult(session))) {
+      return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
+    }
     return new Response("Invalid WebSSO response", { status: 400 });
   }
 
@@ -52,22 +75,8 @@ export async function POST(request: Request) {
       error instanceof Error ? error.message : "unknown error",
     );
   }
-  try {
-    await saveRedisSession(session, {
-      // Rotation gives this callback an empty successor. Any record created
-      // there before credential publication belongs to a newer request, so a
-      // full authentication result must never be conflict-merged into it.
-      validateConflictRetry: () => {
-        throw new StoredSessionSupersededError(
-          "WebSSO authentication was superseded by a newer session update",
-        );
-      },
-    });
-  } catch (error) {
-    if (isStoredSessionSupersededError(error)) {
-      return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
-    }
-    throw error;
+  if (!(await saveWebSsoResult(session))) {
+    return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
   }
 
   return Response.redirect(SUNRISE_DASHBOARD_URL, 303);
