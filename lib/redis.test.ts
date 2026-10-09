@@ -45,7 +45,7 @@ function redisClient(command: () => Promise<unknown>) {
       client.isOpen = false;
     }),
     withAbortSignal: vi.fn(() => client),
-    eval: vi.fn(command),
+    eval: vi.fn(async (_script: string, _options?: unknown) => command()),
     get: vi.fn(command),
   };
   return client;
@@ -214,5 +214,7 @@ describe("Redis deployment configuration", () => {
       ],
       arguments: [expect.any(String)],
     });
+    const nextCacheProbe = client.eval.mock.calls[1][0] as string;
+    expect(nextCacheProbe).toContain("ZREVRANGEBYSCORE");
   });
 });

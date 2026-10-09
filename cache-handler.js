@@ -25,6 +25,12 @@ local now = redis.call("TIME")
 local nowMs = tonumber(now[1]) * 1000
   + math.floor(tonumber(now[2]) / 1000)
 local expiresAt = 0
+local payloadOk, decodedPayload = pcall(cjson.decode, payload)
+
+if payloadOk then
+  decodedPayload.lastModified = nowMs
+  payload = cjson.encode(decodedPayload)
+end
 
 if ttlSeconds ~= "" then
   expiresAt = nowMs + tonumber(ttlSeconds) * 1000
@@ -159,8 +165,7 @@ return result
 const REVALIDATE_TAGS_SCRIPT = `
 local tagPrefix = ARGV[1]
 local mode = ARGV[2]
-local staleAt = tonumber(ARGV[3])
-local expiredAt = ARGV[4] ~= "" and tonumber(ARGV[4]) or nil
+local expireSeconds = ARGV[3] ~= "" and tonumber(ARGV[3]) or nil
 local staleMember = "${TAG_STALE_MEMBER}"
 local expiredMember = "${TAG_EXPIRED_MEMBER}"
 local visited = {}
@@ -168,6 +173,8 @@ local requested = {}
 local now = redis.call("TIME")
 local nowMs = tonumber(now[1]) * 1000
   + math.floor(tonumber(now[2]) / 1000)
+local staleAt = nowMs
+local expiredAt = expireSeconds and nowMs + expireSeconds * 1000 or nil
 
 local function refreshTagExpiration(tagKey)
   redis.call("ZREMRANGEBYSCORE", tagKey, 1, nowMs)
@@ -239,7 +246,7 @@ for _, requestedTagKey in ipairs(KEYS) do
     redis.call("DEL", requestedTagKey)
   end
 end
-return 1
+return tostring(staleAt)
 `;
 
 function cacheBackend() {
@@ -572,22 +579,20 @@ class SunriseCacheHandler {
 
     if (!normalized.length) return;
 
-    const staleAt = Date.now();
-    const expiredAt =
-      durations?.expire === undefined
-        ? ""
-        : (staleAt + durations.expire * 1_000).toString();
-    await runCommand((current) =>
+    const result = await runCommand((current) =>
       current.eval(REVALIDATE_TAGS_SCRIPT, {
         keys: normalized.map(tagKey),
         arguments: [
           `${keyPrefix()}:tag:`,
           durations ? "profiled" : "expire",
-          staleAt.toString(),
-          expiredAt,
+          durations?.expire?.toString() ?? "",
         ],
       }),
     );
+    const staleAt = Number(result);
+    if (!Number.isFinite(staleAt) || staleAt <= 0) {
+      throw new Error("Redis returned an invalid cache invalidation timestamp");
+    }
     updateLocalTagState(normalized, durations, staleAt);
   }
 

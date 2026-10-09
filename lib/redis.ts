@@ -55,7 +55,10 @@ redis.call("PEXPIREAT", KEYS[2], expiresAt)
 redis.call("ZSCORE", KEYS[2], KEYS[1])
 redis.call("ZCOUNT", KEYS[2], 0, 0)
 redis.call("ZRANGE", KEYS[2], 0, -1)
-redis.call("ZREVRANGE", KEYS[2], 0, 0, "WITHSCORES")
+redis.call(
+  "ZREVRANGEBYSCORE", KEYS[2], "+inf", 1,
+  "WITHSCORES", "LIMIT", 0, 1
+)
 redis.call("ZREM", KEYS[2], KEYS[1])
 redis.call("ZADD", KEYS[2], expiresAt, KEYS[1])
 redis.call("ZREMRANGEBYSCORE", KEYS[2], 1, expiresAt - 1)
