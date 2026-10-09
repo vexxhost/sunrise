@@ -1,0 +1,92 @@
+x-sunrise: &sunrise
+  image: sunrise:local
+  init: true
+  env_file:
+    - .env.local
+  environment:
+    HOSTNAME: 0.0.0.0
+    PORT: 3000
+    SUNRISE_DEPLOYMENT_ID: local-compose
+    SUNRISE_SESSION_BACKEND: redis
+    SUNRISE_REDIS_URL: ${SUNRISE_REDIS_URL:-redis://redis:6379}
+    SUNRISE_REDIS_USERNAME: ${SUNRISE_REDIS_USERNAME:-}
+    SUNRISE_REDIS_PASSWORD: ${SUNRISE_REDIS_PASSWORD:-}
+  depends_on:
+    redis:
+      condition: service_healthy
+  healthcheck:
+    test:
+      [
+        "CMD",
+        "node",
+        "-e",
+        "fetch('http://127.0.0.1:3000/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+      ]
+    interval: 10s
+    timeout: 3s
+    start_period: 20s
+    retries: 6
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+    - /app/.next/cache:size=128m,uid=1001,gid=1001,mode=0750
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+name: sunrise-local
+
+services:
+  sunrise:
+    <<: *sunrise
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SUNRISE_DEPLOYMENT_ID: local-compose
+    ports:
+      - "9990:3000"
+
+  sunrise-replica:
+    <<: *sunrise
+    profiles: [replica]
+    ports:
+      - "9991:3000"
+
+  redis:
+    image: ${SUNRISE_REDIS_IMAGE:-valkey/valkey:9.1.2-alpine}
+    user: "999:1000"
+    environment:
+      SUNRISE_REDIS_PASSWORD: ${SUNRISE_REDIS_PASSWORD:-}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        if command -v valkey-server >/dev/null 2>&1; then
+          server=valkey-server
+        else
+          server=redis-server
+        fi
+        set -- "$$server" --appendonly no --save "" --maxmemory-policy noeviction
+        if [ -n "$${SUNRISE_REDIS_PASSWORD:-}" ]; then
+          set -- "$$@" --requirepass "$$SUNRISE_REDIS_PASSWORD"
+        fi
+        exec "$$@"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'if command -v valkey-cli >/dev/null 2>&1; then cli=valkey-cli; else cli=redis-cli; fi; if [ -n "$${SUNRISE_REDIS_PASSWORD:-}" ]; then export REDISCLI_AUTH="$$SUNRISE_REDIS_PASSWORD"; fi; "$$cli" ping',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /data:size=128m,uid=999,gid=1000,mode=0750
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

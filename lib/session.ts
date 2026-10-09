@@ -6,10 +6,17 @@ import {
 } from "iron-session";
 import { cookies } from "next/headers";
 import {
+  destroyRedisSession,
+  getRedisSession,
+  rotateRedisSession,
+} from "@/lib/session-store";
+import {
   getSessionLifetimePolicy,
   getSessionLifetimeState,
   type SessionExpiryReason,
 } from "@/lib/session-lifetime";
+import { hasAuthenticatedSessionData } from "@/lib/session-data";
+import { getSessionBackend } from "@/lib/redis";
 import type { KeystoneRole } from "@/types/openstack";
 
 export const SESSION_COOKIE_NAME = "sunrise";
@@ -43,6 +50,23 @@ export type AuthRecoveryIssue = {
   reason: AuthRecoveryReason;
 };
 
+export type OidcRefreshResult = {
+  access_token: string;
+  id_token?: string;
+  refresh_token?: string;
+  expires_in: number;
+  token_type: string;
+};
+
+export type OidcRefreshCheckpoint = {
+  ancestorTokenDigests?: string[];
+  consumedTokenDigest: string;
+  identityProvider: string;
+  issuedTokenDigest: string;
+  result: OidcRefreshResult;
+  reuseUntil: number;
+};
+
 export type SunriseSession = {
   keystone_unscoped_token?: string;
   keystoneProjectToken?: string;
@@ -54,12 +78,15 @@ export type SunriseSession = {
   // Unified Sunrise OIDC flow (Keycloak as IdP for both Keystone + S3 STS).
   oidcVerifier?: string;
   oidcState?: string;
+  oidcFlowId?: string;
   oidcIdProvider?: string;
   oidcReturnTo?: string;
   oidcIdentity?: SunriseIdentity;
   federationIdentityProvider?: string;
   authRecovery?: AuthRecoveryIssue;
   keycloakRefreshToken?: string;
+  oidcRefreshCheckpoint?: OidcRefreshCheckpoint;
+  oidcSessionGeneration?: string;
   cloudContextBootstrapId?: string;
   sessionId?: string;
   sessionSignedInAt?: number;
@@ -110,13 +137,7 @@ function setTransient<K extends keyof SunriseSession>(
 }
 
 export function hasAuthenticatedSession(session: SunriseSession): boolean {
-  return Boolean(
-    session.oidcIdentity ||
-    session.keycloakRefreshToken ||
-    session.keystone_unscoped_token ||
-    session.keystoneProjectToken ||
-    session.s3Credentials,
-  );
+  return hasAuthenticatedSessionData(session);
 }
 
 function denyExpiredCredentials(session: IronSession<SunriseSession>) {
@@ -124,6 +145,8 @@ function denyExpiredCredentials(session: IronSession<SunriseSession>) {
   session.keystoneProjectToken = undefined;
   session.keystoneProjectRoles = undefined;
   session.keycloakRefreshToken = undefined;
+  session.oidcRefreshCheckpoint = undefined;
+  session.oidcSessionGeneration = undefined;
   session.s3Credentials = undefined;
 }
 
@@ -134,16 +157,18 @@ async function activitySession() {
   );
 }
 
-export async function startSessionLifetime(
+export async function prepareSessionLifetime(
   session: IronSession<SunriseSession>,
   now = Date.now(),
 ) {
+  await rotateRedisSession(session);
   const sessionId = randomUUID();
   session.sessionId = sessionId;
   session.sessionSignedInAt = now;
+  session.oidcRefreshCheckpoint = undefined;
   setTransient(session, "sessionLastActivityAt", now);
   setTransient(session, "sessionExpiryReason", undefined);
-  await saveSessionActivity(sessionId, now);
+  return { sessionId, lastActivityAt: now };
 }
 
 export async function saveSessionActivity(
@@ -214,10 +239,12 @@ export async function getSession(
   options: GetSessionOptions = {},
 ): Promise<IronSession<SunriseSession>> {
   const cookieStore = await cookies();
-  const session = await getIronSession<SunriseSession>(
-    cookieStore,
-    sessionOptions(SESSION_COOKIE_NAME, true),
-  );
+  const backend = getSessionBackend();
+  const sessionOptionsValue = sessionOptions(SESSION_COOKIE_NAME, true);
+  const session =
+    backend === "redis"
+      ? await getRedisSession(cookieStore, sessionOptionsValue)
+      : await getIronSession<SunriseSession>(cookieStore, sessionOptionsValue);
 
   if (session.sessionId) {
     const activity = await getIronSession<SessionActivity>(
@@ -242,4 +269,12 @@ export async function getSession(
   setTransient(session, "sessionExpiryReason", lifetime.reason);
   if (!options.allowExpired) denyExpiredCredentials(session);
   return session;
+}
+
+export async function destroySession(session: IronSession<SunriseSession>) {
+  if (getSessionBackend() === "redis") {
+    await destroyRedisSession(session);
+    return;
+  }
+  session.destroy();
 }

@@ -8,12 +8,14 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/keystone/renewal", () => ({
   refreshKeystoneSession: mocks.refreshKeystoneSession,
 }));
 
 import { GET } from "./route";
+import { OidcSessionSupersededError } from "@/lib/oidc/session-authority";
 
 function session(): {
   oidcIdentity: { identityProvider: string };
@@ -127,5 +129,21 @@ describe("Keystone auth refresh route", () => {
     expect(response.status).toBe(303);
     expect(current.authRecovery).toEqual({ reason: "session-unavailable" });
     expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not save stale recovery state after a completed continuation", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.refreshKeystoneSession.mockRejectedValue(
+      new OidcSessionSupersededError(),
+    );
+
+    const response = await GET(
+      new Request("https://sunrise.example.test/auth/refresh"),
+    );
+
+    expect(response.status).toBe(303);
+    expect(current.authRecovery).toBeUndefined();
+    expect(current.save).not.toHaveBeenCalled();
   });
 });

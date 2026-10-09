@@ -6,6 +6,11 @@ import {
   finalizeKeystoneSession,
 } from "@/lib/keystone/login";
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
+import {
+  captureOidcSessionAuthority,
+  isOidcSessionSupersededError,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
 import type { SunriseSession } from "@/lib/session";
 import { getSessionLifetimeState } from "@/lib/session-lifetime";
@@ -30,6 +35,7 @@ export async function refreshKeystoneSession(
     protocol = getSunriseOidcConfig(identityProvider).protocol;
     refreshed = await refreshSessionOidcTokens(session, identityProvider);
   } catch (error) {
+    if (isOidcSessionSupersededError(error)) throw error;
     console.warn("[keystone/session] failed to refresh Keycloak token", {
       error: error instanceof Error ? error.message : String(error),
     });
@@ -37,6 +43,7 @@ export async function refreshKeystoneSession(
   }
 
   if (!refreshed) return "reauthenticate";
+  const authority = captureOidcSessionAuthority(session);
 
   const unscopedToken = await federateOidcWithKeystone(
     refreshed.access_token,
@@ -47,6 +54,6 @@ export async function refreshKeystoneSession(
 
   session.authRecovery =
     resolution.status === "ready" ? undefined : { reason: resolution.status };
-  await session.save();
+  await saveOidcSessionIfAuthoritative(session, authority);
   return resolution.status;
 }

@@ -4,10 +4,14 @@ vi.mock("server-only", () => ({}));
 
 const mocks = vi.hoisted(() => ({
   getProjectScopedTokenContext: vi.fn(),
+  saveRedisSession: vi.fn(),
 }));
 
 vi.mock("@/lib/keystone/login", () => ({
   getProjectScopedTokenContext: mocks.getProjectScopedTokenContext,
+}));
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
 }));
 
 describe("Keystone session validation", () => {
@@ -15,6 +19,9 @@ describe("Keystone session validation", () => {
     vi.resetModules();
     vi.stubEnv("KEYSTONE_API", "https://identity.example.test");
     mocks.getProjectScopedTokenContext.mockReset();
+    mocks.saveRedisSession.mockImplementation(async (current) =>
+      current.save(),
+    );
   });
 
   it("backfills project roles for a session created before role metadata existed", async () => {
@@ -55,5 +62,80 @@ describe("Keystone session validation", () => {
       ],
     });
     expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("does not persist token repairs over a completed continuation", async () => {
+    const session = {
+      keystone_unscoped_token: "unscoped-token",
+      keystoneProjectToken: "existing-project-token",
+      projectId: "project-id",
+      keycloakRefreshToken: "refresh-token-1",
+      oidcSessionGeneration: "generation-1",
+      federationIdentityProvider: "demo",
+      save: vi.fn(),
+    };
+    mocks.getProjectScopedTokenContext.mockResolvedValue({
+      value: "refreshed-project-token",
+      roles: [{ id: "member-id", name: "member" }],
+    });
+    mocks.saveRedisSession.mockImplementation(async (_current, options) => {
+      options.validateConflictRetry({
+        ...session,
+        keycloakRefreshToken: "refresh-token-2",
+        oidcSessionGeneration: "generation-2",
+      });
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    const { getKeystoneSessionState } = await import("@/lib/keystone/session");
+
+    await expect(
+      getKeystoneSessionState(
+        session as unknown as Parameters<typeof getKeystoneSessionState>[0],
+      ),
+    ).resolves.toEqual({
+      status: "unknown",
+      reason: "OIDC session changed during Keystone validation",
+    });
+    expect(session.save).not.toHaveBeenCalled();
+  });
+
+  it("does not repair a scoped token after the active project changed", async () => {
+    const session = {
+      keystone_unscoped_token: "unscoped-token",
+      keystoneProjectToken: "existing-project-token",
+      projectId: "project-id",
+      keycloakRefreshToken: "refresh-token-1",
+      oidcSessionGeneration: "generation-1",
+      federationIdentityProvider: "demo",
+      save: vi.fn(),
+    };
+    mocks.getProjectScopedTokenContext.mockResolvedValue({
+      value: "refreshed-project-token",
+      roles: [{ id: "member-id", name: "member" }],
+    });
+    mocks.saveRedisSession.mockImplementation(async (_current, options) => {
+      options.validateConflictRetry({
+        ...session,
+        projectId: "new-project-id",
+      });
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 200 })),
+    );
+    const { getKeystoneSessionState } = await import("@/lib/keystone/session");
+
+    await expect(
+      getKeystoneSessionState(
+        session as unknown as Parameters<typeof getKeystoneSessionState>[0],
+      ),
+    ).resolves.toEqual({
+      status: "unknown",
+      reason: "OIDC session changed during Keystone validation",
+    });
+    expect(session.save).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,10 @@ const mocks = vi.hoisted(() => {
   process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
   return {
     getSession: vi.fn(),
+    destroySession: vi.fn((session: { destroy: () => void }) => {
+      session.destroy();
+      return Promise.resolve();
+    }),
     destroySessionActivity: vi.fn(),
     buildEndSessionUrl: vi.fn(),
     refreshAccessToken: vi.fn(),
@@ -12,6 +16,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/session", () => ({
   getSession: mocks.getSession,
+  destroySession: mocks.destroySession,
   destroySessionActivity: mocks.destroySessionActivity,
   SESSION_ACTIVITY_COOKIE_NAME: "sunrise-activity",
   SESSION_COOKIE_NAME: "sunrise",
@@ -64,6 +69,12 @@ describe("Sunrise logout route", () => {
       "refresh-token",
       "demo",
     );
+    expect(mocks.destroySession.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.refreshAccessToken.mock.invocationCallOrder[0],
+    );
+    expect(
+      mocks.destroySessionActivity.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.refreshAccessToken.mock.invocationCallOrder[0]);
     expect(current.destroy).toHaveBeenCalledOnce();
     expect(mocks.getSession).toHaveBeenCalledWith({ allowExpired: true });
     expect(mocks.destroySessionActivity).toHaveBeenCalledOnce();

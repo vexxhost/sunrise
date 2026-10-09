@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getActiveS3Credentials: vi.fn(),
   getSunriseOidcConfig: vi.fn(),
   refreshSessionOidcTokens: vi.fn(),
+  saveRedisSession: vi.fn(),
   assumeRoleWithIdToken: vi.fn(),
   tryExtractRgwProjectRoles: vi.fn(),
 }));
@@ -32,10 +33,15 @@ vi.mock("@/lib/s3/sts", () => ({
   tryExtractRgwProjectRoles: mocks.tryExtractRgwProjectRoles,
 }));
 
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
+}));
+
 import {
   ensureActiveProjectS3Credentials,
   S3ProjectRoleUnavailableError,
 } from "@/lib/s3/session";
+import { OidcSessionSupersededError } from "@/lib/oidc/session-authority";
 
 const credentials = {
   accessKeyId: "new-access-key",
@@ -50,6 +56,8 @@ function session(): {
   federationIdentityProvider: string;
   keycloakRefreshToken?: string;
   s3ProjectRoles: Record<string, string>;
+  oidcSessionGeneration: string;
+  regionId: string;
   sessionId: string;
   sessionSignedInAt: number;
   sessionLastActivityAt: number;
@@ -61,6 +69,8 @@ function session(): {
     federationIdentityProvider: "demo",
     keycloakRefreshToken: "old-primary-refresh-token",
     s3ProjectRoles: { project1: "arn:aws:iam::account:role/access" },
+    oidcSessionGeneration: "generation-1",
+    regionId: "RegionOne",
     sessionId: "session-1",
     sessionSignedInAt: now - 1_000,
     sessionLastActivityAt: now - 500,
@@ -77,12 +87,16 @@ describe("Object Storage credential renewal", () => {
     });
     mocks.refreshSessionOidcTokens.mockImplementation(async (current) => {
       current.keycloakRefreshToken = "rotated-primary-refresh-token";
+      await current.save();
       return {
         access_token: "refreshed-primary-access-token",
         id_token: "refreshed-primary-id-token",
         refresh_token: "rotated-primary-refresh-token",
       };
     });
+    mocks.saveRedisSession.mockImplementation(async (current) =>
+      current.save(),
+    );
     mocks.tryExtractRgwProjectRoles.mockReturnValue({
       project1: "arn:aws:iam::account:role/access",
     });
@@ -122,7 +136,7 @@ describe("Object Storage credential renewal", () => {
     await expect(
       ensureActiveProjectS3Credentials(current as never),
     ).rejects.toBeInstanceOf(S3ProjectRoleUnavailableError);
-    expect(current.save).toHaveBeenCalledOnce();
+    expect(current.save).toHaveBeenCalledTimes(2);
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
@@ -138,6 +152,76 @@ describe("Object Storage credential renewal", () => {
 
     expect(current.keycloakRefreshToken).toBe("rotated-primary-refresh-token");
     expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not merge STS credentials over a completed continuation", async () => {
+    const current = session();
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        keycloakRefreshToken: "continuation-refresh-token",
+        oidcSessionGeneration: "generation-2",
+      });
+    });
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("superseded by a newer OIDC session");
+
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not restore STS credentials for a previously active region", async () => {
+    const current = session();
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        regionId: "RegionTwo",
+      });
+    });
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("superseded by a newer OIDC session");
+
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not assume a role after role claims conflict with a continuation", async () => {
+    const current = session();
+    mocks.tryExtractRgwProjectRoles.mockReturnValue({
+      project1: "arn:aws:iam::account:role/new-access",
+    });
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        oidcSessionContinuation: true,
+      });
+    });
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("superseded by a newer OIDC session");
+
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not assume a role after the active project changed", async () => {
+    const current = session();
+    mocks.refreshSessionOidcTokens.mockImplementation(async (active) => {
+      active.projectId = "project-2";
+      return {
+        access_token: "refreshed-primary-access-token",
+        id_token: "refreshed-primary-id-token",
+      };
+    });
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("superseded by a newer OIDC session");
+
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
   it("returns no credentials when the Sunrise refresh token is unavailable", async () => {
@@ -161,6 +245,20 @@ describe("Object Storage credential renewal", () => {
     await expect(
       ensureActiveProjectS3Credentials(current as never),
     ).resolves.toBeUndefined();
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+  });
+
+  it("propagates refresh supersession without clearing continuation state", async () => {
+    const current = session();
+    mocks.refreshSessionOidcTokens.mockRejectedValue(
+      new OidcSessionSupersededError(
+        "The OIDC refresh was superseded by an interactive continuation",
+      ),
+    );
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toBeInstanceOf(OidcSessionSupersededError);
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 

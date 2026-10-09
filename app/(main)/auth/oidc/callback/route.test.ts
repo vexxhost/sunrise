@@ -4,8 +4,8 @@ const mocks = vi.hoisted(() => {
   process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
   return {
     getSession: vi.fn(),
+    prepareSessionLifetime: vi.fn(),
     saveSessionActivity: vi.fn(),
-    startSessionLifetime: vi.fn(),
     exchangeCodeForTokens: vi.fn(),
     getSunriseOidcConfig: vi.fn(),
     resolveOidcIdentity: vi.fn(),
@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     tryExtractRgwProjectRoles: vi.fn(),
     getS3Endpoint: vi.fn(),
     stashCloudContextBootstrap: vi.fn(),
+    saveRedisSession: vi.fn(),
   };
 });
 
@@ -26,10 +27,14 @@ vi.mock("@/lib/cloud-context-bootstrap", () => ({
 
 vi.mock("@/lib/session", () => ({
   getSession: mocks.getSession,
+  prepareSessionLifetime: mocks.prepareSessionLifetime,
   saveSessionActivity: mocks.saveSessionActivity,
-  startSessionLifetime: mocks.startSessionLifetime,
   normalizeProjectId: (value?: string) => value?.replaceAll("-", "") ?? "",
   setS3CredentialsForProject: vi.fn(),
+}));
+
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
 }));
 
 vi.mock("@/lib/oidc/sunrise", () => ({
@@ -58,6 +63,7 @@ vi.mock("@/lib/s3/endpoint", () => ({
 }));
 
 import { GET } from "./route";
+import { StoredSessionSupersededError } from "@/lib/session-errors";
 
 const identity = {
   subject: "user-123",
@@ -72,6 +78,7 @@ function session() {
   return {
     oidcState: "expected-state",
     oidcVerifier: "verifier",
+    oidcFlowId: "login-flow",
     oidcIdProvider: "demo",
     save: vi.fn().mockResolvedValue(undefined),
   };
@@ -123,7 +130,15 @@ describe("OIDC callback recovery", () => {
     mocks.getS3Endpoint.mockResolvedValue("https://s3.example.test");
     mocks.stashCloudContextBootstrap.mockReturnValue("bootstrap-id");
     mocks.saveSessionActivity.mockResolvedValue(undefined);
-    mocks.startSessionLifetime.mockResolvedValue(undefined);
+    mocks.prepareSessionLifetime.mockImplementation(async (session) => {
+      session.sessionId = "session-1";
+      session.sessionSignedInAt = 1_000;
+      return { sessionId: "session-1", lastActivityAt: 1_000 };
+    });
+    mocks.saveRedisSession.mockImplementation(
+      async (activeSession: { save: () => Promise<void> }) =>
+        activeSession.save(),
+    );
   });
 
   it("redirects an identity with zero projects to the recovery experience", async () => {
@@ -147,9 +162,17 @@ describe("OIDC callback recovery", () => {
       oidcIdentity: identity,
       authRecovery: { reason: "no-projects" },
       keycloakRefreshToken: "refresh-token",
+      oidcSessionGeneration: expect.any(String),
     });
     expect(current.save).toHaveBeenCalled();
-    expect(mocks.startSessionLifetime).toHaveBeenCalledWith(current);
+    expect(mocks.prepareSessionLifetime).toHaveBeenCalledWith(current);
+    expect(mocks.saveSessionActivity).toHaveBeenCalledWith(
+      "session-1",
+      1_000,
+    );
+    expect(current.save.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      mocks.saveSessionActivity.mock.invocationCallOrder[0],
+    );
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
@@ -158,12 +181,33 @@ describe("OIDC callback recovery", () => {
     const current = {
       ...session(),
       oidcSessionContinuation: true,
+      oidcRefreshCheckpoint: {
+        consumedTokenDigest: "consumed",
+        identityProvider: "demo",
+        issuedTokenDigest: "issued",
+        result: {
+          access_token: "old-access-token",
+          expires_in: 300,
+          token_type: "Bearer",
+        },
+        reuseUntil: now + 30_000,
+      },
       sessionId: "session-1",
       sessionSignedInAt: now - 1_000,
       sessionLastActivityAt: now - 500,
     };
     mocks.getSession.mockResolvedValue(current);
     mocks.finalizeKeystoneSession.mockResolvedValue({ status: "no-projects" });
+    mocks.exchangeCodeForTokens.mockImplementationOnce(async () => {
+      expect(current.oidcSessionContinuation).toBe(true);
+      return {
+        access_token: "access-token",
+        id_token: "id-token",
+        refresh_token: "refresh-token",
+        expires_in: 300,
+        token_type: "Bearer",
+      };
+    });
 
     await GET(
       new Request(
@@ -171,9 +215,14 @@ describe("OIDC callback recovery", () => {
       ),
     );
 
-    expect(mocks.saveSessionActivity).toHaveBeenCalledWith("session-1");
-    expect(mocks.startSessionLifetime).not.toHaveBeenCalled();
+    expect(mocks.saveSessionActivity).toHaveBeenCalledWith(
+      "session-1",
+      expect.any(Number),
+    );
+    expect(mocks.prepareSessionLifetime).not.toHaveBeenCalled();
     expect(current.sessionSignedInAt).toBe(now - 1_000);
+    expect(current.oidcRefreshCheckpoint).toBeUndefined();
+    expect(current.oidcSessionContinuation).toBeUndefined();
   });
 
   it("completes Keystone login when S3 is absent", async () => {
@@ -252,7 +301,7 @@ describe("OIDC callback recovery", () => {
       "Sunrise configuration error",
     );
     expect(mocks.exchangeCodeForTokens).not.toHaveBeenCalled();
-    expect(current.save).not.toHaveBeenCalled();
+    expect(current.save).toHaveBeenCalledTimes(2);
   });
 
   it("rejects continuation after the absolute lifetime", async () => {
@@ -359,7 +408,161 @@ describe("OIDC callback recovery", () => {
     expect(mocks.stashCloudContextBootstrap).toHaveBeenCalledWith(
       expect.objectContaining({ userName: "operator@example.test" }),
     );
+    expect(current.save).toHaveBeenCalledTimes(2);
+    expect(current.oidcFlowId).toBeUndefined();
+  });
+
+  it("does not consume the code after a newer login supersedes the flow", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.saveRedisSession.mockImplementationOnce(
+      async (
+        _activeSession: unknown,
+        options: {
+          validateConflictRetry?: (authoritative: {
+            oidcFlowId?: string;
+          }) => void;
+        },
+      ) => {
+        options.validateConflictRetry?.({ oidcFlowId: "newer-login-flow" });
+      },
+    );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.exchangeCodeForTokens).not.toHaveBeenCalled();
+    expect(current.save).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a newer flow when an older callback arrives", async () => {
+    const current = {
+      ...session(),
+      oidcState: "newer-state",
+      oidcFlowId: "newer-login-flow",
+    };
+    mocks.getSession.mockResolvedValue(current);
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=old-code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe("OIDC state mismatch");
+    expect(mocks.saveRedisSession).not.toHaveBeenCalled();
+    expect(current.oidcFlowId).toBe("newer-login-flow");
+    expect(current.oidcState).toBe("newer-state");
+    expect(mocks.exchangeCodeForTokens).not.toHaveBeenCalled();
+  });
+
+  it("does not publish callback results after a newer login takes ownership", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES_REGIONONE = "object-storage-s3";
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
+      activeSession.projectId = "project-1";
+      activeSession.regionId = "RegionOne";
+      activeSession.keystoneProjectToken = "project-token";
+      return readyResolution();
+    });
+    mocks.saveRedisSession
+      .mockImplementationOnce(
+        async (activeSession: { save: () => Promise<void> }) =>
+          activeSession.save(),
+      )
+      .mockImplementationOnce(
+        async (
+          _activeSession: unknown,
+          options: {
+            validateConflictRetry?: (authoritative: {
+              oidcFlowId?: string;
+            }) => void;
+          },
+        ) => {
+          options.validateConflictRetry?.({ oidcFlowId: "newer-login-flow" });
+        },
+      );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
     expect(current.save).toHaveBeenCalledOnce();
+    expect(mocks.saveSessionActivity).not.toHaveBeenCalled();
+  });
+
+  it("redirects when a newer callback rotates the stored session", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES_REGIONONE = "object-storage-s3";
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
+      activeSession.projectId = "project-1";
+      activeSession.regionId = "RegionOne";
+      activeSession.keystoneProjectToken = "project-token";
+      return readyResolution();
+    });
+    mocks.saveRedisSession
+      .mockImplementationOnce(
+        async (activeSession: { save: () => Promise<void> }) =>
+          activeSession.save(),
+      )
+      .mockRejectedValueOnce(
+        new StoredSessionSupersededError(
+          "Cannot save a revoked Sunrise session",
+        ),
+      );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
+    expect(current.save).toHaveBeenCalledOnce();
+    expect(mocks.saveSessionActivity).not.toHaveBeenCalled();
+  });
+
+  it("redirects when the login boundary was already rotated", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.prepareSessionLifetime.mockRejectedValueOnce(
+      new StoredSessionSupersededError(
+        "Cannot rotate a missing or revoked Sunrise session",
+      ),
+    );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.federateOidcWithKeystone).not.toHaveBeenCalled();
   });
 
   it("waits for the Keystone project context before starting STS", async () => {

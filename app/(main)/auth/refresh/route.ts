@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import { refreshKeystoneSession } from "@/lib/keystone/renewal";
 import { getSession } from "@/lib/session";
+import {
+  captureOidcSessionAuthority,
+  isOidcSessionSupersededError,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 
 const SUNRISE_DASHBOARD_URL =
   process.env.SUNRISE_DASHBOARD_URL ?? "http://localhost";
@@ -54,8 +59,18 @@ export async function GET(request: Request) {
     console.warn("[keystone/session] automatic renewal failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+    if (isOidcSessionSupersededError(error)) {
+      return NextResponse.redirect(new URL("/", SUNRISE_DASHBOARD_URL), {
+        status: 303,
+      });
+    }
+    const authority = captureOidcSessionAuthority(session);
     session.authRecovery = { reason: "session-unavailable" };
-    await session.save();
+    try {
+      await saveOidcSessionIfAuthoritative(session, authority);
+    } catch (saveError) {
+      if (!isOidcSessionSupersededError(saveError)) throw saveError;
+    }
     return NextResponse.redirect(new URL("/", SUNRISE_DASHBOARD_URL), {
       status: 303,
     });
