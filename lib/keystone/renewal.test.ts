@@ -71,7 +71,27 @@ describe("Keystone session renewal", () => {
     );
     expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
     expect(current.authRecovery).toBeUndefined();
+    expect(current.save).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists a rotated refresh token before downstream federation", async () => {
+    const calls: string[] = [];
+    const current = session();
+    current.save.mockImplementation(async () => {
+      calls.push("save");
+    });
+    mocks.federateOidcWithKeystone.mockImplementation(async () => {
+      calls.push("federate");
+      throw new Error("Keystone unavailable");
+    });
+
+    await expect(refreshKeystoneSession(current as never)).rejects.toThrow(
+      "Keystone unavailable",
+    );
+
+    expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
     expect(current.save).toHaveBeenCalledOnce();
+    expect(calls).toEqual(["save", "federate"]);
   });
 
   it("preserves no-project recovery after a successful identity refresh", async () => {
