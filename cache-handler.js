@@ -4,6 +4,8 @@ const { PHASE_PRODUCTION_BUILD } = require("next/constants");
 
 const NEXT_CACHE_TAGS_HEADER = "x-next-cache-tags";
 const MAX_MEMORY_ENTRIES = 512;
+const FETCH_CACHE_STALE_RETENTION_SECONDS = 24 * 60 * 60;
+const MAX_FETCH_CACHE_TTL_SECONDS = 365 * 24 * 60 * 60;
 const memoryCache = new Map();
 let client;
 let connecting;
@@ -379,7 +381,28 @@ function tagsFor(data, context) {
   ];
 }
 
-module.exports = class SunriseCacheHandler {
+function cacheTtlSeconds(data, context) {
+  const expire = context?.cacheControl?.expire;
+  if (Number.isFinite(expire)) return Math.max(1, Math.ceil(expire));
+
+  // Next.js carries fetch revalidation on the cached value rather than the
+  // set context. Keep a stale window for background regeneration while
+  // preventing fetch keys and their tag indexes from living forever.
+  if (data?.kind === "FETCH") {
+    const revalidate = Number(data.revalidate);
+    if (!Number.isFinite(revalidate) || revalidate < 0) {
+      return MAX_FETCH_CACHE_TTL_SECONDS;
+    }
+    return Math.min(
+      MAX_FETCH_CACHE_TTL_SECONDS,
+      Math.max(1, Math.ceil(revalidate) + FETCH_CACHE_STALE_RETENTION_SECONDS),
+    );
+  }
+
+  return null;
+}
+
+class SunriseCacheHandler {
   async get(key, context) {
     const observedTags = [
       ...new Set([...(context?.tags || []), ...(context?.softTags || [])]),
@@ -426,10 +449,7 @@ module.exports = class SunriseCacheHandler {
     }
     validateRedisConfiguration();
 
-    const expire = context?.cacheControl?.expire;
-    const ttlSeconds = Number.isFinite(expire)
-      ? Math.max(1, Math.ceil(expire))
-      : null;
+    const ttlSeconds = cacheTtlSeconds(data, context);
     try {
       await runCommand((current) =>
         current.eval(SET_CACHE_ENTRY_SCRIPT, {
@@ -472,4 +492,7 @@ module.exports = class SunriseCacheHandler {
   }
 
   resetRequestCache() {}
-};
+}
+
+SunriseCacheHandler.cacheTtlSeconds = cacheTtlSeconds;
+module.exports = SunriseCacheHandler;

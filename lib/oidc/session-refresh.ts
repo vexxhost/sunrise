@@ -140,7 +140,7 @@ async function releaseDistributedLock(key: string, owner: string) {
 }
 
 async function renewDistributedLock(key: string, owner: string) {
-  const renewed = await runRedisCommand(
+  const renewed = await runIsolatedRedisCommand(
     (client) =>
       client.eval(RENEW_LOCK_SCRIPT, {
         keys: [key],

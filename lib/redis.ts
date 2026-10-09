@@ -246,8 +246,15 @@ export async function runRedisCommand<T>(
   command: (client: RedisClientType) => Promise<T>,
   maximumTimeoutMs?: number,
 ): Promise<T> {
-  const client = await getRedisClient();
   const configuredTimeoutMs = getRedisCommandTimeoutMs();
+  if (
+    maximumTimeoutMs !== undefined &&
+    maximumTimeoutMs < configuredTimeoutMs
+  ) {
+    return runIsolatedRedisCommand(command, maximumTimeoutMs);
+  }
+
+  const client = await getRedisClient();
   const timeoutMs =
     maximumTimeoutMs === undefined
       ? configuredTimeoutMs

@@ -15,11 +15,17 @@ type CacheHandler = {
   revalidateTag(tags: string | string[]): Promise<void>;
 };
 type CacheHandlerConstructor = new () => CacheHandler;
+type CacheHandlerModule = CacheHandlerConstructor & {
+  cacheTtlSeconds(
+    data: { kind: string; revalidate?: number } | null,
+    context: { cacheControl?: { expire?: number } },
+  ): number | null;
+};
 
 const localRequire = createRequire(import.meta.url);
 const SunriseCacheHandler = localRequire(
   "./cache-handler.js",
-) as CacheHandlerConstructor;
+) as CacheHandlerModule;
 const originalBackend = process.env.SUNRISE_NEXT_CACHE_BACKEND;
 const originalRedisUrl = process.env.SUNRISE_REDIS_URL;
 const originalRedisTimeout = process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS;
@@ -46,6 +52,27 @@ afterEach(() => {
 });
 
 describe("Next.js cache handler", () => {
+  it("bounds fetch-cache retention while preserving a stale window", () => {
+    expect(
+      SunriseCacheHandler.cacheTtlSeconds(
+        { kind: "FETCH", revalidate: 60 },
+        {},
+      ),
+    ).toBe(86_460);
+    expect(
+      SunriseCacheHandler.cacheTtlSeconds(
+        { kind: "FETCH", revalidate: 31_536_000 },
+        {},
+      ),
+    ).toBe(31_536_000);
+    expect(
+      SunriseCacheHandler.cacheTtlSeconds(
+        { kind: "APP_ROUTE" },
+        { cacheControl: { expire: 120 } },
+      ),
+    ).toBe(120);
+  });
+
   it("rejects an unsupported cache backend", async () => {
     process.env.SUNRISE_NEXT_CACHE_BACKEND = "redsi";
     const handler = new SunriseCacheHandler();

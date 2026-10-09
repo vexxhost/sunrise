@@ -289,7 +289,7 @@ describe("OIDC session token refresh", () => {
       "Could not renew the distributed OIDC refresh lease",
     );
     await vi.advanceTimersByTimeAsync(5_000);
-    expect(mocks.runRedisCommand).toHaveBeenLastCalledWith(
+    expect(mocks.runIsolatedRedisCommand).toHaveBeenLastCalledWith(
       expect.any(Function),
       2_000,
     );

@@ -18,6 +18,7 @@ import {
   getRedisKeyPrefix,
   getRedisUrl,
   runIsolatedRedisCommand,
+  runRedisCommand,
 } from "@/lib/redis";
 
 const originalRedisUrl = process.env.SUNRISE_REDIS_URL;
@@ -162,6 +163,19 @@ describe("Redis deployment configuration", () => {
     await vi.advanceTimersByTimeAsync(500);
 
     await rejection;
+    expect(client.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("isolates a shorter timeout override from the shared client", async () => {
+    process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS = "5000";
+    const client = redisClient(async () => "value");
+    mocks.createClient.mockReturnValue(client);
+
+    await expect(
+      runRedisCommand((current) => current.get("key"), 2_000),
+    ).resolves.toBe("value");
+
+    expect(client.connect).toHaveBeenCalledOnce();
     expect(client.destroy).toHaveBeenCalledOnce();
   });
 });
