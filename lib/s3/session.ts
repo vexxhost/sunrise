@@ -4,6 +4,7 @@ import type { IronSession } from "iron-session";
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
 import {
   captureOidcSessionAuthority,
+  isOidcSessionSupersededError,
   OidcSessionSupersededError,
   saveOidcSessionIfAuthoritative,
 } from "@/lib/oidc/session-authority";
@@ -58,6 +59,7 @@ async function refreshRgwIdentity(
       roleTokens: [refreshed.access_token, refreshed.id_token],
     };
   } catch (error) {
+    if (isOidcSessionSupersededError(error)) throw error;
     console.warn("[s3/session] failed to renew RGW access from Sunrise OIDC", {
       projectId,
       error: error instanceof Error ? error.message : String(error),

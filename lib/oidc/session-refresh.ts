@@ -21,6 +21,10 @@ import {
   saveRedisSession,
 } from "@/lib/session-store";
 import type { OidcRefreshCheckpoint, SunriseSession } from "@/lib/session";
+import {
+  isOidcSessionSupersededError,
+  OidcSessionSupersededError,
+} from "@/lib/oidc/session-authority";
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
 const ACCESS_TOKEN_REUSE_MARGIN_MS = 5_000;
@@ -125,11 +129,10 @@ function applyRotatedRefreshToken(
   return false;
 }
 
-class SupersededOidcRefreshError extends Error {
-  constructor() {
-    super("The OIDC refresh was superseded by an interactive continuation");
-    this.name = "SupersededOidcRefreshError";
-  }
+function supersededOidcRefreshError() {
+  return new OidcSessionSupersededError(
+    "The OIDC refresh was superseded by an interactive continuation",
+  );
 }
 
 function assertRefreshStillAuthoritative(
@@ -142,14 +145,14 @@ function assertRefreshStillAuthoritative(
     !authoritativeToken ||
     tokenDigest(authoritativeToken) !== consumedTokenDigest
   ) {
-    throw new SupersededOidcRefreshError();
+    throw supersededOidcRefreshError();
   }
 }
 
 function authoritativeRefreshToken(session: Readonly<SunriseSession>) {
   const refreshToken = session.keycloakRefreshToken;
   if (session.oidcSessionContinuation || !refreshToken) {
-    throw new SupersededOidcRefreshError();
+    throw supersededOidcRefreshError();
   }
   return {
     refreshToken,
@@ -178,7 +181,7 @@ function assertCheckpointStillAuthoritative(
     !authoritativeToken ||
     tokenDigest(authoritativeToken) !== checkpoint.issuedTokenDigest
   ) {
-    throw new SupersededOidcRefreshError();
+    throw supersededOidcRefreshError();
   }
 }
 
@@ -220,7 +223,7 @@ function assertRefreshConflictIsSafe(
 ) {
   const authoritativeToken = authoritative.keycloakRefreshToken;
   if (authoritative.oidcSessionContinuation || !authoritativeToken) {
-    throw new SupersededOidcRefreshError();
+    throw supersededOidcRefreshError();
   }
 
   const authoritativeTokenDigest = tokenDigest(authoritativeToken);
@@ -244,7 +247,7 @@ function assertRefreshConflictIsSafe(
     return;
   }
 
-  throw new SupersededOidcRefreshError();
+  throw supersededOidcRefreshError();
 }
 
 function checkpointReuseUntil(
@@ -367,7 +370,7 @@ async function saveDistributedRefresh(
       });
       return;
     } catch (error) {
-      if (error instanceof SupersededOidcRefreshError) throw error;
+      if (isOidcSessionSupersededError(error)) throw error;
       lastError = error;
       if (attempt === MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) break;
       try {

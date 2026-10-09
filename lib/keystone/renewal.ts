@@ -8,6 +8,7 @@ import {
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
 import {
   captureOidcSessionAuthority,
+  isOidcSessionSupersededError,
   saveOidcSessionIfAuthoritative,
 } from "@/lib/oidc/session-authority";
 import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
@@ -34,6 +35,7 @@ export async function refreshKeystoneSession(
     protocol = getSunriseOidcConfig(identityProvider).protocol;
     refreshed = await refreshSessionOidcTokens(session, identityProvider);
   } catch (error) {
+    if (isOidcSessionSupersededError(error)) throw error;
     console.warn("[keystone/session] failed to refresh Keycloak token", {
       error: error instanceof Error ? error.message : String(error),
     });

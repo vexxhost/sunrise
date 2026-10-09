@@ -24,6 +24,7 @@ vi.mock("@/lib/session-store", () => ({
 }));
 
 import { refreshKeystoneSession } from "@/lib/keystone/renewal";
+import { OidcSessionSupersededError } from "@/lib/oidc/session-authority";
 
 function session() {
   const now = Date.now();
@@ -140,6 +141,20 @@ describe("Keystone session renewal", () => {
     await expect(refreshKeystoneSession(current as never)).resolves.toBe(
       "reauthenticate",
     );
+    expect(mocks.federateOidcWithKeystone).not.toHaveBeenCalled();
+  });
+
+  it("propagates refresh supersession without starting another continuation", async () => {
+    const current = session();
+    mocks.refreshSessionOidcTokens.mockRejectedValue(
+      new OidcSessionSupersededError(
+        "The OIDC refresh was superseded by an interactive continuation",
+      ),
+    );
+
+    await expect(
+      refreshKeystoneSession(current as never),
+    ).rejects.toBeInstanceOf(OidcSessionSupersededError);
     expect(mocks.federateOidcWithKeystone).not.toHaveBeenCalled();
   });
 

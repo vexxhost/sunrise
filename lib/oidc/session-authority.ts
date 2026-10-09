@@ -13,8 +13,10 @@ export type OidcSessionAuthority = {
 };
 
 export class OidcSessionSupersededError extends Error {
-  constructor() {
-    super("Credential update was superseded by a newer OIDC session");
+  constructor(
+    message = "Credential update was superseded by a newer OIDC session",
+  ) {
+    super(message);
     this.name = "OidcSessionSupersededError";
   }
 }

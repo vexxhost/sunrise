@@ -41,6 +41,7 @@ import {
   ensureActiveProjectS3Credentials,
   S3ProjectRoleUnavailableError,
 } from "@/lib/s3/session";
+import { OidcSessionSupersededError } from "@/lib/oidc/session-authority";
 
 const credentials = {
   accessKeyId: "new-access-key",
@@ -226,6 +227,20 @@ describe("Object Storage credential renewal", () => {
     await expect(
       ensureActiveProjectS3Credentials(current as never),
     ).resolves.toBeUndefined();
+    expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+  });
+
+  it("propagates refresh supersession without clearing continuation state", async () => {
+    const current = session();
+    mocks.refreshSessionOidcTokens.mockRejectedValue(
+      new OidcSessionSupersededError(
+        "The OIDC refresh was superseded by an interactive continuation",
+      ),
+    );
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toBeInstanceOf(OidcSessionSupersededError);
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
   });
 
