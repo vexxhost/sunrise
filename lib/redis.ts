@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient, type RedisClientType } from "@redis/client";
 
@@ -16,38 +17,51 @@ const runtime = globalThis as typeof globalThis & {
 const state = runtime.sunriseRedisRuntime ?? {};
 runtime.sunriseRedisRuntime = state;
 
-const REDIS_READINESS_SCRIPT = `
-redis.call("SET", KEYS[1], ARGV[1], "PX", 5000)
+const SESSION_READINESS_SCRIPT = `
+local value = ARGV[1]
+
+redis.call("HSET", KEYS[1], "version", "1", "data", value)
+redis.call("EXPIRE", KEYS[1], 5)
+redis.call("HGET", KEYS[1], "version")
+redis.call("HGETALL", KEYS[1])
+
+redis.call("SET", KEYS[2], value, "PX", 5000)
+redis.call("EXISTS", KEYS[2])
+
+redis.call("SET", KEYS[3], value, "PX", 5000)
+redis.call("GET", KEYS[3])
+redis.call("PEXPIRE", KEYS[3], 5000)
+
+redis.call("SET", KEYS[4], value, "PX", 5000)
+redis.call("GET", KEYS[4])
+
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4])
+return 1
+`;
+
+const NEXT_CACHE_READINESS_SCRIPT = `
+local value = ARGV[1]
+local now = redis.call("TIME")
+local expiresAt = tonumber(now[1]) * 1000
+  + math.floor(tonumber(now[2]) / 1000)
+  + 5000
+
+redis.call("SET", KEYS[1], value, "PX", 5000)
 redis.call("GET", KEYS[1])
+redis.call("PTTL", KEYS[1])
 
-if ARGV[2] == "1" then
-  redis.call("EXISTS", KEYS[1])
-  redis.call("HSET", KEYS[2], "probe", ARGV[1])
-  redis.call("HGET", KEYS[2], "probe")
-  redis.call("HGETALL", KEYS[2])
-  redis.call("EXPIRE", KEYS[2], 5)
-  redis.call("PEXPIRE", KEYS[2], 5000)
-end
+redis.call("ZADD", KEYS[2], 0, KEYS[1])
+redis.call("PEXPIREAT", KEYS[2], expiresAt)
+redis.call("ZCOUNT", KEYS[2], 0, 0)
+redis.call("ZRANGE", KEYS[2], 0, -1)
+redis.call("ZREVRANGE", KEYS[2], 0, 0, "WITHSCORES")
+redis.call("ZREM", KEYS[2], KEYS[1])
+redis.call("ZADD", KEYS[2], expiresAt, KEYS[1])
+redis.call("ZREMRANGEBYSCORE", KEYS[2], 1, expiresAt - 1)
+redis.call("PERSIST", KEYS[2])
+redis.call("PEXPIREAT", KEYS[2], expiresAt)
 
-if ARGV[3] == "1" then
-  local now = redis.call("TIME")
-  local expiresAt = tonumber(now[1]) * 1000
-    + math.floor(tonumber(now[2]) / 1000)
-    + 5000
-
-  redis.call("PTTL", KEYS[1])
-  redis.call("ZADD", KEYS[3], 0, ARGV[1])
-  redis.call("ZCOUNT", KEYS[3], 0, 0)
-  redis.call("ZRANGE", KEYS[3], 0, -1)
-  redis.call("ZREVRANGE", KEYS[3], 0, 0, "WITHSCORES")
-  redis.call("ZREM", KEYS[3], ARGV[1])
-  redis.call("ZADD", KEYS[3], expiresAt, ARGV[1])
-  redis.call("ZREMRANGEBYSCORE", KEYS[3], 1, expiresAt - 1)
-  redis.call("PERSIST", KEYS[3])
-  redis.call("PEXPIREAT", KEYS[3], expiresAt)
-end
-
-redis.call("DEL", KEYS[1], KEYS[2], KEYS[3])
+redis.call("DEL", KEYS[1], KEYS[2])
 return 1
 `;
 
@@ -290,21 +304,40 @@ export async function probeRedisReadiness(options: {
 }) {
   const startedAt = performance.now();
   const prefix = getRedisKeyPrefix();
-  const response = await runRedisCommand((client) =>
-    client.eval(REDIS_READINESS_SCRIPT, {
-      keys: [
-        `${prefix}:readiness:{probe}:string`,
-        `${prefix}:readiness:{probe}:session`,
-        `${prefix}:readiness:{probe}:cache-tag`,
-      ],
-      arguments: [
-        Date.now().toString(),
-        options.sessions ? "1" : "0",
-        options.nextCache ? "1" : "0",
-      ],
-    }),
-  );
-  if (Number(response) !== 1) {
+  const nextCachePrefix = options.nextCache
+    ? `${prefix}:next-cache:${getNextCacheDeploymentId()}`
+    : undefined;
+  const probeId = randomUUID();
+  const value = Date.now().toString();
+  const responses = await runRedisCommand(async (client) => {
+    const results: unknown[] = [];
+    if (options.sessions) {
+      results.push(
+        await client.eval(SESSION_READINESS_SCRIPT, {
+          keys: [
+            `${prefix}:session:{${probeId}}`,
+            `${prefix}:session-revoked:{${probeId}}`,
+            `${prefix}:oidc-refresh-lock:${probeId}`,
+            `${prefix}:oidc-refresh-result:${probeId}`,
+          ],
+          arguments: [value],
+        }),
+      );
+    }
+    if (nextCachePrefix) {
+      results.push(
+        await client.eval(NEXT_CACHE_READINESS_SCRIPT, {
+          keys: [
+            `${nextCachePrefix}:entry:${probeId}`,
+            `${nextCachePrefix}:tag:${probeId}`,
+          ],
+          arguments: [value],
+        }),
+      );
+    }
+    return results;
+  });
+  if (responses.some((response) => Number(response) !== 1)) {
     throw new Error("Redis readiness capability probe failed");
   }
   return Math.round((performance.now() - startedAt) * 100) / 100;

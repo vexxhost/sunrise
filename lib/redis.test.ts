@@ -9,6 +9,7 @@ vi.mock("@redis/client", () => ({
 }));
 
 import {
+  closeRedisForTests,
   getNextCacheBackend,
   getNextCacheDeploymentId,
   getRedisCa,
@@ -17,12 +18,15 @@ import {
   getRedisCredentials,
   getRedisKeyPrefix,
   getRedisUrl,
+  probeRedisReadiness,
   runIsolatedRedisCommand,
   runRedisCommand,
 } from "@/lib/redis";
 
 const originalRedisUrl = process.env.SUNRISE_REDIS_URL;
 const originalRedisTimeout = process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS;
+const originalRedisPrefix = process.env.SUNRISE_REDIS_KEY_PREFIX;
+const originalDeploymentId = process.env.SUNRISE_DEPLOYMENT_ID;
 
 function restoreEnvironment(name: string, value: string | undefined) {
   if (value === undefined) delete process.env[name];
@@ -41,6 +45,7 @@ function redisClient(command: () => Promise<unknown>) {
       client.isOpen = false;
     }),
     withAbortSignal: vi.fn(() => client),
+    eval: vi.fn(command),
     get: vi.fn(command),
   };
   return client;
@@ -52,10 +57,13 @@ beforeEach(() => {
   process.env.SUNRISE_REDIS_COMMAND_TIMEOUT_MS = "2000";
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers();
+  await closeRedisForTests();
   restoreEnvironment("SUNRISE_REDIS_URL", originalRedisUrl);
   restoreEnvironment("SUNRISE_REDIS_COMMAND_TIMEOUT_MS", originalRedisTimeout);
+  restoreEnvironment("SUNRISE_REDIS_KEY_PREFIX", originalRedisPrefix);
+  restoreEnvironment("SUNRISE_DEPLOYMENT_ID", originalDeploymentId);
 });
 
 describe("Redis deployment configuration", () => {
@@ -177,5 +185,34 @@ describe("Redis deployment configuration", () => {
 
     expect(client.connect).toHaveBeenCalledOnce();
     expect(client.destroy).toHaveBeenCalledOnce();
+  });
+
+  it("probes the runtime session, refresh, and cache ACL namespaces", async () => {
+    process.env.SUNRISE_REDIS_KEY_PREFIX = "atmosphere";
+    process.env.SUNRISE_DEPLOYMENT_ID = "build-123";
+    const client = redisClient(async () => 1);
+    mocks.createClient.mockReturnValue(client);
+
+    await expect(
+      probeRedisReadiness({ sessions: true, nextCache: true }),
+    ).resolves.toEqual(expect.any(Number));
+
+    expect(client.eval).toHaveBeenCalledTimes(2);
+    expect(client.eval).toHaveBeenNthCalledWith(1, expect.any(String), {
+      keys: [
+        expect.stringMatching(/^atmosphere:session:\{[^}]+\}$/),
+        expect.stringMatching(/^atmosphere:session-revoked:\{[^}]+\}$/),
+        expect.stringMatching(/^atmosphere:oidc-refresh-lock:[^:]+$/),
+        expect.stringMatching(/^atmosphere:oidc-refresh-result:[^:]+$/),
+      ],
+      arguments: [expect.any(String)],
+    });
+    expect(client.eval).toHaveBeenNthCalledWith(2, expect.any(String), {
+      keys: [
+        expect.stringMatching(/^atmosphere:next-cache:build-123:entry:[^:]+$/),
+        expect.stringMatching(/^atmosphere:next-cache:build-123:tag:[^:]+$/),
+      ],
+      arguments: [expect.any(String)],
+    });
   });
 });

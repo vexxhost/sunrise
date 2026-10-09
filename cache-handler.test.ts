@@ -17,7 +17,7 @@ type CacheHandler = {
 type CacheHandlerConstructor = new () => CacheHandler;
 type CacheHandlerModule = CacheHandlerConstructor & {
   cacheTtlSeconds(
-    data: { kind: string; revalidate?: number } | null,
+    data: { kind: string; revalidate?: number | false } | null,
     context: { cacheControl?: { expire?: number } },
   ): number | null;
 };
@@ -62,6 +62,12 @@ describe("Next.js cache handler", () => {
     expect(
       SunriseCacheHandler.cacheTtlSeconds(
         { kind: "FETCH", revalidate: 31_536_000 },
+        {},
+      ),
+    ).toBe(31_536_000);
+    expect(
+      SunriseCacheHandler.cacheTtlSeconds(
+        { kind: "FETCH", revalidate: false },
         {},
       ),
     ).toBe(31_536_000);

@@ -389,6 +389,7 @@ function cacheTtlSeconds(data, context) {
   // set context. Keep a stale window for background regeneration while
   // preventing fetch keys and their tag indexes from living forever.
   if (data?.kind === "FETCH") {
+    if (data.revalidate === false) return MAX_FETCH_CACHE_TTL_SECONDS;
     const revalidate = Number(data.revalidate);
     if (!Number.isFinite(revalidate) || revalidate < 0) {
       return MAX_FETCH_CACHE_TTL_SECONDS;
