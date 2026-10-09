@@ -576,7 +576,14 @@ export async function refreshSessionOidcTokens(
   const entry: RefreshEntry = { promise: refreshPromise };
   entry.promise = refreshPromise
     .then((result) => {
-      entry.reuseUntil = checkpointReuseUntil(result, 0);
+      const localReuseUntil = checkpointReuseUntil(result, 0);
+      entry.reuseUntil =
+        sessionBackend === "redis"
+          ? Math.min(
+              localReuseUntil,
+              session.oidcRefreshCheckpoint?.reuseUntil ?? 0,
+            )
+          : localReuseUntil;
       return result;
     })
     .catch((error) => {

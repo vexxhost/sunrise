@@ -462,6 +462,34 @@ describe("OIDC session token refresh", () => {
     expect(checkpoint.reuseUntil).toBeLessThan(startedAt + 56_000);
   });
 
+  it("does not extend local reuse while persisting a checkpoint", async () => {
+    vi.useFakeTimers();
+    const startedAt = Date.now();
+    const current = session("redis-slow-checkpoint-expiry");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.saveRedisSession.mockImplementation(async (active) => {
+      vi.setSystemTime(startedAt + 56_000);
+      await active.save();
+    });
+    mocks.refreshAccessToken.mockResolvedValue({
+      ...refreshedTokens(),
+      expires_in: 60,
+    });
+
+    await refreshSessionOidcTokens(current as never, "demo");
+    await refreshSessionOidcTokens(current as never, "demo");
+
+    expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(2);
+  });
+
   it("persists a rotated token when post-exchange lease renewal fails", async () => {
     const current = session("redis-renewal-failure");
     let renewals = 0;
