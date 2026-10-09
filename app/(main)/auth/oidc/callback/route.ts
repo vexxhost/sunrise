@@ -106,6 +106,7 @@ export async function GET(request: Request) {
   }
 
   session.keycloakRefreshToken = tokens.refresh_token;
+  session.oidcRefreshCheckpoint = undefined;
   session.federationIdentityProvider = idp;
   const identityPromise = resolveOidcIdentity(
     tokens.access_token,

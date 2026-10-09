@@ -157,6 +157,53 @@ function assertCheckpointStillAuthoritative(
   }
 }
 
+function sameRefreshResult(
+  left: RefreshTokenResult,
+  right: RefreshTokenResult,
+) {
+  return (
+    left.access_token === right.access_token &&
+    left.id_token === right.id_token &&
+    left.refresh_token === right.refresh_token &&
+    left.expires_in === right.expires_in &&
+    left.token_type === right.token_type
+  );
+}
+
+function assertRefreshConflictIsSafe(
+  authoritative: Readonly<SunriseSession>,
+  consumedTokenDigest: string,
+  expectedCheckpoint: OidcRefreshCheckpoint | undefined,
+) {
+  const authoritativeToken = authoritative.keycloakRefreshToken;
+  if (authoritative.oidcSessionContinuation || !authoritativeToken) {
+    throw new SupersededOidcRefreshError();
+  }
+
+  const authoritativeTokenDigest = tokenDigest(authoritativeToken);
+  if (authoritativeTokenDigest === consumedTokenDigest) return;
+
+  const authoritativeCheckpoint = authoritative.oidcRefreshCheckpoint;
+  if (
+    expectedCheckpoint &&
+    authoritativeCheckpoint &&
+    authoritativeCheckpoint.identityProvider ===
+      expectedCheckpoint.identityProvider &&
+    authoritativeCheckpoint.consumedTokenDigest === consumedTokenDigest &&
+    authoritativeCheckpoint.issuedTokenDigest ===
+      expectedCheckpoint.issuedTokenDigest &&
+    authoritativeTokenDigest === authoritativeCheckpoint.issuedTokenDigest &&
+    sameRefreshResult(
+      authoritativeCheckpoint.result,
+      expectedCheckpoint.result,
+    )
+  ) {
+    return;
+  }
+
+  throw new SupersededOidcRefreshError();
+}
+
 function checkpointReuseUntil(
   result: RefreshTokenResult,
   checkpointPersistenceMs: number,
@@ -264,9 +311,10 @@ async function saveDistributedRefresh(
         },
         maximumCommandTimeoutMs: DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
         validateConflictRetry: (authoritative) =>
-          assertRefreshStillAuthoritative(
+          assertRefreshConflictIsSafe(
             authoritative,
             consumedTokenDigest,
+            session.oidcRefreshCheckpoint,
           ),
       });
       return;

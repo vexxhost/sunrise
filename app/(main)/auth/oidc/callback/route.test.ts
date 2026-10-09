@@ -158,6 +158,17 @@ describe("OIDC callback recovery", () => {
     const current = {
       ...session(),
       oidcSessionContinuation: true,
+      oidcRefreshCheckpoint: {
+        consumedTokenDigest: "consumed",
+        identityProvider: "demo",
+        issuedTokenDigest: "issued",
+        result: {
+          access_token: "old-access-token",
+          expires_in: 300,
+          token_type: "Bearer",
+        },
+        reuseUntil: now + 30_000,
+      },
       sessionId: "session-1",
       sessionSignedInAt: now - 1_000,
       sessionLastActivityAt: now - 500,
@@ -174,6 +185,7 @@ describe("OIDC callback recovery", () => {
     expect(mocks.saveSessionActivity).toHaveBeenCalledWith("session-1");
     expect(mocks.startSessionLifetime).not.toHaveBeenCalled();
     expect(current.sessionSignedInAt).toBe(now - 1_000);
+    expect(current.oidcRefreshCheckpoint).toBeUndefined();
   });
 
   it("completes Keystone login when S3 is absent", async () => {

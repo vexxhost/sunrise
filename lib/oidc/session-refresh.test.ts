@@ -408,6 +408,32 @@ describe("OIDC session token refresh", () => {
     expect(current.save).not.toHaveBeenCalled();
   });
 
+  it("accepts an identical checkpoint after an uncertain Redis write", async () => {
+    const current = session("redis-uncertain-write");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.saveRedisSession.mockImplementation(async (active, options) => {
+      options.validateConflictRetry({
+        keycloakRefreshToken: "rotated-refresh-token",
+        oidcRefreshCheckpoint: active.oidcRefreshCheckpoint,
+      });
+      await active.save();
+    });
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).resolves.toEqual(refreshedTokens());
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
   it("does not reuse a checkpoint past the access-token lifetime", async () => {
     const current = session("redis-short-access-token");
     const client = redisClient((script) => {
