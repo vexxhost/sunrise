@@ -273,8 +273,8 @@ export async function getRedisSession(
 
   destroyers.set(session, async () => {
     const storedId = id;
-    destroy();
     if (storedId) await revokeStoredSession(storedId);
+    destroy();
   });
   return session;
 }

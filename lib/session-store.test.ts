@@ -16,6 +16,7 @@ vi.mock("@/lib/redis", async (importOriginal) => ({
 }));
 
 import {
+  destroyRedisSession,
   getRedisSession,
   mergeStoredSession,
   storedSessionTtlSeconds,
@@ -175,5 +176,48 @@ describe("Redis session storage", () => {
     expect(secondSave.keys[0]).not.toContain("evicted-during-save");
     expect(reference.key).not.toBe("evicted-during-save");
     expect(saveReference).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the session reference intact until Redis revocation succeeds", async () => {
+    const destroyReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "session-to-revoke",
+    };
+    Object.defineProperties(reference, {
+      save: { value: vi.fn() },
+      destroy: { value: destroyReference },
+      updateConfig: { value: vi.fn() },
+    });
+    const sealed = await sealData(
+      { projectId: "project-old", sessionSignedInAt: Date.now() },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({ version: "1", data: sealed }),
+      eval: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Redis unavailable"))
+        .mockResolvedValueOnce(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    await expect(destroyRedisSession(session)).rejects.toThrow(
+      "Redis unavailable",
+    );
+    expect(destroyReference).not.toHaveBeenCalled();
+    expect(session.projectId).toBe("project-old");
+
+    await expect(destroyRedisSession(session)).resolves.toBeUndefined();
+    expect(destroyReference).toHaveBeenCalledOnce();
+    expect(session.projectId).toBeUndefined();
   });
 });
