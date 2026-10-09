@@ -61,10 +61,16 @@ return 0
 `;
 
 type RefreshEntry = {
+  authority: RefreshIdentityAuthority;
   consumedTokenDigest: string;
   issuedTokenDigest?: string;
   promise: Promise<RefreshTokenResult>;
   reuseUntil?: number;
+};
+
+type RefreshIdentityAuthority = {
+  generation?: string;
+  identityProvider: string;
 };
 
 const sunriseRuntime = globalThis as typeof globalThis & {
@@ -135,13 +141,64 @@ function supersededOidcRefreshError() {
   );
 }
 
+function sessionIdentityProvider(session: Readonly<SunriseSession>) {
+  return (
+    session.federationIdentityProvider ?? session.oidcIdentity?.identityProvider
+  );
+}
+
+function captureRefreshIdentityAuthority(
+  session: Readonly<SunriseSession>,
+  identityProvider: string,
+): RefreshIdentityAuthority {
+  const authoritativeProvider = sessionIdentityProvider(session);
+  if (
+    session.oidcSessionContinuation ||
+    (authoritativeProvider !== undefined &&
+      authoritativeProvider !== identityProvider)
+  ) {
+    throw supersededOidcRefreshError();
+  }
+  return {
+    generation: session.oidcSessionGeneration,
+    identityProvider,
+  };
+}
+
+function assertRefreshIdentityAuthority(
+  session: Readonly<SunriseSession>,
+  expected: Readonly<RefreshIdentityAuthority>,
+) {
+  const authoritativeProvider = sessionIdentityProvider(session);
+  if (
+    session.oidcSessionContinuation ||
+    session.oidcSessionGeneration !== expected.generation ||
+    (authoritativeProvider !== undefined &&
+      authoritativeProvider !== expected.identityProvider)
+  ) {
+    throw supersededOidcRefreshError();
+  }
+}
+
+function sameRefreshIdentityAuthority(
+  left: Readonly<RefreshIdentityAuthority> | undefined,
+  right: Readonly<RefreshIdentityAuthority>,
+) {
+  return (
+    left !== undefined &&
+    left.generation === right.generation &&
+    left.identityProvider === right.identityProvider
+  );
+}
+
 function assertRefreshStillAuthoritative(
   session: Readonly<SunriseSession>,
   consumedTokenDigest: string,
+  authority: Readonly<RefreshIdentityAuthority>,
 ) {
+  assertRefreshIdentityAuthority(session, authority);
   const authoritativeToken = session.keycloakRefreshToken;
   if (
-    session.oidcSessionContinuation ||
     !authoritativeToken ||
     tokenDigest(authoritativeToken) !== consumedTokenDigest
   ) {
@@ -149,9 +206,13 @@ function assertRefreshStillAuthoritative(
   }
 }
 
-function authoritativeRefreshToken(session: Readonly<SunriseSession>) {
+function authoritativeRefreshToken(
+  session: Readonly<SunriseSession>,
+  authority: Readonly<RefreshIdentityAuthority>,
+) {
+  assertRefreshIdentityAuthority(session, authority);
   const refreshToken = session.keycloakRefreshToken;
-  if (session.oidcSessionContinuation || !refreshToken) {
+  if (!refreshToken) {
     throw supersededOidcRefreshError();
   }
   return {
@@ -163,21 +224,35 @@ function authoritativeRefreshToken(session: Readonly<SunriseSession>) {
 function changedAuthoritativeRefreshToken(
   session: Readonly<SunriseSession>,
   consumedTokenDigest: string,
+  authority: Readonly<RefreshIdentityAuthority>,
 ) {
-  const authoritative = authoritativeRefreshToken(session);
-  return authoritative.refreshTokenDigest === consumedTokenDigest
-    ? undefined
-    : authoritative;
+  const authoritative = authoritativeRefreshToken(session, authority);
+  if (authoritative.refreshTokenDigest === consumedTokenDigest) {
+    return undefined;
+  }
+
+  const checkpoint = session.oidcRefreshCheckpoint;
+  if (
+    !checkpoint ||
+    checkpoint.identityProvider !== authority.identityProvider ||
+    checkpoint.consumedTokenDigest !== consumedTokenDigest ||
+    checkpoint.issuedTokenDigest !== authoritative.refreshTokenDigest
+  ) {
+    throw supersededOidcRefreshError();
+  }
+  return authoritative;
 }
 
 function assertCheckpointStillAuthoritative(
   session: Readonly<SunriseSession>,
   checkpoint: OidcRefreshCheckpoint | undefined,
+  authority: Readonly<RefreshIdentityAuthority>,
 ) {
+  assertRefreshIdentityAuthority(session, authority);
   const authoritativeToken = session.keycloakRefreshToken;
   if (
-    session.oidcSessionContinuation ||
     !checkpoint ||
+    checkpoint.identityProvider !== authority.identityProvider ||
     !authoritativeToken ||
     tokenDigest(authoritativeToken) !== checkpoint.issuedTokenDigest
   ) {
@@ -220,9 +295,11 @@ function assertRefreshConflictIsSafe(
   authoritative: Readonly<SunriseSession>,
   consumedTokenDigest: string,
   expectedCheckpoint: OidcRefreshCheckpoint | undefined,
+  authority: Readonly<RefreshIdentityAuthority>,
 ) {
+  assertRefreshIdentityAuthority(authoritative, authority);
   const authoritativeToken = authoritative.keycloakRefreshToken;
-  if (authoritative.oidcSessionContinuation || !authoritativeToken) {
+  if (!authoritativeToken) {
     throw supersededOidcRefreshError();
   }
 
@@ -232,6 +309,7 @@ function assertRefreshConflictIsSafe(
   const authoritativeCheckpoint = authoritative.oidcRefreshCheckpoint;
   if (
     expectedCheckpoint &&
+    expectedCheckpoint.identityProvider === authority.identityProvider &&
     authoritativeCheckpoint &&
     authoritativeCheckpoint.identityProvider ===
       expectedCheckpoint.identityProvider &&
@@ -325,20 +403,23 @@ function wait(delayMs: number) {
 
 async function reloadCheckpoint(
   session: IronSession<SunriseSession>,
-  identityProvider: string,
   refreshTokenDigest: string,
+  authority: Readonly<RefreshIdentityAuthority>,
 ) {
   await reloadRedisSession(session);
+  assertRefreshIdentityAuthority(session, authority);
   const redisNow = await getRedisServerTimeMs(
     DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
   );
   const checkpoint = reusableCheckpoint(
     session,
-    identityProvider,
+    authority.identityProvider,
     refreshTokenDigest,
     redisNow,
   );
-  if (checkpoint) assertCheckpointStillAuthoritative(session, checkpoint);
+  if (checkpoint) {
+    assertCheckpointStillAuthoritative(session, checkpoint, authority);
+  }
   return checkpoint;
 }
 
@@ -348,6 +429,7 @@ async function saveDistributedRefresh(
   owner: string,
   lockTimeoutMs: number,
   consumedTokenDigest: string,
+  authority: Readonly<RefreshIdentityAuthority>,
 ) {
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_DISTRIBUTED_SAVE_ATTEMPTS; attempt += 1) {
@@ -366,6 +448,7 @@ async function saveDistributedRefresh(
             authoritative,
             consumedTokenDigest,
             session.oidcRefreshCheckpoint,
+            authority,
           ),
       });
       return;
@@ -397,9 +480,10 @@ async function distributedRefresh(
   session: IronSession<SunriseSession>,
   key: string,
   refreshToken: string,
-  identityProvider: string,
   refreshTokenDigest: string,
+  authority: Readonly<RefreshIdentityAuthority>,
 ): Promise<RefreshTokenResult> {
+  const { identityProvider } = authority;
   const { checkpointPersistenceMs, lockTimeoutMs, leaderWaitMs } =
     distributedRefreshTiming();
   for (
@@ -409,14 +493,15 @@ async function distributedRefresh(
   ) {
     const existing = await reloadCheckpoint(
       session,
-      identityProvider,
       refreshTokenDigest,
+      authority,
     );
     if (existing) return existing.result;
 
     const initialRestart = changedAuthoritativeRefreshToken(
       session,
       refreshTokenDigest,
+      authority,
     );
     if (initialRestart) {
       ({ refreshToken, refreshTokenDigest } = initialRestart);
@@ -449,16 +534,21 @@ async function distributedRefresh(
         try {
           const checkpoint = await reloadCheckpoint(
             session,
-            identityProvider,
             refreshTokenDigest,
+            authority,
           );
           if (checkpoint) return checkpoint.result;
           restart = changedAuthoritativeRefreshToken(
             session,
             refreshTokenDigest,
+            authority,
           );
           if (restart) break;
-          assertRefreshStillAuthoritative(session, refreshTokenDigest);
+          assertRefreshStillAuthoritative(
+            session,
+            refreshTokenDigest,
+            authority,
+          );
           if (!(await renewDistributedLock(lockKey, owner, lockTimeoutMs))) {
             throw new Error(
               "Lost the distributed OIDC refresh lease before token exchange",
@@ -491,7 +581,11 @@ async function distributedRefresh(
               error,
             );
           }
-          assertRefreshStillAuthoritative(session, refreshTokenDigest);
+          assertRefreshStillAuthoritative(
+            session,
+            refreshTokenDigest,
+            authority,
+          );
           applyRotatedRefreshToken(session, exchanged);
           session.oidcRefreshCheckpoint = {
             consumedTokenDigest: refreshTokenDigest,
@@ -529,6 +623,7 @@ async function distributedRefresh(
             owner,
             lockTimeoutMs,
             refreshTokenDigest,
+            authority,
           );
           // A continuation can commit immediately after this checkpoint. Read
           // authority once more before returning or choosing the next token so
@@ -544,14 +639,23 @@ async function distributedRefresh(
             redisNow,
           );
           if (persistedCheckpoint) {
-            assertCheckpointStillAuthoritative(session, persistedCheckpoint);
+            assertCheckpointStillAuthoritative(
+              session,
+              persistedCheckpoint,
+              authority,
+            );
             return exchanged;
           }
 
           // The rotated refresh token remains authoritative even when slow
           // persistence consumes the useful lifetime of its access token.
           // Release this generation's lease and exchange that token again.
-          restart = authoritativeRefreshToken(session);
+          assertCheckpointStillAuthoritative(
+            session,
+            session.oidcRefreshCheckpoint,
+            authority,
+          );
+          restart = authoritativeRefreshToken(session, authority);
           break;
         } finally {
           await releaseDistributedLock(lockKey, owner).catch((error) => {
@@ -574,13 +678,14 @@ async function distributedRefresh(
       await wait(delayMs);
       const checkpoint = await reloadCheckpoint(
         session,
-        identityProvider,
         refreshTokenDigest,
+        authority,
       );
       if (checkpoint) return checkpoint.result;
       restart = changedAuthoritativeRefreshToken(
         session,
         refreshTokenDigest,
+        authority,
       );
       if (restart) break;
       delayMs = Math.min(delayMs * 2, 250);
@@ -625,6 +730,20 @@ export async function refreshSessionOidcTokens(
   session: IronSession<SunriseSession>,
   identityProvider: string,
 ): Promise<RefreshTokenResult | undefined> {
+  if (!session.keycloakRefreshToken) return undefined;
+  const authority = captureRefreshIdentityAuthority(session, identityProvider);
+  return refreshSessionOidcTokensForAuthority(
+    session,
+    authority,
+  );
+}
+
+async function refreshSessionOidcTokensForAuthority(
+  session: IronSession<SunriseSession>,
+  authority: Readonly<RefreshIdentityAuthority>,
+): Promise<RefreshTokenResult | undefined> {
+  assertRefreshIdentityAuthority(session, authority);
+  const { identityProvider } = authority;
   const refreshToken = session.keycloakRefreshToken;
   if (!refreshToken) return undefined;
 
@@ -641,6 +760,7 @@ export async function refreshSessionOidcTokens(
       existing.issuedTokenDigest === refreshTokenDigest);
   const canReuseExisting =
     existing &&
+    sameRefreshIdentityAuthority(existing.authority, authority) &&
     matchesRefreshTokenGeneration &&
     (existing.reuseUntil === undefined || existing.reuseUntil > now);
 
@@ -648,6 +768,7 @@ export async function refreshSessionOidcTokens(
     const result = await existing.promise;
     if (sessionBackend === "redis") {
       await reloadRedisSession(session);
+      assertRefreshIdentityAuthority(session, authority);
       const redisNow = await getRedisServerTimeMs(
         DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
       );
@@ -659,7 +780,7 @@ export async function refreshSessionOidcTokens(
       );
       if (checkpoint) {
         try {
-          assertCheckpointStillAuthoritative(session, checkpoint);
+          assertCheckpointStillAuthoritative(session, checkpoint, authority);
           return checkpoint.result;
         } catch (error) {
           if (refreshEntries.get(key) === existing) refreshEntries.delete(key);
@@ -673,7 +794,10 @@ export async function refreshSessionOidcTokens(
       // error. Re-entering reads the authoritative (possibly rotated) token
       // that reloadRedisSession just installed on this session.
       if (refreshEntries.get(key) === existing) refreshEntries.delete(key);
-      return refreshSessionOidcTokens(session, identityProvider);
+      return refreshSessionOidcTokensForAuthority(
+        session,
+        authority,
+      );
     }
     if (applyRotatedRefreshToken(session, result)) {
       await session.save();
@@ -695,11 +819,12 @@ export async function refreshSessionOidcTokens(
           session,
           key,
           refreshToken,
-          identityProvider,
           refreshTokenDigest,
+          authority,
         )
       : refreshAccessToken(refreshToken, identityProvider);
   const entry: RefreshEntry = {
+    authority: { ...authority },
     consumedTokenDigest: refreshTokenDigest,
     promise: refreshPromise,
   };
