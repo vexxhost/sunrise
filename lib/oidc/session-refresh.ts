@@ -22,6 +22,7 @@ const MAX_REFRESH_ENTRIES = 256;
 const MAX_DISTRIBUTED_REFRESH_LEADERS = 3;
 const MAX_DISTRIBUTED_SAVE_ATTEMPTS = 3;
 const DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS = 2_000;
+const DISTRIBUTED_REFRESH_TIMING_MARGIN_MS = 5_000;
 
 const ACQUIRE_LOCK_SCRIPT = `
 local current = redis.call("GET", KEYS[1])
@@ -145,9 +146,13 @@ async function renewDistributedLock(
 function distributedRefreshTiming() {
   const sessionCommandTimeoutMs = getRedisCommandTimeoutMs();
   const lockTimeoutMs =
-    OIDC_REFRESH_TIMEOUT_MS + sessionCommandTimeoutMs + 5_000;
+    OIDC_REFRESH_TIMEOUT_MS +
+    sessionCommandTimeoutMs +
+    DISTRIBUTED_REFRESH_TIMING_MARGIN_MS;
   const checkpointPersistenceMs =
-    MAX_DISTRIBUTED_SAVE_ATTEMPTS * (sessionCommandTimeoutMs + 2_000);
+    MAX_DISTRIBUTED_SAVE_ATTEMPTS *
+      (sessionCommandTimeoutMs + DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS) +
+    DISTRIBUTED_REFRESH_TIMING_MARGIN_MS;
   return {
     checkpointPersistenceMs,
     lockTimeoutMs,

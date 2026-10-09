@@ -182,7 +182,7 @@ describe("OIDC session token refresh", () => {
           oidcRefreshCheckpoint: { reuseUntil: number };
         }
       ).oidcRefreshCheckpoint.reuseUntil,
-    ).toBeGreaterThanOrEqual(startedAt + 42_000);
+    ).toBeGreaterThanOrEqual(startedAt + 47_000);
     expect(current.save).toHaveBeenCalledOnce();
     expect(current.save.mock.invocationCallOrder[0]).toBeLessThan(
       client.eval.mock.invocationCallOrder.at(-1)!,
