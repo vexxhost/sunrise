@@ -38,7 +38,8 @@ end
 
 local function refreshTagExpiration(tagKey)
   redis.call("ZREMRANGEBYSCORE", tagKey, 1, nowMs)
-  if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
+  if redis.call("ZCOUNT", tagKey, 0, 0) > 0
+    or redis.call("ZCOUNT", tagKey, "-inf", -1) > 0 then
     redis.call("PERSIST", tagKey)
     return
   end
@@ -101,7 +102,8 @@ local nowMs = tonumber(now[1]) * 1000
 
 local function refreshTagExpiration(tagKey)
   redis.call("ZREMRANGEBYSCORE", tagKey, 1, nowMs)
-  if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
+  if redis.call("ZCOUNT", tagKey, 0, 0) > 0
+    or redis.call("ZCOUNT", tagKey, "-inf", -1) > 0 then
     redis.call("PERSIST", tagKey)
     return
   end
@@ -178,7 +180,8 @@ local expiredAt = expireSeconds and nowMs + expireSeconds * 1000 or nil
 
 local function refreshTagExpiration(tagKey)
   redis.call("ZREMRANGEBYSCORE", tagKey, 1, nowMs)
-  if redis.call("ZCOUNT", tagKey, 0, 0) > 0 then
+  if redis.call("ZCOUNT", tagKey, 0, 0) > 0
+    or redis.call("ZCOUNT", tagKey, "-inf", -1) > 0 then
     redis.call("PERSIST", tagKey)
     return
   end
@@ -201,14 +204,11 @@ end
 for _, requestedTagKey in ipairs(KEYS) do
   refreshTagExpiration(requestedTagKey)
   if mode == "profiled" then
-    local entryCount = redis.call("ZCOUNT", requestedTagKey, 0, "+inf")
-    if entryCount > 0 then
-      redis.call("ZADD", requestedTagKey, -staleAt, staleMember)
-      if expiredAt then
-        redis.call("ZADD", requestedTagKey, -expiredAt, expiredMember)
-      end
-      refreshTagExpiration(requestedTagKey)
+    redis.call("ZADD", requestedTagKey, -staleAt, staleMember)
+    if expiredAt then
+      redis.call("ZADD", requestedTagKey, -expiredAt, expiredMember)
     end
+    refreshTagExpiration(requestedTagKey)
   else
     local members = redis.call("ZRANGE", requestedTagKey, 0, -1)
     for _, entryKey in ipairs(members) do
@@ -244,6 +244,8 @@ for _, requestedTagKey in ipairs(KEYS) do
       end
     end
     redis.call("DEL", requestedTagKey)
+    redis.call("ZADD", requestedTagKey, -staleAt, expiredMember)
+    refreshTagExpiration(requestedTagKey)
   end
 end
 return tostring(staleAt)
@@ -392,17 +394,30 @@ function deserializeRedisCacheResult(value) {
     const tag = value[index];
     const staleAt = Number(value[index + 1]);
     const expiredAt = Number(value[index + 2]);
-    if (typeof tag !== "string" || !Number.isFinite(staleAt) || staleAt <= 0) {
+    if (
+      typeof tag !== "string" ||
+      (!Number.isFinite(staleAt) && !Number.isFinite(expiredAt))
+    ) {
       continue;
     }
 
     const existing = tagsManifest.get(tag) || {};
-    if ((existing.stale || 0) <= staleAt) {
+    if (
+      Number.isFinite(staleAt) &&
+      staleAt > 0 &&
+      (existing.stale || 0) <= staleAt
+    ) {
       const updates = { ...existing, stale: staleAt };
       if (Number.isFinite(expiredAt) && expiredAt > 0) {
         updates.expired = expiredAt;
       }
       tagsManifest.set(tag, updates);
+    } else if (
+      Number.isFinite(expiredAt) &&
+      expiredAt > 0 &&
+      (existing.expired || 0) <= expiredAt
+    ) {
+      tagsManifest.set(tag, { ...existing, expired: expiredAt });
     }
   }
 

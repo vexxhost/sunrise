@@ -1,7 +1,11 @@
 import { createRequire } from "node:module";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-type CacheEntry = { value: { kind: string } | null; tags: string[] };
+type CacheEntry = {
+  value: { kind: string } | null;
+  lastModified: number;
+  tags: string[];
+};
 type CacheHandler = {
   get(
     key: string,
@@ -51,6 +55,7 @@ function setEnvironment(name: string, value: string) {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   tagsManifest.clear();
   restoreEnvironment("SUNRISE_NEXT_CACHE_BACKEND", originalBackend);
   restoreEnvironment("SUNRISE_REDIS_URL", originalRedisUrl);
@@ -171,6 +176,29 @@ describe("Next.js cache handler", () => {
     const state = tagsManifest.get("profiled-tag");
     expect(state?.stale).toBeGreaterThanOrEqual(invalidatedAt);
     expect(state?.expired).toBe((state?.stale ?? 0) + 60_000);
+  });
+
+  it("preserves invalidation state for tags observed by a later read", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    process.env.SUNRISE_NEXT_CACHE_BACKEND = "memory";
+    const handler = new SunriseCacheHandler();
+    await handler.set(
+      "later-tagged-entry",
+      { kind: "FETCH" },
+      { tags: ["initial-tag"] },
+    );
+
+    vi.setSystemTime(2_000);
+    await handler.revalidateTag("later-tag", { expire: 60 });
+    const entry = await handler.get("later-tagged-entry", {
+      tags: ["later-tag"],
+    });
+
+    expect(entry?.tags).toContain("later-tag");
+    expect(tagsManifest.get("later-tag")?.stale).toBeGreaterThan(
+      entry?.lastModified ?? Number.MAX_SAFE_INTEGER,
+    );
   });
 
   it("tracks tags observed by later reads of the same cache key", async () => {
