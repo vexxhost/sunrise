@@ -869,6 +869,58 @@ describe("Redis session storage", () => {
     expect(destroyReference).toHaveBeenCalledOnce();
   });
 
+  it("recovers a successor after an ambiguously committed revocation", async () => {
+    const destroyReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "ambiguous-revocation-root",
+    };
+    Object.defineProperties(reference, {
+      save: { value: vi.fn() },
+      destroy: { value: destroyReference },
+      updateConfig: { value: vi.fn() },
+    });
+    const sealed = await sealData(
+      { projectId: "project-old", sessionSignedInAt: Date.now() },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({ version: "1", data: sealed }),
+      eval: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("Redis response was lost"))
+        .mockResolvedValueOnce("ambiguous-revocation-successor")
+        .mockResolvedValueOnce(""),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    await destroyRedisSession(session);
+
+    const firstAttempt = client.eval.mock.calls[0][1] as { keys: string[] };
+    const recoveredAttempt = client.eval.mock.calls[1][1] as {
+      keys: string[];
+    };
+    const successorAttempt = client.eval.mock.calls[2][1] as {
+      keys: string[];
+    };
+    expect(recoveredAttempt.keys).toEqual(firstAttempt.keys);
+    expect(successorAttempt.keys).not.toEqual(firstAttempt.keys);
+    expect(successorAttempt.keys).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("ambiguous-revocation-successor"),
+      ]),
+    );
+    expect(destroyReference).toHaveBeenCalledOnce();
+  });
+
   it("keeps the session reference intact until Redis revocation succeeds", async () => {
     const destroyReference = vi.fn();
     const reference = {
@@ -891,6 +943,7 @@ describe("Redis session storage", () => {
       hGetAll: vi.fn().mockResolvedValue({ version: "1", data: sealed }),
       eval: vi
         .fn()
+        .mockRejectedValueOnce(new Error("Redis unavailable"))
         .mockRejectedValueOnce(new Error("Redis unavailable"))
         .mockResolvedValueOnce(1),
     };

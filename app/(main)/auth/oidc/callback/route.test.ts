@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     tryExtractRgwProjectRoles: vi.fn(),
     getS3Endpoint: vi.fn(),
     stashCloudContextBootstrap: vi.fn(),
+    saveRedisSession: vi.fn(),
   };
 });
 
@@ -30,6 +31,10 @@ vi.mock("@/lib/session", () => ({
   startSessionLifetime: mocks.startSessionLifetime,
   normalizeProjectId: (value?: string) => value?.replaceAll("-", "") ?? "",
   setS3CredentialsForProject: vi.fn(),
+}));
+
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
 }));
 
 vi.mock("@/lib/oidc/sunrise", () => ({
@@ -72,6 +77,7 @@ function session() {
   return {
     oidcState: "expected-state",
     oidcVerifier: "verifier",
+    oidcFlowId: "login-flow",
     oidcIdProvider: "demo",
     save: vi.fn().mockResolvedValue(undefined),
   };
@@ -124,6 +130,10 @@ describe("OIDC callback recovery", () => {
     mocks.stashCloudContextBootstrap.mockReturnValue("bootstrap-id");
     mocks.saveSessionActivity.mockResolvedValue(undefined);
     mocks.startSessionLifetime.mockResolvedValue(undefined);
+    mocks.saveRedisSession.mockImplementation(
+      async (activeSession: { save: () => Promise<void> }) =>
+        activeSession.save(),
+    );
   });
 
   it("redirects an identity with zero projects to the recovery experience", async () => {
@@ -176,6 +186,16 @@ describe("OIDC callback recovery", () => {
     };
     mocks.getSession.mockResolvedValue(current);
     mocks.finalizeKeystoneSession.mockResolvedValue({ status: "no-projects" });
+    mocks.exchangeCodeForTokens.mockImplementationOnce(async () => {
+      expect(current.oidcSessionContinuation).toBe(true);
+      return {
+        access_token: "access-token",
+        id_token: "id-token",
+        refresh_token: "refresh-token",
+        expires_in: 300,
+        token_type: "Bearer",
+      };
+    });
 
     await GET(
       new Request(
@@ -187,6 +207,7 @@ describe("OIDC callback recovery", () => {
     expect(mocks.startSessionLifetime).not.toHaveBeenCalled();
     expect(current.sessionSignedInAt).toBe(now - 1_000);
     expect(current.oidcRefreshCheckpoint).toBeUndefined();
+    expect(current.oidcSessionContinuation).toBeUndefined();
   });
 
   it("completes Keystone login when S3 is absent", async () => {
@@ -265,7 +286,7 @@ describe("OIDC callback recovery", () => {
       "Sunrise configuration error",
     );
     expect(mocks.exchangeCodeForTokens).not.toHaveBeenCalled();
-    expect(current.save).not.toHaveBeenCalled();
+    expect(current.save).toHaveBeenCalledTimes(2);
   });
 
   it("rejects continuation after the absolute lifetime", async () => {
@@ -372,6 +393,101 @@ describe("OIDC callback recovery", () => {
     expect(mocks.stashCloudContextBootstrap).toHaveBeenCalledWith(
       expect.objectContaining({ userName: "operator@example.test" }),
     );
+    expect(current.save).toHaveBeenCalledTimes(2);
+    expect(current.oidcFlowId).toBeUndefined();
+  });
+
+  it("does not consume the code after a newer login supersedes the flow", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.saveRedisSession.mockImplementationOnce(
+      async (
+        _activeSession: unknown,
+        options: {
+          validateConflictRetry?: (authoritative: {
+            oidcFlowId?: string;
+          }) => void;
+        },
+      ) => {
+        options.validateConflictRetry?.({ oidcFlowId: "newer-login-flow" });
+      },
+    );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.exchangeCodeForTokens).not.toHaveBeenCalled();
+    expect(current.save).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a newer flow when an older callback arrives", async () => {
+    const current = {
+      ...session(),
+      oidcState: "newer-state",
+      oidcFlowId: "newer-login-flow",
+    };
+    mocks.getSession.mockResolvedValue(current);
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=old-code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe("OIDC state mismatch");
+    expect(mocks.saveRedisSession).not.toHaveBeenCalled();
+    expect(current.oidcFlowId).toBe("newer-login-flow");
+    expect(current.oidcState).toBe("newer-state");
+    expect(mocks.exchangeCodeForTokens).not.toHaveBeenCalled();
+  });
+
+  it("does not publish callback results after a newer login takes ownership", async () => {
+    process.env.SUNRISE_DISABLED_SERVICES_REGIONONE = "object-storage-s3";
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.finalizeKeystoneSession.mockImplementation(async (activeSession) => {
+      activeSession.projectId = "project-1";
+      activeSession.regionId = "RegionOne";
+      activeSession.keystoneProjectToken = "project-token";
+      return readyResolution();
+    });
+    mocks.saveRedisSession
+      .mockImplementationOnce(
+        async (activeSession: { save: () => Promise<void> }) =>
+          activeSession.save(),
+      )
+      .mockImplementationOnce(
+        async (
+          _activeSession: unknown,
+          options: {
+            validateConflictRetry?: (authoritative: {
+              oidcFlowId?: string;
+            }) => void;
+          },
+        ) => {
+          options.validateConflictRetry?.({ oidcFlowId: "newer-login-flow" });
+        },
+      );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/oidc/callback?code=code&state=expected-state",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
+    expect(mocks.finalizeKeystoneSession).toHaveBeenCalledOnce();
     expect(current.save).toHaveBeenCalledOnce();
   });
 

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import { parseIdentityProviders } from "@/lib/auth-providers";
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
   }
   session.oidcVerifier = verifier;
   session.oidcState = state;
+  session.oidcFlowId = randomUUID();
   session.oidcIdProvider = idp;
   session.oidcReturnTo = returnTo === "/" ? undefined : returnTo;
   session.oidcSessionContinuation = continuation || undefined;

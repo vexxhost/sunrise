@@ -22,6 +22,7 @@ type StoredSessionRecord = {
 };
 
 export const REDIS_SESSION_MAX_SAVE_ATTEMPTS = 4;
+const REDIS_SESSION_MAX_REVOKE_ATTEMPTS = 2;
 const REDIS_SESSION_MAX_ROTATE_ATTEMPTS = 2;
 const PRE_AUTH_SESSION_TTL_SECONDS = 10 * 60;
 
@@ -225,16 +226,31 @@ async function revokeStoredSession(id: string) {
 
   while (!visited.has(currentId)) {
     visited.add(currentId);
-    const successor = await runRedisCommand((client) =>
-      client.eval(REVOKE_SESSION_SCRIPT, {
-        keys: [
-          sessionKey(currentId),
-          revokedKey(currentId),
-          rotatedKey(currentId),
-        ],
-        arguments: [absoluteTimeoutSeconds.toString()],
-      }),
-    );
+    let successor: unknown;
+    let lastError: unknown;
+    for (
+      let attempt = 0;
+      attempt < REDIS_SESSION_MAX_REVOKE_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        successor = await runRedisCommand((client) =>
+          client.eval(REVOKE_SESSION_SCRIPT, {
+            keys: [
+              sessionKey(currentId),
+              revokedKey(currentId),
+              rotatedKey(currentId),
+            ],
+            arguments: [absoluteTimeoutSeconds.toString()],
+          }),
+        );
+        lastError = undefined;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (lastError) throw lastError;
     if (typeof successor !== "string" || !successor) return;
     currentId = successor;
   }

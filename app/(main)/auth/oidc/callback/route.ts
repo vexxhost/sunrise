@@ -32,8 +32,49 @@ import {
   isSunriseServiceEnabled,
   type ServicePolicy,
 } from "@/lib/service-policy";
+import { saveRedisSession } from "@/lib/session-store";
+import {
+  isOidcSessionSupersededError,
+  OidcSessionSupersededError,
+} from "@/lib/oidc/session-authority";
 
 const SUNRISE_DASHBOARD_URL = process.env.SUNRISE_DASHBOARD_URL ?? "/";
+
+type OidcCallbackSession = Awaited<ReturnType<typeof getSession>>;
+
+async function saveOidcFlow(
+  session: OidcCallbackSession,
+  expectedFlowId: string,
+) {
+  try {
+    await saveRedisSession(session, {
+      validateConflictRetry: (authoritative) => {
+        if (authoritative.oidcFlowId !== expectedFlowId) {
+          throw new OidcSessionSupersededError(
+            "OIDC callback was superseded by a newer authorization flow",
+          );
+        }
+      },
+    });
+    return true;
+  } catch (error) {
+    if (isOidcSessionSupersededError(error)) return false;
+    throw error;
+  }
+}
+
+async function finishOidcFlow(
+  session: OidcCallbackSession,
+  expectedFlowId: string,
+) {
+  session.oidcFlowId = undefined;
+  session.oidcSessionContinuation = undefined;
+  return saveOidcFlow(session, expectedFlowId);
+}
+
+function supersededFlowResponse() {
+  return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -45,33 +86,54 @@ export async function GET(request: Request) {
   const expectedState = session.oidcState;
   const verifier = session.oidcVerifier;
   const idp = session.oidcIdProvider;
+  const flowId = session.oidcFlowId;
   const returnTo = normalizeAuthReturnTo(session.oidcReturnTo);
   const continuation = session.oidcSessionContinuation === true;
 
-  // Single-use values; clear regardless of outcome.
+  // A callback that does not match the current authorization state belongs to
+  // an older or invalid flow and must not consume the current one.
+  if (!flowId || !state || !expectedState) {
+    return new NextResponse("Missing OIDC parameters", { status: 400 });
+  }
+  if (state !== expectedState) {
+    return new NextResponse("OIDC state mismatch", { status: 400 });
+  }
+
+  // Single-use values; the continuation marker remains authoritative until
+  // the callback reaches a terminal save so background refresh stays paused.
   session.oidcState = undefined;
   session.oidcVerifier = undefined;
   session.oidcReturnTo = undefined;
   session.oidcIdProvider = undefined;
-  session.oidcSessionContinuation = undefined;
 
   if (errorParam) {
-    await session.save();
+    if (!(await finishOidcFlow(session, flowId))) {
+      return supersededFlowResponse();
+    }
     return new NextResponse(`OIDC error: ${errorParam}`, { status: 400 });
   }
-  if (!code || !state || !verifier || !idp) {
-    await session.save();
+  if (!code || !verifier || !idp) {
+    if (!(await finishOidcFlow(session, flowId))) {
+      return supersededFlowResponse();
+    }
     return new NextResponse("Missing OIDC parameters", { status: 400 });
   }
-  if (state !== expectedState) {
-    await session.save();
-    return new NextResponse("OIDC state mismatch", { status: 400 });
+
+  // Exchange the login flow for a callback-specific owner before doing any
+  // remote work. This admits only one callback and lets a newer login revoke
+  // the callback's authority while Keystone or STS calls are in flight.
+  const callbackFlowId = randomUUID();
+  session.oidcFlowId = callbackFlowId;
+  if (!(await saveOidcFlow(session, flowId))) {
+    return supersededFlowResponse();
   }
 
   if (continuation) {
     const lifetime = getSessionLifetimeState(session);
     if (lifetime.status !== "active" || !session.sessionId) {
-      await session.save();
+      if (!(await finishOidcFlow(session, callbackFlowId))) {
+        return supersededFlowResponse();
+      }
       return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
     }
   }
@@ -85,6 +147,9 @@ export async function GET(request: Request) {
     const message =
       error instanceof Error ? error.message : "Invalid service policy";
     console.error("[oidc/callback] invalid service policy:", message);
+    if (!(await finishOidcFlow(session, callbackFlowId))) {
+      return supersededFlowResponse();
+    }
     return new NextResponse(`Sunrise configuration error: ${message}`, {
       status: 500,
     });
@@ -94,7 +159,9 @@ export async function GET(request: Request) {
   try {
     tokens = await exchangeCodeForTokens(code, verifier, idp);
   } catch (e) {
-    await session.save();
+    if (!(await finishOidcFlow(session, callbackFlowId))) {
+      return supersededFlowResponse();
+    }
     const msg = e instanceof Error ? e.message : "unknown error";
     console.error("[oidc/callback] code exchange failed:", msg);
     return new NextResponse(`Login failed: ${msg}`, { status: 500 });
@@ -141,7 +208,9 @@ export async function GET(request: Request) {
     unscopedToken = federationResult.value;
   } catch (e) {
     session.authRecovery = { reason: "federation-failed" };
-    await session.save();
+    if (!(await finishOidcFlow(session, callbackFlowId))) {
+      return supersededFlowResponse();
+    }
     const msg = e instanceof Error ? e.message : "unknown error";
     console.error("[oidc/callback] Keystone federation failed:", msg);
     return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
@@ -160,14 +229,18 @@ export async function GET(request: Request) {
           ? e.reason
           : "session-unavailable",
     };
-    await session.save();
+    if (!(await finishOidcFlow(session, callbackFlowId))) {
+      return supersededFlowResponse();
+    }
     const msg = e instanceof Error ? e.message : "unknown error";
     console.error("[oidc/callback] Keystone session finalize failed:", msg);
     return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
   }
 
   if (resolution.status !== "ready") {
-    await session.save();
+    if (!(await finishOidcFlow(session, callbackFlowId))) {
+      return supersededFlowResponse();
+    }
     return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
   }
 
@@ -237,7 +310,9 @@ export async function GET(request: Request) {
     }
   }
 
-  await session.save();
+  if (!(await finishOidcFlow(session, callbackFlowId))) {
+    return supersededFlowResponse();
+  }
   const response = NextResponse.redirect(
     new URL(returnTo, SUNRISE_DASHBOARD_URL),
     {

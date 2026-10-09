@@ -55,6 +55,7 @@ describe("OIDC login route", () => {
     expect(session).toMatchObject({
       oidcVerifier: "pkce-verifier",
       oidcState: "oidc-state",
+      oidcFlowId: expect.any(String),
       oidcIdProvider: "demo",
       oidcReturnTo: "/object-storage/buckets",
     });
