@@ -20,6 +20,8 @@ runtime.sunriseRedisRuntime = state;
 const SESSION_READINESS_SCRIPT = `
 local value = ARGV[1]
 
+redis.call("TIME")
+
 redis.call("HSET", KEYS[1], "version", "1", "data", value)
 redis.call("EXPIRE", KEYS[1], 5)
 redis.call("HGET", KEYS[1], "version")

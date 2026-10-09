@@ -78,9 +78,9 @@ use both, network isolation, and a narrowly scoped ACL for production.
 Sunrise is available at [http://localhost:9990](http://localhost:9990).
 `/healthz` checks only the application process; `/readyz` checks Redis when
 server-side sessions require it. The readiness probe performs short-lived Lua
-writes across the session and refresh namespaces, so read-only endpoints and
-ACLs missing required data commands remove the replica from service instead of
-accepting traffic it cannot handle.
+writes across the session and refresh namespaces and samples Redis `TIME`, so
+read-only endpoints and ACLs missing required data or shared-clock commands
+remove the replica from service instead of accepting traffic it cannot handle.
 
 Run the repeatable local probe baseline after the stack becomes healthy:
 

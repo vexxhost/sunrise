@@ -57,6 +57,8 @@ return 0
 `;
 
 type RefreshEntry = {
+  consumedTokenDigest: string;
+  issuedTokenDigest?: string;
   promise: Promise<RefreshTokenResult>;
   reuseUntil?: number;
 };
@@ -629,8 +631,13 @@ export async function refreshSessionOidcTokens(
   const refreshTokenDigest = tokenDigest(refreshToken);
   const key = refreshKey(session, identityProvider, refreshTokenDigest);
   const existing = refreshEntries.get(key);
+  const matchesRefreshTokenGeneration =
+    existing &&
+    (existing.consumedTokenDigest === refreshTokenDigest ||
+      existing.issuedTokenDigest === refreshTokenDigest);
   const canReuseExisting =
     existing &&
+    matchesRefreshTokenGeneration &&
     (existing.reuseUntil === undefined || existing.reuseUntil > now);
 
   if (canReuseExisting) {
@@ -672,6 +679,7 @@ export async function refreshSessionOidcTokens(
 
   if (
     sessionBackend === "cookie" &&
+    !existing &&
     refreshEntries.size >= MAX_REFRESH_ENTRIES
   ) {
     throw new Error("Too many concurrent OIDC session refreshes");
@@ -687,9 +695,15 @@ export async function refreshSessionOidcTokens(
           refreshTokenDigest,
         )
       : refreshAccessToken(refreshToken, identityProvider);
-  const entry: RefreshEntry = { promise: refreshPromise };
+  const entry: RefreshEntry = {
+    consumedTokenDigest: refreshTokenDigest,
+    promise: refreshPromise,
+  };
   entry.promise = refreshPromise
     .then(async (result) => {
+      entry.issuedTokenDigest = tokenDigest(
+        result.refresh_token ?? refreshToken,
+      );
       if (sessionBackend === "redis") {
         try {
           const observedAt = Date.now();
@@ -726,7 +740,7 @@ export async function refreshSessionOidcTokens(
       if (refreshEntries.get(key) === entry) refreshEntries.delete(key);
       throw error;
     });
-  if (refreshEntries.size < MAX_REFRESH_ENTRIES) {
+  if (refreshEntries.size < MAX_REFRESH_ENTRIES || refreshEntries.has(key)) {
     refreshEntries.set(key, entry);
   }
 

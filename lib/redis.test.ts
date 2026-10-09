@@ -237,5 +237,6 @@ describe("Redis deployment configuration", () => {
       ],
       arguments: [expect.any(String)],
     });
+    expect(client.eval.mock.calls[0][0]).toContain('redis.call("TIME")');
   });
 });

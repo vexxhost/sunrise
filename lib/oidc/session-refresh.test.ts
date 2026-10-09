@@ -132,6 +132,37 @@ describe("OIDC session token refresh", () => {
     expect(rotated.save).not.toHaveBeenCalled();
   });
 
+  it("does not reuse a cookie result after an interactive continuation", async () => {
+    const firstResult = refreshedTokens();
+    const continuationResult = {
+      ...refreshedTokens(),
+      access_token: "continuation-access-token",
+      refresh_token: "continuation-rotated-refresh-token",
+    };
+    mocks.refreshAccessToken
+      .mockResolvedValueOnce(firstResult)
+      .mockResolvedValueOnce(continuationResult);
+    const first = session("cookie-continuation");
+    await refreshSessionOidcTokens(first as never, "demo");
+
+    const continued = session(
+      "cookie-continuation",
+      "interactive-continuation-token",
+    );
+    await expect(
+      refreshSessionOidcTokens(continued as never, "demo"),
+    ).resolves.toEqual(continuationResult);
+
+    expect(mocks.refreshAccessToken).toHaveBeenNthCalledWith(
+      2,
+      "interactive-continuation-token",
+      "demo",
+    );
+    expect(continued.keycloakRefreshToken).toBe(
+      "continuation-rotated-refresh-token",
+    );
+  });
+
   it("does not locally reuse an access token inside its safety margin", async () => {
     mocks.refreshAccessToken.mockResolvedValue({
       ...refreshedTokens(),
