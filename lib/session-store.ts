@@ -23,9 +23,7 @@ type StoredSessionRecord = {
 
 export const REDIS_SESSION_MAX_SAVE_ATTEMPTS = 4;
 const REDIS_SESSION_MAX_ROTATE_ATTEMPTS = 2;
-const REDIS_SESSION_MAX_REVOKE_HOPS = 16;
 const PRE_AUTH_SESSION_TTL_SECONDS = 10 * 60;
-const ROTATION_RECOVERY_TTL_SECONDS = 2 * 60;
 
 type RedisSessionSaveOptions = {
   beforeConflictRetry?: () => Promise<void>;
@@ -68,7 +66,7 @@ end
 if redis.call("EXISTS", KEYS[1]) == 0 then
   return ""
 end
-redis.call("SET", KEYS[3], ARGV[2], "EX", ARGV[3])
+redis.call("SET", KEYS[3], ARGV[2], "EX", ARGV[1])
 redis.call("SET", KEYS[2], "1", "EX", ARGV[1])
 redis.call("DEL", KEYS[1])
 return ARGV[2]
@@ -197,8 +195,10 @@ async function persistStoredSession(
 async function revokeStoredSession(id: string) {
   const { absoluteTimeoutSeconds } = getSessionLifetimePolicy();
   let currentId = id;
+  const visited = new Set<string>();
 
-  for (let hop = 0; hop < REDIS_SESSION_MAX_REVOKE_HOPS; hop += 1) {
+  while (!visited.has(currentId)) {
+    visited.add(currentId);
     const successor = await runRedisCommand((client) =>
       client.eval(REVOKE_SESSION_SCRIPT, {
         keys: [
@@ -213,7 +213,7 @@ async function revokeStoredSession(id: string) {
     currentId = successor;
   }
 
-  throw new Error("Sunrise session rotated too many times while revoking");
+  throw new Error("Sunrise session rotation contains a cycle");
 }
 
 async function rotateStoredSession(id: string, proposedSuccessor: string) {
@@ -232,7 +232,6 @@ async function rotateStoredSession(id: string, proposedSuccessor: string) {
           arguments: [
             absoluteTimeoutSeconds.toString(),
             proposedSuccessor,
-            ROTATION_RECOVERY_TTL_SECONDS.toString(),
           ],
         }),
       );

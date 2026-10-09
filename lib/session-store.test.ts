@@ -486,6 +486,8 @@ describe("Redis session storage", () => {
   });
 
   it("revokes a live pre-authentication reference before authentication", async () => {
+    process.env.SUNRISE_SESSION_IDLE_TIMEOUT_SECONDS = "600";
+    process.env.SUNRISE_SESSION_ABSOLUTE_TIMEOUT_SECONDS = "3600";
     const saveReference = vi.fn();
     const reference = {
       backend: "redis",
@@ -524,10 +526,16 @@ describe("Redis session storage", () => {
     session.keystoneProjectToken = "authenticated-token";
     await session.save();
 
-    const revoke = client.eval.mock.calls[0][1] as { keys: string[] };
+    const rotation = client.eval.mock.calls[0][1] as {
+      arguments: string[];
+      keys: string[];
+    };
     const save = client.eval.mock.calls[1][1] as { keys: string[] };
-    expect(revoke.keys[0]).toContain("pre-auth-session-id");
-    expect(revoke.keys[1]).toContain("pre-auth-session-id");
+    expect(rotation.keys[0]).toContain("pre-auth-session-id");
+    expect(rotation.keys[1]).toContain("pre-auth-session-id");
+    expect(rotation.keys[2]).toContain("pre-auth-session-id");
+    expect(rotation.arguments).toHaveLength(2);
+    expect(rotation.arguments[0]).toBe("3600");
     expect(save.keys[0]).not.toContain("pre-auth-session-id");
     expect(reference.key).not.toBe("pre-auth-session-id");
     expect(saveReference).toHaveBeenCalledOnce();
@@ -699,6 +707,47 @@ describe("Redis session storage", () => {
     expect(logoutDestroyReference).toHaveBeenCalledOnce();
     expect(callbackSaveReference).not.toHaveBeenCalled();
     expect(client.eval).toHaveBeenCalledTimes(4);
+  });
+
+  it("revokes an entire session rotation chain", async () => {
+    const destroyReference = vi.fn();
+    const reference = {
+      backend: "redis",
+      key: "rotation-chain-root",
+    };
+    Object.defineProperties(reference, {
+      save: { value: vi.fn() },
+      destroy: { value: destroyReference },
+      updateConfig: { value: vi.fn() },
+    });
+    const sealed = await sealData(
+      { projectId: "project-old", sessionSignedInAt: Date.now() },
+      {
+        password: process.env.SUNRISE_SESSION_SECRET!,
+        ttl: 3600,
+      },
+    );
+    const successors = Array.from(
+      { length: 20 },
+      (_, index) => `rotation-chain-${index + 1}`,
+    );
+    const client = {
+      hGetAll: vi.fn().mockResolvedValue({ version: "1", data: sealed }),
+      eval: vi
+        .fn()
+        .mockImplementation(() => Promise.resolve(successors.shift() ?? "")),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    await destroyRedisSession(session);
+
+    expect(client.eval).toHaveBeenCalledTimes(21);
+    expect(destroyReference).toHaveBeenCalledOnce();
   });
 
   it("keeps the session reference intact until Redis revocation succeeds", async () => {
