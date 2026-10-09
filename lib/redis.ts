@@ -18,15 +18,32 @@ runtime.sunriseRedisRuntime = state;
 
 const REDIS_READINESS_SCRIPT = `
 redis.call("SET", KEYS[1], ARGV[1], "PX", 5000)
+redis.call("GET", KEYS[1])
 
 if ARGV[2] == "1" then
+  redis.call("EXISTS", KEYS[1])
   redis.call("HSET", KEYS[2], "probe", ARGV[1])
+  redis.call("HGET", KEYS[2], "probe")
+  redis.call("HGETALL", KEYS[2])
+  redis.call("EXPIRE", KEYS[2], 5)
   redis.call("PEXPIRE", KEYS[2], 5000)
 end
 
 if ARGV[3] == "1" then
+  local now = redis.call("TIME")
+  local expiresAt = tonumber(now[1]) * 1000
+    + math.floor(tonumber(now[2]) / 1000)
+    + 5000
+
+  redis.call("PTTL", KEYS[1])
   redis.call("ZADD", KEYS[3], 0, ARGV[1])
-  redis.call("PEXPIRE", KEYS[3], 5000)
+  redis.call("ZCOUNT", KEYS[3], 0, 0)
+  redis.call("ZRANGE", KEYS[3], 0, -1)
+  redis.call("ZREVRANGE", KEYS[3], 0, 0, "WITHSCORES")
+  redis.call("ZREM", KEYS[3], ARGV[1])
+  redis.call("ZADD", KEYS[3], expiresAt, ARGV[1])
+  redis.call("PERSIST", KEYS[3])
+  redis.call("PEXPIREAT", KEYS[3], expiresAt)
 end
 
 redis.call("DEL", KEYS[1], KEYS[2], KEYS[3])
