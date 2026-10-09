@@ -15,6 +15,7 @@ import {
   getSessionLifetimeState,
   type SessionExpiryReason,
 } from "@/lib/session-lifetime";
+import { hasAuthenticatedSessionData } from "@/lib/session-data";
 import { getSessionBackend } from "@/lib/redis";
 import type { KeystoneRole } from "@/types/openstack";
 
@@ -136,13 +137,7 @@ function setTransient<K extends keyof SunriseSession>(
 }
 
 export function hasAuthenticatedSession(session: SunriseSession): boolean {
-  return Boolean(
-    session.oidcIdentity ||
-    session.keycloakRefreshToken ||
-    session.keystone_unscoped_token ||
-    session.keystoneProjectToken ||
-    session.s3Credentials,
-  );
+  return hasAuthenticatedSessionData(session);
 }
 
 function denyExpiredCredentials(session: IronSession<SunriseSession>) {

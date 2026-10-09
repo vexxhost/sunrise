@@ -103,11 +103,11 @@ describe("Redis session storage", () => {
     expect(storedSessionTtlSeconds({})).toBe(600);
   });
 
-  it("migrates a legacy chunk-capable cookie to an opaque reference", async () => {
+  it("migrates legacy pre-authentication state to an opaque reference", async () => {
     const saveReference = vi.fn();
     const reference = {
-      projectId: "legacy-project",
-      keycloakRefreshToken: "legacy-refresh-token",
+      oidcState: "legacy-state",
+      oidcVerifier: "legacy-verifier",
     };
     Object.defineProperties(reference, {
       save: { value: saveReference },
@@ -128,8 +128,8 @@ describe("Redis session storage", () => {
       { chunk: true } as never,
     );
     expect(session).toMatchObject({
-      projectId: "legacy-project",
-      keycloakRefreshToken: "legacy-refresh-token",
+      oidcState: "legacy-state",
+      oidcVerifier: "legacy-verifier",
     });
 
     await session.save();
@@ -141,8 +141,80 @@ describe("Redis session storage", () => {
     expect(reference).toEqual(
       expect.objectContaining({ backend: "redis", key: expect.any(String) }),
     );
-    expect(reference).not.toHaveProperty("projectId");
+    expect(reference).not.toHaveProperty("oidcState");
+    expect(reference).not.toHaveProperty("oidcVerifier");
+    expect(saveReference).toHaveBeenCalledOnce();
+  });
+
+  it("rejects credential-bearing legacy cookies in Redis mode", async () => {
+    const saveReference = vi.fn();
+    const reference = {
+      oidcIdentity: {
+        subject: "legacy-subject",
+        displayName: "Legacy user",
+        issuer: "https://identity.example.test",
+        identityProvider: "demo",
+      },
+      keycloakRefreshToken: "legacy-refresh-token",
+      oidcRefreshCheckpoint: {
+        consumedTokenDigest: "legacy-consumed-digest",
+        identityProvider: "demo",
+        issuedTokenDigest: "legacy-issued-digest",
+        result: {
+          access_token: "legacy-access-token",
+          expires_in: 60,
+          token_type: "Bearer",
+        },
+        reuseUntil: Date.now() + 60_000,
+      },
+      keystone_unscoped_token: "legacy-unscoped-token",
+      keystoneProjectToken: "legacy-project-token",
+      projectId: "legacy-project",
+      sessionSignedInAt: Date.now(),
+      s3Credentials: {
+        accessKeyId: "legacy-access-key",
+        secretAccessKey: "legacy-secret-key",
+        sessionToken: "legacy-session-token",
+        expiration: Date.now() + 60_000,
+        projectId: "legacy-project",
+      },
+    };
+    Object.defineProperties(reference, {
+      save: { value: saveReference },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const client = {
+      eval: vi.fn().mockResolvedValue(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+
+    expect(session.oidcIdentity).toBeUndefined();
+    expect(session.keycloakRefreshToken).toBeUndefined();
+    expect(session.oidcRefreshCheckpoint).toBeUndefined();
+    expect(session.keystone_unscoped_token).toBeUndefined();
+    expect(session.keystoneProjectToken).toBeUndefined();
+    expect(session.s3Credentials).toBeUndefined();
+    expect(client.eval).not.toHaveBeenCalled();
+
+    session.oidcState = "new-login-state";
+    await session.save();
+
+    expect(reference).toEqual(
+      expect.objectContaining({ backend: "redis", key: expect.any(String) }),
+    );
+    expect(reference).not.toHaveProperty("oidcIdentity");
     expect(reference).not.toHaveProperty("keycloakRefreshToken");
+    expect(reference).not.toHaveProperty("oidcRefreshCheckpoint");
+    expect(reference).not.toHaveProperty("keystoneProjectToken");
+    expect(reference).not.toHaveProperty("s3Credentials");
+    expect(session).toMatchObject({ oidcState: "new-login-state" });
     expect(saveReference).toHaveBeenCalledOnce();
   });
 

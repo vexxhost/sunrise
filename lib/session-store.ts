@@ -11,6 +11,7 @@ import { getSessionLifetimePolicy } from "@/lib/session-lifetime";
 import type { SunriseSession } from "@/lib/session";
 import { getRedisKeyPrefix, runRedisCommand } from "@/lib/redis";
 import { StoredSessionSupersededError } from "@/lib/session-errors";
+import { hasAuthenticatedSessionData } from "@/lib/session-data";
 
 type StoredSessionReference = {
   backend?: "redis";
@@ -370,8 +371,16 @@ export async function getRedisSession(
     persistedReferenceId && hasLegacyReferenceData(reference),
   );
   const missingStoredReference = hasStoredReference && !loaded;
+  const legacyData = hasStoredReference ? {} : referenceData(reference);
+  // Server Components cannot replace cookies while rendering. Accepting a
+  // credential-bearing legacy cookie until some later mutation would leave it
+  // outside server-side revocation, so Redis mode fails closed and requires a
+  // new login. Pre-authentication OIDC state may still migrate on its next
+  // route-handler save.
+  const rejectedLegacyCredentials = hasAuthenticatedSessionData(legacyData);
   const initialData =
-    loaded?.data ?? (missingStoredReference ? {} : referenceData(reference));
+    loaded?.data ??
+    (missingStoredReference || rejectedLegacyCredentials ? {} : legacyData);
   const target = { ...initialData } as SunriseSession;
   const changed = new Set<keyof SunriseSession>();
   const deleted = new Set<keyof SunriseSession>();

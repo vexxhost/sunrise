@@ -130,3 +130,7 @@ measured cacheable workload justifies that separate consistency boundary.
 Set `SUNRISE_SESSION_BACKEND=cookie` to use the single-process development
 fallback. That mode is not suitable for horizontally scaled production
 replicas because credential rotation and logout state are held by the browser.
+Switching an existing deployment from `cookie` to `redis` intentionally
+invalidates credential-bearing cookie sessions and requires users to sign in
+again. This ensures every accepted authenticated session has a server-side,
+revocable identity before its credentials are used.
