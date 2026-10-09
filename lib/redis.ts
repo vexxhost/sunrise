@@ -16,6 +16,23 @@ const runtime = globalThis as typeof globalThis & {
 const state = runtime.sunriseRedisRuntime ?? {};
 runtime.sunriseRedisRuntime = state;
 
+const REDIS_READINESS_SCRIPT = `
+redis.call("SET", KEYS[1], ARGV[1], "PX", 5000)
+
+if ARGV[2] == "1" then
+  redis.call("HSET", KEYS[2], "probe", ARGV[1])
+  redis.call("PEXPIRE", KEYS[2], 5000)
+end
+
+if ARGV[3] == "1" then
+  redis.call("ZADD", KEYS[3], 0, ARGV[1])
+  redis.call("PEXPIRE", KEYS[3], 5000)
+end
+
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3])
+return 1
+`;
+
 export function getSessionBackend(
   value = process.env.SUNRISE_SESSION_BACKEND,
 ): SessionBackend {
@@ -201,10 +218,29 @@ export async function runRedisCommand<T>(
   }
 }
 
-export async function pingRedis() {
+export async function probeRedisReadiness(options: {
+  sessions: boolean;
+  nextCache: boolean;
+}) {
   const startedAt = performance.now();
-  const response = await runRedisCommand((client) => client.ping());
-  if (response !== "PONG") throw new Error("Redis did not return PONG");
+  const prefix = getRedisKeyPrefix();
+  const response = await runRedisCommand((client) =>
+    client.eval(REDIS_READINESS_SCRIPT, {
+      keys: [
+        `${prefix}:readiness:{probe}:string`,
+        `${prefix}:readiness:{probe}:session`,
+        `${prefix}:readiness:{probe}:cache-tag`,
+      ],
+      arguments: [
+        Date.now().toString(),
+        options.sessions ? "1" : "0",
+        options.nextCache ? "1" : "0",
+      ],
+    }),
+  );
+  if (Number(response) !== 1) {
+    throw new Error("Redis readiness capability probe failed");
+  }
   return Math.round((performance.now() - startedAt) * 100) / 100;
 }
 

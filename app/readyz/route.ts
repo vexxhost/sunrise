@@ -4,7 +4,7 @@ import {
   getNextCacheDeploymentId,
   getRedisKeyPrefix,
   getSessionBackend,
-  pingRedis,
+  probeRedisReadiness,
 } from "@/lib/redis";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,12 @@ export async function GET() {
       sessionBackend === "redis" || nextCacheBackend === "redis";
     if (redisRequired) getRedisKeyPrefix();
     if (nextCacheBackend === "redis") getNextCacheDeploymentId();
-    const redisLatencyMs = redisRequired ? await pingRedis() : null;
+    const redisLatencyMs = redisRequired
+      ? await probeRedisReadiness({
+          sessions: sessionBackend === "redis",
+          nextCache: nextCacheBackend === "redis",
+        })
+      : null;
     return NextResponse.json(
       {
         status: "ready",

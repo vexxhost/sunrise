@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   getNextCacheDeploymentId: vi.fn(),
   getRedisKeyPrefix: vi.fn(),
   getSessionBackend: vi.fn(),
-  pingRedis: vi.fn(),
+  probeRedisReadiness: vi.fn(),
 }));
 
 vi.mock("@/lib/redis", () => mocks);
@@ -20,7 +20,7 @@ describe("readiness route", () => {
     mocks.getNextCacheBackend.mockReturnValue("memory");
     mocks.getNextCacheDeploymentId.mockReturnValue("build-123");
     mocks.getRedisKeyPrefix.mockReturnValue("sunrise");
-    mocks.pingRedis.mockResolvedValue(1.25);
+    mocks.probeRedisReadiness.mockResolvedValue(1.25);
   });
 
   it("does not require Redis for local development backends", async () => {
@@ -33,7 +33,7 @@ describe("readiness route", () => {
       nextCacheBackend: "memory",
       redisLatencyMs: null,
     });
-    expect(mocks.pingRedis).not.toHaveBeenCalled();
+    expect(mocks.probeRedisReadiness).not.toHaveBeenCalled();
   });
 
   it("checks Redis when only the shared Next.js cache uses it", async () => {
@@ -44,7 +44,34 @@ describe("readiness route", () => {
     expect(response.status).toBe(200);
     expect(mocks.getRedisKeyPrefix).toHaveBeenCalledOnce();
     expect(mocks.getNextCacheDeploymentId).toHaveBeenCalledOnce();
-    expect(mocks.pingRedis).toHaveBeenCalledOnce();
+    expect(mocks.probeRedisReadiness).toHaveBeenCalledWith({
+      sessions: false,
+      nextCache: true,
+    });
+  });
+
+  it("checks session write capabilities without requiring cache commands", async () => {
+    mocks.getSessionBackend.mockReturnValue("redis");
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    expect(mocks.probeRedisReadiness).toHaveBeenCalledWith({
+      sessions: true,
+      nextCache: false,
+    });
+  });
+
+  it("fails readiness when Redis cannot perform required writes", async () => {
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.probeRedisReadiness.mockRejectedValue(
+      new Error("READONLY You can't write against a read only replica"),
+    );
+
+    const response = await GET();
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ status: "not-ready" });
   });
 
   it("fails readiness when a production cache deployment ID is missing", async () => {
@@ -56,7 +83,7 @@ describe("readiness route", () => {
     const response = await GET();
 
     expect(response.status).toBe(503);
-    expect(mocks.pingRedis).not.toHaveBeenCalled();
+    expect(mocks.probeRedisReadiness).not.toHaveBeenCalled();
   });
 
   it("fails readiness when Redis cache configuration is invalid", async () => {
