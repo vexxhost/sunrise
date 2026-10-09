@@ -11,6 +11,19 @@ export type OidcSessionAuthority = {
   refreshTokenDigest?: string;
 };
 
+export class OidcSessionSupersededError extends Error {
+  constructor() {
+    super("Credential update was superseded by a newer OIDC session");
+    this.name = "OidcSessionSupersededError";
+  }
+}
+
+export function isOidcSessionSupersededError(
+  error: unknown,
+): error is OidcSessionSupersededError {
+  return error instanceof OidcSessionSupersededError;
+}
+
 function tokenDigest(token?: string) {
   return token
     ? createHash("sha256").update(token).digest("base64url")
@@ -40,9 +53,7 @@ export function assertOidcSessionAuthority(
     current.identityProvider !== expected.identityProvider ||
     current.refreshTokenDigest !== expected.refreshTokenDigest
   ) {
-    throw new Error(
-      "Credential renewal was superseded by a newer OIDC session",
-    );
+    throw new OidcSessionSupersededError();
   }
 }
 

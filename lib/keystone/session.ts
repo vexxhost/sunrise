@@ -2,6 +2,11 @@ import "server-only";
 import type { IronSession } from "iron-session";
 import { getProjectScopedTokenContext } from "@/lib/keystone/login";
 import type { SunriseSession } from "@/lib/session";
+import {
+  captureOidcSessionAuthority,
+  isOidcSessionSupersededError,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 
 const KEYSTONE_API = process.env.KEYSTONE_API;
 
@@ -66,6 +71,7 @@ export async function getKeystoneSessionState(
     return { status: "missing" };
   }
 
+  const authority = captureOidcSessionAuthority(session);
   const unscoped = await validateToken(session.keystone_unscoped_token);
   if (unscoped.status !== "valid") {
     return unscoped;
@@ -85,7 +91,17 @@ export async function getKeystoneSessionState(
     if (context) {
       session.keystoneProjectToken = context.value;
       session.keystoneProjectRoles = context.roles;
-      await session.save();
+      try {
+        await saveOidcSessionIfAuthoritative(session, authority);
+      } catch (error) {
+        if (isOidcSessionSupersededError(error)) {
+          return {
+            status: "unknown",
+            reason: "OIDC session changed during Keystone validation",
+          };
+        }
+        throw error;
+      }
     } else if (!existingProjectToken) {
       return {
         status: "unknown",
@@ -97,7 +113,17 @@ export async function getKeystoneSessionState(
   if (!session.projectId && session.keystoneProjectToken) {
     session.keystoneProjectToken = undefined;
     session.keystoneProjectRoles = undefined;
-    await session.save();
+    try {
+      await saveOidcSessionIfAuthoritative(session, authority);
+    } catch (error) {
+      if (isOidcSessionSupersededError(error)) {
+        return {
+          status: "unknown",
+          reason: "OIDC session changed during Keystone validation",
+        };
+      }
+      throw error;
+    }
   }
 
   if (session.keystoneProjectToken) {
