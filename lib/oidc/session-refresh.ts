@@ -235,7 +235,13 @@ async function reloadCheckpoint(
   refreshTokenDigest: string,
 ) {
   await reloadRedisSession(session);
-  return reusableCheckpoint(session, identityProvider, refreshTokenDigest);
+  const checkpoint = reusableCheckpoint(
+    session,
+    identityProvider,
+    refreshTokenDigest,
+  );
+  if (checkpoint) assertCheckpointStillAuthoritative(session, checkpoint);
+  return checkpoint;
 }
 
 async function saveDistributedRefresh(

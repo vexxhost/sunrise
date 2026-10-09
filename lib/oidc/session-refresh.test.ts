@@ -144,7 +144,7 @@ describe("OIDC session token refresh", () => {
 
   it("reuses a refresh checkpoint from the authoritative Redis session", async () => {
     const result = refreshedTokens();
-    const current = session("redis-checkpoint");
+    const current = session("redis-checkpoint", "rotated-refresh-token");
     Object.assign(current, {
       oidcRefreshCheckpoint: {
         consumedTokenDigest: digest("old-refresh-token"),
@@ -164,6 +164,31 @@ describe("OIDC session token refresh", () => {
     expect(mocks.runRedisCommand).not.toHaveBeenCalled();
     expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
     expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
+  });
+
+  it("rejects a checkpoint superseded by a continuation token", async () => {
+    const result = refreshedTokens();
+    const current = session("redis-superseded-checkpoint");
+    Object.assign(current, {
+      oidcRefreshCheckpoint: {
+        consumedTokenDigest: digest("old-refresh-token"),
+        identityProvider: "demo",
+        issuedTokenDigest: digest("rotated-refresh-token"),
+        result,
+        reuseUntil: Date.now() + 30_000,
+      },
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.reloadRedisSession.mockImplementation(async () => {
+      current.keycloakRefreshToken = "interactive-continuation-token";
+    });
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).rejects.toThrow("superseded by an interactive continuation");
+    expect(mocks.runRedisCommand).not.toHaveBeenCalled();
+    expect(mocks.refreshAccessToken).not.toHaveBeenCalled();
+    expect(current.save).not.toHaveBeenCalled();
   });
 
   it("rejects process-local reuse superseded by a continuation", async () => {
