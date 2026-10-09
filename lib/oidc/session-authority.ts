@@ -10,6 +10,7 @@ export type OidcSessionAuthority = {
   generation?: string;
   identityProvider?: string;
   projectId?: string;
+  regionId?: string;
   refreshTokenDigest?: string;
 };
 
@@ -43,6 +44,7 @@ export function captureOidcSessionAuthority(
       session.federationIdentityProvider ??
       session.oidcIdentity?.identityProvider,
     projectId: session.projectId,
+    regionId: session.regionId,
     refreshTokenDigest: tokenDigest(session.keycloakRefreshToken),
   };
 }
@@ -57,6 +59,7 @@ export function assertOidcSessionAuthority(
     current.generation !== expected.generation ||
     current.identityProvider !== expected.identityProvider ||
     current.projectId !== expected.projectId ||
+    current.regionId !== expected.regionId ||
     current.refreshTokenDigest !== expected.refreshTokenDigest
   ) {
     throw new OidcSessionSupersededError();

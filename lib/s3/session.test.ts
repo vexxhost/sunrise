@@ -57,6 +57,7 @@ function session(): {
   keycloakRefreshToken?: string;
   s3ProjectRoles: Record<string, string>;
   oidcSessionGeneration: string;
+  regionId: string;
   sessionId: string;
   sessionSignedInAt: number;
   sessionLastActivityAt: number;
@@ -69,6 +70,7 @@ function session(): {
     keycloakRefreshToken: "old-primary-refresh-token",
     s3ProjectRoles: { project1: "arn:aws:iam::account:role/access" },
     oidcSessionGeneration: "generation-1",
+    regionId: "RegionOne",
     sessionId: "session-1",
     sessionSignedInAt: now - 1_000,
     sessionLastActivityAt: now - 500,
@@ -159,6 +161,22 @@ describe("Object Storage credential renewal", () => {
         ...current,
         keycloakRefreshToken: "continuation-refresh-token",
         oidcSessionGeneration: "generation-2",
+      });
+    });
+
+    await expect(
+      ensureActiveProjectS3Credentials(current as never),
+    ).rejects.toThrow("superseded by a newer OIDC session");
+
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not restore STS credentials for a previously active region", async () => {
+    const current = session();
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        regionId: "RegionTwo",
       });
     });
 

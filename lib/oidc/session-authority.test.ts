@@ -11,6 +11,8 @@ vi.mock("@/lib/session-store", () => ({
 }));
 
 import {
+  assertOidcSessionAuthority,
+  captureOidcSessionAuthority,
   OidcSessionSupersededError,
   saveOidcSessionIfAuthoritative,
 } from "@/lib/oidc/session-authority";
@@ -39,5 +41,28 @@ describe("OIDC session authority", () => {
     await expect(
       saveOidcSessionIfAuthoritative({} as never, {}),
     ).rejects.toBe(failure);
+  });
+
+  it("rejects credential publication after the active region changes", () => {
+    const authority = captureOidcSessionAuthority({
+      oidcSessionGeneration: "generation-1",
+      federationIdentityProvider: "demo",
+      projectId: "project-1",
+      regionId: "RegionOne",
+      keycloakRefreshToken: "refresh-token",
+    });
+
+    expect(() =>
+      assertOidcSessionAuthority(
+        {
+          oidcSessionGeneration: "generation-1",
+          federationIdentityProvider: "demo",
+          projectId: "project-1",
+          regionId: "RegionTwo",
+          keycloakRefreshToken: "refresh-token",
+        },
+        authority,
+      ),
+    ).toThrow(OidcSessionSupersededError);
   });
 });

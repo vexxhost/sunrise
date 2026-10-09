@@ -33,6 +33,7 @@ function session() {
     federationIdentityProvider: "demo",
     oidcIdentity: { identityProvider: "demo" },
     oidcSessionGeneration: "generation-1",
+    regionId: "RegionOne",
     authRecovery: { reason: "session-unavailable" },
     sessionId: "session-1",
     sessionSignedInAt: now - 1_000,
@@ -111,6 +112,22 @@ describe("Keystone session renewal", () => {
         ...current,
         keycloakRefreshToken: "continuation-refresh-token",
         oidcSessionGeneration: "generation-2",
+      });
+    });
+
+    await expect(refreshKeystoneSession(current as never)).rejects.toThrow(
+      "superseded by a newer OIDC session",
+    );
+
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not restore Keystone credentials for a previously active region", async () => {
+    const current = session();
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        regionId: "RegionTwo",
       });
     });
 
