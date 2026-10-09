@@ -335,6 +335,52 @@ describe("Redis session storage", () => {
     );
   });
 
+  it("can abort a CAS retry after inspecting authoritative state", async () => {
+    const reference = {
+      backend: "redis",
+      key: "preserve-authoritative-session-id",
+    };
+    Object.defineProperties(reference, {
+      save: { value: vi.fn() },
+      destroy: { value: vi.fn() },
+      updateConfig: { value: vi.fn() },
+    });
+    const initial = await sealData(
+      { keycloakRefreshToken: "old-token", projectId: "project-old" },
+      { password: process.env.SUNRISE_SESSION_SECRET!, ttl: 3600 },
+    );
+    const concurrent = await sealData(
+      { keycloakRefreshToken: "interactive-token", projectId: "project-old" },
+      { password: process.env.SUNRISE_SESSION_SECRET!, ttl: 3600 },
+    );
+    const client = {
+      hGetAll: vi
+        .fn()
+        .mockResolvedValueOnce({ version: "1", data: initial })
+        .mockResolvedValueOnce({ version: "2", data: concurrent }),
+      eval: vi.fn().mockResolvedValueOnce(0).mockResolvedValueOnce(1),
+    };
+    mocks.getIronSession.mockResolvedValue(reference);
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (current: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+
+    const session = await getRedisSession({} as never, {} as never);
+    session.keycloakRefreshToken = "background-token";
+    await expect(
+      saveRedisSession(session, {
+        validateConflictRetry: (authoritative) => {
+          if (authoritative.keycloakRefreshToken !== "background-token") {
+            throw new Error("superseded");
+          }
+        },
+      }),
+    ).rejects.toThrow("superseded");
+
+    expect(client.eval).toHaveBeenCalledOnce();
+  });
+
   it("revokes a live pre-authentication reference before authentication", async () => {
     const saveReference = vi.fn();
     const reference = {

@@ -27,6 +27,9 @@ const PRE_AUTH_SESSION_TTL_SECONDS = 10 * 60;
 type RedisSessionSaveOptions = {
   beforeConflictRetry?: () => Promise<void>;
   maximumCommandTimeoutMs?: number;
+  validateConflictRetry?: (
+    authoritative: Readonly<SunriseSession>,
+  ) => void;
 };
 
 const SAVE_SESSION_SCRIPT = `
@@ -283,6 +286,7 @@ export async function getRedisSession(
       if (!loaded) {
         throw new Error("Cannot save a missing or revoked Sunrise session");
       }
+      options.validateConflictRetry?.(loaded.data);
     }
 
     throw new Error("Sunrise session changed too many times while saving");

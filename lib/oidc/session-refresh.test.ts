@@ -166,6 +166,43 @@ describe("OIDC session token refresh", () => {
     expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
   });
 
+  it("rejects process-local reuse superseded by a continuation", async () => {
+    const leader = session("redis-local-superseded");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await refreshSessionOidcTokens(leader as never, "demo");
+    const stale = session("redis-local-superseded");
+    mocks.reloadRedisSession.mockImplementation(async (active) => {
+      Object.assign(active, {
+        keycloakRefreshToken: "interactive-continuation-token",
+        oidcSessionContinuation: true,
+      });
+    });
+
+    await expect(
+      refreshSessionOidcTokens(stale as never, "demo"),
+    ).rejects.toThrow("superseded by an interactive continuation");
+    expect(mocks.refreshAccessToken).toHaveBeenCalledOnce();
+    expect(stale.save).not.toHaveBeenCalled();
+
+    Object.assign(stale, {
+      keycloakRefreshToken: "interactive-continuation-token",
+      oidcSessionContinuation: undefined,
+    });
+    mocks.reloadRedisSession.mockResolvedValue(undefined);
+    await refreshSessionOidcTokens(stale as never, "demo");
+    expect(mocks.refreshAccessToken).toHaveBeenCalledTimes(2);
+  });
+
   it("persists a rotated token and checkpoint before releasing the lease", async () => {
     const current = session("redis-leader");
     const startedAt = Date.now();
@@ -256,11 +293,94 @@ describe("OIDC session token refresh", () => {
     expect(mocks.saveRedisSession).toHaveBeenCalledWith(current, {
       beforeConflictRetry: expect.any(Function),
       maximumCommandTimeoutMs: 2_000,
+      validateConflictRetry: expect.any(Function),
     });
     expect(
       client.eval.mock.calls.filter(([script]) => script.includes("PEXPIRE")),
     ).toHaveLength(3);
     expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a continuation token published during a refresh", async () => {
+    const current = session("redis-continuation-race");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.reloadRedisSession.mockImplementation(async () => {
+      if (mocks.refreshAccessToken.mock.calls.length > 0) {
+        current.keycloakRefreshToken = "interactive-continuation-token";
+      }
+    });
+    mocks.saveRedisSession.mockImplementation(async (active) => active.save());
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).rejects.toThrow("superseded by an interactive continuation");
+    expect(current.keycloakRefreshToken).toBe(
+      "interactive-continuation-token",
+    );
+    expect(current).not.toHaveProperty("oidcRefreshCheckpoint");
+    expect(current.save).not.toHaveBeenCalled();
+  });
+
+  it("aborts while an interactive continuation is active", async () => {
+    const current = session("redis-continuation-active");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.reloadRedisSession.mockImplementation(async () => {
+      if (mocks.refreshAccessToken.mock.calls.length > 0) {
+        Object.assign(current, { oidcSessionContinuation: true });
+      }
+    });
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).rejects.toThrow("superseded by an interactive continuation");
+    expect(current.keycloakRefreshToken).toBe("old-refresh-token");
+    expect(current).not.toHaveProperty("oidcRefreshCheckpoint");
+    expect(current.save).not.toHaveBeenCalled();
+  });
+
+  it("preserves a continuation token published during checkpoint CAS", async () => {
+    const current = session("redis-continuation-cas-race");
+    const client = redisClient((script) => {
+      if (script.includes('"NX"')) return 1;
+      return 1;
+    });
+    mocks.getSessionBackend.mockReturnValue("redis");
+    mocks.runRedisCommand.mockImplementation(
+      (operation: (active: typeof client) => Promise<unknown>) =>
+        operation(client),
+    );
+    mocks.saveRedisSession.mockImplementation(async (active, options) => {
+      const authoritative = {
+        keycloakRefreshToken: "interactive-continuation-token",
+      };
+      await options.beforeConflictRetry();
+      options.validateConflictRetry(authoritative);
+      await active.save();
+    });
+    mocks.refreshAccessToken.mockResolvedValue(refreshedTokens());
+
+    await expect(
+      refreshSessionOidcTokens(current as never, "demo"),
+    ).rejects.toThrow("superseded by an interactive continuation");
+    expect(current.save).not.toHaveBeenCalled();
   });
 
   it("does not reuse a checkpoint past the access-token lifetime", async () => {

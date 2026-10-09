@@ -121,6 +121,42 @@ function applyRotatedRefreshToken(
   return false;
 }
 
+class SupersededOidcRefreshError extends Error {
+  constructor() {
+    super("The OIDC refresh was superseded by an interactive continuation");
+    this.name = "SupersededOidcRefreshError";
+  }
+}
+
+function assertRefreshStillAuthoritative(
+  session: Readonly<SunriseSession>,
+  consumedTokenDigest: string,
+) {
+  const authoritativeToken = session.keycloakRefreshToken;
+  if (
+    session.oidcSessionContinuation ||
+    !authoritativeToken ||
+    tokenDigest(authoritativeToken) !== consumedTokenDigest
+  ) {
+    throw new SupersededOidcRefreshError();
+  }
+}
+
+function assertCheckpointStillAuthoritative(
+  session: Readonly<SunriseSession>,
+  checkpoint: OidcRefreshCheckpoint | undefined,
+) {
+  const authoritativeToken = session.keycloakRefreshToken;
+  if (
+    session.oidcSessionContinuation ||
+    !checkpoint ||
+    !authoritativeToken ||
+    tokenDigest(authoritativeToken) !== checkpoint.issuedTokenDigest
+  ) {
+    throw new SupersededOidcRefreshError();
+  }
+}
+
 function checkpointReuseUntil(
   result: RefreshTokenResult,
   checkpointPersistenceMs: number,
@@ -207,6 +243,7 @@ async function saveDistributedRefresh(
   lockKey: string,
   owner: string,
   lockTimeoutMs: number,
+  consumedTokenDigest: string,
 ) {
   let lastError: unknown;
   for (let attempt = 0; attempt < MAX_DISTRIBUTED_SAVE_ATTEMPTS; attempt += 1) {
@@ -220,9 +257,15 @@ async function saveDistributedRefresh(
           }
         },
         maximumCommandTimeoutMs: DISTRIBUTED_REFRESH_REDIS_TIMEOUT_MS,
+        validateConflictRetry: (authoritative) =>
+          assertRefreshStillAuthoritative(
+            authoritative,
+            consumedTokenDigest,
+          ),
       });
       return;
     } catch (error) {
+      if (error instanceof SupersededOidcRefreshError) throw error;
       lastError = error;
       if (attempt === MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) break;
       try {
@@ -298,30 +341,46 @@ async function distributedRefresh(
           refreshTokenDigest,
         );
         if (checkpoint) return checkpoint.result;
-        if (
-          !session.keycloakRefreshToken ||
-          tokenDigest(session.keycloakRefreshToken) !== refreshTokenDigest
-        ) {
-          throw new Error(
-            "The OIDC refresh token changed while acquiring its lease",
-          );
-        }
+        assertRefreshStillAuthoritative(session, refreshTokenDigest);
         if (!(await renewDistributedLock(lockKey, owner, lockTimeoutMs))) {
           throw new Error(
             "Lost the distributed OIDC refresh lease before token exchange",
           );
         }
 
-        const result = await refreshAccessToken(refreshToken, identityProvider);
-        applyRotatedRefreshToken(session, result);
+        const exchanged = await refreshAccessToken(
+          refreshToken,
+          identityProvider,
+        );
+
+        // An interactive continuation is allowed to replace the refresh token
+        // without taking this lease. Re-read authority after the exchange so
+        // the stale result is never used for a downstream Keystone or RGW
+        // renewal. The CAS validator below closes the remaining interval
+        // between this read and checkpoint persistence.
+        try {
+          await reloadRedisSession(session);
+        } catch (error) {
+          console.warn(
+            "[oidc/refresh] could not reload the session after token rotation; preserving through CAS:",
+            error,
+          );
+        }
+        assertRefreshStillAuthoritative(session, refreshTokenDigest);
+        applyRotatedRefreshToken(session, exchanged);
         session.oidcRefreshCheckpoint = {
           consumedTokenDigest: refreshTokenDigest,
           identityProvider,
-          issuedTokenDigest: tokenDigest(result.refresh_token ?? refreshToken),
-          result,
+          issuedTokenDigest: tokenDigest(
+            exchanged.refresh_token ?? refreshToken,
+          ),
+          result: exchanged,
           // Keep the checkpoint reusable for the full bounded publication
           // window plus the normal reuse period after publication.
-          reuseUntil: checkpointReuseUntil(result, checkpointPersistenceMs),
+          reuseUntil: checkpointReuseUntil(
+            exchanged,
+            checkpointPersistenceMs,
+          ),
         };
         // After Keycloak consumes a single-use token, preserving its result is
         // safer than discarding it on an uncertain lease renewal. Session CAS
@@ -338,8 +397,14 @@ async function distributedRefresh(
             error,
           );
         }
-        await saveDistributedRefresh(session, lockKey, owner, lockTimeoutMs);
-        return result;
+        await saveDistributedRefresh(
+          session,
+          lockKey,
+          owner,
+          lockTimeoutMs,
+          refreshTokenDigest,
+        );
+        return exchanged;
       } finally {
         await releaseDistributedLock(lockKey, owner).catch((error) => {
           console.warn("[oidc/refresh] failed to release Redis lock:", error);
@@ -416,6 +481,21 @@ export async function refreshSessionOidcTokens(
 
   if (canReuseExisting) {
     const result = await existing.promise;
+    if (sessionBackend === "redis") {
+      await reloadRedisSession(session);
+      const checkpoint = reusableCheckpoint(
+        session,
+        identityProvider,
+        refreshTokenDigest,
+      );
+      try {
+        assertCheckpointStillAuthoritative(session, checkpoint);
+      } catch (error) {
+        if (refreshEntries.get(key) === existing) refreshEntries.delete(key);
+        throw error;
+      }
+      return checkpoint!.result;
+    }
     if (applyRotatedRefreshToken(session, result)) {
       await session.save();
     }
