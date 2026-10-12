@@ -25,6 +25,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 FROM base AS builder
 
 ARG SUNRISE_DEPLOYMENT_ID
+ARG SUNRISE_SERVER_ACTIONS_KEY_ID
 
 WORKDIR /app
 
@@ -47,6 +48,7 @@ ENV SUNRISE_DASHBOARD_URL=http://localhost:9990 \
 RUN --mount=type=secret,id=next_server_actions_encryption_key,required=true \
     key="$(tr -d '\r\n' </run/secrets/next_server_actions_encryption_key)" \
     && export NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$key" \
+    && node -e 'const value = process.env.SUNRISE_SERVER_ACTIONS_KEY_ID; if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) throw new Error("SUNRISE_SERVER_ACTIONS_KEY_ID must be a non-empty key revision containing only letters, digits, dots, underscores, or hyphens")' \
     && node -e 'const value = process.env.SUNRISE_DEPLOYMENT_ID; if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) throw new Error("SUNRISE_DEPLOYMENT_ID must be a non-empty image revision containing only letters, digits, dots, underscores, or hyphens")' \
     && node -e 'const value = process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY; const decoded = Buffer.from(value, "base64"); if (![16, 24, 32].includes(decoded.length) || decoded.toString("base64") !== value) throw new Error("next_server_actions_encryption_key must be canonical base64 for a 16, 24, or 32-byte key")' \
     && pnpm build

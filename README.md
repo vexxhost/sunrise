@@ -47,6 +47,7 @@ secret, never an image build argument or runtime environment variable:
 ```bash
 docker build \
   --secret id=next_server_actions_encryption_key,src=/secure/path/next-server-actions-key \
+  --build-arg SUNRISE_SERVER_ACTIONS_KEY_ID=production-v1 \
   --build-arg SUNRISE_DEPLOYMENT_ID="$(git rev-parse HEAD)" \
   --build-arg SUNRISE_IMAGE_VERSION=0.1.0 \
   --tag registry.example.com/sunrise:0.1.0 .
@@ -54,6 +55,11 @@ docker build \
 
 The key file must contain canonical base64 for a 16, 24, or 32-byte key. Reuse
 the same key for image revisions that can overlap during a rolling deployment.
+`SUNRISE_SERVER_ACTIONS_KEY_ID` is a non-secret revision or fingerprint used
+only to invalidate the builder cache; change it whenever the secret changes.
+Production automation should derive it from a cryptographic hash of the key or
+advance an operator-managed revision. Never put the key itself in a build
+argument.
 The deployment ID is compiled into Next.js, retained in the final image, and
 reported by `/healthz`; overriding it with a different runtime value causes
 startup validation to fail.
