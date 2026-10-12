@@ -29,9 +29,20 @@ export function getTrustedRequestOrigin(
   const trustedOrigins = new Set<string>();
   if (dashboardOrigin) trustedOrigins.add(dashboardOrigin);
 
-  for (const value of additionalOrigins?.split(",") ?? []) {
-    const origin = normalizeHttpOrigin(value);
-    if (origin) trustedOrigins.add(origin);
+  if (dashboardOrigin) {
+    const dashboard = new URL(dashboardOrigin);
+    for (const value of additionalOrigins?.split(",") ?? []) {
+      const origin = normalizeHttpOrigin(value);
+      if (!origin) continue;
+
+      const additional = new URL(origin);
+      if (
+        additional.protocol === dashboard.protocol &&
+        additional.hostname === dashboard.hostname
+      ) {
+        trustedOrigins.add(origin);
+      }
+    }
   }
 
   const host =

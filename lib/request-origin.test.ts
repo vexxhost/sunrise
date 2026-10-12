@@ -72,18 +72,31 @@ describe("getTrustedRequestOrigin", () => {
     ).toBe("http://localhost:9091");
   });
 
-  it("uses an allowed external host and protocol supplied by a proxy", () => {
+  it("rejects a configured origin on another hostname", () => {
     expect(
       getTrustedRequestOrigin(
         headers({
-          host: "sunrise:3000",
+          host: "sunrise.example.test:3000",
           "x-forwarded-host": "cloud.example.test",
           "x-forwarded-proto": "https",
         }),
-        "http://sunrise:3000",
+        "https://sunrise.example.test:3000",
         "https://cloud.example.test",
       ),
-    ).toBe("https://cloud.example.test");
+    ).toBe("https://sunrise.example.test:3000");
+  });
+
+  it("rejects a configured origin using another scheme", () => {
+    expect(
+      getTrustedRequestOrigin(
+        headers({
+          host: "localhost:9443",
+          "x-forwarded-proto": "https",
+        }),
+        "http://localhost:9090",
+        "https://localhost:9443",
+      ),
+    ).toBe("http://localhost:9090");
   });
 
   it("accepts an allowed origin with an explicit default port", () => {
@@ -91,13 +104,13 @@ describe("getTrustedRequestOrigin", () => {
       getTrustedRequestOrigin(
         headers({
           host: "sunrise:3000",
-          "x-forwarded-host": "secondary.example.test:443",
+          "x-forwarded-host": "dashboard.example.test:443",
           "x-forwarded-proto": "https",
         }),
+        "https://dashboard.example.test:8443",
         "https://dashboard.example.test",
-        "https://secondary.example.test",
       ),
-    ).toBe("https://secondary.example.test");
+    ).toBe("https://dashboard.example.test");
   });
 
   it("rejects an unlisted request origin", () => {
@@ -117,24 +130,24 @@ describe("getTrustedRequestOrigin", () => {
     expect(
       getTrustedRequestOrigin(
         headers({
-          host: "cloud.example.test/path",
+          host: "dashboard.example.test/path",
           "x-forwarded-proto": "https",
         }),
-        "https://dashboard.example.test/console",
-        "https://cloud.example.test",
+        "https://dashboard.example.test:8443/console",
+        "https://dashboard.example.test",
       ),
-    ).toBe("https://dashboard.example.test");
+    ).toBe("https://dashboard.example.test:8443");
   });
 
   it("falls back when the request protocol is not HTTP", () => {
     expect(
       getTrustedRequestOrigin(
         headers({
-          host: "cloud.example.test",
+          host: "dashboard.example.test:9443",
           "x-forwarded-proto": "file",
         }),
         "https://dashboard.example.test/console",
-        "https://cloud.example.test",
+        "https://dashboard.example.test:9443",
       ),
     ).toBe("https://dashboard.example.test");
   });
