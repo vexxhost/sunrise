@@ -100,7 +100,8 @@ export function ConsoleWindow({
   // CAVEATS:
   // - For this to work, sunrise.html MUST be served from the same origin as
   //   the Nova noVNC proxy and MUST allow our dashboard origin in its
-  //   `parentOrigin` query value. The server derives it from SUNRISE_DASHBOARD_URL.
+  //   `parentOrigin` query value. The server derives it from the external
+  //   origin of the current request, with SUNRISE_DASHBOARD_URL as fallback.
   // - We always send with a strict targetOrigin (the proxy origin) — never '*'
   //   — so a hijacked iframe location can't receive Ctrl+Alt+Del.
   // - The overlay uses same-origin external CSS and JS. If those assets are

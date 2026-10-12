@@ -48,10 +48,13 @@ read-only asset volume served by the main proxy container.
 
 ## Dashboard origin
 
-Sunrise appends its configured `SUNRISE_DASHBOARD_URL` origin to each rewritten console
-URL as `parentOrigin`. `sunrise.js` accepts bridge messages only when both the
-message origin and source window match that value. There is no deployment-time
-localhost allow-list to maintain.
+Sunrise appends the current request's external origin to each rewritten console
+URL as `parentOrigin`, using `X-Forwarded-Host` and `X-Forwarded-Proto` when a
+reverse proxy supplies them and `SUNRISE_DASHBOARD_URL` only as a fallback.
+This lets every replica and development port complete the bridge handshake.
+`sunrise.js` accepts bridge messages only when both the message origin and
+source window match that value. There is no deployment-time localhost
+allow-list to maintain.
 
 The Nova console URL remains a privileged bearer URL. Do not log it or expose
 it outside the active user session.

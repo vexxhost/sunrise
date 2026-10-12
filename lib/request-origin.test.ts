@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isSameOriginRequest } from "@/lib/request-origin";
+import { getRequestOrigin, isSameOriginRequest } from "@/lib/request-origin";
 
 function headers(values: Record<string, string>) {
   return new Headers(values);
@@ -43,5 +43,41 @@ describe("isSameOriginRequest", () => {
         "https://sunrise.example",
       ),
     ).toBe(true);
+  });
+});
+
+describe("getRequestOrigin", () => {
+  it("uses the request host instead of a canonical dashboard port", () => {
+    expect(
+      getRequestOrigin(
+        headers({ host: "localhost:9091" }),
+        "http://localhost:9090",
+      ),
+    ).toBe("http://localhost:9091");
+  });
+
+  it("uses the external host and protocol supplied by a reverse proxy", () => {
+    expect(
+      getRequestOrigin(
+        headers({
+          host: "sunrise:3000",
+          "x-forwarded-host": "cloud.example.test",
+          "x-forwarded-proto": "https",
+        }),
+        "http://sunrise:3000",
+      ),
+    ).toBe("https://cloud.example.test");
+  });
+
+  it("falls back when request origin headers are malformed", () => {
+    expect(
+      getRequestOrigin(
+        headers({
+          host: "cloud.example.test/path",
+          "x-forwarded-proto": "file",
+        }),
+        "https://dashboard.example.test/console",
+      ),
+    ).toBe("https://dashboard.example.test");
   });
 });
