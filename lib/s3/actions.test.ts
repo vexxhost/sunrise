@@ -11,7 +11,12 @@ vi.mock('@/lib/s3/client', () => ({
   S3AuthRequiredError: class S3AuthRequiredError extends Error {},
 }));
 
-import { headObjectForRender, listObjectsForRender } from '@/lib/s3/actions';
+import {
+  getBucketInfo,
+  headObjectForRender,
+  listBucketsForRender,
+  listObjectsForRender,
+} from '@/lib/s3/actions';
 
 describe('S3 object listing failures', () => {
   beforeEach(() => {
@@ -56,5 +61,17 @@ describe('S3 object listing failures', () => {
       error: 'Object could not be found or accessed.',
     });
     expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it('does not log successful read operations or resource names', async () => {
+    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mocks.send.mockResolvedValue({});
+
+    await listBucketsForRender();
+    await listObjectsForRender('private-bucket');
+    await headObjectForRender('private-bucket', 'private-object.txt');
+    await getBucketInfo('private-bucket');
+
+    expect(consoleLog).not.toHaveBeenCalled();
   });
 });

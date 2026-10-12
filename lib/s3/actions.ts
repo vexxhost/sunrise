@@ -97,7 +97,6 @@ function listedFolderPrefix(prefix: string): string {
 async function listBucketsWithCredentialRefresh(
   allowCredentialRefresh: boolean
 ): Promise<ListBucketsResult> {
-  console.log('[s3/listBuckets] called');
   let client;
   try {
     client = await getS3Client({ allowCredentialRefresh });
@@ -172,7 +171,6 @@ async function listObjectsWithCredentialRefresh(
   continuationToken: string | undefined,
   allowCredentialRefresh: boolean
 ): Promise<ListObjectsResult> {
-  console.log('[s3/listObjects]', { bucket, prefix, continuationToken });
   try {
     const client = await getS3Client({ allowCredentialRefresh });
     const res = await client.send(
@@ -291,7 +289,6 @@ async function headObjectWithCredentialRefresh(
   key: string,
   allowCredentialRefresh: boolean
 ): Promise<HeadObjectResult> {
-  console.log('[s3/headObject]', { bucket, key });
   try {
     const client = await getS3Client({ allowCredentialRefresh });
     const res = await client.send(
@@ -353,7 +350,6 @@ export type BucketInfoResult =
   | { ok: false; needsAuth: false; error: string };
 
 export async function getBucketInfo(bucket: string): Promise<BucketInfoResult> {
-  console.log('[s3/getBucketInfo]', { bucket });
   try {
     const client = await getS3Client({ allowCredentialRefresh: true });
     const res = await client.send(

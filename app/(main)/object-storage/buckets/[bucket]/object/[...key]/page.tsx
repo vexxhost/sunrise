@@ -37,9 +37,12 @@ export default async function Page({ params }: PageProps) {
   }
 
   const queryClient = makeQueryClient();
-  queryClient.prefetchQuery(
-    objectMetadataQueryOptions(activeProjectId, bucket, objectKey),
+  const metadataQuery = objectMetadataQueryOptions(
+    activeProjectId,
+    bucket,
+    objectKey,
   );
+  queryClient.setQueryData(metadataQuery.queryKey, probe.data);
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
 
   return (
