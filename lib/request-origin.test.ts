@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { getRequestOrigin, isSameOriginRequest } from "@/lib/request-origin";
+import {
+  getTrustedRequestOrigin,
+  isSameOriginRequest,
+} from "@/lib/request-origin";
 
 function headers(values: Record<string, string>) {
   return new Headers(values);
@@ -46,32 +49,59 @@ describe("isSameOriginRequest", () => {
   });
 });
 
-describe("getRequestOrigin", () => {
-  it("uses the request host instead of a canonical dashboard port", () => {
+describe("getTrustedRequestOrigin", () => {
+  it("trusts the canonical dashboard origin", () => {
     expect(
-      getRequestOrigin(
+      getTrustedRequestOrigin(
+        headers({
+          host: "dashboard.example.test",
+          "x-forwarded-proto": "https",
+        }),
+        "https://dashboard.example.test",
+      ),
+    ).toBe("https://dashboard.example.test");
+  });
+
+  it("uses an explicitly allowed request origin", () => {
+    expect(
+      getTrustedRequestOrigin(
         headers({ host: "localhost:9091" }),
         "http://localhost:9090",
+        "http://localhost:9091",
       ),
     ).toBe("http://localhost:9091");
   });
 
-  it("uses the external host and protocol supplied by a reverse proxy", () => {
+  it("uses an allowed external host and protocol supplied by a proxy", () => {
     expect(
-      getRequestOrigin(
+      getTrustedRequestOrigin(
         headers({
           host: "sunrise:3000",
           "x-forwarded-host": "cloud.example.test",
           "x-forwarded-proto": "https",
         }),
         "http://sunrise:3000",
+        "https://cloud.example.test",
       ),
     ).toBe("https://cloud.example.test");
   });
 
+  it("rejects an unlisted request origin", () => {
+    expect(
+      getTrustedRequestOrigin(
+        headers({
+          host: "dashboard.example.test",
+          "x-forwarded-host": "attacker.example.test",
+          "x-forwarded-proto": "https",
+        }),
+        "https://dashboard.example.test",
+      ),
+    ).toBe("https://dashboard.example.test");
+  });
+
   it("falls back when request origin headers are malformed", () => {
     expect(
-      getRequestOrigin(
+      getTrustedRequestOrigin(
         headers({
           host: "cloud.example.test/path",
           "x-forwarded-proto": "file",

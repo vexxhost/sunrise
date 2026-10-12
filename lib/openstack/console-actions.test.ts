@@ -18,7 +18,8 @@ import { getRemoteConsoleAction } from "@/lib/openstack/console-actions";
 describe("remote console actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.SUNRISE_DASHBOARD_URL = "http://localhost:9090";
+    vi.stubEnv("SUNRISE_DASHBOARD_URL", "http://localhost:9090");
+    vi.stubEnv("SUNRISE_ALLOWED_DASHBOARD_ORIGINS", "http://localhost:9091");
     mocks.getSession.mockResolvedValue({ regionId: "RegionOne" });
     mocks.headers.mockResolvedValue(new Headers({ host: "localhost:9091" }));
     mocks.openstackRequest.mockResolvedValue({
@@ -36,9 +37,7 @@ describe("remote console actions", () => {
 
     expect(url.pathname).toBe("/sunrise.html");
     expect(url.searchParams.get("token")).toBe("secret");
-    expect(url.searchParams.get("parentOrigin")).toBe(
-      "http://localhost:9091",
-    );
+    expect(url.searchParams.get("parentOrigin")).toBe("http://localhost:9091");
     expect(remote.rawUrl).toBe(
       "https://console.example.test/vnc_lite.html?token=secret",
     );

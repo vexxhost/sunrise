@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import { getSession } from "@/lib/session";
 import { rewriteNoVncUrl } from "@/lib/openstack/console-url";
-import { getRequestOrigin } from "@/lib/request-origin";
+import { getTrustedRequestOrigin } from "@/lib/request-origin";
 
 export type ConsoleProtocol = "vnc" | "serial";
 export type ConsoleType = "novnc" | "xvpvnc" | "serial";
@@ -69,13 +69,12 @@ export async function getRemoteConsoleAction(
 
   const remote = data.remote_console;
   const rawUrl = remote.url;
-  const dashboardOrigin = getRequestOrigin(
+  const dashboardOrigin = getTrustedRequestOrigin(
     await headers(),
     process.env.SUNRISE_DASHBOARD_URL,
+    process.env.SUNRISE_ALLOWED_DASHBOARD_ORIGINS,
   );
   const url =
-    protocol === "vnc"
-      ? rewriteNoVncUrl(rawUrl, dashboardOrigin)
-      : rawUrl;
+    protocol === "vnc" ? rewriteNoVncUrl(rawUrl, dashboardOrigin) : rawUrl;
   return { ...remote, url, rawUrl };
 }
