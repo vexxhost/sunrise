@@ -10,6 +10,8 @@ export type SessionLifetimeData = {
   sessionLastActivityAt?: number;
 };
 
+type SessionLifetimeEnvironment = Record<string, string | undefined>;
+
 export type ActiveSessionLifetime = {
   status: "active";
   signedInAt: number;
@@ -30,8 +32,12 @@ export type SessionLifetimeState =
     >)
   | ActiveSessionLifetime;
 
-function configuredSeconds(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
+function configuredSeconds(
+  environment: SessionLifetimeEnvironment,
+  name: string,
+  fallback: number,
+): number {
+  const raw = environment[name]?.trim();
   if (!raw) return fallback;
 
   const value = Number(raw);
@@ -41,12 +47,16 @@ function configuredSeconds(name: string, fallback: number): number {
   return value;
 }
 
-export function getSessionLifetimePolicy() {
+export function getSessionLifetimePolicy(
+  environment: SessionLifetimeEnvironment = process.env,
+) {
   const idleTimeoutSeconds = configuredSeconds(
+    environment,
     "SUNRISE_SESSION_IDLE_TIMEOUT_SECONDS",
     DEFAULT_SESSION_IDLE_TIMEOUT_SECONDS,
   );
   const absoluteTimeoutSeconds = configuredSeconds(
+    environment,
     "SUNRISE_SESSION_ABSOLUTE_TIMEOUT_SECONDS",
     DEFAULT_SESSION_ABSOLUTE_TIMEOUT_SECONDS,
   );
