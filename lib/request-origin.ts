@@ -51,7 +51,11 @@ export function getTrustedRequestOrigin(
   try {
     const requestUrl = new URL(`${protocol}://${host}`);
     const requestOrigin =
-      requestUrl.host.toLowerCase() === host.toLowerCase()
+      requestUrl.pathname === "/" &&
+      !requestUrl.search &&
+      !requestUrl.hash &&
+      !requestUrl.username &&
+      !requestUrl.password
         ? requestUrl.origin
         : undefined;
 

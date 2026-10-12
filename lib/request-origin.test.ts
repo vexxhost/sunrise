@@ -86,6 +86,20 @@ describe("getTrustedRequestOrigin", () => {
     ).toBe("https://cloud.example.test");
   });
 
+  it("accepts an allowed origin with an explicit default port", () => {
+    expect(
+      getTrustedRequestOrigin(
+        headers({
+          host: "sunrise:3000",
+          "x-forwarded-host": "secondary.example.test:443",
+          "x-forwarded-proto": "https",
+        }),
+        "https://dashboard.example.test",
+        "https://secondary.example.test",
+      ),
+    ).toBe("https://secondary.example.test");
+  });
+
   it("rejects an unlisted request origin", () => {
     expect(
       getTrustedRequestOrigin(
@@ -99,14 +113,28 @@ describe("getTrustedRequestOrigin", () => {
     ).toBe("https://dashboard.example.test");
   });
 
-  it("falls back when request origin headers are malformed", () => {
+  it("rejects a host value containing URL components", () => {
     expect(
       getTrustedRequestOrigin(
         headers({
           host: "cloud.example.test/path",
+          "x-forwarded-proto": "https",
+        }),
+        "https://dashboard.example.test/console",
+        "https://cloud.example.test",
+      ),
+    ).toBe("https://dashboard.example.test");
+  });
+
+  it("falls back when the request protocol is not HTTP", () => {
+    expect(
+      getTrustedRequestOrigin(
+        headers({
+          host: "cloud.example.test",
           "x-forwarded-proto": "file",
         }),
         "https://dashboard.example.test/console",
+        "https://cloud.example.test",
       ),
     ).toBe("https://dashboard.example.test");
   });
