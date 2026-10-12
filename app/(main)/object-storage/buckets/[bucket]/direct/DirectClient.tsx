@@ -21,6 +21,7 @@ import bytes from "bytes";
 import { DataTable } from "@/components/DataTable";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { BucketSettingsDialog } from "@/components/object-storage/BucketSettingsDialog";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 import {
   ObjectMetadataDetails,
   type ObjectMetadataDetailsData,
@@ -471,26 +472,26 @@ export function DirectClient({
           const params = new URLSearchParams();
           params.set("prefix", item.fullPath);
           return (
-            <Link
+            <ResourceLink
               href={`?${params.toString()}`}
-              className="flex items-center gap-2 underline-offset-2 hover:underline focus-visible:underline"
+              className="flex items-center gap-2"
             >
               <Folder className="h-4 w-4" />
               <span>{item.name}/</span>
-            </Link>
+            </ResourceLink>
           );
         }
         return (
-          <Link
+          <ResourceLink
             href={directObjectPath(bucket, item.fullPath)}
-            className="flex items-center gap-2 underline-offset-2 hover:underline focus-visible:underline"
+            className="flex items-center gap-2"
           >
             <FileText className="h-4 w-4" />
             <span>{item.name}</span>
-          </Link>
+          </ResourceLink>
         );
       },
-      meta: { fieldType: "string", visible: true, monospace: true },
+      meta: { fieldType: "string", visible: true },
     },
     {
       accessorKey: "size",

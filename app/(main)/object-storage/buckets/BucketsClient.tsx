@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -9,6 +8,7 @@ import { ArrowRight, Database, Plus, Trash2 } from "lucide-react";
 import { DataTable } from "@/components/DataTable";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -80,14 +80,13 @@ export function BucketsClient({
       header: "Name",
       enableHiding: false,
       cell: ({ row }) => (
-        <Link
+        <ResourceLink
           href={`/object-storage/buckets/${encodeURIComponent(row.original.name)}`}
-          className="underline-offset-2 hover:underline focus-visible:underline"
         >
           {row.original.name}
-        </Link>
+        </ResourceLink>
       ),
-      meta: { fieldType: "string", visible: true, monospace: true },
+      meta: { fieldType: "string", visible: true },
     },
     {
       accessorKey: "creationDate",

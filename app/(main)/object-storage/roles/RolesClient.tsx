@@ -142,7 +142,7 @@ export function RolesClient({
           row.original,
           <button
             type="button"
-            className="flex max-w-72 items-center gap-2 text-left underline-offset-2 hover:underline focus-visible:underline"
+            className="flex max-w-72 items-center gap-2 text-left font-medium underline-offset-2 hover:underline focus-visible:underline"
             title={row.original.name}
           >
             <span className="truncate">{row.original.name}</span>

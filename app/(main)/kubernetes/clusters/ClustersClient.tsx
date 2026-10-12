@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -9,6 +8,7 @@ import { Activity } from "lucide-react";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/DataTable";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 import {
   clusterTemplatesQueryOptions,
   clustersQueryOptions,
@@ -58,12 +58,9 @@ function clusterColumns(
       accessorKey: "name",
       header: "Name",
       cell: ({ row }: { row: { original: MagnumCluster } }) => (
-        <Link
-          href={`/kubernetes/clusters/${row.original.uuid}`}
-          className="underline-offset-2 hover:text-foreground hover:underline"
-        >
+        <ResourceLink href={`/kubernetes/clusters/${row.original.uuid}`}>
           {row.original.name || row.original.uuid}
-        </Link>
+        </ResourceLink>
       ),
       meta: {
         fieldType: "string",
@@ -118,12 +115,9 @@ function clusterColumns(
           row.original.cluster_template ??
           templatesById.get(row.original.cluster_template_id);
         return template ? (
-          <Link
-            className="underline-offset-2 hover:underline focus-visible:underline"
-            href={`/kubernetes/templates/${template.uuid}`}
-          >
+          <ResourceLink href={`/kubernetes/templates/${template.uuid}`}>
             {template.name}
-          </Link>
+          </ResourceLink>
         ) : (
           (row.original.cluster_template_id ?? "-")
         );
