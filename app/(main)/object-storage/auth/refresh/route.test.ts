@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/session", () => ({
   clearS3Credentials: mocks.clearS3Credentials,
   getSession: mocks.getSession,
@@ -23,6 +24,7 @@ vi.mock("@/lib/s3/endpoint", () => ({
 }));
 
 import { GET } from "./route";
+import { OidcSessionSupersededError } from "@/lib/oidc/session-authority";
 
 function session() {
   return {
@@ -95,6 +97,24 @@ describe("Object Storage auth refresh route", () => {
     );
     expect(mocks.clearS3Credentials).toHaveBeenCalledWith(current);
     expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not clear credentials after a completed continuation", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+    mocks.refreshActiveProjectS3Credentials.mockRejectedValue(
+      new OidcSessionSupersededError(),
+    );
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/object-storage/auth/refresh?returnTo=%2Fobject-storage%2Fbuckets",
+      ),
+    );
+
+    expect(response.status).toBe(303);
+    expect(mocks.clearS3Credentials).not.toHaveBeenCalled();
+    expect(current.save).not.toHaveBeenCalled();
   });
 
   it("returns to Object Storage when S3 is not the active backend", async () => {

@@ -3,6 +3,11 @@ import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import { clearS3Credentials, getSession } from "@/lib/session";
 import { refreshActiveProjectS3Credentials } from "@/lib/s3/session";
 import { getS3Endpoint } from "@/lib/s3/endpoint";
+import {
+  captureOidcSessionAuthority,
+  isOidcSessionSupersededError,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 
 const SUNRISE_DASHBOARD_URL =
   process.env.SUNRISE_DASHBOARD_URL ?? "http://localhost";
@@ -14,6 +19,18 @@ function objectStorageUnavailableUrl(returnTo: string): URL {
   );
   url.searchParams.set("returnTo", returnTo);
   return url;
+}
+
+async function clearS3CredentialsIfAuthoritative(
+  session: Awaited<ReturnType<typeof getSession>>,
+) {
+  const authority = captureOidcSessionAuthority(session);
+  clearS3Credentials(session);
+  try {
+    await saveOidcSessionIfAuthoritative(session, authority);
+  } catch (error) {
+    if (!isOidcSessionSupersededError(error)) throw error;
+  }
 }
 
 export async function GET(request: Request) {
@@ -30,8 +47,7 @@ export async function GET(request: Request) {
   try {
     await getS3Endpoint();
   } catch {
-    clearS3Credentials(session);
-    await session.save();
+    await clearS3CredentialsIfAuthoritative(session);
     return NextResponse.redirect(
       new URL("/object-storage", SUNRISE_DASHBOARD_URL),
       {
@@ -52,15 +68,15 @@ export async function GET(request: Request) {
       projectId: session.projectId,
       error: error instanceof Error ? error.message : String(error),
     });
-    clearS3Credentials(session);
-    await session.save();
+    if (!isOidcSessionSupersededError(error)) {
+      await clearS3CredentialsIfAuthoritative(session);
+    }
     return NextResponse.redirect(objectStorageUnavailableUrl(returnTo), {
       status: 303,
     });
   }
 
-  clearS3Credentials(session);
-  await session.save();
+  await clearS3CredentialsIfAuthoritative(session);
   return NextResponse.redirect(objectStorageUnavailableUrl(returnTo), {
     status: 303,
   });

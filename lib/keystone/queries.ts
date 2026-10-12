@@ -1,8 +1,12 @@
-import { getSession } from '@/lib/session';
-import { getProjectScopedTokenContext } from '@/lib/keystone/login';
-import { isKeystoneAuthFailure } from '@/lib/keystone/session';
-import type { Region, Project } from '@/types/openstack';
-import { redirect } from 'next/navigation';
+import { getSession } from "@/lib/session";
+import { getProjectScopedTokenContext } from "@/lib/keystone/login";
+import { isKeystoneAuthFailure } from "@/lib/keystone/session";
+import type { Region, Project } from "@/types/openstack";
+import { redirect } from "next/navigation";
+import {
+  captureOidcSessionAuthority,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 
 /**
  * Server-side function to fetch regions
@@ -10,6 +14,7 @@ import { redirect } from 'next/navigation';
  */
 export async function getRegions(): Promise<Region[]> {
   const session = await getSession();
+  const authority = captureOidcSessionAuthority(session);
 
   if (!session.keystone_unscoped_token) {
     return [];
@@ -19,35 +24,35 @@ export async function getRegions(): Promise<Region[]> {
   try {
     response = await fetch(`${process.env.KEYSTONE_API}/v3/regions`, {
       headers: {
-        'X-Auth-Token': session.keystone_unscoped_token,
+        "X-Auth-Token": session.keystone_unscoped_token,
       },
-      cache: 'no-store',
+      cache: "no-store",
     });
   } catch (error) {
-    console.error('Error fetching regions:', error);
+    console.error("Error fetching regions:", error);
     return [];
   }
 
   if (!response.ok) {
     if (isKeystoneAuthFailure(response.status)) {
-      redirect('/auth/refresh');
+      redirect("/auth/refresh");
     }
-    console.error('Failed to fetch regions:', response.statusText);
+    console.error("Failed to fetch regions:", response.statusText);
     return [];
   }
 
   try {
-    const data = await response.json() as { regions: Region[] };
+    const data = (await response.json()) as { regions: Region[] };
     const regions = data.regions.sort((a, b) => a.id.localeCompare(b.id));
 
     if (!session.regionId && regions.length > 0) {
       session.regionId = regions[0].id;
-      await session.save();
+      await saveOidcSessionIfAuthoritative(session, authority);
     }
 
     return regions;
   } catch (error) {
-    console.error('Error fetching regions:', error);
+    console.error("Error fetching regions:", error);
     return [];
   }
 }
@@ -58,6 +63,7 @@ export async function getRegions(): Promise<Region[]> {
  */
 export async function getProjects(): Promise<Project[]> {
   const session = await getSession();
+  const authority = captureOidcSessionAuthority(session);
 
   if (!session.keystone_unscoped_token) {
     return [];
@@ -67,45 +73,45 @@ export async function getProjects(): Promise<Project[]> {
   try {
     response = await fetch(`${process.env.KEYSTONE_API}/v3/auth/projects`, {
       headers: {
-        'X-Auth-Token': session.keystone_unscoped_token,
+        "X-Auth-Token": session.keystone_unscoped_token,
       },
-      cache: 'no-store',
+      cache: "no-store",
     });
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    console.error("Error fetching projects:", error);
     return [];
   }
 
   if (!response.ok) {
     if (isKeystoneAuthFailure(response.status)) {
-      redirect('/auth/refresh');
+      redirect("/auth/refresh");
     }
-    console.error('Failed to fetch projects:', response.statusText);
+    console.error("Failed to fetch projects:", response.statusText);
     return [];
   }
 
   try {
-    const data = await response.json() as { projects: Project[] };
+    const data = (await response.json()) as { projects: Project[] };
     const projects = data.projects.sort((a, b) => a.name.localeCompare(b.name));
 
     if (!session.projectId && projects.length > 0) {
       const project = projects[0];
       const scopedContext = await getProjectScopedTokenContext(
         session.keystone_unscoped_token,
-        project.id
+        project.id,
       );
 
       if (scopedContext) {
         session.projectId = project.id;
         session.keystoneProjectToken = scopedContext.value;
         session.keystoneProjectRoles = scopedContext.roles;
-        await session.save();
+        await saveOidcSessionIfAuthoritative(session, authority);
       }
     }
 
     return projects;
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    console.error("Error fetching projects:", error);
     return [];
   }
 }

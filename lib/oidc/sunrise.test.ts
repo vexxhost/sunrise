@@ -7,6 +7,7 @@ import {
   buildEndSessionUrl,
   extractOidcIdentity,
   getSunriseOidcConfig,
+  refreshAccessToken,
   resolveOidcIdentity,
 } from "@/lib/oidc/sunrise";
 
@@ -180,5 +181,68 @@ describe("Sunrise OIDC", () => {
     expect(workforceAuthorizeUrl.searchParams.get("client_id")).toBe(
       workforceClientId,
     );
+  });
+
+  it("bounds the complete refresh request with one abort signal", async () => {
+    const fetchMock = vi.fn(
+      async (input: string | URL | Request, _init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/.well-known/openid-configuration")) {
+          return Response.json({
+            token_endpoint: `${issuer}/protocol/openid-connect/token`,
+          });
+        }
+        return Response.json({
+          access_token: "renewed-access-token",
+          refresh_token: "renewed-refresh-token",
+          expires_in: 300,
+          token_type: "Bearer",
+        });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      refreshAccessToken("current-refresh-token", "demo"),
+    ).resolves.toMatchObject({
+      access_token: "renewed-access-token",
+      refresh_token: "renewed-refresh-token",
+    });
+    expect(
+      fetchMock.mock.calls.every(([, init]) =>
+        Boolean(init?.signal instanceof AbortSignal),
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).endsWith("/token")),
+    ).toBe(true);
+  });
+
+  it("cancels a refresh when its external lease signal aborts", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(init.signal?.reason),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const refresh = refreshAccessToken(
+      "current-refresh-token",
+      "workforce",
+      controller.signal,
+    );
+    const rejection = expect(refresh).rejects.toThrow("lease lost");
+    await Promise.resolve();
+    controller.abort(new Error("lease lost"));
+
+    await rejection;
+    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   });
 });

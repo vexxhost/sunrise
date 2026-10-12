@@ -19,6 +19,7 @@ import type { SunriseIdentity } from "@/lib/session";
 
 export const OIDC_LOGIN_PATH = "/auth/oidc/login";
 export const OIDC_CALLBACK_PATH = "/auth/oidc/callback";
+export const OIDC_REFRESH_TIMEOUT_MS = 30_000;
 
 export type SunriseOidcConfig = {
   identityProvider: string;
@@ -63,6 +64,7 @@ const discoveryCache = new Map<
 
 export async function discoverOidc(
   identityProvider: string,
+  signal?: AbortSignal,
 ): Promise<OidcDiscovery> {
   const { issuer } = getSunriseOidcConfig(identityProvider);
   const cached = discoveryCache.get(issuer);
@@ -71,6 +73,7 @@ export async function discoverOidc(
   }
   const res = await fetch(`${issuer}/.well-known/openid-configuration`, {
     cache: "no-store",
+    signal,
   });
   if (!res.ok) throw new Error(`OIDC discovery failed: ${res.status}`);
   const value = (await res.json()) as OidcDiscovery;
@@ -240,8 +243,13 @@ export async function exchangeCodeForTokens(
 export async function refreshAccessToken(
   refreshToken: string,
   identityProvider: string,
+  leaseSignal?: AbortSignal,
 ): Promise<RefreshTokenResult> {
-  const { token_endpoint } = await discoverOidc(identityProvider);
+  const timeoutSignal = AbortSignal.timeout(OIDC_REFRESH_TIMEOUT_MS);
+  const signal = leaseSignal
+    ? AbortSignal.any([leaseSignal, timeoutSignal])
+    : timeoutSignal;
+  const { token_endpoint } = await discoverOidc(identityProvider, signal);
   const { clientId, clientSecret } = getSunriseOidcConfig(identityProvider);
   const body = new URLSearchParams({
     grant_type: "refresh_token",
@@ -257,6 +265,7 @@ export async function refreshAccessToken(
         Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
     },
     body,
+    signal,
   });
   if (!res.ok) {
     const text = await res.text();

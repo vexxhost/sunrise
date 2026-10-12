@@ -18,6 +18,11 @@ import {
   isObjectStorageBackendEnabled,
   isSunriseServiceEnabled,
 } from "@/lib/service-policy";
+import {
+  captureOidcSessionAuthority,
+  isOidcSessionSupersededError,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 
 /**
  * Server Action to set the selected region
@@ -25,11 +30,12 @@ import {
  */
 export async function setRegion(region: Region) {
   const session = await getSession();
+  const authority = captureOidcSessionAuthority(session);
   session.regionId = region.id;
   // S3 STS credentials are tied to the previous region's RGW endpoint;
   // invalidate them so the user re-auths against the new region.
   clearS3Credentials(session);
-  await session.save();
+  await saveOidcSessionIfAuthoritative(session, authority);
   const preferenceIdentity = preferenceIdentityFromSession(session);
   if (preferenceIdentity) {
     await writePrefs({ regionId: region.id }, preferenceIdentity);
@@ -45,6 +51,7 @@ export async function setRegion(region: Region) {
  */
 export async function setProject(project: Project) {
   const session = await getSession();
+  const authority = captureOidcSessionAuthority(session);
 
   // Get project-scoped token and store in session
   if (!session.keystone_unscoped_token) {
@@ -71,6 +78,7 @@ export async function setProject(project: Project) {
   session.keystoneProjectToken = context.value;
   session.keystoneProjectRoles = context.roles;
   clearS3Credentials(session);
+  await saveOidcSessionIfAuthoritative(session, authority);
 
   const servicePolicy = getServicePolicy();
   const catalog =
@@ -96,6 +104,7 @@ export async function setProject(project: Project) {
     try {
       await refreshActiveProjectS3Credentials(session);
     } catch (err) {
+      if (isOidcSessionSupersededError(err)) throw err;
       console.error("[keystone] failed to refresh S3 credentials for project", {
         projectId: project.id,
         projectName: project.name,
@@ -104,7 +113,6 @@ export async function setProject(project: Project) {
     }
   }
 
-  await session.save();
   const preferenceIdentity = preferenceIdentityFromSession(session);
   if (preferenceIdentity) {
     await writePrefs(

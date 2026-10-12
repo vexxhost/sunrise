@@ -14,8 +14,8 @@ vi.mock("iron-session", () => ({ getIronSession: mocks.getIronSession }));
 import {
   getSession,
   isS3StsCredentialFresh,
+  prepareSessionLifetime,
   saveSessionActivity,
-  startSessionLifetime,
 } from "@/lib/session";
 
 describe("Sunrise session", () => {
@@ -127,19 +127,23 @@ describe("Sunrise session", () => {
     expect(session.keycloakRefreshToken).toBe("keycloak-refresh");
   });
 
-  it("starts a lifetime and stores activity outside the main cookie", async () => {
+  it("prepares a lifetime without publishing activity", async () => {
     const now = 1_000_000;
 
-    await startSessionLifetime(mocks.mainSession as never, now);
+    const activity = await prepareSessionLifetime(
+      mocks.mainSession as never,
+      now,
+    );
 
     expect(mocks.mainSession.sessionId).toEqual(expect.any(String));
     expect(mocks.mainSession.sessionSignedInAt).toBe(now);
     expect(mocks.mainSession.sessionLastActivityAt).toBe(now);
-    expect(mocks.activitySession).toMatchObject({
+    expect(activity).toEqual({
       sessionId: mocks.mainSession.sessionId,
       lastActivityAt: now,
     });
-    expect(mocks.activitySession.save).toHaveBeenCalledOnce();
+    expect(mocks.getIronSession).not.toHaveBeenCalled();
+    expect(mocks.activitySession.save).not.toHaveBeenCalled();
   });
 
   it("updates activity without loading or saving the main session", async () => {

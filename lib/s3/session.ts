@@ -2,6 +2,12 @@ import "server-only";
 
 import type { IronSession } from "iron-session";
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
+import {
+  captureOidcSessionAuthority,
+  isOidcSessionSupersededError,
+  OidcSessionSupersededError,
+  saveOidcSessionIfAuthoritative,
+} from "@/lib/oidc/session-authority";
 import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
 import {
   getActiveS3Credentials,
@@ -22,9 +28,20 @@ export class S3ProjectRoleUnavailableError extends Error {
 
 type RefreshedRgwIdentity = {
   roleTokens: Array<string | undefined>;
-  sessionChanged: boolean;
   token: string;
 };
+
+function sameProjectRoles(
+  current: Record<string, string> | undefined,
+  next: Record<string, string>,
+) {
+  if (!current) return false;
+  const entries = Object.entries(next);
+  return (
+    Object.keys(current).length === entries.length &&
+    entries.every(([projectId, role]) => current[projectId] === role)
+  );
+}
 
 async function refreshRgwIdentity(
   session: IronSession<SunriseSession>,
@@ -34,16 +51,15 @@ async function refreshRgwIdentity(
   if (!session.keycloakRefreshToken) return undefined;
 
   try {
-    const previousRefreshToken = session.keycloakRefreshToken;
     const refreshed = await refreshSessionOidcTokens(session, identityProvider);
     if (!refreshed) return undefined;
 
     return {
       token: refreshed.access_token,
       roleTokens: [refreshed.access_token, refreshed.id_token],
-      sessionChanged: session.keycloakRefreshToken !== previousRefreshToken,
     };
   } catch (error) {
+    if (isOidcSessionSupersededError(error)) throw error;
     console.warn("[s3/session] failed to renew RGW access from Sunrise OIDC", {
       projectId,
       error: error instanceof Error ? error.message : String(error),
@@ -70,21 +86,24 @@ export async function refreshActiveProjectS3Credentials(
     projectId,
   );
   if (!refreshed) return undefined;
-  let { sessionChanged } = refreshed;
+  if (normalizeProjectId(session.projectId) !== projectId) {
+    throw new OidcSessionSupersededError();
+  }
+  const authority = captureOidcSessionAuthority(session);
+  let sessionChanged = false;
 
   const projectRoles = tryExtractRgwProjectRoles(...refreshed.roleTokens);
-  if (projectRoles) {
+  if (projectRoles && !sameProjectRoles(session.s3ProjectRoles, projectRoles)) {
     // Treat each freshly issued claim as authoritative so revoked project
     // roles cannot survive indefinitely in the encrypted session cookie.
     session.s3ProjectRoles = projectRoles;
     sessionChanged = true;
   }
 
-  // Keycloak refresh-token rotation may invalidate the previous token as soon
-  // as this response is issued. Persist the replacement token and the latest
-  // role mapping before STS discovery or role assumption can fail.
+  // Persist the latest role mapping before STS discovery or role assumption
+  // can fail. OIDC refresh-token rotation is persisted by the refresh helper.
   if (sessionChanged) {
-    await session.save();
+    await saveOidcSessionIfAuthoritative(session, authority);
   }
 
   const roleArn = session.s3ProjectRoles?.[projectId];
@@ -101,7 +120,7 @@ export async function refreshActiveProjectS3Credentials(
     rgwStsDurationSeconds,
   );
   setS3CredentialsForProject(session, creds);
-  await session.save();
+  await saveOidcSessionIfAuthoritative(session, authority);
   return creds;
 }
 

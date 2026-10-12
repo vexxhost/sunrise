@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   finalizeKeystoneSession: vi.fn(),
   getSunriseOidcConfig: vi.fn(),
   refreshSessionOidcTokens: vi.fn(),
+  saveRedisSession: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -18,8 +19,12 @@ vi.mock("@/lib/oidc/session-refresh", () => ({
 vi.mock("@/lib/oidc/sunrise", () => ({
   getSunriseOidcConfig: mocks.getSunriseOidcConfig,
 }));
+vi.mock("@/lib/session-store", () => ({
+  saveRedisSession: mocks.saveRedisSession,
+}));
 
 import { refreshKeystoneSession } from "@/lib/keystone/renewal";
+import { OidcSessionSupersededError } from "@/lib/oidc/session-authority";
 
 function session() {
   const now = Date.now();
@@ -27,6 +32,8 @@ function session() {
     keycloakRefreshToken: "old-refresh-token",
     federationIdentityProvider: "demo",
     oidcIdentity: { identityProvider: "demo" },
+    oidcSessionGeneration: "generation-1",
+    regionId: "RegionOne",
     authRecovery: { reason: "session-unavailable" },
     sessionId: "session-1",
     sessionSignedInAt: now - 1_000,
@@ -40,11 +47,15 @@ describe("Keystone session renewal", () => {
     vi.clearAllMocks();
     mocks.refreshSessionOidcTokens.mockImplementation(async (current) => {
       current.keycloakRefreshToken = "rotated-refresh-token";
+      await current.save();
       return {
         access_token: "new-access-token",
         refresh_token: "rotated-refresh-token",
       };
     });
+    mocks.saveRedisSession.mockImplementation(async (current) =>
+      current.save(),
+    );
     mocks.getSunriseOidcConfig.mockReturnValue({ protocol: "demo-openid" });
     mocks.federateOidcWithKeystone.mockResolvedValue("new-unscoped-token");
     mocks.finalizeKeystoneSession.mockResolvedValue({ status: "ready" });
@@ -71,6 +82,59 @@ describe("Keystone session renewal", () => {
     );
     expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
     expect(current.authRecovery).toBeUndefined();
+    expect(current.save).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists a rotated refresh token before downstream federation", async () => {
+    const calls: string[] = [];
+    const current = session();
+    current.save.mockImplementation(async () => {
+      calls.push("save");
+    });
+    mocks.federateOidcWithKeystone.mockImplementation(async () => {
+      calls.push("federate");
+      throw new Error("Keystone unavailable");
+    });
+
+    await expect(refreshKeystoneSession(current as never)).rejects.toThrow(
+      "Keystone unavailable",
+    );
+
+    expect(current.keycloakRefreshToken).toBe("rotated-refresh-token");
+    expect(current.save).toHaveBeenCalledOnce();
+    expect(calls).toEqual(["save", "federate"]);
+  });
+
+  it("does not merge Keystone credentials over a completed continuation", async () => {
+    const current = session();
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        keycloakRefreshToken: "continuation-refresh-token",
+        oidcSessionGeneration: "generation-2",
+      });
+    });
+
+    await expect(refreshKeystoneSession(current as never)).rejects.toThrow(
+      "superseded by a newer OIDC session",
+    );
+
+    expect(current.save).toHaveBeenCalledOnce();
+  });
+
+  it("does not restore Keystone credentials for a previously active region", async () => {
+    const current = session();
+    mocks.saveRedisSession.mockImplementation(async (_active, options) => {
+      options.validateConflictRetry({
+        ...current,
+        regionId: "RegionTwo",
+      });
+    });
+
+    await expect(refreshKeystoneSession(current as never)).rejects.toThrow(
+      "superseded by a newer OIDC session",
+    );
+
     expect(current.save).toHaveBeenCalledOnce();
   });
 
@@ -94,6 +158,20 @@ describe("Keystone session renewal", () => {
     await expect(refreshKeystoneSession(current as never)).resolves.toBe(
       "reauthenticate",
     );
+    expect(mocks.federateOidcWithKeystone).not.toHaveBeenCalled();
+  });
+
+  it("propagates refresh supersession without starting another continuation", async () => {
+    const current = session();
+    mocks.refreshSessionOidcTokens.mockRejectedValue(
+      new OidcSessionSupersededError(
+        "The OIDC refresh was superseded by an interactive continuation",
+      ),
+    );
+
+    await expect(
+      refreshKeystoneSession(current as never),
+    ).rejects.toBeInstanceOf(OidcSessionSupersededError);
     expect(mocks.federateOidcWithKeystone).not.toHaveBeenCalled();
   });
 
