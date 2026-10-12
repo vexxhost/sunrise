@@ -453,7 +453,7 @@ export function FloatingIpsTableClient({
             id={row.original.id}
           />
         ),
-        meta: { fieldType: "string", visible: true, monospace: true },
+        meta: { fieldType: "string", visible: true },
       },
       {
         accessorKey: "id",

@@ -20,6 +20,7 @@ import bytes from "bytes";
 import { DataTable } from "@/components/DataTable";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { BucketSettingsDialog } from "@/components/object-storage/BucketSettingsDialog";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 import { UploadQueueMenu } from "@/components/UploadQueueMenu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -434,28 +435,28 @@ export function ObjectsClient({
           const params = new URLSearchParams();
           params.set("prefix", r.fullPath);
           return (
-            <Link
+            <ResourceLink
               href={`?${params.toString()}`}
-              className="flex items-center gap-2 underline-offset-2 hover:underline focus-visible:underline"
+              className="flex items-center gap-2"
             >
               <Folder className="h-4 w-4" />
               <span>{r.name}/</span>
-            </Link>
+            </ResourceLink>
           );
         }
         return (
-          <Link
+          <ResourceLink
             href={`/object-storage/buckets/${encodeURIComponent(
               bucket,
             )}/object/${encodeURIComponent(r.fullPath)}`}
-            className="flex items-center gap-2 underline-offset-2 hover:underline focus-visible:underline"
+            className="flex items-center gap-2"
           >
             <FileText className="h-4 w-4" />
             <span>{r.name}</span>
-          </Link>
+          </ResourceLink>
         );
       },
-      meta: { fieldType: "string", visible: true, monospace: true },
+      meta: { fieldType: "string", visible: true },
     },
     {
       accessorKey: "size",

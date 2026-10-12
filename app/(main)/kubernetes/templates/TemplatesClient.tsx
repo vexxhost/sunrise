@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState, useTransition, type ComponentType } from "react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -12,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/DataTable";
 import { IDCell } from "@/components/DataTable/IDCell";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { clusterTemplatesQueryOptions } from "@/hooks/queries/useMagnum";
 import { flavorsQueryOptions } from "@/hooks/queries/useServers";
@@ -148,15 +148,15 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
         accessorKey: "name",
         header: "Name",
         cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (
-          <Link
-            className="block min-w-0 hover:underline focus-visible:underline"
+          <ResourceLink
+            className="block min-w-0"
             href={`/kubernetes/templates/${row.original.uuid}`}
           >
             <FadedTableText
               value={row.original.name || row.original.uuid}
               className="w-64"
             />
-          </Link>
+          </ResourceLink>
         ),
         meta: { fieldType: "string", visible: true },
       },
@@ -180,18 +180,15 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
           const reference = row.original.image_id || "-";
           const image = imagesByReference.get(reference);
           const content = (
-            <FadedTableText
-              value={image?.name || reference}
-              className="w-72"
-            />
+            <FadedTableText value={image?.name || reference} className="w-72" />
           );
           return image ? (
-            <Link
-              className="block min-w-0 hover:underline focus-visible:underline"
+            <ResourceLink
+              className="block min-w-0"
               href={`/compute/images/${image.id}`}
             >
               {content}
-            </Link>
+            </ResourceLink>
           ) : (
             content
           );
@@ -219,12 +216,9 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
           const flavor = flavorsByReference.get(reference);
           const label = flavor?.name || reference || "-";
           return flavor ? (
-            <Link
-              className="hover:underline focus-visible:underline"
-              href={`/compute/instance-flavors/${flavor.id}`}
-            >
+            <ResourceLink href={`/compute/instance-flavors/${flavor.id}`}>
               {label}
-            </Link>
+            </ResourceLink>
           ) : (
             label
           );
@@ -239,12 +233,9 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
           const flavor = flavorsByReference.get(reference);
           const label = flavor?.name || reference || "-";
           return flavor ? (
-            <Link
-              className="hover:underline focus-visible:underline"
-              href={`/compute/instance-flavors/${flavor.id}`}
-            >
+            <ResourceLink href={`/compute/instance-flavors/${flavor.id}`}>
               {label}
-            </Link>
+            </ResourceLink>
           ) : (
             label
           );
