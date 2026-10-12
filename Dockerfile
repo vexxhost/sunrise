@@ -80,7 +80,7 @@ COPY --from=builder --chown=sunrise:sunrise /app/public ./public
 COPY --from=builder --chown=sunrise:sunrise /app/.next/standalone ./
 COPY --from=builder --chown=sunrise:sunrise /app/.next/static ./.next/static
 
-RUN mkdir -p /app/.next/cache \
+RUN mkdir -p /app/.next/cache /app/.next/server/route-cache \
     && chown -R sunrise:sunrise /app/.next
 
 USER sunrise

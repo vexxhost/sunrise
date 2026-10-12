@@ -28,6 +28,14 @@ intended for multiple Sunrise replicas. The local stack defaults to Valkey
 while all Sunrise configuration uses the implementation-neutral Redis protocol
 vocabulary.
 
+Next.js writes ephemeral image/data cache entries under `.next/cache` and
+promotes immutable prerender seeds into `.next/server/route-cache` at runtime.
+Compose mounts both paths as bounded tmpfs volumes. Kubernetes deployments that
+enable `readOnlyRootFilesystem` must likewise mount writable pod-local
+`emptyDir` volumes at `/app/.next/cache` and
+`/app/.next/server/route-cache`; neither directory contains shared session
+state and each replica may maintain it independently.
+
 ```bash
 docker compose build sunrise
 docker compose up -d
