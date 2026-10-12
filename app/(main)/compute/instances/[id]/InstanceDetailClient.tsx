@@ -20,7 +20,8 @@ import {
   portsQueryOptions,
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
-import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 import { isInstanceDetailTab, type InstanceDetailTab } from "./tabs";
 import { Badge } from "@/components/ui/badge";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
@@ -53,7 +54,7 @@ export function InstanceDetailClient({
   projectId,
   activeTab,
 }: InstanceDetailClientProps) {
-  const [selectedTab, setSelectedTab] = useState<InstanceDetailTab>(activeTab);
+  const pathname = usePathname();
   const { data: server } = useSuspenseQuery({
     ...serverQueryOptions(regionId, projectId, serverId),
     refetchInterval: (query) =>
@@ -109,31 +110,13 @@ export function InstanceDetailClient({
     });
   }, [networks, ports]);
 
-  useEffect(() => {
-    setSelectedTab(activeTab);
-  }, [activeTab]);
-
-  useEffect(() => {
-    const handlePopState = () => {
-      const segments = window.location.pathname.split("/").filter(Boolean);
-      const tab = segments[segments.length - 1];
-
-      if (tab && isInstanceDetailTab(tab)) {
-        setSelectedTab(tab);
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
-  }, []);
+  const pathnameTab = pathname.split("/").filter(Boolean).at(-1);
+  const selectedTab =
+    pathnameTab && isInstanceDetailTab(pathnameTab) ? pathnameTab : activeTab;
 
   const handleTabChange = (value: string) => {
     if (!isInstanceDetailTab(value)) return;
 
-    setSelectedTab(value);
     const nextPath = `/compute/instances/${serverId}/${value}`;
 
     if (window.location.pathname !== nextPath) {

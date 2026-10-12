@@ -455,7 +455,17 @@ export function InstanceActions({
   );
 
   useEffect(() => {
-    if (initiallyOpen) void loadOptions();
+    if (!initiallyOpen) return;
+
+    let cancelled = false;
+    void (async () => {
+      await Promise.resolve();
+      if (!cancelled) await loadOptions();
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [initiallyOpen, loadOptions]);
 
   const toggleString = (values: string[], value: string) =>

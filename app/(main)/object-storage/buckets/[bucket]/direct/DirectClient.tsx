@@ -81,6 +81,11 @@ interface DirectBrowserSession {
   projectId: string;
 }
 
+interface DirectBrowserCredentialsError {
+  message: string;
+  projectId: string;
+}
+
 function filePath(file: File) {
   return (
     (file as File & { webkitRelativePath?: string }).webkitRelativePath ||
@@ -113,7 +118,8 @@ export function DirectClient({
 
   const [browserSession, setBrowserSession] =
     useState<DirectBrowserSession | null>(null);
-  const [credsError, setCredsError] = useState<string | null>(null);
+  const [credentialsError, setCredentialsError] =
+    useState<DirectBrowserCredentialsError | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -143,6 +149,10 @@ export function DirectClient({
   );
   const activeBrowserSession =
     browserSession?.projectId === activeProjectId ? browserSession : null;
+  const credsError =
+    credentialsError?.projectId === activeProjectId
+      ? credentialsError.message
+      : null;
   const s3 = activeBrowserSession?.client ?? null;
   const endpoint = activeBrowserSession?.endpoint ?? null;
   const directObjectsKey = useMemo(
@@ -152,16 +162,19 @@ export function DirectClient({
 
   useEffect(() => {
     let cancelled = false;
-    setCredsError(null);
     void (async () => {
       const result = await getStsCredentialsForBrowser();
       if (cancelled) return;
+      setCredentialsError(null);
       if (!result.ok) {
         if (result.needsAuth) {
           startObjectStorageCredentialRefresh();
           return;
         }
-        setCredsError(result.error);
+        setCredentialsError({
+          message: result.error,
+          projectId: activeProjectId,
+        });
         return;
       }
       setBrowserSession({
