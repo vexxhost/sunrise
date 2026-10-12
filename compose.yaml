@@ -11,6 +11,7 @@ x-sunrise: &sunrise
     SUNRISE_REDIS_URL: ${SUNRISE_REDIS_URL:-redis://redis:6379}
     SUNRISE_REDIS_USERNAME: ${SUNRISE_REDIS_USERNAME:-}
     SUNRISE_REDIS_PASSWORD: ${SUNRISE_REDIS_PASSWORD:-}
+    SUNRISE_ALLOWED_DASHBOARD_ORIGINS: ${SUNRISE_ALLOWED_DASHBOARD_ORIGINS:-http://localhost:9991}
   depends_on:
     redis:
       condition: service_healthy

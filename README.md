@@ -99,7 +99,10 @@ docker compose --profile replica up -d sunrise-replica
 
 Replica 2 is available at `http://localhost:9991`. Browser cookies are scoped
 to `localhost`, not its port, so switching between ports exercises the same
-opaque session through two processes without load-balancer affinity.
+opaque session through two processes without load-balancer affinity. Compose
+explicitly allows this secondary origin for the noVNC parent-window bridge;
+production remains restricted to `SUNRISE_DASHBOARD_URL` unless additional
+exact origins are configured.
 
 Stop and remove the local stack with `docker compose down`. The Compose Redis
 data directory is deliberately ephemeral: it models a disposable local QA

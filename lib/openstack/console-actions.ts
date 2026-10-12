@@ -1,8 +1,10 @@
 "use server";
 
+import { headers } from "next/headers";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import { getSession } from "@/lib/session";
 import { rewriteNoVncUrl } from "@/lib/openstack/console-url";
+import { getTrustedRequestOrigin } from "@/lib/request-origin";
 
 export type ConsoleProtocol = "vnc" | "serial";
 export type ConsoleType = "novnc" | "xvpvnc" | "serial";
@@ -24,7 +26,7 @@ const DEFAULTS: Record<ConsoleProtocol, ConsoleType> = {
 /**
  * Nova-issued noVNC URLs are rewritten to the small Sunrise page deployed
  * alongside the upstream assets. The token query remains intact, and the
- * configured dashboard origin is included for the postMessage bridge.
+ * request's external dashboard origin is included for the postMessage bridge.
  *
  * CAVEATS:
  * - The proxy must serve `sunrise.html` at the same origin as the websocket
@@ -67,9 +69,12 @@ export async function getRemoteConsoleAction(
 
   const remote = data.remote_console;
   const rawUrl = remote.url;
+  const dashboardOrigin = getTrustedRequestOrigin(
+    await headers(),
+    process.env.SUNRISE_DASHBOARD_URL,
+    process.env.SUNRISE_ALLOWED_DASHBOARD_ORIGINS,
+  );
   const url =
-    protocol === "vnc"
-      ? rewriteNoVncUrl(rawUrl, process.env.SUNRISE_DASHBOARD_URL)
-      : rawUrl;
+    protocol === "vnc" ? rewriteNoVncUrl(rawUrl, dashboardOrigin) : rawUrl;
   return { ...remote, url, rawUrl };
 }
