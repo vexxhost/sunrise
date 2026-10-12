@@ -33,6 +33,7 @@ x-sunrise: &sunrise
   tmpfs:
     - /tmp:size=64m,mode=1777
     - /app/.next/cache:size=128m,uid=1001,gid=1001,mode=0750
+    - /app/.next/server/route-cache:size=128m,uid=1001,gid=1001,mode=0750
   security_opt:
     - no-new-privileges:true
   cap_drop:
