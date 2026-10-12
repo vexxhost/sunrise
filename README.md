@@ -35,6 +35,29 @@ docker compose ps
 docker compose logs -f sunrise
 ```
 
+Compose mounts the public development-only Server Actions key from
+`deploy/local/next-server-actions-encryption-key` while building the image. It
+exists only to make separate local builds compatible during rollout exercises;
+never use it for a published image.
+
+A publishable image must provide an immutable deployment ID and a private,
+stable Server Actions encryption key. The key is consumed through a BuildKit
+secret, never an image build argument or runtime environment variable:
+
+```bash
+docker build \
+  --secret id=next_server_actions_encryption_key,src=/secure/path/next-server-actions-key \
+  --build-arg SUNRISE_DEPLOYMENT_ID="$(git rev-parse HEAD)" \
+  --build-arg SUNRISE_IMAGE_VERSION=0.1.0 \
+  --tag registry.example.com/sunrise:0.1.0 .
+```
+
+The key file must contain canonical base64 for a 16, 24, or 32-byte key. Reuse
+the same key for image revisions that can overlap during a rolling deployment.
+The deployment ID is compiled into Next.js, retained in the final image, and
+reported by `/healthz`; overriding it with a different runtime value causes
+startup validation to fail.
+
 Override the implementation image without changing Sunrise configuration:
 
 ```bash
@@ -75,6 +98,12 @@ use. Do not reuse the Compose-generated CA. Authentication alone does not
 encrypt traffic, while TLS without authentication does not authorize clients;
 use both, network isolation, and a narrowly scoped ACL for production.
 
+For private Keycloak or OpenStack PKI, mount a PEM CA bundle and set
+`NODE_EXTRA_CA_CERTS` to its in-container path. Do not deploy
+`NODE_TLS_REJECT_UNAUTHORIZED=0`; Sunrise reports it as an explicit startup
+warning because it disables certificate validation for the whole Node.js
+process.
+
 Sunrise is available at [http://localhost:9990](http://localhost:9990).
 `/healthz` checks only the application process; `/readyz` checks Redis when
 server-side sessions require it. The readiness probe performs short-lived Lua
@@ -110,6 +139,19 @@ dependency, not a production data policy. Production deployments must provide
 an authenticated, highly available Redis endpoint (preferably `rediss://`),
 shared `SUNRISE_SESSION_SECRET`, stable deployment namespace, and one immutable
 `SUNRISE_DEPLOYMENT_ID` per image build.
+
+Every server validates its static deployment configuration before accepting
+requests. Invalid dashboard or identity URLs, missing or short session secrets,
+malformed federation providers, unsupported service settings, unreadable CA
+files, invalid Redis settings, and image/runtime deployment-ID skew stop the
+process. Deliberately weak but locally useful settings such as plain Redis,
+HTTP dashboard URLs, cookie sessions, and disabled TLS verification produce
+sanitized startup warnings without logging credentials.
+
+Compose gives Sunrise 30 seconds to finish in-flight requests after `SIGTERM`.
+Next.js handles the signal and drains pending work; Kubernetes should use the
+same signal with a configurable termination grace period instead of sending an
+immediate `SIGKILL`.
 
 Sunrise currently connects to one stable writable Redis endpoint. That endpoint
 may be provided by a managed service, a Kubernetes operator, or a Sentinel
