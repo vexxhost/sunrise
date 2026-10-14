@@ -49,7 +49,7 @@ services:
       dockerfile: Dockerfile
       args:
         SUNRISE_DEPLOYMENT_ID: local-compose
-        SUNRISE_SERVER_ACTIONS_KEY_ID: ${SUNRISE_SERVER_ACTIONS_KEY_ID:-local-development-v1}
+        SUNRISE_SERVER_ACTIONS_REVISION: ${SUNRISE_SERVER_ACTIONS_REVISION:-local-development-v1}
       secrets:
         - next_server_actions_encryption_key
     ports:

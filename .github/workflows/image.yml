@@ -1,0 +1,130 @@
+name: Image
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/sunrise
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          flavor: latest=false
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=ref,event=tag
+            type=sha,prefix=sha-
+          labels: |
+            org.opencontainers.image.title=Sunrise
+            org.opencontainers.image.description=OpenStack dashboard
+
+      - name: Prepare Server Actions encryption key
+        id: server-actions-key
+        shell: bash
+        env:
+          PUBLISHED_KEY: ${{ secrets.SUNRISE_SERVER_ACTIONS_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            key="$(openssl rand -base64 32 | tr -d '\r\n')"
+          elif [[ -n "${PUBLISHED_KEY}" ]]; then
+            key="$(printf '%s' "${PUBLISHED_KEY}" | tr -d '\r\n')"
+          else
+            echo "::error::SUNRISE_SERVER_ACTIONS_ENCRYPTION_KEY is required for published images"
+            exit 1
+          fi
+
+          echo "::add-mask::${key}"
+          KEY="${key}" node -e '
+            const value = process.env.KEY;
+            const decoded = Buffer.from(value, "base64");
+            if (![16, 24, 32].includes(decoded.length) || decoded.toString("base64") !== value) {
+              throw new Error("Server Actions key must be canonical base64 for a 16, 24, or 32-byte key");
+            }
+          '
+
+          key_file="${RUNNER_TEMP}/sunrise-server-actions-key"
+          umask 077
+          printf '%s' "${key}" > "${key_file}"
+
+          key_id="sha256-$(printf '%s' "${key}" | sha256sum | cut -d ' ' -f 1)"
+          echo "path=${key_file}" >> "${GITHUB_OUTPUT}"
+          echo "key-id=${key_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: step-security/docker-login-action@8c7b695d8738c5699a679ff5254baf0f19f20a94 # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build and publish
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          build-args: |
+            SUNRISE_SERVER_ACTIONS_REVISION=${{ steps.server-actions-key.outputs.key-id }}
+            SUNRISE_DEPLOYMENT_ID=${{ github.sha }}
+            SUNRISE_IMAGE_SOURCE=${{ github.server_url }}/${{ github.repository }}
+            SUNRISE_IMAGE_VERSION=${{ steps.meta.outputs.version }}
+          secret-files: |
+            next_server_actions_encryption_key=${{ steps.server-actions-key.outputs.path }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Remove Server Actions encryption key
+        if: always()
+        shell: bash
+        env:
+          KEY_FILE: ${{ steps.server-actions-key.outputs.path }}
+        run: |
+          if [[ -n "${KEY_FILE}" ]]; then
+            rm -f -- "${KEY_FILE}"
+          fi
