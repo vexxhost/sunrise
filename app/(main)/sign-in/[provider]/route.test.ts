@@ -48,4 +48,17 @@ describe("identity-provider sign-in link", () => {
 
     expect(response.status).toBe(404);
   });
+
+  it("does not read provider configuration while the route module loads", async () => {
+    const configuredProviders =
+      process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS;
+    delete process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS;
+    vi.resetModules();
+
+    try {
+      await expect(import("./route")).resolves.toHaveProperty("GET");
+    } finally {
+      process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS = configuredProviders;
+    }
+  });
 });

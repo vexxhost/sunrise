@@ -6,15 +6,13 @@ import {
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import { parseOidcAuthorizationPrompt } from "@/lib/auth-prompt";
 
-const identityProviders = getIdentityProviderOptions();
-
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ provider: string }> },
 ) {
   const { provider: signInSlug } = await params;
   const provider = findIdentityProviderBySignInSlug(
-    identityProviders,
+    getIdentityProviderOptions(),
     signInSlug,
   );
   if (!provider) {

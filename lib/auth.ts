@@ -7,15 +7,13 @@ import {
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import type { OidcAuthorizationPrompt } from "@/lib/oidc/sunrise";
 
-const identityProviders = getIdentityProviderOptions();
-
 export const LoginFormSchema = z.object({
   idProvider: z
     .string()
     .trim()
     .transform((value, context) => {
       const provider = findIdentityProviderBySignInSlug(
-        identityProviders,
+        getIdentityProviderOptions(),
         value,
       );
       if (!provider) {

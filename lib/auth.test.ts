@@ -23,4 +23,19 @@ describe("LoginFormSchema", () => {
       false,
     );
   });
+
+  it("does not read provider configuration while the module loads", async () => {
+    const configuredProviders =
+      process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS;
+    delete process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS;
+    vi.resetModules();
+
+    try {
+      await expect(import("@/lib/auth")).resolves.toHaveProperty(
+        "LoginFormSchema",
+      );
+    } finally {
+      process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS = configuredProviders;
+    }
+  });
 });
