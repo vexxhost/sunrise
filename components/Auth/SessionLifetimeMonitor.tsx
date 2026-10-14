@@ -57,7 +57,7 @@ export function SessionLifetimeMonitor({
           reason,
         } satisfies SessionMessage);
       }
-      window.location.replace("/");
+      window.location.reload();
     };
 
     const synchronize = async (touch: boolean, force = false) => {

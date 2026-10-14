@@ -1,5 +1,9 @@
+"use client";
+
 import { Clock3, LogIn, RefreshCw, UserRound } from "lucide-react";
 import { AuthScene } from "@/components/Auth/AuthScene";
+import { useCurrentAuthReturnTo } from "@/components/Auth/useCurrentAuthReturnTo";
+import { sessionLogoutPath } from "@/lib/auth-navigation";
 import type { SessionExpiryReason } from "@/lib/session-lifetime";
 import type { SunriseIdentity } from "@/lib/session";
 
@@ -33,6 +37,7 @@ export function SessionExpired({
 }) {
   const content = expiryContent[reason];
   const account = identity?.preferredUsername ?? identity?.email;
+  const returnTo = useCurrentAuthReturnTo();
 
   return (
     <AuthScene>
@@ -65,14 +70,14 @@ export function SessionExpired({
         <div className="mt-6 space-y-2">
           <a
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            href={`/auth/logout?reason=${reason}`}
+            href={sessionLogoutPath(reason, returnTo)}
           >
             <LogIn className="size-4" aria-hidden="true" />
             Sign in again
           </a>
           <a
             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            href={`/auth/logout?reason=${reason}&mode=switch`}
+            href={sessionLogoutPath(reason, returnTo, "switch")}
           >
             <RefreshCw className="size-4" aria-hidden="true" />
             Switch account

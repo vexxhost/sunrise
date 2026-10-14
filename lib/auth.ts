@@ -1,21 +1,32 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
-import { parseIdentityProviders } from "@/lib/auth-providers";
+import {
+  findIdentityProviderBySignInSlug,
+  getIdentityProviderOptions,
+} from "@/lib/auth-providers";
+import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import type { OidcAuthorizationPrompt } from "@/lib/oidc/sunrise";
 
-const idProviders = parseIdentityProviders(
-  process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS,
-);
-
-if (idProviders.length === 0) {
-  throw new Error("No Identity Providers configured");
-}
-
 export const LoginFormSchema = z.object({
-  idProvider: z.string().refine((value) => idProviders.includes(value), {
-    message: "Invalid Identity Provider",
-  }),
+  idProvider: z
+    .string()
+    .trim()
+    .transform((value, context) => {
+      const provider = findIdentityProviderBySignInSlug(
+        getIdentityProviderOptions(),
+        value,
+      );
+      if (!provider) {
+        context.addIssue({
+          code: "custom",
+          message: "Invalid Identity Provider",
+        });
+        return z.NEVER;
+      }
+      return provider.id;
+    }),
   prompt: z.enum(["login", "select_account"]).optional(),
+  returnTo: z.string().optional(),
 });
 
 export type LoginFormState =
@@ -30,6 +41,7 @@ export type LoginFormState =
 export const redirectToIdentityProvider = (
   idProvider: string,
   prompt?: OidcAuthorizationPrompt,
+  returnTo?: string,
 ) => {
   const url = new URL(
     "/auth/oidc/login",
@@ -37,5 +49,9 @@ export const redirectToIdentityProvider = (
   );
   url.searchParams.set("idp", idProvider);
   if (prompt) url.searchParams.set("prompt", prompt);
+  const normalizedReturnTo = normalizeAuthReturnTo(returnTo);
+  if (normalizedReturnTo !== "/") {
+    url.searchParams.set("returnTo", normalizedReturnTo);
+  }
   redirect(url.toString());
 };

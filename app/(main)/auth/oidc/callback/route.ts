@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
+import {
+  REMEMBERED_IDENTITY_PROVIDER_COOKIE,
+  RETURNING_VISITOR_COOKIE,
+  RETURNING_VISITOR_COOKIE_VALUE,
+  rememberedIdentityProviderCookieOptions,
+  returningVisitorCookieOptions,
+} from "@/lib/auth-visitor";
 import { stashCloudContextBootstrap } from "@/lib/cloud-context-bootstrap";
 import {
   getSession,
@@ -345,5 +352,15 @@ export async function GET(request: Request) {
     expires: new Date(0),
     path: "/",
   });
+  response.cookies.set(
+    RETURNING_VISITOR_COOKIE,
+    RETURNING_VISITOR_COOKIE_VALUE,
+    returningVisitorCookieOptions(),
+  );
+  response.cookies.set(
+    REMEMBERED_IDENTITY_PROVIDER_COOKIE,
+    idp,
+    rememberedIdentityProviderCookieOptions(),
+  );
   return response;
 }

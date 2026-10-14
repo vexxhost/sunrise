@@ -8,6 +8,19 @@ import {
   AUTH_PROMPT_COOKIE,
   parseOidcAuthorizationPrompt,
 } from "@/lib/auth-prompt";
+import {
+  isReturningVisitor,
+  REMEMBERED_IDENTITY_PROVIDER_COOKIE,
+  RETURNING_VISITOR_COOKIE,
+} from "@/lib/auth-visitor";
+import {
+  findIdentityProviderById,
+  getIdentityProviderOptions,
+} from "@/lib/auth-providers";
+import {
+  AUTH_RETURN_TO_COOKIE,
+  normalizeAuthReturnTo,
+} from "@/lib/auth-return";
 import { getKeystoneSessionState } from "@/lib/keystone/session";
 import { getSession } from "@/lib/session";
 import {
@@ -25,6 +38,19 @@ export default async function Provider({ children }: any) {
   );
   const expiryNotice = parseSessionExpiryReason(
     cookieStore.get(SESSION_EXPIRY_NOTICE_COOKIE)?.value,
+  );
+  const returningVisitor =
+    isReturningVisitor(cookieStore.get(RETURNING_VISITOR_COOKIE)?.value) ||
+    Boolean(expiryNotice);
+  const configuredProviders = getIdentityProviderOptions();
+  const rememberedProviderValue = cookieStore.get(
+    REMEMBERED_IDENTITY_PROVIDER_COOKIE,
+  )?.value;
+  const rememberedProvider = rememberedProviderValue
+    ? findIdentityProviderById(configuredProviders, rememberedProviderValue)
+    : undefined;
+  const initialReturnTo = normalizeAuthReturnTo(
+    cookieStore.get(AUTH_RETURN_TO_COOKIE)?.value,
   );
 
   if (session.sessionExpiryReason) {
@@ -67,6 +93,16 @@ export default async function Provider({ children }: any) {
     return (
       <Login
         authorizationPrompt={authorizationPrompt}
+        initialReturnTo={initialReturnTo}
+        rememberedProvider={
+          rememberedProvider
+            ? {
+                displayName: rememberedProvider.displayName,
+                signInSlug: rememberedProvider.signInSlug,
+              }
+            : undefined
+        }
+        returningVisitor={returningVisitor}
         sessionExpiryReason={expiryNotice}
       />
     );
@@ -85,6 +121,16 @@ export default async function Provider({ children }: any) {
     return (
       <Login
         authorizationPrompt={authorizationPrompt}
+        initialReturnTo={initialReturnTo}
+        rememberedProvider={
+          rememberedProvider
+            ? {
+                displayName: rememberedProvider.displayName,
+                signInSlug: rememberedProvider.signInSlug,
+              }
+            : undefined
+        }
+        returningVisitor={returningVisitor}
         sessionExpiryReason={expiryNotice}
       />
     );

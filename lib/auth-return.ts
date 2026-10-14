@@ -1,6 +1,9 @@
 const DEFAULT_AUTH_RETURN_TO = "/";
 const MAX_AUTH_RETURN_TO_LENGTH = 512;
 
+export const AUTH_RETURN_TO_COOKIE = "sunrise-auth-return-to";
+export const AUTH_RETURN_TO_MAX_AGE_SECONDS = 10 * 60;
+
 export function normalizeAuthReturnTo(value?: string | null): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
     return DEFAULT_AUTH_RETURN_TO;
@@ -9,6 +12,7 @@ export function normalizeAuthReturnTo(value?: string | null): string {
   const url = new URL(value, "http://localhost");
   if (
     url.pathname.startsWith("/auth/") ||
+    url.pathname.startsWith("/sign-in/") ||
     url.pathname.startsWith("/object-storage/auth/") ||
     url.pathname.startsWith("/_next/")
   ) {

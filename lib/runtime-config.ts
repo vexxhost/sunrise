@@ -7,6 +7,7 @@ import {
   type SunriseColorPalette,
 } from "@/lib/color-palette";
 import { getServicePolicy } from "@/lib/deployment-config";
+import { getIdentityProviderOptions } from "@/lib/auth-providers";
 import { getFederationProviderConfigs } from "@/lib/federation/config";
 import {
   identityApiUrl,
@@ -196,6 +197,7 @@ export function validateRuntimeConfiguration(
   }
 
   const policy = getServicePolicy(environment);
+  getIdentityProviderOptions(environment);
   const providers = getFederationProviderConfigs(environment);
   const sessionBackend = getSessionBackend(environment.SUNRISE_SESSION_BACKEND);
   let redisTransport: RuntimeConfiguration["redisTransport"];

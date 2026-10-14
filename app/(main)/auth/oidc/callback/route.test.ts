@@ -63,6 +63,10 @@ vi.mock("@/lib/s3/endpoint", () => ({
 }));
 
 import { GET } from "./route";
+import {
+  REMEMBERED_IDENTITY_PROVIDER_COOKIE,
+  RETURNING_VISITOR_COOKIE,
+} from "@/lib/auth-visitor";
 import { StoredSessionSupersededError } from "@/lib/session-errors";
 
 const identity = {
@@ -262,6 +266,12 @@ describe("OIDC callback recovery", () => {
       projectId: "project-1",
       keystoneProjectToken: "project-token",
     });
+    expect(response.headers.get("set-cookie")).toContain(
+      `${RETURNING_VISITOR_COOKIE}=1`,
+    );
+    expect(response.headers.get("set-cookie")).toContain(
+      `${REMEMBERED_IDENTITY_PROVIDER_COOKIE}=demo`,
+    );
   });
 
   it("skips S3 setup when the backend is disabled in the selected region", async () => {
