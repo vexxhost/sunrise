@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { AUTH_PROMPT_COOKIE } from "@/lib/auth-prompt";
 import {
+  AUTH_RETURN_TO_COOKIE,
+  AUTH_RETURN_TO_MAX_AGE_SECONDS,
+  normalizeAuthReturnTo,
+} from "@/lib/auth-return";
+import {
   buildEndSessionUrl,
   refreshAccessToken,
   type OidcAuthorizationPrompt,
@@ -54,9 +59,10 @@ function dashboardUrl() {
   ).toString();
 }
 
-function oidcLoginUrl(identityProvider: string) {
+function oidcLoginUrl(identityProvider: string, returnTo: string) {
   const url = new URL("/auth/oidc/login", dashboardUrl());
   url.searchParams.set("idp", identityProvider);
+  if (returnTo !== "/") url.searchParams.set("returnTo", returnTo);
   return url.toString();
 }
 
@@ -93,6 +99,7 @@ async function providerLogoutUrl(
 async function performLogout(
   prompt: OidcAuthorizationPrompt,
   expiryReason?: SessionExpiryReason,
+  returnTo = "/",
 ) {
   const session = await getSession({ allowExpired: true });
   const unscoped = session.keystone_unscoped_token;
@@ -128,7 +135,7 @@ async function performLogout(
 
   const destination =
     reuseProviderSession && identityProvider
-      ? oidcLoginUrl(identityProvider)
+      ? oidcLoginUrl(identityProvider, returnTo)
       : (endSessionUrl ?? dashboardUrl());
   const response = NextResponse.redirect(destination, { status: 303 });
   // Defensively clear the session cookie on the redirect response itself,
@@ -161,6 +168,19 @@ async function performLogout(
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
   });
+  response.cookies.set(
+    AUTH_RETURN_TO_COOKIE,
+    returnTo === "/" ? "" : returnTo,
+    {
+      ...(returnTo === "/"
+        ? { expires: new Date(0) }
+        : { maxAge: AUTH_RETURN_TO_MAX_AGE_SECONDS }),
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    },
+  );
   return response;
 }
 
@@ -176,10 +196,17 @@ function requestedExpiryReason(request: Request) {
   );
 }
 
+function requestedReturnTo(request: Request) {
+  return normalizeAuthReturnTo(
+    new URL(request.url).searchParams.get("returnTo"),
+  );
+}
+
 export async function GET(request: Request) {
   return performLogout(
     requestedPrompt(request),
     requestedExpiryReason(request),
+    requestedReturnTo(request),
   );
 }
 
@@ -187,5 +214,6 @@ export async function POST(request: Request) {
   return performLogout(
     requestedPrompt(request),
     requestedExpiryReason(request),
+    requestedReturnTo(request),
   );
 }

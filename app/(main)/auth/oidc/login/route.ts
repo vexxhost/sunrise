@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { normalizeAuthReturnTo } from "@/lib/auth-return";
+import {
+  AUTH_RETURN_TO_COOKIE,
+  normalizeAuthReturnTo,
+} from "@/lib/auth-return";
 import { parseIdentityProviders } from "@/lib/auth-providers";
 import {
   AUTH_PROMPT_COOKIE,
@@ -64,6 +67,10 @@ export async function GET(request: Request) {
     path: "/",
   });
   response.cookies.set(SESSION_EXPIRY_NOTICE_COOKIE, "", {
+    expires: new Date(0),
+    path: "/",
+  });
+  response.cookies.set(AUTH_RETURN_TO_COOKIE, "", {
     expires: new Date(0),
     path: "/",
   });

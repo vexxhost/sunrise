@@ -10,6 +10,7 @@ export const login = async (state: LoginFormState, formData: FormData) => {
   const validatedFields = LoginFormSchema.safeParse({
     idProvider: formData.get("id_provider"),
     prompt: formData.get("authorization_prompt") || undefined,
+    returnTo: formData.get("return_to") || undefined,
   });
 
   if (!validatedFields.success) {
@@ -21,5 +22,6 @@ export const login = async (state: LoginFormState, formData: FormData) => {
   redirectToIdentityProvider(
     validatedFields.data.idProvider,
     validatedFields.data.prompt,
+    validatedFields.data.returnTo,
   );
 };

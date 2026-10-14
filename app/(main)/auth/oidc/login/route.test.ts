@@ -72,6 +72,9 @@ describe("OIDC login route", () => {
     expect(response.headers.get("set-cookie")).toContain(
       "sunrise-auth-prompt=",
     );
+    expect(response.headers.get("set-cookie")).toContain(
+      "sunrise-auth-return-to=",
+    );
   });
 
   it("marks interactive child-token renewal as a session continuation", async () => {

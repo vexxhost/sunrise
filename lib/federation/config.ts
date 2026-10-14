@@ -1,6 +1,11 @@
 import "server-only";
 
-import { parseIdentityProviders } from "@/lib/auth-providers";
+import {
+  identityProviderEnvironmentSuffixes,
+  parseIdentityProviders,
+} from "@/lib/auth-providers";
+
+export { identityProviderEnvironmentSuffix as federationProviderEnvironmentSuffix } from "@/lib/auth-providers";
 
 export type FederationProviderConfig = {
   id: string;
@@ -27,21 +32,6 @@ const MAX_STS_SESSION_DURATION = 43_200;
 
 function providerVariable(base: string, suffix: string) {
   return `${base}_${suffix}`;
-}
-
-export function federationProviderEnvironmentSuffix(identityProvider: string) {
-  const suffix = identityProvider
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-
-  if (!suffix) {
-    throw new Error(
-      `Identity Provider ${JSON.stringify(identityProvider)} cannot be mapped to an environment variable suffix`,
-    );
-  }
-  return suffix;
 }
 
 function trimmedValue(
@@ -136,25 +126,6 @@ function resolveStsSessionDuration(
   return duration;
 }
 
-function providerSuffixes(providerIds: string[]) {
-  const providersBySuffix = new Map<string, string>();
-  const suffixes = new Map<string, string>();
-
-  for (const providerId of providerIds) {
-    const suffix = federationProviderEnvironmentSuffix(providerId);
-    const existing = providersBySuffix.get(suffix);
-    if (existing) {
-      throw new Error(
-        `Identity Providers ${JSON.stringify(existing)} and ${JSON.stringify(providerId)} both map to environment variable suffix ${suffix}`,
-      );
-    }
-    providersBySuffix.set(suffix, providerId);
-    suffixes.set(providerId, suffix);
-  }
-
-  return suffixes;
-}
-
 export function getFederationProviderConfigs(
   environment: FederationEnvironment = process.env,
 ) {
@@ -165,7 +136,7 @@ export function getFederationProviderConfigs(
     throw new Error("No Identity Providers configured");
   }
 
-  const suffixes = providerSuffixes(providerIds);
+  const suffixes = identityProviderEnvironmentSuffixes(providerIds);
   return new Map(
     providerIds.map((id) => {
       const suffix = suffixes.get(id)!;

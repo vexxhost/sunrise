@@ -103,6 +103,24 @@ describe("Sunrise logout route", () => {
     );
   });
 
+  it("preserves a local deep link while renewing an expired session", async () => {
+    const current = session();
+    mocks.getSession.mockResolvedValue(current);
+
+    const response = await GET(
+      new Request(
+        "https://sunrise.example.test/auth/logout?reason=idle&returnTo=%2Fconsole%2Fproject-1%2Fserver-1%3Fprotocol%3Dvnc%26region%3DRegionOne",
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/auth/oidc/login?idp=demo&returnTo=%2Fconsole%2Fproject-1%2Fserver-1%3Fprotocol%3Dvnc%26region%3DRegionOne",
+    );
+    expect(response.headers.get("set-cookie")).toContain(
+      "sunrise-auth-return-to=%2Fconsole%2Fproject-1%2Fserver-1%3Fprotocol%3Dvnc%26region%3DRegionOne",
+    );
+  });
+
   it("still signs out locally when provider discovery is unavailable", async () => {
     const current = session();
     mocks.getSession.mockResolvedValue(current);
