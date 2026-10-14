@@ -55,7 +55,7 @@ secret, never an image build argument or runtime environment variable:
 ```bash
 docker build \
   --secret id=next_server_actions_encryption_key,src=/secure/path/next-server-actions-key \
-  --build-arg SUNRISE_SERVER_ACTIONS_KEY_ID=production-v1 \
+  --build-arg SUNRISE_SERVER_ACTIONS_REVISION=production-v1 \
   --build-arg SUNRISE_DEPLOYMENT_ID="$(git rev-parse HEAD)" \
   --build-arg SUNRISE_IMAGE_VERSION=0.1.0 \
   --tag registry.example.com/sunrise:0.1.0 .
@@ -63,7 +63,7 @@ docker build \
 
 The key file must contain canonical base64 for a 16, 24, or 32-byte key. Reuse
 the same key for image revisions that can overlap during a rolling deployment.
-`SUNRISE_SERVER_ACTIONS_KEY_ID` is a non-secret revision or fingerprint used
+`SUNRISE_SERVER_ACTIONS_REVISION` is a non-secret revision or fingerprint used
 only to invalidate the builder cache; change it whenever the secret changes.
 Production automation should derive it from a cryptographic hash of the key or
 advance an operator-managed revision. Never put the key itself in a build
@@ -71,6 +71,34 @@ argument.
 The deployment ID is compiled into Next.js, retained in the final image, and
 reported by `/healthz`; overriding it with a different runtime value causes
 startup validation to fail.
+
+## Published Container Image
+
+The `Image` GitHub Actions workflow builds `ghcr.io/vexxhost/sunrise` for
+`linux/amd64` and `linux/arm64`. Pull requests build without publishing. Pushes
+to `main` publish `main` and immutable `sha-<commit>` tags; release tags matching
+`v*` publish the matching release tag and the immutable commit tag. The workflow
+does not publish a floating `latest` tag. Published manifests include OCI
+metadata, an SBOM, and maximum-mode provenance.
+
+The workflow uses Docker Buildx and QEMU on GitHub-hosted runners to produce the
+multi-platform image. BuildKit layers are stored in the GitHub Actions cache to
+reduce repeated native and emulated build work; publishing requires only the
+repository's standard `GITHUB_TOKEN` package permission.
+
+Published builds require the
+`SUNRISE_SERVER_ACTIONS_ENCRYPTION_KEY` Actions secret. Generate canonical
+base64 once and retain the same value while image revisions may overlap:
+
+```bash
+openssl rand -base64 32 | tr -d '\n'
+```
+
+Pull requests use a disposable build-only key because their images are never
+published. The workflow derives the non-secret cache revision from a SHA-256
+fingerprint and passes the key itself only through a BuildKit secret mount.
+When deploying, prefer the manifest digest or immutable `sha-*` tag over the
+mutable `main` tag.
 
 Override the implementation image without changing Sunrise configuration:
 
