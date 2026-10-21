@@ -5,7 +5,7 @@ ARG SUNRISE_DEPLOYMENT_ID=local
 ARG SUNRISE_IMAGE_SOURCE=https://github.com/vexxhost/sunrise
 ARG SUNRISE_IMAGE_VERSION=0.1.0
 
-FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS base
+FROM node:24-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS base
 
 ENV NEXT_TELEMETRY_DISABLED=1 \
     PNPM_HOME=/pnpm \
@@ -50,7 +50,7 @@ RUN --mount=type=secret,id=next_server_actions_encryption_key,required=true \
     && node -e 'const value = process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY; const decoded = Buffer.from(value, "base64"); if (![16, 24, 32].includes(decoded.length) || decoded.toString("base64") !== value) throw new Error("next_server_actions_encryption_key must be canonical base64 for a 16, 24, or 32-byte key")' \
     && pnpm build
 
-FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS runner
+FROM node:24-alpine@sha256:6a1c190e17215d844926b0677f4bf87273ff7d5e54db06d3b5b5863ab0b09a3d AS runner
 
 ARG SUNRISE_DEPLOYMENT_ID
 ARG SUNRISE_IMAGE_SOURCE
