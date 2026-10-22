@@ -1,6 +1,6 @@
 # Dependency Maintenance Notes
 
-Last updated: 2026-10-12
+Last updated: 2026-10-22
 
 This note captures the dependency pass so future sessions do not need to rediscover the same constraints.
 
@@ -12,21 +12,31 @@ This note captures the dependency pass so future sessions do not need to redisco
 - Resolve versions from the registry when the upgrade is implemented instead of copying version pins from an older Renovate PR.
 - Avoid package releases that are younger than roughly 2-5 days on npm, and treat pnpm and CI supply-chain checks as authoritative.
 - Prefer conservative non-major upgrades unless tests and app behavior justify a larger migration.
-- Keep `pnpm-workspace.yaml` limited to its existing native-build allowlist; do not add transitive dependency overrides there.
+- Avoid transitive dependency overrides unless a package family requires a single shared runtime graph. Any necessary override must be documented, covered by a regression test, and maintained by Renovate.
+
+## Renovate Policy
+
+- A three-day release age keeps very fresh releases out of routine Renovate updates; vulnerability alerts bypass that delay.
+- Non-major npm updates are batched into one routine maintenance PR. Tightly coupled or separately testable families override that batch: Next.js, React, AWS SDK and Smithy, CodeMirror, Vitest and Vite, UI components, and the styling toolchain.
+- Major updates remain visible in the Dependency Dashboard but require explicit approval before Renovate creates a PR.
+- At most four regular Renovate PRs are open at once and no more than two are created per hour. Security remediation has its own three-PR allowance, is labeled high priority, and is never automerged by the Sunrise configuration.
+- Monthly lockfile maintenance refreshes otherwise unchanged transitive dependencies. Routine, family, and lockfile PRs must pass the complete CI suite before manual merge.
 
 ## Updated In This Pass
 
-- Next.js and `eslint-config-next` were moved to `16.4.0`. The security fixes from the `16.3.8` line are included in this newer release.
-- React and React DOM were moved to `19.3.0`; `@types/react` and `@types/react-dom` were moved to `19.3.0` with them.
-- AWS SDK IAM/S3/STS clients and the S3 request presigner were moved to `3.1149.0`; the Smithy Node HTTP handler remains on `4.12.1`.
-- ESLint was moved to `10.12.0` after Next.js 16.4 and TypeScript ESLint added support. Some bundled ESLint plugins still declare older peer ranges, but the complete Sunrise lint configuration passes.
-- Lucide React was moved to `1.55.0`, Simple Icons to `16.35.0`, and Vitest to `5.0.3`. Vitest `5.0.4` was deliberately excluded because it had not passed the 24-hour release-age guard.
+- Next.js and `eslint-config-next` were moved to `16.4.2`. The security fixes from the `16.3.8` line are included in this newer release.
+- React and React DOM were moved to `19.3.1`; `@types/react` and `@types/react-dom` remain on the compatible `19.3.0` line.
+- AWS SDK IAM/S3/STS clients and the S3 request presigner were moved to policy-eligible version `3.1154.0`; the Smithy Node HTTP handler remains on `4.12.1`.
+- ESLint was moved to `10.13.0` after Next.js 16.4 and TypeScript ESLint added support. Some bundled ESLint plugins still declare older peer ranges, but the complete Sunrise lint configuration passes.
+- Lucide React was moved to `1.61.0`, Simple Icons remains on `16.35.0`, and Vitest was moved to `5.0.5`.
+- Vite is now an explicit development dependency on `8.3.5`, keeping Vitest on a directly tracked patched release and resolving GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-9jrq-w75r-8gcw, GHSA-r825-w8mm-5pxw, and GHSA-rq7h-c2jc-7f22.
 - The Radix UI components, TanStack React Query, PostCSS, Prettier, and compatible lockfile dependencies were refreshed to their current policy-eligible releases.
 - Node.js type definitions resolve to `24.19.2`, remaining on the same major as the deployed Node 24 LTS runtime.
 - Transitive `source-map-js`, `sharp`, and `brace-expansion` instances were refreshed to `1.2.2`, `0.35.5`, and `1.1.21` respectively, superseding their standalone Dependabot updates without workspace overrides.
 - The transitive `js-yaml` dependency was refreshed to patched version `4.3.2`, resolving `GHSA-2883-xcg3-v3hh` without adding a workspace override.
+- CodeMirror's core runtime packages are pinned to one exact, current version each in `pnpm-workspace.yaml`. Mixing `@codemirror/view` patch versions caused duplicate class graphs that removed JSON syntax highlighting and could disrupt extension behavior. Renovate groups the complete CodeMirror ecosystem so these pins and the public editor dependencies advance together, while `JsonEditor.dependencies.test.ts` rejects duplicate core versions and verifies JSON parsing and diagnostics.
 - Unused `framer-motion` was removed. Next 16.3's generated agent-rule files were disabled with `agentRules: false` so development does not create root `AGENTS.md` and `CLAUDE.md` files.
-- `pnpm-workspace.yaml` remains limited to native-build allowlisting. Transitive fixes should be obtained by refreshing compatible parents or lockfile resolutions instead of permanent overrides.
+- Other transitive fixes should continue to come from compatible parent upgrades or lockfile refreshes instead of permanent overrides.
 - ESLint was migrated from the removed `next lint` command to `eslint .` with flat config in `eslint.config.mjs`.
 - `postcss.config.mjs` now uses a named config export to avoid the anonymous default export lint warning.
 - TypeScript's compile target was raised from obsolete `ES5` to Next.js's conservative `ES2017` baseline.
@@ -36,18 +46,18 @@ This note captures the dependency pass so future sessions do not need to redisco
 
 ## Verification
 
-- `pnpm audit --prod` reports no known production vulnerabilities without workspace-level overrides.
-- The default Turbopack production build completed successfully on Next.js `16.4.0`.
+- `pnpm audit --prod` reports no known production vulnerabilities.
+- The Webpack production build completed successfully on Next.js `16.4.2`.
 - The production Docker image completed a clean install and build on the repository's Node 24 Alpine runtime.
-- `pnpm test:run` completed successfully with 134 test files and 826 passing tests on Vitest `5.0.3`.
-- `pnpm lint` completed successfully with no warnings or errors on ESLint `10.12.0`.
+- `pnpm test:run` completed successfully with 142 test files and 868 passing tests on Vitest `5.0.5`.
+- `pnpm lint` completed successfully with no warnings or errors on ESLint `10.13.0`.
 - Chrome smoke testing covered demo SSO, the overview, image and icon rendering, S3 bucket listing, and project switching with the correct per-project RGW bucket set.
 - PRs #127 through #129 passed their test, CodeQL, action analysis, JavaScript/TypeScript analysis, and DCO checks.
 
 ## Remaining Warnings
 
 - `pnpm peers check` reports stale ESLint peer ranges from `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and `eslint-plugin-react`. Next.js 16.4 documents ESLint 10 support, TypeScript ESLint declares ESLint 10 support, and the full lint run passes; re-check these declarations in the next refresh.
-- The full development audit reports `GHSA-vfj7-8cjw-p6xm` through Next.js's lint stack. npm currently lists no patched `braces` release, and the package is absent from the production dependency audit.
+- The full development audit reports `GHSA-vfj7-8cjw-p6xm` through `eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch -> braces`. npm currently lists no patched `braces` release, and the package is absent from the production dependency audit. The Next plugin only passes its trusted `settings.next.rootDir` configuration to `fast-glob`; Sunrise does not configure that setting, so the vulnerable parser is not called by the current lint configuration. Keep the alert visible until an upstream release is available rather than masking it with an audit exception or an unmaintained override.
 
 ## Deferred Upgrades
 
