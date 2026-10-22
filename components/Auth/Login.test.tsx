@@ -26,8 +26,8 @@ describe("Login", () => {
     const html = renderToStaticMarkup(
       <Login
         rememberedProvider={{
+          id: "demo",
           displayName: "VEXXHOST Demo",
-          signInSlug: "demo",
         }}
         initialReturnTo="/kubernetes/clusters"
       />,
