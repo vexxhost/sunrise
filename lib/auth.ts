@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import {
-  findIdentityProviderBySignInSlug,
+  findIdentityProviderById,
   getIdentityProviderOptions,
 } from "@/lib/auth-providers";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
@@ -12,7 +12,7 @@ export const LoginFormSchema = z.object({
     .string()
     .trim()
     .transform((value, context) => {
-      const provider = findIdentityProviderBySignInSlug(
+      const provider = findIdentityProviderById(
         getIdentityProviderOptions(),
         value,
       );

@@ -97,8 +97,8 @@ export default async function Provider({ children }: any) {
         rememberedProvider={
           rememberedProvider
             ? {
+                id: rememberedProvider.id,
                 displayName: rememberedProvider.displayName,
-                signInSlug: rememberedProvider.signInSlug,
               }
             : undefined
         }
@@ -125,8 +125,8 @@ export default async function Provider({ children }: any) {
         rememberedProvider={
           rememberedProvider
             ? {
+                id: rememberedProvider.id,
                 displayName: rememberedProvider.displayName,
-                signInSlug: rememberedProvider.signInSlug,
               }
             : undefined
         }

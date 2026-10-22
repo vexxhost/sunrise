@@ -11,11 +11,11 @@ export function authReturnToFromLocation(location: BrowserLocation): string {
 }
 
 export function identityProviderSignInPath(
-  signInSlug: string,
+  identityProviderId: string,
   returnTo = "/",
   prompt?: OidcAuthorizationPrompt,
 ): string {
-  const path = `/sign-in/${encodeURIComponent(signInSlug)}`;
+  const path = `/sign-in/${encodeURIComponent(identityProviderId)}`;
   const params = new URLSearchParams();
   const normalizedReturnTo = normalizeAuthReturnTo(returnTo);
   if (normalizedReturnTo !== "/") params.set("returnTo", normalizedReturnTo);

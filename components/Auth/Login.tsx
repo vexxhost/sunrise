@@ -51,8 +51,8 @@ type CopyState = {
 };
 
 type RememberedIdentityProvider = {
+  id: string;
   displayName: string;
-  signInSlug: string;
 };
 
 function CopySignInLink({
@@ -160,7 +160,7 @@ export default function Login({
 
   const rememberedProviderHref = rememberedProvider
     ? identityProviderSignInPath(
-        rememberedProvider.signInSlug,
+        rememberedProvider.id,
         returnTo,
         authorizationPrompt,
       )
@@ -215,7 +215,7 @@ export default function Login({
                 />
               </a>
               <CopySignInLink
-                provider={rememberedProvider.signInSlug}
+                provider={rememberedProvider.id}
                 copyState={copyState}
                 copyKey="remembered"
                 interactive={interactive}
@@ -274,7 +274,7 @@ export default function Login({
                 defaultValue=""
                 onInput={(event) => setProvider(event.currentTarget.value)}
                 className="h-11 w-full rounded-md border border-input bg-background/70 px-3 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/20"
-                placeholder="Enter your provider sign-in ID"
+                placeholder="Enter your provider ID"
               />
 
               {state?.errors?.idProvider && (

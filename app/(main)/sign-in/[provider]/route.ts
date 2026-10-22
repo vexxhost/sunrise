@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  findIdentityProviderBySignInSlug,
+  findIdentityProviderById,
   getIdentityProviderOptions,
 } from "@/lib/auth-providers";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
@@ -10,10 +10,10 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ provider: string }> },
 ) {
-  const { provider: signInSlug } = await params;
-  const provider = findIdentityProviderBySignInSlug(
+  const { provider: identityProviderId } = await params;
+  const provider = findIdentityProviderById(
     getIdentityProviderOptions(),
-    signInSlug,
+    identityProviderId,
   );
   if (!provider) {
     return new NextResponse("Identity provider not found", { status: 404 });
