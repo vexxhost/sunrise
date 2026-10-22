@@ -1,4 +1,102 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>vexxhost/.github:default"]
+  "extends": ["local>vexxhost/.github:default"],
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 4,
+  "prHourlyLimit": 2,
+  "labels": ["dependencies"],
+  "major": {
+    "dependencyDashboardApproval": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on the first day of the month"]
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["dependencies", "priority: high"],
+    "prConcurrentLimit": 3,
+    "vulnerabilityFixStrategy": "highest"
+  },
+  "packageRules": [
+    {
+      "description": "Batch routine npm maintenance into one PR",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "routine npm dependencies",
+      "groupSlug": "routine-npm-dependencies",
+      "groupSingleUpdates": true
+    },
+    {
+      "description": "Keep the Next.js framework and its lint configuration aligned",
+      "matchPackageNames": ["next", "eslint-config-next"],
+      "groupName": "Next.js platform",
+      "groupSlug": "nextjs-platform",
+      "groupSingleUpdates": true
+    },
+    {
+      "description": "Keep React runtime and type packages aligned",
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "@types/react",
+        "@types/react-dom"
+      ],
+      "groupName": "React runtime",
+      "groupSlug": "react-runtime",
+      "groupSingleUpdates": true
+    },
+    {
+      "description": "Keep AWS SDK and Smithy runtime packages aligned",
+      "matchPackageNames": ["/^@aws-sdk\\//", "/^@smithy\\//"],
+      "groupName": "AWS SDK runtime",
+      "groupSlug": "aws-sdk-runtime",
+      "groupSingleUpdates": true
+    },
+    {
+      "description": "Keep CodeMirror's shared runtime packages on one compatible graph",
+      "matchPackageNames": [
+        "/^@codemirror\\//",
+        "codemirror",
+        "@uiw/react-codemirror"
+      ],
+      "groupName": "CodeMirror ecosystem",
+      "groupSlug": "codemirror-ecosystem",
+      "groupSingleUpdates": true
+    },
+    {
+      "description": "Keep Vitest and its Vite runtime aligned",
+      "matchPackageNames": ["vite", "vitest", "/^@vitest\\//"],
+      "groupName": "Vitest toolchain",
+      "groupSlug": "vitest-toolchain",
+      "groupSingleUpdates": true
+    },
+    {
+      "description": "Review visual component updates as one UI QA unit",
+      "matchPackageNames": [
+        "/^@radix-ui\\//",
+        "/^@dnd-kit\\//",
+        "@headlessui/react",
+        "cmdk",
+        "lucide-react"
+      ],
+      "groupName": "UI component stack",
+      "groupSlug": "ui-component-stack",
+      "groupSingleUpdates": true
+    },
+    {
+      "description": "Keep Tailwind and PostCSS build packages aligned",
+      "matchPackageNames": [
+        "/^@tailwindcss\\//",
+        "autoprefixer",
+        "postcss",
+        "tailwindcss",
+        "tailwind-merge",
+        "tailwindcss-animate",
+        "tw-animate-css"
+      ],
+      "groupName": "styling toolchain",
+      "groupSlug": "styling-toolchain",
+      "groupSingleUpdates": true
+    }
+  ]
 }
