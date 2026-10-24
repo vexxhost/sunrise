@@ -9,6 +9,7 @@
 {{- if .Values.secret.create -}}
 {{- $_ := set $podAnnotations "checksum/secret" (include (print $.Template.BasePath "/secret.yaml") . | sha256sum) -}}
 {{- end -}}
+{{- $podLabels := mergeOverwrite (deepCopy (.Values.podLabels | default dict)) (include "sunrise.labels" . | fromYaml) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,10 +37,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "sunrise.labels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        {{- toYaml $podLabels | nindent 8 }}
     spec:
       serviceAccountName: {{ include "sunrise.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automount }}

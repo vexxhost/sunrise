@@ -19,6 +19,7 @@ serviceAccount:
 
 deploymentAnnotations: {}
 podAnnotations: {}
+# Standard chart and selector labels take precedence over matching custom keys.
 podLabels: {}
 
 podSecurityContext:
