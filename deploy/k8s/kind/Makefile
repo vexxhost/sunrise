@@ -18,7 +18,9 @@ PULL_IMAGE ?= true
 LOAD_IMAGE ?= false
 ENV_FILE ?= $(abspath ../../../.env.local)
 CHART_DIR ?= $(abspath ../chart)
-VALUES_FILE ?= $(abspath values.yaml)
+LOCAL_VALUES_FILE := $(abspath values.yaml)
+EXAMPLE_VALUES_FILE := $(abspath values.example.yaml)
+VALUES_FILE ?= $(if $(wildcard $(LOCAL_VALUES_FILE)),$(LOCAL_VALUES_FILE),$(EXAMPLE_VALUES_FILE))
 RUNTIME_SECRET ?= sunrise-runtime
 
 KUBECTL := kubectl --context $(KUBE_CONTEXT)

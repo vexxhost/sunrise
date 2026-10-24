@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: sunrise-valkey
   namespace: openstack
+  annotations:
+    secret.reloader.stakater.com/reload: sunrise-runtime
   labels:
     app.kubernetes.io/name: sunrise-valkey
     app.kubernetes.io/part-of: sunrise

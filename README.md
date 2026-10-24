@@ -236,6 +236,11 @@ security boundaries, and local-image overrides. Production deployments must use
 an external highly available Redis-compatible service; the kind Valkey manifest
 is deliberately ephemeral and is not part of the Helm chart.
 
+Cloud-specific kind settings belong in the ignored
+`deploy/k8s/kind/values.yaml`. When that file is absent, the Makefile falls back
+to the tracked `values.example.yaml`; copy the example before customizing a
+local environment.
+
 Set `SUNRISE_SESSION_BACKEND=cookie` to use the single-process development
 fallback. That mode is not suitable for horizontally scaled production
 replicas because credential rotation and logout state are held by the browser.
