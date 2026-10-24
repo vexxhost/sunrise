@@ -22,7 +22,6 @@ CHART_DIR ?= $(abspath ../chart)
 LOCAL_VALUES_FILE := $(abspath values.yaml)
 EXAMPLE_VALUES_FILE := $(abspath values.example.yaml)
 VALUES_FILE ?= $(if $(wildcard $(LOCAL_VALUES_FILE)),$(LOCAL_VALUES_FILE),$(EXAMPLE_VALUES_FILE))
-RUNTIME_SECRET ?= sunrise-runtime
 
 KUBECTL := kubectl --context $(KUBE_CONTEXT)
 HELM := helm --kube-context $(KUBE_CONTEXT)
@@ -60,6 +59,9 @@ envoy-gateway: ## Install/upgrade Envoy Gateway and cert-manager
 		deployment/cert-manager --for=condition=Available
 	$(KUBECTL) apply -f cert-manager.yaml -n cert-manager
 	$(KUBECTL) apply -f envoy-gateway.yaml
+	$(KUBECTL) create namespace $(NAMESPACE) --dry-run=client -o yaml | \
+		$(KUBECTL) apply -f -
+	$(KUBECTL) -n $(NAMESPACE) apply -f sunrise-route.yaml
 	@echo "Waiting for Envoy Gateway to be accepted..."
 	@sleep 5
 	$(KUBECTL) wait --timeout=120s -n envoy-gateway-system \
@@ -87,7 +89,7 @@ validate-values: ## Validate that kind values match the runtime provider configu
 runtime-secret: validate-values ## Create/update the local runtime Secret from .env.local
 	$(KUBECTL) create namespace $(NAMESPACE) --dry-run=client -o yaml | \
 		$(KUBECTL) apply -f -
-	./create-runtime-secret.sh $(ENV_FILE) $(KUBE_CONTEXT) $(NAMESPACE) $(RUNTIME_SECRET)
+	./create-runtime-secret.sh $(ENV_FILE) $(KUBE_CONTEXT) $(NAMESPACE) sunrise-runtime
 
 reloader: ## Install/upgrade the kind-only configuration reload controller
 	$(HELM) upgrade --install $(RELOADER_RELEASE) reloader \
@@ -137,7 +139,8 @@ sunrise-down: ## Remove Sunrise, local Valkey, and generated runtime Secret
 	-$(HELM) uninstall $(RELEASE) -n $(NAMESPACE)
 	-$(HELM) uninstall $(RELOADER_RELEASE) -n $(RELOADER_NAMESPACE)
 	-$(KUBECTL) -n $(NAMESPACE) delete -f valkey.yaml --ignore-not-found
-	-$(KUBECTL) -n $(NAMESPACE) delete secret $(RUNTIME_SECRET) --ignore-not-found
+	-$(KUBECTL) -n $(NAMESPACE) delete -f sunrise-route.yaml --ignore-not-found
+	-$(KUBECTL) -n $(NAMESPACE) delete secret sunrise-runtime --ignore-not-found
 
 cluster-down: ## Delete the kind cluster and all data
 	kind delete cluster --name $(CLUSTER_NAME)
