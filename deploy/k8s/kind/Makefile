@@ -4,6 +4,7 @@ CLUSTER_NAME ?= sunrise
 KUBE_CONTEXT ?= kind-$(CLUSTER_NAME)
 NAMESPACE ?= openstack
 RELEASE ?= sunrise
+WORKLOAD_NAME := sunrise
 RELOADER_RELEASE ?= reloader
 RELOADER_NAMESPACE ?= reloader-system
 RELOADER_VERSION ?= 2.2.18
@@ -26,7 +27,7 @@ RUNTIME_SECRET ?= sunrise-runtime
 KUBECTL := kubectl --context $(KUBE_CONTEXT)
 HELM := helm --kube-context $(KUBE_CONTEXT)
 
-.PHONY: help kind envoy-gateway cluster-up cluster-down image runtime-secret \
+.PHONY: help kind envoy-gateway cluster-up cluster-down image validate-values runtime-secret \
 	reloader valkey sunrise sunrise-status sunrise-test sunrise-logs sunrise-down
 
 help: ## Show this help
@@ -80,7 +81,12 @@ image: ## Prepare Sunrise image metadata; optionally pull and load it into kind
 		kind load docker-image --name $(CLUSTER_NAME) $(IMAGE); \
 	fi
 
-runtime-secret: ## Create/update the local runtime Secret from .env.local
+validate-values: ## Validate that kind values match the runtime provider configuration
+	./validate-kind-values.sh $(ENV_FILE) $(VALUES_FILE)
+
+runtime-secret: validate-values ## Create/update the local runtime Secret from .env.local
+	$(KUBECTL) create namespace $(NAMESPACE) --dry-run=client -o yaml | \
+		$(KUBECTL) apply -f -
 	./create-runtime-secret.sh $(ENV_FILE) $(KUBE_CONTEXT) $(NAMESPACE) $(RUNTIME_SECRET)
 
 reloader: ## Install/upgrade the kind-only configuration reload controller
@@ -91,19 +97,20 @@ reloader: ## Install/upgrade the kind-only configuration reload controller
 		--set reloader.reloadStrategy=annotations \
 		--wait --timeout 180s
 
-valkey: runtime-secret ## Deploy the disposable kind-only Valkey service
-	$(KUBECTL) apply -f valkey.yaml
+valkey: reloader runtime-secret ## Deploy the disposable kind-only Valkey service
+	$(KUBECTL) -n $(NAMESPACE) apply -f valkey.yaml
 	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/sunrise-valkey --timeout=120s
 
-sunrise: image runtime-secret valkey reloader ## Install/upgrade Sunrise in kind
+sunrise: image valkey ## Install/upgrade Sunrise in kind
 	$(HELM) upgrade --install $(RELEASE) $(CHART_DIR) \
 		--namespace $(NAMESPACE) --create-namespace \
 		--values $(VALUES_FILE) \
 		--set-string image.repository="$(IMAGE_REPOSITORY)" \
 		--set-string image.tag="$(IMAGE_TAG)" \
 		--set-string image.digest="$(IMAGE_DIGEST)" \
+		--set-string fullnameOverride="$(WORKLOAD_NAME)" \
 		--wait --timeout 300s
-	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/$(RELEASE) --timeout=180s
+	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/$(WORKLOAD_NAME) --timeout=180s
 
 sunrise-status: ## Show Sunrise, Valkey, Service, and HTTPRoute status
 	$(KUBECTL) -n $(NAMESPACE) get deployment,pod,service,pdb,httproute -o wide
@@ -129,7 +136,7 @@ sunrise-logs: ## Follow logs from every Sunrise replica
 sunrise-down: ## Remove Sunrise, local Valkey, and generated runtime Secret
 	-$(HELM) uninstall $(RELEASE) -n $(NAMESPACE)
 	-$(HELM) uninstall $(RELOADER_RELEASE) -n $(RELOADER_NAMESPACE)
-	-$(KUBECTL) delete -f valkey.yaml --ignore-not-found
+	-$(KUBECTL) -n $(NAMESPACE) delete -f valkey.yaml --ignore-not-found
 	-$(KUBECTL) -n $(NAMESPACE) delete secret $(RUNTIME_SECRET) --ignore-not-found
 
 cluster-down: ## Delete the kind cluster and all data

@@ -239,7 +239,9 @@ is deliberately ephemeral and is not part of the Helm chart.
 Cloud-specific kind settings belong in the ignored
 `deploy/k8s/kind/values.yaml`. When that file is absent, the Makefile falls back
 to the tracked `values.example.yaml`; copy the example before customizing a
-local environment.
+local environment. The provider list in that file must match
+`KEYSTONE_FEDERATION_IDENTITY_PROVIDERS` in `.env.local`; the kind harness checks
+this before creating or changing cluster resources.
 
 Set `SUNRISE_SESSION_BACKEND=cookie` to use the single-process development
 fallback. That mode is not suitable for horizontally scaled production

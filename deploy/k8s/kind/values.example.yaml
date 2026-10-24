@@ -6,7 +6,9 @@ image:
   pullPolicy: IfNotPresent
 
 # Copy this file to the ignored values.yaml for local cloud-specific settings.
-# The Makefile uses this example directly when values.yaml is absent.
+# The Makefile uses this example directly when values.yaml is absent. Its demo
+# provider must match KEYSTONE_FEDERATION_IDENTITY_PROVIDERS in .env.local; the
+# Makefile validates this before creating any resources.
 configMap:
   data:
     KEYSTONE_API: https://identity.example.com
