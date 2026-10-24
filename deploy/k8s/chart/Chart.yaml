@@ -1,0 +1,12 @@
+apiVersion: v2
+name: sunrise
+description: A horizontally scalable OpenStack dashboard
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/vexxhost/sunrise
+sources:
+  - https://github.com/vexxhost/sunrise
+maintainers:
+  - name: VEXXHOST
+    url: https://vexxhost.com

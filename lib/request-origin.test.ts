@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getRequestRedirectOrigin,
   getTrustedRequestOrigin,
   isSameOriginRequest,
 } from "@/lib/request-origin";
@@ -150,5 +151,24 @@ describe("getTrustedRequestOrigin", () => {
         "https://dashboard.example.test:9443",
       ),
     ).toBe("https://dashboard.example.test");
+  });
+});
+
+describe("getRequestRedirectOrigin", () => {
+  it("uses the configured dashboard when an upstream request URL is internal", () => {
+    expect(
+      getRequestRedirectOrigin(
+        new Request("http://0.0.0.0:3000/sign-in/demo"),
+        "https://sunrise.example.test",
+      ),
+    ).toBe("https://sunrise.example.test");
+  });
+
+  it("falls back to the request origin when no dashboard is configured", () => {
+    expect(
+      getRequestRedirectOrigin(
+        new Request("http://localhost:9990/sign-in/demo"),
+      ),
+    ).toBe("http://localhost:9990");
   });
 });

@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sunrise-valkey
+  annotations:
+    secret.reloader.stakater.com/reload: sunrise-runtime
+  labels:
+    app.kubernetes.io/name: sunrise-valkey
+    app.kubernetes.io/part-of: sunrise
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sunrise-valkey
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sunrise-valkey
+        app.kubernetes.io/part-of: sunrise
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: valkey
+          image: valkey/valkey:9.1.2-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - >-
+              exec valkey-server
+              --appendonly no
+              --save ""
+              --maxmemory-policy noeviction
+              --requirepass "$SUNRISE_REDIS_PASSWORD"
+          env:
+            - name: SUNRISE_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sunrise-runtime
+                  key: SUNRISE_REDIS_PASSWORD
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - REDISCLI_AUTH="$SUNRISE_REDIS_PASSWORD" valkey-cli ping | grep -qx PONG
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - REDISCLI_AUTH="$SUNRISE_REDIS_PASSWORD" valkey-cli ping | grep -qx PONG
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sunrise-valkey
+  labels:
+    app.kubernetes.io/name: sunrise-valkey
+    app.kubernetes.io/part-of: sunrise
+spec:
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: sunrise-valkey

@@ -1,0 +1,19 @@
+{{- if .Values.configMap.create }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sunrise.configMapName" . }}
+  labels:
+    {{- include "sunrise.labels" . | nindent 4 }}
+  {{- with .Values.configMap.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  {{- if .Values.configMap.data }}
+  {{- range $name, $value := .Values.configMap.data }}
+  {{ $name }}: {{ $value | quote }}
+  {{- end }}
+  {{- else }} {}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,146 @@
+replicaCount: 2
+revisionHistoryLimit: 3
+
+image:
+  repository: ghcr.io/vexxhost/sunrise
+  tag: main
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  automount: false
+  annotations: {}
+  name: ""
+
+deploymentAnnotations: {}
+podAnnotations: {}
+# Standard chart and selector labels take precedence over matching custom keys.
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+# Chart-managed non-sensitive environment. Changes trigger a deterministic
+# rollout through a checksum of the rendered ConfigMap.
+configMap:
+  create: true
+  name: ""
+  annotations: {}
+  data:
+    SUNRISE_DASHBOARD_URL: https://sunrise.example.com
+    SUNRISE_SESSION_BACKEND: redis
+    SUNRISE_REDIS_URL: rediss://redis.example.com:6379
+    SUNRISE_REDIS_COMMAND_TIMEOUT_MS: "2000"
+    SUNRISE_REDIS_KEY_PREFIX: sunrise
+
+# Optional chart-managed sensitive environment. Values supplied here are
+# retained in Helm release history. Prefer env/envFrom references to externally
+# managed Secrets in production. Changes trigger a deterministic rollout.
+secret:
+  create: false
+  name: ""
+  annotations: {}
+  stringData: {}
+
+# Native Kubernetes EnvVar and EnvFromSource entries. Use these for literals,
+# individual secretKeyRef/configMapKeyRef values, and any number of existing
+# ConfigMaps or Secrets. Explicit env entries take precedence over envFrom.
+env: []
+envFrom: []
+
+# Requires Stakater Reloader to be installed in the cluster. When enabled,
+# changes to ConfigMaps and Secrets referenced by the Deployment trigger a
+# rollout, including resources maintained by External Secrets Operator.
+reloader:
+  enabled: false
+
+extraVolumes: []
+extraVolumeMounts: []
+
+writablePaths:
+  tmp:
+    sizeLimit: 64Mi
+  nextCache:
+    sizeLimit: 256Mi
+  routeCache:
+    sizeLimit: 128Mi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 768Mi
+
+startupProbe:
+  failureThreshold: 30
+  periodSeconds: 2
+  timeoutSeconds: 3
+
+livenessProbe:
+  failureThreshold: 3
+  periodSeconds: 10
+  timeoutSeconds: 3
+
+readinessProbe:
+  failureThreshold: 3
+  periodSeconds: 5
+  timeoutSeconds: 3
+
+terminationGracePeriodSeconds: 30
+
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  maxUnavailable: ""
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: ""
+
+httpRoute:
+  enabled: false
+  annotations: {}
+  parentRefs:
+    - name: gateway
+      namespace: envoy-gateway-system
+  hostnames:
+    - sunrise.example.com
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""

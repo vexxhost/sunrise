@@ -13,6 +13,7 @@ import { getSession } from "@/lib/session";
 import { isStoredSessionSupersededError } from "@/lib/session-errors";
 import { saveRedisSession } from "@/lib/session-store";
 import { SESSION_EXPIRY_NOTICE_COOKIE } from "@/lib/session-lifetime";
+import { getRequestRedirectOrigin } from "@/lib/request-origin";
 import {
   buildAuthorizeUrl,
   generatePkce,
@@ -25,6 +26,11 @@ const idProviders = parseIdentityProviders(
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const redirectOrigin = getRequestRedirectOrigin(
+    request,
+    process.env.SUNRISE_DASHBOARD_URL,
+    process.env.SUNRISE_ALLOWED_DASHBOARD_ORIGINS,
+  );
   const idp = url.searchParams.get("idp");
   const prompt = parseOidcAuthorizationPrompt(url.searchParams.get("prompt"));
   const returnTo = normalizeAuthReturnTo(url.searchParams.get("returnTo"));
@@ -38,7 +44,7 @@ export async function GET(request: Request) {
 
   const session = await getSession();
   if (continuation && session.sessionExpiryReason) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/", redirectOrigin));
   }
   session.oidcVerifier = verifier;
   session.oidcState = state;
@@ -50,7 +56,7 @@ export async function GET(request: Request) {
     await saveRedisSession(session, { recoverRotatedSession: true });
   } catch (error) {
     if (isStoredSessionSupersededError(error)) {
-      return NextResponse.redirect(new URL("/", request.url));
+      return NextResponse.redirect(new URL("/", redirectOrigin));
     }
     throw error;
   }

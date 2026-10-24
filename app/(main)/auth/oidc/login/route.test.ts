@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS = "demo";
+  process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
   return {
     buildAuthorizeUrl: vi.fn(),
     generatePkce: vi.fn(),
@@ -108,6 +109,24 @@ describe("OIDC login route", () => {
     );
     expect(session.save).not.toHaveBeenCalled();
     expect(mocks.buildAuthorizeUrl).not.toHaveBeenCalled();
+  });
+
+  it("returns to the canonical dashboard behind a reverse proxy", async () => {
+    const session = {
+      sessionExpiryReason: "idle",
+      save: vi.fn().mockResolvedValue(undefined),
+    };
+    mocks.getSession.mockResolvedValue(session);
+
+    const response = await GET(
+      new Request(
+        "http://0.0.0.0:3000/auth/oidc/login?idp=demo&continuation=1",
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/",
+    );
   });
 
   it("returns to Sunrise when a concurrent callback supersedes login", async () => {

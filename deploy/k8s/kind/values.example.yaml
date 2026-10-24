@@ -1,0 +1,46 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/vexxhost/sunrise
+  tag: main
+  pullPolicy: IfNotPresent
+
+# Copy this file to the ignored values.yaml for local cloud-specific settings.
+# The Makefile uses this example directly when values.yaml is absent. Its demo
+# provider must match KEYSTONE_FEDERATION_IDENTITY_PROVIDERS in .env.local; the
+# Makefile validates this before creating any resources.
+configMap:
+  data:
+    KEYSTONE_API: https://identity.example.com
+    KEYSTONE_PUBLIC_API: https://identity.example.com
+    KEYSTONE_FEDERATION_IDENTITY_PROVIDERS: demo
+    KEYSTONE_FEDERATION_IDENTITY_PROVIDER_PROTOCOL: openid
+    SUNRISE_DASHBOARD_URL: https://sunrise.localtest.me
+    SUNRISE_COLOR_PALETTE: sunrise
+    SUNRISE_IDENTITY_PROVIDER_DISPLAY_NAME_DEMO: Demo IdP
+    SUNRISE_KEYCLOAK_ISSUER_DEMO: https://identity.example.com/realms/demo
+    SUNRISE_KEYCLOAK_CLIENT_ID_DEMO: sunrise-server
+    SUNRISE_OBJECT_STORAGE_BACKENDS: swift
+    SUNRISE_SESSION_IDLE_TIMEOUT_SECONDS: "600"
+    SUNRISE_SESSION_ABSOLUTE_TIMEOUT_SECONDS: "7200"
+    SUNRISE_SESSION_BACKEND: redis
+    SUNRISE_REDIS_URL: redis://sunrise-valkey:6379
+    SUNRISE_REDIS_COMMAND_TIMEOUT_MS: "2000"
+    SUNRISE_REDIS_KEY_PREFIX: sunrise-kind
+
+envFrom:
+  - secretRef:
+      name: sunrise-runtime
+
+reloader:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 768Mi
+
+httpRoute:
+  enabled: false
