@@ -1,0 +1,143 @@
+{{- $deploymentAnnotations := deepCopy (.Values.deploymentAnnotations | default dict) -}}
+{{- if .Values.reloader.enabled -}}
+{{- $_ := set $deploymentAnnotations "reloader.stakater.com/auto" "true" -}}
+{{- end -}}
+{{- $podAnnotations := deepCopy (.Values.podAnnotations | default dict) -}}
+{{- if .Values.configMap.create -}}
+{{- $_ := set $podAnnotations "checksum/config" (include (print $.Template.BasePath "/configmap.yaml") . | sha256sum) -}}
+{{- end -}}
+{{- if .Values.secret.create -}}
+{{- $_ := set $podAnnotations "checksum/secret" (include (print $.Template.BasePath "/secret.yaml") . | sha256sum) -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sunrise.fullname" . }}
+  labels:
+    {{- include "sunrise.labels" . | nindent 4 }}
+  {{- with $deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  strategy:
+    {{- toYaml .Values.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "sunrise.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with $podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "sunrise.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "sunrise.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: sunrise
+          image: {{ include "sunrise.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: HOSTNAME
+              value: 0.0.0.0
+            - name: PORT
+              value: "3000"
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if or .Values.configMap.create .Values.secret.create .Values.envFrom }}
+          envFrom:
+            {{- if .Values.configMap.create }}
+            - configMapRef:
+                name: {{ include "sunrise.configMapName" . }}
+            {{- end }}
+            {{- if .Values.secret.create }}
+            - secretRef:
+                name: {{ include "sunrise.secretName" . }}
+            {{- end }}
+            {{- with .Values.envFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: next-cache
+              mountPath: /app/.next/cache
+            - name: route-cache
+              mountPath: /app/.next/server/route-cache
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.writablePaths.tmp.sizeLimit }}
+        - name: next-cache
+          emptyDir:
+            sizeLimit: {{ .Values.writablePaths.nextCache.sizeLimit }}
+        - name: route-cache
+          emptyDir:
+            sizeLimit: {{ .Values.writablePaths.routeCache.sizeLimit }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}

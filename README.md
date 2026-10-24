@@ -180,7 +180,8 @@ data directory is deliberately ephemeral: it models a disposable local QA
 dependency, not a production data policy. Production deployments must provide
 an authenticated, highly available Redis endpoint (preferably `rediss://`),
 shared `SUNRISE_SESSION_SECRET`, stable deployment namespace, and one immutable
-`SUNRISE_DEPLOYMENT_ID` per image build.
+`SUNRISE_DEPLOYMENT_ID` embedded by the image build pipeline per image build.
+It is not deployment-time configuration.
 
 Every server validates its static deployment configuration before accepting
 requests. Invalid dashboard or identity URLs, missing or short session secrets,
@@ -213,6 +214,27 @@ iteration. Sunrise's OpenStack requests are non-cacheable, so each replica uses
 Next.js's local server cache rather than maintaining a custom distributed cache
 and tag-invalidation protocol. Revisit shared application caching only when a
 measured cacheable workload justifies that separate consistency boundary.
+
+## Local Kubernetes
+
+The Helm chart in `deploy/k8s/chart` runs multiple read-only, non-root Sunrise
+replicas against a shared Redis-compatible session backend. The disposable kind
+harness in `deploy/k8s/kind` uses the running local cluster, imports the required
+runtime settings from `.env.local` into a Kubernetes Secret, installs Reloader
+to restart pods when that external Secret changes, and deploys a temporary
+password-protected Valkey instance for integration testing.
+
+```bash
+make -C deploy/k8s/kind sunrise
+make -C deploy/k8s/kind sunrise-status
+make -C deploy/k8s/kind sunrise-test
+```
+
+The local route is [https://sunrise.localtest.me](https://sunrise.localtest.me).
+See [the chart documentation](deploy/k8s/chart/README.md) for production inputs,
+security boundaries, and local-image overrides. Production deployments must use
+an external highly available Redis-compatible service; the kind Valkey manifest
+is deliberately ephemeral and is not part of the Helm chart.
 
 Set `SUNRISE_SESSION_BACKEND=cookie` to use the single-process development
 fallback. That mode is not suitable for horizontally scaled production

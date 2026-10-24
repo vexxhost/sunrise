@@ -1,0 +1,19 @@
+Sunrise is available inside the cluster at:
+
+  http://{{ include "sunrise.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+
+Check the rollout and readiness state with:
+
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "sunrise.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/name={{ include "sunrise.name" . }},app.kubernetes.io/instance={{ .Release.Name }}
+
+Run the chart connectivity test with:
+
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+{{- if and (not .Values.secret.create) (not .Values.env) (not .Values.envFrom) }}
+
+WARNING: no Secret or explicit environment references are configured. Sunrise
+requires a stable SUNRISE_SESSION_SECRET and its identity-provider credentials
+before it can start.
+{{- end }}

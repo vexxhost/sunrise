@@ -78,6 +78,17 @@ export function getTrustedRequestOrigin(
   }
 }
 
+export function getRequestRedirectOrigin(
+  request: Pick<Request, "headers" | "url">,
+  dashboardUrl?: string,
+  additionalOrigins?: string,
+) {
+  return (
+    getTrustedRequestOrigin(request.headers, dashboardUrl, additionalOrigins) ??
+    new URL(request.url).origin
+  );
+}
+
 export function isSameOriginRequest(
   headers: Pick<Headers, "get">,
   fallbackOrigin: string,

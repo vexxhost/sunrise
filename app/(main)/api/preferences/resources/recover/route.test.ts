@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +18,10 @@ vi.mock("@/lib/resource-recovery-proof", () => ({
 import { GET } from "./route";
 
 describe("resource recovery route", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSession.mockResolvedValue({
@@ -90,6 +94,20 @@ describe("resource recovery route", () => {
       "http://localhost/object-storage/buckets/demo-bucket/direct?notice=resource-unavailable&kind=object",
     );
     expect(mocks.removeSavedResourcePreferences).not.toHaveBeenCalled();
+  });
+
+  it("redirects to the canonical dashboard behind a reverse proxy", async () => {
+    vi.stubEnv("SUNRISE_DASHBOARD_URL", "https://sunrise.example.test");
+
+    const response = await GET(
+      new NextRequest(
+        "http://0.0.0.0:3000/api/preferences/resources/recover?kind=instance&id=removed-server",
+      ),
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/compute/instances?notice=resource-unavailable&kind=instance",
+    );
   });
 
   it("still recovers when saved preference cleanup fails", async () => {

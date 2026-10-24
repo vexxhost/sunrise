@@ -8,6 +8,7 @@ import {
 import { verifyResourceRecoveryProof } from "@/lib/resource-recovery-proof";
 import { removeSavedResourcePreferences } from "@/lib/resource-preference-store";
 import { getSession } from "@/lib/session";
+import { getRequestRedirectOrigin } from "@/lib/request-origin";
 
 // S3 object keys can contain up to 1,024 characters. Other resource IDs are
 // much shorter, but using one bound keeps this internal endpoint predictable.
@@ -64,10 +65,10 @@ export async function GET(request: NextRequest) {
       )
     ) {
       try {
-        await removeSavedResourcePreferences(
-          [{ kind: preferenceKind, id }],
-          { projectId: session.projectId, regionId: session.regionId },
-        );
+        await removeSavedResourcePreferences([{ kind: preferenceKind, id }], {
+          projectId: session.projectId,
+          regionId: session.regionId,
+        });
       } catch (error) {
         console.warn("[preferences] missing resource cleanup failed", {
           error,
@@ -78,7 +79,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const redirectUrl = new URL(destination, request.url);
+  const redirectUrl = new URL(
+    destination,
+    getRequestRedirectOrigin(
+      request,
+      process.env.SUNRISE_DASHBOARD_URL,
+      process.env.SUNRISE_ALLOWED_DASHBOARD_ORIGINS,
+    ),
+  );
   redirectUrl.searchParams.set("notice", "resource-unavailable");
   redirectUrl.searchParams.set("kind", kindValue);
   return NextResponse.redirect(redirectUrl);

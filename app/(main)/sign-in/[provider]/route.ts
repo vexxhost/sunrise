@@ -5,6 +5,7 @@ import {
 } from "@/lib/auth-providers";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
 import { parseOidcAuthorizationPrompt } from "@/lib/auth-prompt";
+import { getRequestRedirectOrigin } from "@/lib/request-origin";
 
 export async function GET(
   request: Request,
@@ -26,7 +27,14 @@ export async function GET(
   const prompt = parseOidcAuthorizationPrompt(
     requestUrl.searchParams.get("prompt"),
   );
-  const destination = new URL("/auth/oidc/login", requestUrl);
+  const destination = new URL(
+    "/auth/oidc/login",
+    getRequestRedirectOrigin(
+      request,
+      process.env.SUNRISE_DASHBOARD_URL,
+      process.env.SUNRISE_ALLOWED_DASHBOARD_ORIGINS,
+    ),
+  );
   destination.searchParams.set("idp", provider.id);
   if (returnTo !== "/") destination.searchParams.set("returnTo", returnTo);
   if (prompt) destination.searchParams.set("prompt", prompt);

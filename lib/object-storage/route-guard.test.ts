@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getS3Endpoint: vi.fn(),
@@ -13,6 +13,10 @@ vi.mock("@/lib/s3/endpoint", () => ({
 import { unavailableS3RouteResponse } from "@/lib/object-storage/route-guard";
 
 describe("S3 route availability", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -38,6 +42,19 @@ describe("S3 route availability", () => {
     );
 
     expect(response?.status).toBe(303);
+    expect(response?.headers.get("location")).toBe(
+      "https://sunrise.example.test/object-storage",
+    );
+  });
+
+  it("redirects to the canonical dashboard behind a reverse proxy", async () => {
+    vi.stubEnv("SUNRISE_DASHBOARD_URL", "https://sunrise.example.test");
+    mocks.getS3Endpoint.mockRejectedValue(new Error("Swift selected"));
+
+    const response = await unavailableS3RouteResponse(
+      new Request("http://0.0.0.0:3000/object-storage/buckets/a/download"),
+    );
+
     expect(response?.headers.get("location")).toBe(
       "https://sunrise.example.test/object-storage",
     );

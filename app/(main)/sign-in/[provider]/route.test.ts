@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.hoisted(() => {
   process.env.KEYSTONE_FEDERATION_IDENTITY_PROVIDERS =
     "demo-provider,atmosphere";
+  process.env.SUNRISE_DASHBOARD_URL = "https://sunrise.example.test";
 });
 
 import { GET } from "./route";
@@ -31,6 +32,17 @@ describe("identity-provider sign-in link", () => {
       new Request(
         "https://sunrise.example.test/sign-in/demo-provider?returnTo=https%3A%2F%2Fattacker.example",
       ),
+      { params: Promise.resolve({ provider: "demo-provider" }) },
+    );
+
+    expect(response.headers.get("location")).toBe(
+      "https://sunrise.example.test/auth/oidc/login?idp=demo-provider",
+    );
+  });
+
+  it("uses the canonical dashboard origin behind a reverse proxy", async () => {
+    const response = await GET(
+      new Request("http://0.0.0.0:3000/sign-in/demo-provider"),
       { params: Promise.resolve({ provider: "demo-provider" }) },
     );
 
