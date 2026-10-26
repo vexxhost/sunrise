@@ -6,7 +6,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    exclude: ["artifacts/**", "node_modules/**"],
+    exclude: ["artifacts/**", "e2e/**", "node_modules/**"],
     globals: true,
   },
 });
