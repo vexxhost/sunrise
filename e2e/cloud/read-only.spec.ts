@@ -22,6 +22,15 @@ async function openContextMenu(trigger: Locator, label: "Project" | "Region") {
   return content;
 }
 
+async function becomesVisible(locator: Locator, timeout = 5_000) {
+  try {
+    await locator.waitFor({ state: "visible", timeout });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 test("a captured IdP session creates a fresh authenticated Sunrise session", async ({
   page,
 }) => {
@@ -91,9 +100,12 @@ test("opens the Object Storage collection when the active cloud exposes it", asy
   page,
 }) => {
   await page.goto("/object-storage");
+  await expect(
+    page.getByRole("heading", { name: "Object Storage", exact: true }),
+  ).toBeVisible();
   const buckets = page.getByRole("link", { name: /Buckets/ }).first();
   test.skip(
-    (await buckets.count()) === 0,
+    !(await becomesVisible(buckets)),
     "Object Storage buckets are unavailable for this provider and region",
   );
 
@@ -102,4 +114,54 @@ test("opens the Object Storage collection when the active cloud exposes it", asy
     page.getByRole("heading", { name: "Buckets", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("table")).toBeVisible();
+});
+
+test("resolves the active S3 role and its authorized collections", async ({
+  page,
+}) => {
+  await page.goto("/object-storage");
+  await expect(
+    page.getByRole("heading", { name: "Object Storage", exact: true }),
+  ).toBeVisible();
+  const accessRole = page.getByRole("button", {
+    name: "Access role",
+    exact: true,
+  });
+  test.skip(
+    !(await becomesVisible(accessRole)),
+    "The active Object Storage backend does not expose S3 access roles",
+  );
+
+  await expect(page).toHaveURL(/\/object-storage$/);
+  await expect(
+    page.getByRole("link", { name: /Buckets/ }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Access roles/ }).first(),
+  ).toBeVisible();
+
+  await accessRole.click();
+  const roleDialog = page.getByRole("dialog", { name: "Access role" });
+  await expect(
+    roleDialog.getByText("Current access role", { exact: true }),
+  ).toBeVisible();
+  await expect(roleDialog.getByText("Role check failed")).toHaveCount(0);
+  await roleDialog.getByRole("button", { name: "Close" }).click();
+
+  await page.goto("/object-storage/buckets");
+  await expect(
+    page.getByRole("heading", { name: "Buckets", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Bucket listing not permitted")).toHaveCount(0);
+  await expect(page.getByRole("table")).toBeVisible();
+
+  await page.goto("/object-storage/roles");
+  await expect(
+    page.getByRole("heading", { name: "Roles", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Role listing not permitted")).toHaveCount(0);
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(
+    page.getByText("Current", { exact: true }).first(),
+  ).toBeVisible();
 });
