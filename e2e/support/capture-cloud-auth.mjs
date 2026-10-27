@@ -28,23 +28,16 @@ if (!/^[a-z0-9][a-z0-9_-]{0,39}$/i.test(profile)) {
 const baseURL = argument("url") ?? "http://localhost:9990";
 const applicationUrl = new URL(baseURL);
 const provider = argument("provider")?.trim();
+const ignoreHTTPSErrors =
+  process.env.SUNRISE_E2E_CLOUD_IGNORE_HTTPS_ERRORS === "1";
 const authDirectory = resolve("playwright", ".auth");
 const authFile = resolve(authDirectory, `${profile}.json`);
-
-try {
-  await fetch(applicationUrl, { redirect: "manual" });
-} catch (error) {
-  throw new Error(
-    `Sunrise is not reachable at ${applicationUrl.origin}. Start the local development server or pass --url.`,
-    { cause: error },
-  );
-}
 
 await mkdir(authDirectory, { recursive: true, mode: 0o700 });
 
 const browser = await chromium.launch({ headless: false });
 try {
-  const context = await browser.newContext();
+  const context = await browser.newContext({ ignoreHTTPSErrors });
   const page = await context.newPage();
   const destination = provider
     ? new URL(`/sign-in/${encodeURIComponent(provider)}`, applicationUrl)
@@ -53,7 +46,14 @@ try {
   process.stdout.write(
     `Complete sign-in in the browser. Waiting for the Sunrise overview at ${applicationUrl.origin}...\n`,
   );
-  await page.goto(destination.toString());
+  try {
+    await page.goto(destination.toString());
+  } catch (error) {
+    throw new Error(
+      `Could not open the Sunrise sign-in flow from ${applicationUrl.origin}. Start the local development server or pass --url.`,
+      { cause: error },
+    );
+  }
   await page
     .getByRole("heading", { name: "Overview", exact: true })
     .waitFor({ state: "visible", timeout: 10 * 60_000 });

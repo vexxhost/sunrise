@@ -83,6 +83,7 @@ SUNRISE_E2E_CLOUD_START_SERVER=0 pnpm test:e2e:cloud
 ```
 
 Use `SUNRISE_E2E_CLOUD_IGNORE_HTTPS_ERRORS=1` only for disposable environments
-whose browser-facing certificate is intentionally untrusted. Recapture a
-profile whenever its IdP session expires. Never add a password, token, browser
-state file, or production authentication bypass to the repository or CI.
+whose browser-facing certificate is intentionally untrusted. Set it for both
+the capture command and the smoke suite. Recapture a profile whenever its IdP
+session expires. Never add a password, token, browser state file, or production
+authentication bypass to the repository or CI.
