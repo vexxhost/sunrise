@@ -72,6 +72,20 @@ exist inside disposable test sessions, checks stale-resource recovery, and
 opens Object Storage when the active provider and region expose it. It never
 creates, edits, or deletes cloud resources.
 
+Disposable mutation checks require an additional, resource-specific opt-in.
+The key-pair check imports a unique public-only test key into the active project
+and removes it through the Sunrise UI in a `finally` block:
+
+```bash
+SUNRISE_E2E_CLOUD_PROFILE=cloud \
+SUNRISE_E2E_CLOUD_MUTATIONS=key-pairs pnpm test:e2e:cloud
+```
+
+Run mutation checks only with a disposable test identity and project. An
+interrupted process cannot guarantee cleanup, so confirm that no key pair whose
+name starts with `sunrise-e2e-` remains after an interrupted run. Never enable
+cloud mutations in the deterministic browser workflow.
+
 To test an already deployed Sunrise instead of local development, capture and
 run against the same origin:
 
