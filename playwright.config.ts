@@ -11,6 +11,7 @@ const appCommand = process.env.CI
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "cloud/**",
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,

@@ -33,3 +33,56 @@ CI builds Sunrise and runs the same suite against its standalone production
 output, including the static and public assets copied into the container image.
 Every test fails on uncaught page exceptions and browser `console.error` output
 in addition to its workflow assertions.
+
+## Authenticated cloud smoke tests
+
+Real-cloud checks are opt-in and separate from the deterministic CI suite. They
+reuse a short-lived identity-provider browser session to create a fresh Sunrise
+session for each test. The captured file excludes Sunrise session, preference,
+and application storage data, but it still contains sensitive IdP cookies: keep
+it local, short-lived, and delete it when QA is complete.
+
+Start Sunrise with the cloud configuration you want to test:
+
+```bash
+pnpm dev --hostname 127.0.0.1 --port 9990
+```
+
+In another terminal, open the headed capture flow and complete SSO manually:
+
+```bash
+pnpm test:e2e:cloud:capture -- --profile cloud --provider demo
+```
+
+The provider argument is optional; without it, enter the provider in Sunrise.
+Profiles are written with user-only permissions below `playwright/.auth/`,
+which is ignored by Git. Run the read-only smoke suite with:
+
+```bash
+SUNRISE_E2E_CLOUD_PROFILE=cloud pnpm test:e2e:cloud
+```
+
+The capture URL must match `SUNRISE_DASHBOARD_URL` exactly. The default is
+`http://localhost:9990`; pass `--url` and `SUNRISE_E2E_CLOUD_BASE_URL` together
+when the configured dashboard origin differs.
+
+The suite starts or reuses local Sunrise automatically, verifies authenticated
+deep links and live collection reads, switches project/region when alternatives
+exist inside disposable test sessions, checks stale-resource recovery, and
+opens Object Storage when the active provider and region expose it. It never
+creates, edits, or deletes cloud resources.
+
+To test an already deployed Sunrise instead of local development, capture and
+run against the same origin:
+
+```bash
+pnpm test:e2e:cloud:capture -- --profile staging --url https://sunrise.example
+SUNRISE_E2E_CLOUD_PROFILE=staging \
+SUNRISE_E2E_CLOUD_BASE_URL=https://sunrise.example \
+SUNRISE_E2E_CLOUD_START_SERVER=0 pnpm test:e2e:cloud
+```
+
+Use `SUNRISE_E2E_CLOUD_IGNORE_HTTPS_ERRORS=1` only for disposable environments
+whose browser-facing certificate is intentionally untrusted. Recapture a
+profile whenever its IdP session expires. Never add a password, token, browser
+state file, or production authentication bypass to the repository or CI.

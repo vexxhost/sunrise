@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   NavigationMenuContent,
@@ -15,6 +15,7 @@ interface SelectorItem {
 interface SelectorProps<T extends SelectorItem> {
   items: T[];
   selectedItem: T;
+  label: string;
   icon: LucideIcon;
   displayKey: keyof T;
   onSelect: (itemId: string) => Promise<void>;
@@ -27,6 +28,7 @@ interface SelectorProps<T extends SelectorItem> {
 export function Selector<T extends SelectorItem>({
   items,
   selectedItem,
+  label,
   icon: Icon,
   displayKey,
   onSelect,
@@ -48,10 +50,10 @@ export function Selector<T extends SelectorItem>({
     <>
       <NavigationMenuTrigger
         className={`h-9 bg-muted/50 text-xs hover:bg-muted data-[state=open]:bg-muted ${
-          iconOnly ? 'w-11 gap-0 px-2' : 'gap-2 px-3'
+          iconOnly ? "w-11 gap-0 px-2" : "gap-2 px-3"
         } ${triggerClassName}`}
         disabled={isPending}
-        aria-label={iconOnly ? selectedLabel : undefined}
+        aria-label={iconOnly ? `${label}: ${selectedLabel}` : undefined}
         title={iconOnly ? selectedLabel : undefined}
       >
         <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -70,8 +72,8 @@ export function Selector<T extends SelectorItem>({
                 disabled={isPending}
                 title={String(item[displayKey])}
                 className={`w-full truncate rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-accent ${buttonClassName} ${
-                  selectedItem.id === item.id ? 'bg-accent font-semibold' : ''
-                } ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  selectedItem.id === item.id ? "bg-accent font-semibold" : ""
+                } ${isPending ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {item[displayKey] as string}
               </button>
