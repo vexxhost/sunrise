@@ -26,6 +26,7 @@ export function RegionSelector() {
     <Selector
       items={regions}
       selectedItem={selectedRegion}
+      label="Region"
       icon={MapPin}
       displayKey="id"
       onSelect={handleSelect}

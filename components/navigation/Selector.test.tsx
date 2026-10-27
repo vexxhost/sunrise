@@ -4,14 +4,12 @@ import { MapPin } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/components/ui/navigation-menu", () => ({
-  NavigationMenuTrigger: ({
-    children,
-    ...props
-  }: ComponentProps<"button">) => <button {...props}>{children}</button>,
-  NavigationMenuContent: ({
-    children,
-    ...props
-  }: ComponentProps<"div">) => <div {...props}>{children}</div>,
+  NavigationMenuTrigger: ({ children, ...props }: ComponentProps<"button">) => (
+    <button {...props}>{children}</button>
+  ),
+  NavigationMenuContent: ({ children, ...props }: ComponentProps<"div">) => (
+    <div {...props}>{children}</div>
+  ),
 }));
 
 import { Selector } from "@/components/navigation/Selector";
@@ -26,6 +24,7 @@ describe("Selector", () => {
       <Selector
         items={items}
         selectedItem={items[0]}
+        label="Region"
         icon={MapPin}
         displayKey="name"
         onSelect={vi.fn(async () => undefined)}
@@ -34,7 +33,7 @@ describe("Selector", () => {
     );
 
     const trigger = html.match(
-      /<button[^>]*aria-label="RegionOne"[^>]*>(.*?)<\/button>/,
+      /<button[^>]*aria-label="Region: RegionOne"[^>]*>(.*?)<\/button>/,
     );
 
     expect(trigger?.[1]).not.toContain("RegionOne");

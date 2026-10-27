@@ -29,6 +29,7 @@ export function ProjectSelector() {
     <Selector
       items={projects}
       selectedItem={selectedProject}
+      label="Project"
       icon={FolderKanban}
       displayKey="name"
       onSelect={handleSelect}
