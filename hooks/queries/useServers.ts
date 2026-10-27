@@ -57,10 +57,11 @@ export function serversQueryOptions(
         serviceName: "nova",
         path: "/servers/detail",
         apiVersion: "compute 2.79",
+        errorMode: "throw",
       });
 
       if (!data) {
-        return [];
+        throw new Error("Unable to list servers");
       }
 
       return data.servers;

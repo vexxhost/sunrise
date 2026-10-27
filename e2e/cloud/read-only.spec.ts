@@ -43,6 +43,7 @@ test.describe("authenticated deep links", () => {
     await expect(
       page.getByRole("heading", { name: "Instances", exact: true }),
     ).toBeVisible();
+    await expect(page.getByRole("table")).toBeVisible();
   });
 });
 
@@ -100,4 +101,5 @@ test("opens the Object Storage collection when the active cloud exposes it", asy
   await expect(
     page.getByRole("heading", { name: "Buckets", exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
 });
