@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import type { Page } from "@playwright/test";
+import type { ConsoleMessage, Page, Request, Response } from "@playwright/test";
 import { expect, test } from "../cloud/fixtures";
 
 type ProcessOptions = {
@@ -258,23 +258,71 @@ async function assertSessionOnPods(
 }
 
 async function assertPublicSession(page: Page) {
-  const readiness = await page.request.get("/readyz", {
-    failOnStatusCode: false,
-    timeout: 10_000,
-  });
-  expect(readiness.status(), "public readiness response").toBe(200);
+  const browserErrors: string[] = [];
+  const criticalResourceTypes = new Set(["document", "script", "stylesheet"]);
+  const recordResponseError = (response: Response) => {
+    const resourceType = response.request().resourceType();
+    if (response.status() >= 400 && criticalResourceTypes.has(resourceType)) {
+      browserErrors.push(
+        resourceType + " " + response.status() + " " + response.url(),
+      );
+    }
+  };
+  const recordRequestFailure = (request: Request) => {
+    const resourceType = request.resourceType();
+    if (criticalResourceTypes.has(resourceType)) {
+      browserErrors.push(
+        resourceType +
+          " request failed " +
+          request.url() +
+          ": " +
+          (request.failure()?.errorText ?? "unknown error"),
+      );
+    }
+  };
+  const recordPageError = (error: Error) => {
+    browserErrors.push("page error: " + error.message);
+  };
+  const recordConsoleError = (message: ConsoleMessage) => {
+    if (message.type() === "error") {
+      browserErrors.push("console error: " + message.text());
+    }
+  };
 
-  await page.goto("/compute/instances", {
-    timeout: 30_000,
-    waitUntil: "domcontentloaded",
-  });
-  await expect(
-    page.getByRole("heading", { name: "Instances", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByRole("table")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Sign in to Sunrise" }),
-  ).toHaveCount(0);
+  page.on("response", recordResponseError);
+  page.on("requestfailed", recordRequestFailure);
+  page.on("pageerror", recordPageError);
+  page.on("console", recordConsoleError);
+
+  try {
+    const readiness = await page.request.get("/readyz", {
+      failOnStatusCode: false,
+      timeout: 10_000,
+    });
+    expect(readiness.status(), "public readiness response").toBe(200);
+
+    const navigation = await page.goto("/compute/instances", {
+      timeout: 30_000,
+      waitUntil: "load",
+    });
+    expect(navigation, "public navigation response").not.toBeNull();
+    expect(navigation?.status(), "public navigation status").toBeLessThan(400);
+    await expect(
+      page.getByRole("heading", { name: "Instances", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("table")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Sign in to Sunrise" }),
+    ).toHaveCount(0);
+    expect(browserErrors, "browser errors during public session probe").toEqual(
+      [],
+    );
+  } finally {
+    page.off("response", recordResponseError);
+    page.off("requestfailed", recordRequestFailure);
+    page.off("pageerror", recordPageError);
+    page.off("console", recordConsoleError);
+  }
 }
 
 test.use({ cloudReturnTo: "/compute/instances" });
