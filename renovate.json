@@ -2,8 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["local>vexxhost/.github:default"],
   "minimumReleaseAge": "3 days",
-  "prConcurrentLimit": 4,
-  "prHourlyLimit": 2,
+  "prConcurrentLimit": 20,
+  "prHourlyLimit": 10,
   "labels": ["dependencies"],
   "major": {
     "dependencyDashboardApproval": true
@@ -14,7 +14,7 @@
   },
   "vulnerabilityAlerts": {
     "labels": ["dependencies", "priority: high"],
-    "prConcurrentLimit": 3,
+    "prConcurrentLimit": 15,
     "vulnerabilityFixStrategy": "highest"
   },
   "packageRules": [
