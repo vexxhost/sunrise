@@ -1,0 +1,25 @@
+{{- $affinity := .Values.envoyGatewaySessionAffinity | default dict -}}
+{{- if ($affinity.enabled | default false) }}
+{{- $cookie := $affinity.cookie | default dict -}}
+{{- $cookieAttributes := $cookie.attributes | default (dict "Path" "/" "SameSite" "Lax" "Secure" "") -}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ include "sunrise.fullname" . }}-session-affinity
+  labels:
+    {{- include "sunrise.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $affinity.httpRouteName | default (include "sunrise.fullname" .) }}
+  loadBalancer:
+    type: ConsistentHash
+    consistentHash:
+      type: Cookie
+      cookie:
+        name: {{ $cookie.name | default "sunrise-affinity" }}
+        ttl: {{ $cookie.ttl | default "24h" }}
+        attributes:
+          {{- toYaml $cookieAttributes | nindent 10 }}
+{{- end }}

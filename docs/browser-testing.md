@@ -108,3 +108,55 @@ whose browser-facing certificate is intentionally untrusted. Set it for both
 the capture command and the smoke suite. Recapture a profile whenever its IdP
 session expires. Never add a password, token, browser state file, or production
 authentication bypass to the repository or CI.
+
+## Kubernetes rolling-update test
+
+The local kind harness has a separate opt-in test for shared-session and
+zero-downtime rollout behavior. It requires two ready Sunrise replicas, the
+Redis session backend, ingress-provider cookie affinity, the chart's safe
+rolling strategy, and a browser profile captured against the kind origin. Both
+the Envoy Gateway and ingress-nginx kind providers use the same secure
+`sunrise-affinity` cookie contract:
+
+```bash
+SUNRISE_E2E_CLOUD_IGNORE_HTTPS_ERRORS=1 \
+pnpm test:e2e:cloud:capture -- \
+  --profile kind \
+  --provider demo \
+  --url https://sunrise.localtest.me
+
+make -C deploy/k8s/kind sunrise-rollout-test
+```
+
+The test creates a fresh Sunrise session from the captured IdP state, verifies
+that session directly against every current pod, and then replaces the whole
+replica set while continuously loading an authenticated collection through the
+Gateway. It requires every replacement pod to accept the original session.
+This changes only the Kubernetes Deployment; it does not mutate OpenStack or
+Object Storage resources.
+
+By default the test performs a same-image rolling restart. Pass a loaded or
+pullable image to diagnose a real build transition:
+
+```bash
+make -C deploy/k8s/kind sunrise-rollout-test \
+  E2E_TARGET_IMAGE=sunrise:kind-next
+```
+
+When the chart uses a non-default affinity cookie name, pass the same value as
+`E2E_AFFINITY_COOKIE`.
+
+Keep the Server Actions encryption key stable between images participating in
+one rollout. A changed key can invalidate actions rendered by an old pod while
+a new pod handles their submission.
+
+Different Next.js builds also contain different static assets. A normal
+Kubernetes Service does not route the `?dpl=` cache-busting query to the pod
+whose image contains those assets. The kind ingress provider generates an
+affinity cookie so one browser's page and asset requests remain on the same
+ready endpoint during the rollout. The target-image mode intentionally reports
+missing assets, HTTP failures, and browser-console errors instead of masking
+build skew. See the
+[Next.js deployment ID documentation](https://nextjs.org/docs/app/api-reference/config/next-config-js/deploymentId).
+The target image remains deployed after a successful or failed rollout; pass
+the previous image in another run when explicitly testing a rollback.

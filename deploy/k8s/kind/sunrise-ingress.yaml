@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sunrise
+  annotations:
+    cert-manager.io/cluster-issuer: localtest-ca
+    cert-manager.io/common-name: sunrise.localtest.me
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/affinity-mode: persistent
+    nginx.ingress.kubernetes.io/proxy-body-size: 5000m
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/session-cookie-change-on-failure: "false"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-name: sunrise-affinity
+    nginx.ingress.kubernetes.io/session-cookie-path: /
+    nginx.ingress.kubernetes.io/session-cookie-samesite: Lax
+    nginx.ingress.kubernetes.io/session-cookie-secure: "true"
+spec:
+  ingressClassName: atmosphere
+  rules:
+    - host: sunrise.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sunrise
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - sunrise.localtest.me
+      secretName: sunrise-certs

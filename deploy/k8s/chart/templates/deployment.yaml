@@ -9,6 +9,9 @@
 {{- if .Values.secret.create -}}
 {{- $_ := set $podAnnotations "checksum/secret" (include (print $.Template.BasePath "/secret.yaml") . | sha256sum) -}}
 {{- end -}}
+{{- if ge (int .Values.terminationDrainSeconds) (int .Values.terminationGracePeriodSeconds) -}}
+{{- fail "terminationDrainSeconds must be lower than terminationGracePeriodSeconds" -}}
+{{- end -}}
 {{- $podLabels := mergeOverwrite (deepCopy (.Values.podLabels | default dict)) (include "sunrise.labels" . | fromYaml) -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -54,6 +57,15 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if gt (int .Values.terminationDrainSeconds) 0 }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - {{ printf "sleep %d" (int .Values.terminationDrainSeconds) | quote }}
+          {{- end }}
           env:
             - name: HOSTNAME
               value: 0.0.0.0

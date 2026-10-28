@@ -17,6 +17,7 @@
     "test:e2e": "playwright test",
     "test:e2e:cloud": "playwright test --config=playwright.cloud.config.ts",
     "test:e2e:cloud:capture": "node e2e/support/capture-cloud-auth.mjs",
+    "test:e2e:kind": "playwright test --config=playwright.kind.config.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:run": "vitest run"
   },
