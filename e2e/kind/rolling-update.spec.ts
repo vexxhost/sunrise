@@ -32,6 +32,12 @@ type PodList = {
   }>;
 };
 
+type PodSessionProbeResult = {
+  sessionId: string | null;
+  status: string | null;
+  statusCode: number;
+};
+
 type Deployment = {
   spec: {
     replicas?: number;
@@ -65,19 +71,21 @@ const podSessionProbe = [
   '    const cookie = Buffer.from(chunks.join(""), "base64").toString("utf8");',
   "    const host = process.argv[1];",
   "    const protocol = process.argv[2];",
-  '    const response = await fetch("http://127.0.0.1:3000/compute/instances", {',
+  '    const response = await fetch("http://127.0.0.1:3000/auth/session/activity", {',
   '      redirect: "manual",',
   "      headers: {",
-  '        accept: "text/html",',
+  '        accept: "application/json",',
   "        cookie,",
   "        host,",
   '        "x-forwarded-host": host,',
   '        "x-forwarded-proto": protocol,',
   "      },",
   "    });",
+  "    const body = await response.json();",
   "    process.stdout.write(JSON.stringify({",
-  '      location: response.headers.get("location"),',
-  "      status: response.status,",
+  '      sessionId: typeof body.sessionId === "string" ? body.sessionId : null,',
+  '      status: typeof body.status === "string" ? body.status : null,',
+  "      statusCode: response.status,",
   "    }));",
   "  } catch (error) {",
   "    process.stderr.write(error instanceof Error ? error.message : String(error));",
@@ -209,6 +217,7 @@ async function assertSessionOnPods(
     "authenticated browser cookie",
   ).toBe(true);
   const encodedCookie = Buffer.from(cookieHeader).toString("base64");
+  const sessionIds = new Set<string>();
 
   for (const pod of podStates) {
     const output = await kubectl(
@@ -227,11 +236,25 @@ async function assertSessionOnPods(
       ],
       { input: encodedCookie },
     );
-    expect(JSON.parse(output), "session response from " + pod.name).toEqual({
-      location: null,
-      status: 200,
+    const result = JSON.parse(output) as PodSessionProbeResult;
+    expect(result, "session response from " + pod.name).toMatchObject({
+      status: "active",
+      statusCode: 200,
     });
+    expect(result.sessionId, "session ID from " + pod.name).toEqual(
+      expect.any(String),
+    );
+    if (!result.sessionId) {
+      throw new Error("Pod " + pod.name + " returned an empty session ID");
+    }
+    sessionIds.add(result.sessionId);
   }
+
+  expect(sessionIds.size, "shared session ID across all pods").toBe(1);
+  const [sessionId] = sessionIds;
+  if (!sessionId)
+    throw new Error("No pod returned an authenticated session ID");
+  return sessionId;
 }
 
 async function assertPublicSession(page: Page) {
@@ -299,7 +322,11 @@ test("an authenticated session survives replacement of every Sunrise replica", a
   const previousPods = await pods(selector);
   expect(previousPods).toHaveLength(desiredReplicas);
   expect(previousPods.every(({ ready }) => ready)).toBe(true);
-  await assertSessionOnPods(previousPods, page, baseURL);
+  const authenticatedSessionId = await assertSessionOnPods(
+    previousPods,
+    page,
+    baseURL,
+  );
 
   const currentImage = previousPods[0]?.image;
   let rolloutStarted = false;
@@ -366,7 +393,10 @@ test("an authenticated session survives replacement of every Sunrise replica", a
   }
   expect(replacementPods.every(({ imageId }) => imageId)).toBe(true);
 
-  await assertSessionOnPods(replacementPods, page, baseURL);
+  expect(
+    await assertSessionOnPods(replacementPods, page, baseURL),
+    "shared session ID after rollout",
+  ).toBe(authenticatedSessionId);
   await assertPublicSession(page);
   const replacementAffinityCookie = (
     await page.context().cookies(baseURL)
