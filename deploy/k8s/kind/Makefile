@@ -8,12 +8,8 @@ WORKLOAD_NAME := sunrise
 RELOADER_RELEASE ?= reloader
 RELOADER_NAMESPACE ?= reloader-system
 RELOADER_VERSION ?= 2.2.18
-CERT_MANAGER_RELEASE ?= cert-manager
-CERT_MANAGER_NAMESPACE ?= cert-manager
 CERT_MANAGER_VERSION ?= v1.21.2
 CERT_MANAGER_GATEWAY_API ?= false
-ENVOY_GATEWAY_RELEASE ?= envoy-gateway
-ENVOY_GATEWAY_NAMESPACE ?= envoy-gateway-system
 ENVOY_GATEWAY_VERSION ?= v1.9.1
 INGRESS_NGINX_RELEASE ?= ingress-nginx
 INGRESS_NGINX_NAMESPACE ?= ingress-nginx
@@ -68,17 +64,17 @@ kind: ## Create the kind cluster
 	$(KUBECTL) wait --for=condition=Ready nodes --all --timeout=120s
 
 cert-manager: ## Install/upgrade cert-manager and the local CA
-	$(HELM) upgrade --install $(CERT_MANAGER_RELEASE) cert-manager \
+	$(HELM) upgrade --install cert-manager cert-manager \
 		--repo https://charts.jetstack.io \
 		--version $(CERT_MANAGER_VERSION) \
-		--namespace $(CERT_MANAGER_NAMESPACE) --create-namespace \
+		--namespace cert-manager --create-namespace \
 		--set crds.enabled=true \
 		--set config.gatewayAPI.enabled=$(CERT_MANAGER_GATEWAY_API) \
 		--wait --timeout 180s
-	$(KUBECTL) wait --timeout=120s -n $(CERT_MANAGER_NAMESPACE) \
+	$(KUBECTL) wait --timeout=120s -n cert-manager \
 		deployment/cert-manager --for=condition=Available
-	$(KUBECTL) apply -f cert-manager.yaml -n $(CERT_MANAGER_NAMESPACE)
-	$(KUBECTL) wait --timeout=120s -n $(CERT_MANAGER_NAMESPACE) \
+	$(KUBECTL) apply -f cert-manager.yaml -n cert-manager
+	$(KUBECTL) wait --timeout=120s -n cert-manager \
 		certificate/localtest-root-ca --for=condition=Ready
 
 ingress: ## Install the selected ingress provider (envoy-gateway or ingress-nginx)
@@ -95,8 +91,8 @@ envoy-gateway-down: ## Remove Envoy Gateway and release kind host ports 80 and 4
 	-$(KUBECTL) -n $(NAMESPACE) delete backendtrafficpolicy \
 		$(WORKLOAD_NAME)-session-affinity --ignore-not-found --wait=true
 	-$(KUBECTL) delete -f envoy-gateway.yaml --ignore-not-found --wait=true --timeout=180s
-	@if $(HELM) status $(ENVOY_GATEWAY_RELEASE) -n $(ENVOY_GATEWAY_NAMESPACE) >/dev/null 2>&1; then \
-		$(HELM) uninstall $(ENVOY_GATEWAY_RELEASE) -n $(ENVOY_GATEWAY_NAMESPACE) \
+	@if $(HELM) status envoy-gateway -n envoy-gateway-system >/dev/null 2>&1; then \
+		$(HELM) uninstall envoy-gateway -n envoy-gateway-system \
 			--wait --timeout 180s; \
 	fi
 
@@ -109,13 +105,13 @@ ingress-nginx-down: ## Remove ingress-nginx and release kind host ports 80 and 4
 
 envoy-gateway: ## Replace the active ingress provider with Envoy Gateway
 	$(MAKE) ingress-nginx-down
-	./wait-ingress-ports-free.sh $(KUBE_CONTEXT) 180 $(ENVOY_GATEWAY_NAMESPACE)
-	$(HELM) upgrade --install $(ENVOY_GATEWAY_RELEASE) oci://docker.io/envoyproxy/gateway-helm \
+	./wait-ingress-ports-free.sh $(KUBE_CONTEXT) 180 envoy-gateway-system
+	$(HELM) upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
 		--version $(ENVOY_GATEWAY_VERSION) \
-		--namespace $(ENVOY_GATEWAY_NAMESPACE) --create-namespace \
+		--namespace envoy-gateway-system --create-namespace \
 		--wait --timeout 180s
 	@echo "Waiting for Envoy Gateway to be ready..."
-	$(KUBECTL) wait --timeout=120s -n $(ENVOY_GATEWAY_NAMESPACE) \
+	$(KUBECTL) wait --timeout=120s -n envoy-gateway-system \
 		deployment/envoy-gateway --for=condition=Available
 	$(MAKE) cert-manager CERT_MANAGER_GATEWAY_API=true
 	$(KUBECTL) apply -f envoy-gateway.yaml
@@ -124,7 +120,7 @@ envoy-gateway: ## Replace the active ingress provider with Envoy Gateway
 	$(KUBECTL) -n $(NAMESPACE) apply -f sunrise-route.yaml
 	@echo "Waiting for Envoy Gateway to be accepted..."
 	@sleep 5
-	$(KUBECTL) wait --timeout=120s -n $(ENVOY_GATEWAY_NAMESPACE) \
+	$(KUBECTL) wait --timeout=120s -n envoy-gateway-system \
 		gateway/gateway --for=condition=Accepted
 	$(KUBECTL) -n $(NAMESPACE) create configmap $(INGRESS_PROVIDER_CONFIGMAP) \
 		--from-literal=provider=envoy-gateway --dry-run=client -o yaml | \
