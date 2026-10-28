@@ -115,11 +115,11 @@ uses this strategy.
 
 The rollout behavior is therefore deterministic:
 
-| Configuration owner | Rollout mechanism |
-| --- | --- |
-| Chart-managed ConfigMap | Pod-template checksum |
-| Chart-managed Secret | Pod-template checksum |
-| External Secret or ConfigMap | Reloader or another external controller |
+| Configuration owner                  | Rollout mechanism                       |
+| ------------------------------------ | --------------------------------------- |
+| Chart-managed ConfigMap              | Pod-template checksum                   |
+| Chart-managed Secret                 | Pod-template checksum                   |
+| External Secret or ConfigMap         | Reloader or another external controller |
 | Individual `env.valueFrom` reference | Reloader or another external controller |
 
 The Redis endpoint must be stable and writable. Production deployments should
@@ -139,11 +139,61 @@ configured Redis dependency before the pod receives traffic. The root
 filesystem is read-only; bounded `emptyDir` volumes provide `/tmp`, the Next.js
 cache, and route cache.
 
+During termination, Kubernetes first removes the pod from Service endpoints
+and runs a short pre-stop drain before sending `SIGTERM`. This gives Gateway and
+ingress data planes time to stop routing new requests to the terminating
+process. `terminationDrainSeconds` defaults to five seconds and must remain lower
+than `terminationGracePeriodSeconds`; set it to zero only when the surrounding
+data plane provides an equivalent drain guarantee.
+
+The drain protects endpoint transitions, not static assets shared between
+different application builds. Next.js adds the image's deployment ID to asset
+requests, but the query parameter is not a routing mechanism. Ingress-layer
+cookie affinity substantially narrows this skew window by keeping one browser's
+HTML, JavaScript, CSS, and navigation requests on the same ready endpoint.
+Keep the Server Actions encryption key stable between overlapping builds. The
+[Next.js deployment ID documentation](https://nextjs.org/docs/app/api-reference/config/next-config-js/deploymentId)
+describes this self-hosting boundary.
+
 ## Gateway API
 
 Set `httpRoute.enabled=true` to let the chart create an HTTPRoute. Existing
 platform-managed routes can target the chart Service while leaving this option
 disabled.
+
+Compatible Gateway API implementations can enable endpoint-preserving cookie
+persistence on a chart-managed Sunrise HTTPRoute:
+
+```yaml
+httpRoute:
+  enabled: true
+  sessionPersistence:
+    enabled: true
+```
+
+This adds Gateway API `sessionPersistence` to the route rule. The generated
+cookie stores the selected endpoint, so adding a rollout surge pod does not
+remap an existing browser while its original pod remains available. It reduces
+mixed-build asset requests without coupling routing to the encrypted Sunrise
+session cookie. Cookie persistence expires after 24 hours by default.
+
+Session persistence is an extended Gateway API feature and must be supported by
+the installed CRDs and Gateway implementation. When the platform owns the
+HTTPRoute, keep `httpRoute.enabled=false` and configure equivalent cookie
+`sessionPersistence` on that route; the chart cannot safely modify an external
+resource. Gateway API leaves low-level cookie security attributes to each
+implementation. Envoy Gateway 1.9 marks its opaque endpoint cookie `HttpOnly`
+but does not expose `Secure` or `SameSite` controls through this API. This is not
+the encrypted Sunrise authentication cookie, and the HTTP listener must redirect
+to HTTPS before serving application traffic.
+
+ingress-nginx can provide the same browser affinity without chart-specific
+resources. Configure the platform-owned Ingress with `affinity: cookie`,
+`affinity-mode: persistent`, and a dedicated secure cookie. The local kind
+harness includes the exact annotations used for rolling-update verification.
+Persistent mode does not redistribute existing browser cookies when replicas
+are added; new browsers are distributed across the expanded pool, and browsers
+pinned to a removed endpoint are rehashed to a ready one.
 
 ## Local kind environment
 
@@ -153,10 +203,28 @@ instance. The generated runtime Secret exercises the same external-resource
 rollout path intended for operator-managed production secrets. Valkey is only
 for local integration testing; production Redis remains an external dependency.
 
+Envoy Gateway is the default ingress provider. The same cluster can instead run
+the Atmosphere-style ingress-nginx 4.12.1 stack. Provider replacement is
+exclusive: the Makefile fully removes the active controller and waits for kind
+host ports 80 and 443 to be released before installing the other one.
+
 ```bash
+make -C deploy/k8s/kind ingress INGRESS_PROVIDER=envoy-gateway
+make -C deploy/k8s/kind ingress INGRESS_PROVIDER=ingress-nginx
+
 make -C deploy/k8s/kind sunrise
 make -C deploy/k8s/kind sunrise-test
 ```
+
+The harness records a successful provider selection in the cluster. The local
+Envoy HTTPRoute includes endpoint-preserving cookie persistence, while the
+ingress-nginx manifest uses persistent cookie affinity. An explicit
+`INGRESS_PROVIDER` overrides the detected value.
+
+The local ingress mirrors Atmosphere's body-size, request-buffering, controller,
+and certificate conventions. Horizon's CORS annotations are intentionally not
+copied: Sunrise's normal browser traffic is same-origin and both ingress
+providers should enforce the same cross-origin policy.
 
 The default uses the published `ghcr.io/vexxhost/sunrise:main` image. To test a
 locally built single-platform image without pulling it from a registry:

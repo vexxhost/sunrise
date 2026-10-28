@@ -16,3 +16,9 @@ spec:
       backendRefs:
         - name: sunrise
           port: 80
+      sessionPersistence:
+        sessionName: sunrise-affinity
+        type: Cookie
+        absoluteTimeout: 24h
+        cookieConfig:
+          lifetimeType: Permanent

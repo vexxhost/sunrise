@@ -1,0 +1,36 @@
+controller:
+  allowSnippetAnnotations: true
+  config:
+    proxy-buffer-size: 16k
+    worker-shutdown-timeout: 5s
+  dnsPolicy: ClusterFirstWithHostNet
+  hostNetwork: true
+  ingressClass: atmosphere
+  ingressClassResource:
+    name: atmosphere
+  kind: DaemonSet
+  metrics:
+    enabled: true
+  nodeSelector:
+    ingress-ready: "true"
+    kubernetes.io/os: linux
+  reportNodeInternalIp: true
+  service:
+    type: ClusterIP
+  terminationGracePeriodSeconds: 10
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  admissionWebhooks:
+    port: 7443
+
+defaultBackend:
+  enabled: true
+  nodeSelector:
+    ingress-ready: "true"
+    kubernetes.io/os: linux
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule

@@ -111,6 +111,9 @@ readinessProbe:
   timeoutSeconds: 3
 
 terminationGracePeriodSeconds: 30
+# Keep the process alive briefly after Kubernetes removes the terminating pod
+# from Service endpoints so ingress controllers can converge before SIGTERM.
+terminationDrainSeconds: 5
 
 strategy:
   type: RollingUpdate
@@ -138,6 +141,15 @@ httpRoute:
       namespace: envoy-gateway-system
   hostnames:
     - sunrise.example.com
+  # Optional Gateway API cookie persistence. This stores the selected endpoint
+  # in a dedicated cookie so adding a rollout surge pod does not remap an
+  # existing browser while its original endpoint remains available.
+  sessionPersistence:
+    enabled: false
+    sessionName: sunrise-affinity
+    absoluteTimeout: 24h
+    cookieConfig:
+      lifetimeType: Permanent
 
 nodeSelector: {}
 tolerations: []
