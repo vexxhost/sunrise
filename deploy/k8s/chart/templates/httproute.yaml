@@ -1,3 +1,6 @@
+{{- $sessionPersistence := .Values.httpRoute.sessionPersistence | default dict -}}
+{{- $cookieConfig := $sessionPersistence.cookieConfig | default dict -}}
+{{- $lifetimeType := $cookieConfig.lifetimeType | default "Permanent" -}}
 {{- if .Values.httpRoute.enabled }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -22,4 +25,18 @@ spec:
       backendRefs:
         - name: {{ include "sunrise.fullname" . }}
           port: {{ .Values.service.port }}
+      {{- if ($sessionPersistence.enabled | default false) }}
+      sessionPersistence:
+        sessionName: {{ required "httpRoute.sessionPersistence.sessionName is required when session persistence is enabled" $sessionPersistence.sessionName | quote }}
+        type: Cookie
+        {{- if eq $lifetimeType "Permanent" }}
+        absoluteTimeout: {{ required "httpRoute.sessionPersistence.absoluteTimeout is required for a permanent cookie" $sessionPersistence.absoluteTimeout | quote }}
+        {{- else }}
+        {{- with $sessionPersistence.absoluteTimeout }}
+        absoluteTimeout: {{ . | quote }}
+        {{- end }}
+        {{- end }}
+        cookieConfig:
+          lifetimeType: {{ $lifetimeType }}
+      {{- end }}
 {{- end }}

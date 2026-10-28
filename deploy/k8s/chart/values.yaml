@@ -141,21 +141,15 @@ httpRoute:
       namespace: envoy-gateway-system
   hostnames:
     - sunrise.example.com
-
-# Optional Envoy Gateway cookie affinity. This requires the
-# gateway.envoyproxy.io/v1alpha1 BackendTrafficPolicy CRD. The generated cookie
-# keeps one browser on one backend while that endpoint remains available,
-# reducing mixed-build asset requests during rolling updates.
-envoyGatewaySessionAffinity:
-  enabled: false
-  httpRouteName: ""
-  cookie:
-    name: sunrise-affinity
-    ttl: 24h
-    attributes:
-      Path: /
-      SameSite: Lax
-      Secure: ""
+  # Optional Gateway API cookie persistence. This stores the selected endpoint
+  # in a dedicated cookie so adding a rollout surge pod does not remap an
+  # existing browser while its original endpoint remains available.
+  sessionPersistence:
+    enabled: false
+    sessionName: sunrise-affinity
+    absoluteTimeout: 24h
+    cookieConfig:
+      lifetimeType: Permanent
 
 nodeSelector: {}
 tolerations: []

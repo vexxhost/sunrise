@@ -161,22 +161,31 @@ Set `httpRoute.enabled=true` to let the chart create an HTTPRoute. Existing
 platform-managed routes can target the chart Service while leaving this option
 disabled.
 
-Envoy Gateway installations can enable generated cookie affinity for the
-Sunrise HTTPRoute:
+Compatible Gateway API implementations can enable endpoint-preserving cookie
+persistence on a chart-managed Sunrise HTTPRoute:
 
 ```yaml
-envoyGatewaySessionAffinity:
+httpRoute:
   enabled: true
+  sessionPersistence:
+    enabled: true
 ```
 
-This creates a `BackendTrafficPolicy` that keeps a browser on one ready Sunrise
-endpoint while it remains available. It reduces mixed-build asset requests
-during a rolling update without coupling load balancing to the encrypted
-Sunrise session cookie. The target defaults to the chart's full name; set
-`envoyGatewaySessionAffinity.httpRouteName` when the platform owns a differently
-named HTTPRoute. Leave the policy disabled when Envoy Gateway CRDs are not
-installed. The policy and target HTTPRoute must share a namespace. The generated
-cookie is host-only, secure, HTTP-only, and expires after 24 hours by default.
+This adds Gateway API `sessionPersistence` to the route rule. The generated
+cookie stores the selected endpoint, so adding a rollout surge pod does not
+remap an existing browser while its original pod remains available. It reduces
+mixed-build asset requests without coupling routing to the encrypted Sunrise
+session cookie. Cookie persistence expires after 24 hours by default.
+
+Session persistence is an extended Gateway API feature and must be supported by
+the installed CRDs and Gateway implementation. When the platform owns the
+HTTPRoute, keep `httpRoute.enabled=false` and configure equivalent cookie
+`sessionPersistence` on that route; the chart cannot safely modify an external
+resource. Gateway API leaves low-level cookie security attributes to each
+implementation. Envoy Gateway 1.9 marks its opaque endpoint cookie `HttpOnly`
+but does not expose `Secure` or `SameSite` controls through this API. This is not
+the encrypted Sunrise authentication cookie, and the HTTP listener must redirect
+to HTTPS before serving application traffic.
 
 ingress-nginx can provide the same browser affinity without chart-specific
 resources. Configure the platform-owned Ingress with `affinity: cookie`,
@@ -207,10 +216,10 @@ make -C deploy/k8s/kind sunrise
 make -C deploy/k8s/kind sunrise-test
 ```
 
-The harness records a successful provider selection in the cluster. Subsequent
-`sunrise` commands automatically enable the Envoy `BackendTrafficPolicy` only
-for Envoy Gateway and remove it when ingress-nginx owns the route. An explicit
-`INGRESS_PROVIDER` still overrides that detected value.
+The harness records a successful provider selection in the cluster. The local
+Envoy HTTPRoute includes endpoint-preserving cookie persistence, while the
+ingress-nginx manifest uses persistent cookie affinity. An explicit
+`INGRESS_PROVIDER` overrides the detected value.
 
 The local ingress mirrors Atmosphere's body-size, request-buffering, controller,
 and certificate conventions. Horizon's CORS annotations are intentionally not

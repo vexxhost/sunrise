@@ -40,11 +40,6 @@ E2E_BASE_URL ?= https://sunrise.localtest.me
 E2E_TARGET_IMAGE ?=
 E2E_AFFINITY_COOKIE ?= sunrise-affinity
 
-ENVOY_GATEWAY_SESSION_AFFINITY_ENABLED := false
-ifeq ($(INGRESS_PROVIDER),envoy-gateway)
-ENVOY_GATEWAY_SESSION_AFFINITY_ENABLED := true
-endif
-
 KUBECTL := kubectl --context $(KUBE_CONTEXT)
 HELM := helm --kube-context $(KUBE_CONTEXT)
 
@@ -88,8 +83,6 @@ wait-ingress-ports-free: ## Wait until no pod reserves kind host ports 80 or 443
 
 envoy-gateway-down: ## Remove Envoy Gateway and release kind host ports 80 and 443
 	-$(KUBECTL) -n $(NAMESPACE) delete -f sunrise-route.yaml --ignore-not-found --wait=true
-	-$(KUBECTL) -n $(NAMESPACE) delete backendtrafficpolicy \
-		$(WORKLOAD_NAME)-session-affinity --ignore-not-found --wait=true
 	-$(KUBECTL) delete -f envoy-gateway.yaml --ignore-not-found --wait=true --timeout=180s
 	@if $(HELM) status envoy-gateway -n envoy-gateway-system >/dev/null 2>&1; then \
 		$(HELM) uninstall envoy-gateway -n envoy-gateway-system \
@@ -200,13 +193,12 @@ sunrise: image valkey ## Install/upgrade Sunrise in kind
 		--set-string image.tag="$(IMAGE_TAG)" \
 		--set-string image.digest="$(IMAGE_DIGEST)" \
 		--set-string fullnameOverride="$(WORKLOAD_NAME)" \
-		--set envoyGatewaySessionAffinity.enabled=$(ENVOY_GATEWAY_SESSION_AFFINITY_ENABLED) \
 		--wait --timeout 300s
 	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/$(WORKLOAD_NAME) --timeout=180s
 
 sunrise-status: ## Show Sunrise and the active ingress resources
 	$(KUBECTL) -n $(NAMESPACE) get deployment,pod,service,pdb,ingress -o wide
-	-$(KUBECTL) -n $(NAMESPACE) get httproute,backendtrafficpolicy -o wide
+	-$(KUBECTL) -n $(NAMESPACE) get httproute -o wide
 
 sunrise-test: ## Run the Helm test and HTTPS health checks
 	$(HELM) test $(RELEASE) -n $(NAMESPACE) --logs
@@ -232,6 +224,7 @@ sunrise-rollout-test: ## Verify an authenticated session while replacing every S
 		SUNRISE_E2E_KIND_NAMESPACE="$(NAMESPACE)" \
 		SUNRISE_E2E_KIND_DEPLOYMENT="$(WORKLOAD_NAME)" \
 		SUNRISE_E2E_KIND_AFFINITY_COOKIE="$(E2E_AFFINITY_COOKIE)" \
+		SUNRISE_E2E_KIND_INGRESS_PROVIDER="$(INGRESS_PROVIDER)" \
 		SUNRISE_E2E_KIND_IMAGE="$(E2E_TARGET_IMAGE)" \
 		pnpm test:e2e:kind
 

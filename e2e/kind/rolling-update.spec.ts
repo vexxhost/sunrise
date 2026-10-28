@@ -38,6 +38,14 @@ type PodSessionProbeResult = {
   statusCode: number;
 };
 
+type AffinityCookie = {
+  httpOnly: boolean;
+  path: string;
+  sameSite: "Strict" | "Lax" | "None";
+  secure: boolean;
+  value: string;
+};
+
 type Deployment = {
   spec: {
     replicas?: number;
@@ -60,7 +68,35 @@ const deploymentName = process.env.SUNRISE_E2E_KIND_DEPLOYMENT ?? "sunrise";
 const containerName = process.env.SUNRISE_E2E_KIND_CONTAINER ?? "sunrise";
 const affinityCookieName =
   process.env.SUNRISE_E2E_KIND_AFFINITY_COOKIE ?? "sunrise-affinity";
+const ingressProvider =
+  process.env.SUNRISE_E2E_KIND_INGRESS_PROVIDER ?? "envoy-gateway";
+if (!new Set(["envoy-gateway", "ingress-nginx"]).has(ingressProvider)) {
+  throw new Error(
+    "SUNRISE_E2E_KIND_INGRESS_PROVIDER must be envoy-gateway or ingress-nginx",
+  );
+}
 const targetImage = process.env.SUNRISE_E2E_KIND_IMAGE?.trim();
+
+function assertAffinityCookie(
+  cookie: AffinityCookie | undefined,
+  label: string,
+) {
+  expect(cookie, label).toEqual(
+    expect.objectContaining({
+      httpOnly: true,
+      path: "/",
+      sameSite: "Lax",
+    }),
+  );
+  expect(cookie?.value, label + " value").toBeTruthy();
+
+  // ingress-nginx exposes cookie security attributes; Gateway API route
+  // persistence does not, and Envoy Gateway 1.9 emits an opaque, non-auth
+  // endpoint cookie without Secure while keeping the Sunrise session separate.
+  if (ingressProvider === "ingress-nginx") {
+    expect(cookie?.secure, label + " Secure attribute").toBe(true);
+  }
+}
 
 const podSessionProbe = [
   "const chunks = [];",
@@ -356,16 +392,9 @@ test("an authenticated session survives replacement of every Sunrise replica", a
   const affinityCookie = (await page.context().cookies(baseURL)).find(
     ({ name }) => name === affinityCookieName,
   );
-  expect(
+  assertAffinityCookie(
     affinityCookie,
     "ingress affinity cookie " + affinityCookieName,
-  ).toEqual(
-    expect.objectContaining({
-      httpOnly: true,
-      path: "/",
-      sameSite: "Lax",
-      secure: true,
-    }),
   );
   const previousPods = await pods(selector);
   expect(previousPods).toHaveLength(desiredReplicas);
@@ -449,16 +478,8 @@ test("an authenticated session survives replacement of every Sunrise replica", a
   const replacementAffinityCookie = (
     await page.context().cookies(baseURL)
   ).find(({ name }) => name === affinityCookieName);
-  expect(
+  assertAffinityCookie(
     replacementAffinityCookie,
     "ingress affinity cookie after rollout",
-  ).toEqual(
-    expect.objectContaining({
-      httpOnly: true,
-      path: "/",
-      sameSite: "Lax",
-      secure: true,
-    }),
   );
-  expect(replacementAffinityCookie?.value).toBeTruthy();
 });
