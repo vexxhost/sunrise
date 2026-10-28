@@ -9,7 +9,9 @@
 {{- if .Values.secret.create -}}
 {{- $_ := set $podAnnotations "checksum/secret" (include (print $.Template.BasePath "/secret.yaml") . | sha256sum) -}}
 {{- end -}}
-{{- if ge (int .Values.terminationDrainSeconds) (int .Values.terminationGracePeriodSeconds) -}}
+{{- $terminationDrainSeconds := int .Values.terminationDrainSeconds -}}
+{{- $terminationGracePeriodSeconds := int .Values.terminationGracePeriodSeconds -}}
+{{- if and (gt $terminationDrainSeconds 0) (ge $terminationDrainSeconds $terminationGracePeriodSeconds) -}}
 {{- fail "terminationDrainSeconds must be lower than terminationGracePeriodSeconds" -}}
 {{- end -}}
 {{- $podLabels := mergeOverwrite (deepCopy (.Values.podLabels | default dict)) (include "sunrise.labels" . | fromYaml) -}}
