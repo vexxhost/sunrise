@@ -302,44 +302,53 @@ test("an authenticated session survives replacement of every Sunrise replica", a
   await assertSessionOnPods(previousPods, page, baseURL);
 
   const currentImage = previousPods[0]?.image;
-  if (targetImage && targetImage !== currentImage) {
-    await kubectl([
-      "set",
-      "image",
-      "deployment/" + deploymentName,
-      containerName + "=" + targetImage,
-    ]);
-  } else {
-    await kubectl(["rollout", "restart", "deployment/" + deploymentName]);
-  }
-
+  let rolloutStarted = false;
   let rolloutComplete = false;
   let rolloutError: unknown;
-  const rollout = kubectl(
-    ["rollout", "status", "deployment/" + deploymentName, "--timeout=240s"],
-    { timeoutMs: 250_000 },
-  ).then(
-    () => {
-      rolloutComplete = true;
-    },
-    (error: unknown) => {
-      rolloutError = error;
-      rolloutComplete = true;
-    },
-  );
-
-  let publicProbes = 0;
-  try {
+  let stopProbing = false;
+  let publicProbesDuringRollout = 0;
+  let probingError: unknown;
+  const probing = (async () => {
     do {
       await assertPublicSession(page);
-      publicProbes += 1;
-      if (!rolloutComplete) await page.waitForTimeout(250);
-    } while (!rolloutComplete);
+      if (rolloutStarted && !rolloutComplete) {
+        publicProbesDuringRollout += 1;
+      }
+      if (!stopProbing) await page.waitForTimeout(250);
+    } while (!stopProbing);
+  })().catch((error: unknown) => {
+    probingError = error;
+  });
+
+  try {
+    if (targetImage && targetImage !== currentImage) {
+      await kubectl([
+        "set",
+        "image",
+        "deployment/" + deploymentName,
+        containerName + "=" + targetImage,
+      ]);
+    } else {
+      await kubectl(["rollout", "restart", "deployment/" + deploymentName]);
+    }
+    rolloutStarted = true;
+    await kubectl(
+      ["rollout", "status", "deployment/" + deploymentName, "--timeout=240s"],
+      { timeoutMs: 250_000 },
+    );
+  } catch (error: unknown) {
+    rolloutError = error;
   } finally {
-    await rollout;
+    rolloutComplete = true;
+    stopProbing = true;
+    await probing;
   }
   if (rolloutError) throw rolloutError;
-  expect(publicProbes, "public probes during rollout").toBeGreaterThan(0);
+  if (probingError) throw probingError;
+  expect(
+    publicProbesDuringRollout,
+    "public probes completed while rollout was in progress",
+  ).toBeGreaterThan(0);
 
   const replacementPods = await pods(selector);
   const previousUids = new Set(previousPods.map(({ uid }) => uid));
