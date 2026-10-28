@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
       packages: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -92,15 +93,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up QEMU
-        uses: step-security/setup-qemu-action@d21542abd2ae44772cf2276e75ee4ec531d598b6 # v4.4.0
-
-      - name: Set up Docker Buildx
-        uses: step-security/setup-buildx-action@e50058a0fcd8d1a7d626c905502d010a468bf238 # v4.4.1
+      - name: Set up Depot
+        uses: step-security/depot-setup-action@5610d396fd593367de7ed242cb6fc6c06a25bb08 # v1.7.2
 
       - name: Build and publish
-        uses: step-security/docker-build-push-action@b736dc8a921e02a288f956d3dd9111e276a4cfec # v7.4.0
+        uses: depot/build-push-action@98e78adca7817480b8185f474a400b451d74e287 # v1.18.0
         with:
+          project: hznmdxtx4w
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
@@ -114,8 +113,6 @@ jobs:
             SUNRISE_IMAGE_VERSION=${{ steps.meta.outputs.version }}
           secret-files: |
             next_server_actions_encryption_key=${{ steps.server-actions-key.outputs.path }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
 
