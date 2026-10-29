@@ -85,7 +85,8 @@ export async function refreshActiveProjectS3Credentials(
   } catch (error) {
     observeAuthRefresh({
       durationSeconds: elapsedSeconds(startedAt),
-      outcome: "error",
+      outcome:
+        error instanceof S3ProjectRoleUnavailableError ? "no_role" : "error",
       target: "rgw",
     });
     throw error;
