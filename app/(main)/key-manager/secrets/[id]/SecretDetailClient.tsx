@@ -13,7 +13,7 @@ import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -220,15 +220,14 @@ export function SecretDetailClient({
                 projectId={projectId}
                 regionId={regionId}
               />
-              <Button asChild variant="outline">
-                <a
-                  href={`/api/key-manager/secrets/${encodeURIComponent(secret.id)}/payload`}
-                  download
-                >
-                  <Download className="size-4" />
-                  Download payload
-                </a>
-              </Button>
+              <a
+                className={buttonVariants({ variant: "outline" })}
+                href={`/api/key-manager/secrets/${encodeURIComponent(secret.id)}/payload`}
+                download
+              >
+                <Download className="size-4" />
+                Download payload
+              </a>
             </>
           ) : (
             <SecretPayloadUploadSheet
@@ -351,10 +350,10 @@ export function SecretDetailClient({
               <Button
                 size="icon-sm"
                 variant="ghost"
-                className="text-destructive hover:text-destructive"
                 disabled={pending !== null}
                 title="Remove consumer"
                 onClick={() => removeConsumer(consumer)}
+                tone="danger"
               >
                 <Trash2 className="size-4" />
                 <span className="sr-only">Remove consumer</span>

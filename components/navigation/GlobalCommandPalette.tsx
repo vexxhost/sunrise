@@ -349,7 +349,7 @@ export function GlobalCommandPalette() {
     <>
       <Button
         variant="outline"
-        className="hidden h-9 w-full max-w-md justify-start gap-2 px-3 text-muted-foreground xl:flex"
+        className="hidden w-full max-w-md justify-start px-3 text-muted-foreground xl:flex"
         onClick={() => setOpen(true)}
         aria-label="Search Sunrise (Control or Command K)"
       >
@@ -363,7 +363,7 @@ export function GlobalCommandPalette() {
       <Button
         variant="outline"
         size="icon"
-        className="hidden h-9 w-9 shrink-0 text-muted-foreground min-[384px]:inline-flex xl:hidden"
+        className="hidden shrink-0 text-muted-foreground min-[384px]:inline-flex xl:hidden"
         onClick={() => setOpen(true)}
         aria-label="Search Sunrise (Control or Command K)"
         title="Search Sunrise"

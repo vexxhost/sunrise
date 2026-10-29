@@ -18,10 +18,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import {
   Box,
   Boxes,
-  Check,
   CheckCircle2,
   CircleHelp,
-  Copy,
   Gauge,
   Globe2,
   LockKeyhole,
@@ -45,6 +43,7 @@ import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge"
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -170,18 +169,10 @@ function ApiEndpointTile({
   endpoint: ReturnType<typeof parseEndpoint>;
   isPublic: boolean;
 }) {
-  const [copied, setCopied] = useState(false);
   const Icon = isPublic ? Globe2 : LockKeyhole;
   const displayEndpoint = endpoint
     ? `${endpoint.protocol.toLowerCase()}://${endpoint.display}`
     : "No endpoint reported";
-
-  const handleCopy = async () => {
-    if (!endpoint) return;
-    await navigator.clipboard.writeText(endpoint.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2_000);
-  };
 
   return (
     <div className="min-w-0 rounded-md border bg-card p-3 text-card-foreground">
@@ -204,21 +195,13 @@ function ApiEndpointTile({
           {displayEndpoint}
         </span>
         {endpoint ? (
-          <Button
-            aria-label="Copy Kubernetes API endpoint"
-            className="size-6 shrink-0"
-            onClick={handleCopy}
-            size="icon"
-            title={copied ? "Endpoint copied" : "Copy endpoint"}
-            type="button"
-            variant="ghost"
-          >
-            {copied ? (
-              <Check className="size-3.5 text-status-success" />
-            ) : (
-              <Copy className="size-3.5" />
-            )}
-          </Button>
+          <CopyButton
+            className="shrink-0"
+            copiedLabel="Endpoint copied"
+            label="Copy Kubernetes API endpoint"
+            size="icon-xs"
+            value={endpoint.href}
+          />
         ) : null}
       </div>
     </div>
@@ -940,15 +923,13 @@ export function ClusterDetailClient({
         </div>
         <div className="flex items-center gap-2">
           <Button
-            className="h-9 gap-2"
-            disabled={isRefreshing}
             onClick={handleRefresh}
-            size="sm"
             type="button"
             variant="outline"
+            loading={isRefreshing}
           >
             <RefreshCw
-              className={`size-4 ${isRefreshing ? "animate-spin" : ""}`}
+              className="size-4"
             />
             Refresh
           </Button>

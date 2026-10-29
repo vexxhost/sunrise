@@ -71,10 +71,10 @@ export function ConsoleLog({ serverId, regionId, projectId }: ConsoleLogProps) {
             variant="ghost"
             size="icon"
             onClick={() => refetch()}
-            disabled={isFetching}
             title="Refresh log"
+            loading={isFetching}
           >
-            <RotateCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            <RotateCw className="h-4 w-4" />
             <span className="sr-only">Refresh log</span>
           </Button>
         </form>

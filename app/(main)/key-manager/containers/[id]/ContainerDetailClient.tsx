@@ -261,10 +261,10 @@ export function ContainerDetailClient({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  className="text-destructive hover:text-destructive"
                   disabled={pending !== null}
                   title="Remove secret reference"
                   onClick={() => removeSecret(reference)}
+                  tone="danger"
                 >
                   <Trash2 className="size-4" />
                   <span className="sr-only">Remove reference</span>
@@ -360,9 +360,9 @@ export function ContainerDetailClient({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  className="text-destructive hover:text-destructive"
                   disabled={pending !== null}
                   onClick={() => removeConsumer(consumer)}
+                  tone="danger"
                 >
                   <Trash2 className="size-4" />
                   <span className="sr-only">Remove consumer</span>

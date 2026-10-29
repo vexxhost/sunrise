@@ -60,7 +60,7 @@ export function DataTableToolbar<TData>({
           <Button
             variant="outline"
             disabled
-            className="h-10"
+            size="lg"
           >
             <FilterIcon className="mr-1 h-3 w-3" />
             Filter
@@ -78,8 +78,7 @@ export function DataTableToolbar<TData>({
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                size="sm"
-                className="gap-2 h-10 cursor-pointer"
+                size="lg"
                 disabled={!hasTable || (hasTable && table.getFilteredSelectedRowModel().rows.length === 0)}
               >
                 Actions
@@ -116,12 +115,12 @@ export function DataTableToolbar<TData>({
         <ButtonGroup>
           <Button
             variant="outline"
-            size="sm"
+            size="lg"
             onClick={refetch}
-            disabled={!hasTable || showRefetching}
-            className={`gap-2 h-10 ${showRefetching ? 'opacity-50 cursor-not-allowed' : hasTable ? 'cursor-pointer' : ''}`}
+            disabled={!hasTable}
+            loading={showRefetching}
           >
-            <RefreshCw className={`h-4 w-4 ${showRefetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
           {table ? (

@@ -149,9 +149,9 @@ export function VolumeActions({
   return (
     <>
       <Button
-        className="h-10 gap-2"
         disabled={!projectId || !regionId}
         onClick={() => setDialogOpen(true)}
+        size="lg"
       >
         <Plus className="size-4" />
         Create volume

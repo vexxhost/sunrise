@@ -71,7 +71,7 @@ export function SecretPicker({
       <PopoverTrigger asChild>
         <Button
           aria-expanded={open}
-          className="h-auto min-h-14 w-full justify-between gap-2 px-3 py-2 text-left font-normal"
+          className="h-auto min-h-14 w-full justify-between px-3 py-2 text-left font-normal"
           disabled={disabled}
           id={id}
           role="combobox"

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ExternalLink, Monitor } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type { ConsoleProtocol } from "@/lib/openstack/console-actions";
 
 interface ConsoleProps {
@@ -48,16 +48,19 @@ export function Console({ serverId, projectId, regionId }: ConsoleProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button onClick={openPopup} className="gap-2">
+        <Button onClick={openPopup}>
           <Monitor className="h-4 w-4" />
           Launch console
         </Button>
-        <Button asChild variant="outline" className="gap-2">
-          <a href={consoleHref} target="_blank" rel="noreferrer noopener">
-            <ExternalLink className="h-4 w-4" />
-            Open in new tab
-          </a>
-        </Button>
+        <a
+          className={buttonVariants({ variant: "outline" })}
+          href={consoleHref}
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          <ExternalLink className="h-4 w-4" />
+          Open in new tab
+        </a>
       </div>
 
       <p className="text-xs text-muted-foreground">

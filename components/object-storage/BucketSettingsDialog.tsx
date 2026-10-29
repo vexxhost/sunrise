@@ -503,8 +503,8 @@ export function BucketSettingsDialog({
                             pending === "policy" || !policyValidation.ok
                           }
                           onClick={() => void savePolicy()}
+                          loading={pending === "policy"}
                         >
-                          {pending === "policy" ? <Spinner /> : null}
                           Save policy
                         </Button>
                       </div>
@@ -747,10 +747,9 @@ export function BucketSettingsDialog({
                         <Button
                           type="button"
                           size="sm"
-                          disabled={pending === "cors"}
                           onClick={() => void saveCors()}
+                          loading={pending === "cors"}
                         >
-                          {pending === "cors" ? <Spinner /> : null}
                           Save CORS
                         </Button>
                       </div>
@@ -809,8 +808,8 @@ export function BucketSettingsDialog({
                             pending === "lifecycle" || !lifecycleValidation.ok
                           }
                           onClick={() => void saveLifecycle()}
+                          loading={pending === "lifecycle"}
                         >
-                          {pending === "lifecycle" ? <Spinner /> : null}
                           Save lifecycle
                         </Button>
                       </div>

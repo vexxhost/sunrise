@@ -99,10 +99,10 @@ export function ShareSnapshotDetailClient({
           <Button
             size="icon"
             variant="outline"
-            className="text-destructive hover:text-destructive"
             title="Delete share snapshot"
             disabled={!scope || !canDeleteShareSnapshot(snapshot)}
             onClick={() => setAction("delete")}
+            tone="danger"
           >
             <Trash2 className="size-4" />
             <span className="sr-only">Delete share snapshot</span>

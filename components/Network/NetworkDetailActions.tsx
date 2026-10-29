@@ -180,7 +180,7 @@ export function NetworkDetailActions({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <Button className="h-9 gap-2" onClick={() => openDialog("subnet")}>
+        <Button onClick={() => openDialog("subnet")}>
           <Plus className="size-4" />
           Add subnet
         </Button>
@@ -190,8 +190,8 @@ export function NetworkDetailActions({
         />
         <Button
           variant="outline"
-          className="h-9 gap-2 text-destructive hover:text-destructive"
           onClick={() => openDialog("delete")}
+          tone="danger"
         >
           <Trash2 className="size-4" />
           Delete

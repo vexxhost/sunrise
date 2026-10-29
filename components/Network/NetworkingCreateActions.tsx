@@ -148,7 +148,7 @@ export function CreateNetworkAction({
 
   return (
     <>
-      <Button className="h-9 gap-2" onClick={() => setDialogOpen(true)}>
+      <Button onClick={() => setDialogOpen(true)}>
         <Plus className="size-4" /> Create network
       </Button>
       <Dialog open={open} onOpenChange={setDialogOpen}>
@@ -286,7 +286,7 @@ export function CreateRouterAction({
 
   return (
     <>
-      <Button className="h-9 gap-2" onClick={() => setDialogOpen(true)}>
+      <Button onClick={() => setDialogOpen(true)}>
         <Plus className="size-4" />
         Create router
       </Button>
@@ -436,7 +436,7 @@ export function CreatePortAction({
 
   return (
     <>
-      <Button className="h-9 gap-2" onClick={() => setDialogOpen(true)}>
+      <Button onClick={() => setDialogOpen(true)}>
         <Plus className="size-4" />
         Create port
       </Button>
@@ -659,7 +659,7 @@ export function AllocateFloatingIpAction({
 
   return (
     <>
-      <Button className="h-9 gap-2" onClick={() => setDialogOpen(true)}>
+      <Button onClick={() => setDialogOpen(true)}>
         <Plus className="size-4" />
         Allocate floating IP
       </Button>
@@ -838,7 +838,7 @@ export function CreateSecurityGroupAction({
   };
   return (
     <>
-      <Button className="h-9 gap-2" onClick={() => setDialogOpen(true)}>
+      <Button onClick={() => setDialogOpen(true)}>
         <Plus className="size-4" />
         Create security group
       </Button>

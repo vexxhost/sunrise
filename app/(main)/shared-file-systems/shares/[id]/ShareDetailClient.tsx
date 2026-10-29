@@ -178,10 +178,10 @@ export function ShareDetailClient({
           <Button
             size="icon"
             variant="outline"
-            className="text-destructive hover:text-destructive"
             title="Delete share"
             disabled={!scope || !canDeleteShare(share)}
             onClick={() => setAction("delete")}
+            tone="danger"
           >
             <Trash2 className="size-4" />
             <span className="sr-only">Delete share</span>
@@ -411,10 +411,10 @@ export function ShareDetailClient({
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="text-destructive hover:text-destructive"
                         title="Revoke access"
                         disabled={!scope || !canManageShareAccess(share)}
                         onClick={() => setRevokeRule(rule)}
+                        tone="danger"
                       >
                         <ShieldMinus className="size-4" />
                         <span className="sr-only">Revoke access</span>

@@ -23,7 +23,6 @@ import {
   WizardDialogTitle,
   WizardReviewStatus,
 } from "@/components/ui/wizard-dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { validateIamTrustPolicyJson } from "@/lib/json-document";
@@ -335,7 +334,7 @@ export function IamRoleCreateSheet({
                         type="button"
                         size="icon-sm"
                         variant="ghost"
-                        className="self-end text-destructive hover:text-destructive"
+                        className="self-end"
                         title="Remove tag"
                         onClick={() =>
                           setTags((current) =>
@@ -344,6 +343,7 @@ export function IamRoleCreateSheet({
                             ),
                           )
                         }
+                        tone="danger"
                       >
                         <Trash2 className="size-4" />
                         <span className="sr-only">Remove tag</span>
@@ -415,8 +415,9 @@ export function IamRoleCreateSheet({
                 type="button"
                 disabled={pending || reviewIssues.length > 0}
                 onClick={() => void handleCreate()}
+                loading={pending}
               >
-                {pending ? <Spinner /> : <ShieldPlus className="size-4" />}
+                <ShieldPlus className="size-4" />
                 {pending ? "Creating" : "Create IAM role"}
               </Button>
             )}

@@ -133,7 +133,7 @@ export function FloatingIpDetailActions({
   return (
     <>
       <div className="flex items-center gap-2">
-        <Button className="h-9 gap-2" onClick={() => open("associate")}>
+        <Button onClick={() => open("associate")}>
           <Link2 className="size-4" />
           {floatingIp.port_id ? "Change association" : "Associate"}
         </Button>
@@ -143,8 +143,8 @@ export function FloatingIpDetailActions({
         />
         <Button
           variant="outline"
-          className="h-9 gap-2 text-destructive hover:text-destructive"
           onClick={() => open("delete")}
+          tone="danger"
         >
           <Trash2 className="size-4" />
           Release

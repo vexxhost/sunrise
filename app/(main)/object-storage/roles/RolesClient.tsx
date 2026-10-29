@@ -212,7 +212,6 @@ export function RolesClient({
           type="button"
           size="icon-sm"
           variant="ghost"
-          className="text-destructive hover:text-destructive"
           title={
             row.original.isActive
               ? "The current access role cannot be deleted"
@@ -224,6 +223,7 @@ export function RolesClient({
             setDeleteConfirmation("");
             setDeleteTarget(row.original);
           }}
+          tone="danger"
         >
           <Trash2 className="size-4" />
           <span className="sr-only">Delete role</span>

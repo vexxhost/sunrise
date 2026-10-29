@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -850,7 +850,7 @@ export function NetworkTopologyClient({
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-9 gap-2">
+              <Button variant="outline">
                 <Eye className="size-4" />
                 Resources
               </Button>
@@ -879,11 +879,10 @@ export function NetworkTopologyClient({
           </DropdownMenu>
           <Button
             variant="outline"
-            className="h-9 gap-2"
             onClick={refresh}
-            disabled={refreshing}
+            loading={refreshing}
           >
-            <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
+            <RefreshCw className="size-4" />
             Refresh
           </Button>
         </div>
@@ -1130,11 +1129,12 @@ export function NetworkTopologyClient({
                 </Badge>
               ) : null}
               {resourceHref(selectedNode.data) ? (
-                <Button asChild className="mt-6 w-full">
-                  <Link href={resourceHref(selectedNode.data)!}>
-                    Open details
-                  </Link>
-                </Button>
+                <Link
+                  className={buttonVariants({ className: "mt-6 w-full" })}
+                  href={resourceHref(selectedNode.data)!}
+                >
+                  Open details
+                </Link>
               ) : null}
             </>
           ) : null}

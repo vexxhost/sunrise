@@ -9,7 +9,7 @@ import {
   useTransition,
 } from "react";
 import { ExternalLink, Keyboard, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -221,26 +221,29 @@ export function ConsoleWindow({
             Ctrl+Alt+Del
           </Button>
           {(rawUrl ?? url) && (
-            <Button asChild size="sm" variant="secondary" className="gap-2">
-              <a
-                href={rawUrl ?? url ?? "#"}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Open raw
-              </a>
-            </Button>
+            <a
+              className={buttonVariants({
+                variant: "secondary",
+                size: "sm",
+                className: "gap-2",
+              })}
+              href={rawUrl ?? url ?? "#"}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Open raw
+            </a>
           )}
           <Button
             size="sm"
             variant="secondary"
             onClick={reconnect}
-            disabled={isPending}
             className="gap-2"
+            loading={isPending}
           >
             <RefreshCw
-              className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`}
+              className="h-3.5 w-3.5"
             />
             Reconnect
           </Button>

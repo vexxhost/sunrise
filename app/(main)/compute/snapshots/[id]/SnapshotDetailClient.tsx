@@ -69,9 +69,10 @@ export function SnapshotDetailClient({
         </div>
         <Button
           variant="outline"
-          className="h-10 gap-2 text-destructive hover:text-destructive"
           disabled={!canDeleteSnapshot(snapshot)}
           onClick={() => setDeleteOpen(true)}
+          tone="danger"
+          size="lg"
         >
           <Trash2 className="size-4" />
           Delete

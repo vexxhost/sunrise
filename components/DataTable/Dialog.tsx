@@ -1,7 +1,6 @@
 import { Settings } from "lucide-react";
 import * as React from "react";
 import { Button } from "../ui/button";
-import { cn } from "@/lib/utils";
 
 export const DataTableDialogButton = React.forwardRef<
   HTMLButtonElement,
@@ -11,10 +10,10 @@ export const DataTableDialogButton = React.forwardRef<
     <Button
       ref={ref}
       variant="outline"
-      size="sm"
+      size="icon-lg"
       aria-label="Table settings"
       title="Table settings"
-      className={cn("h-10 px-3 cursor-pointer", className)}
+      className={className}
       disabled={disabled}
       {...props}
     >

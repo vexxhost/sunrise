@@ -136,12 +136,12 @@ export function ImageDetailClient({
           />
           <Button
             variant="outline"
-            size="icon"
-            className="size-10 text-destructive hover:text-destructive"
+            size="icon-lg"
             aria-label="Delete image"
             title="Delete image"
             disabled={!canDeleteImage(image, projectId)}
             onClick={() => setAction("delete")}
+            tone="danger"
           >
             <Trash2 className="size-4" />
           </Button>

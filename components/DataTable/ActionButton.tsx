@@ -9,10 +9,9 @@ interface ActionButtonProps {
 
 export function ActionButton({ icon: Icon, variant, label, onClick }: ActionButtonProps) {
   return <Button
-    size="sm"
+    size="lg"
     variant={variant}
     onClick={onClick}
-    className="gap-2 h-10 cursor-pointer"
   >
     {Icon && <Icon className="h-4 w-4" />}
     {label}

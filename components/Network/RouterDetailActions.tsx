@@ -179,7 +179,6 @@ export function RouterDetailActions({
     <>
       <div className="flex flex-wrap items-center gap-2">
         <Button
-          className="h-9 gap-2"
           disabled={!availableSubnets.length}
           onClick={() => openDialog("connect")}
         >
@@ -188,7 +187,6 @@ export function RouterDetailActions({
         </Button>
         <Button
           variant="outline"
-          className="h-9 gap-2"
           onClick={() => openDialog("gateway")}
         >
           <Cable className="size-4" />
@@ -200,8 +198,8 @@ export function RouterDetailActions({
         />
         <Button
           variant="outline"
-          className="h-9 gap-2 text-destructive hover:text-destructive"
           onClick={() => openDialog("delete")}
+          tone="danger"
         >
           <Trash2 className="size-4" />
           Delete

@@ -184,9 +184,9 @@ export function ShareNetworkActions({
   return (
     <>
       <Button
-        className="h-10 gap-2"
         disabled={!projectId || !regionId}
         onClick={() => setOpen(true)}
+        size="lg"
       >
         <Plus className="size-4" aria-hidden="true" />
         Create share network

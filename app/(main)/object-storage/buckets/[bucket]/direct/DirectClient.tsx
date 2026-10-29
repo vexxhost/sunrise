@@ -28,7 +28,7 @@ import {
 } from "@/components/ObjectMetadataDetails";
 import { UploadQueueMenu } from "@/components/UploadQueueMenu";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -555,9 +555,9 @@ export function DirectClient({
               type="button"
               size="icon-sm"
               variant="ghost"
-              className="text-destructive hover:text-destructive"
               title="Remove"
               onClick={() => openRemoveDialog([item])}
+              tone="danger"
             >
               <Trash2 className="h-4 w-4" />
               <span className="sr-only">Remove</span>
@@ -1011,23 +1011,25 @@ export function DirectClient({
                   >
                     {download.key}
                   </span>
-                  <Button asChild size="sm" variant="outline">
-                    <a
-                      href={download.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() =>
-                        setStartedDownloads((current) => {
-                          const next = new Set(current);
-                          next.add(download.key);
-                          return next;
-                        })
-                      }
-                    >
-                      <Download className="h-4 w-4" />
-                      {started ? "Download again" : "Download"}
-                    </a>
-                  </Button>
+                  <a
+                    className={buttonVariants({
+                      variant: "outline",
+                      size: "sm",
+                    })}
+                    href={download.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      setStartedDownloads((current) => {
+                        const next = new Set(current);
+                        next.add(download.key);
+                        return next;
+                      })
+                    }
+                  >
+                    <Download className="h-4 w-4" />
+                    {started ? "Download again" : "Download"}
+                  </a>
                 </div>
               );
             })}

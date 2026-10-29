@@ -170,8 +170,8 @@ export function VolumeDetailClient({
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
-            size="icon"
-            className="size-10 sm:w-auto sm:px-4"
+            size="icon-lg"
+            className="sm:w-auto sm:px-4"
             aria-label="Attach volume"
             title="Attach volume"
             disabled={!canAttachVolume(volume)}
@@ -182,8 +182,8 @@ export function VolumeDetailClient({
           </Button>
           <Button
             variant="outline"
-            size="icon"
-            className="size-10 sm:w-auto sm:px-4"
+            size="icon-lg"
+            className="sm:w-auto sm:px-4"
             aria-label="Create snapshot"
             title="Create snapshot"
             disabled={!canSnapshotVolume(volume)}
@@ -200,8 +200,7 @@ export function VolumeDetailClient({
           />
           <Button
             variant="outline"
-            size="icon"
-            className="size-10"
+            size="icon-lg"
             aria-label="Detach volume"
             title="Detach volume"
             disabled={!canDetachVolume(volume)}
@@ -211,12 +210,12 @@ export function VolumeDetailClient({
           </Button>
           <Button
             variant="outline"
-            size="icon"
-            className="size-10 text-destructive hover:text-destructive"
+            size="icon-lg"
             aria-label="Delete volume"
             title="Delete volume"
             disabled={!canDeleteVolume(volume)}
             onClick={() => setAction("delete")}
+            tone="danger"
           >
             <Trash2 className="size-4" />
           </Button>

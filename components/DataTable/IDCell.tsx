@@ -1,9 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Copy, Check } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
 
 interface IDCellProps {
   value: string;
@@ -16,16 +14,6 @@ interface IDCellProps {
  * Shows truncated ID with gradient fade, expands on hover to show full ID
  */
 export function IDCell({ value, isSelected, linkPath }: IDCellProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const content = (
     <div className="relative w-[100px] flex-shrink-0 group/id">
       <div className="absolute left-0 top-0 w-full overflow-hidden group-hover/id:left-[-9px] group-hover/id:top-[-5px] group-hover/id:z-50 group-hover/id:w-auto group-hover/id:px-2 group-hover/id:py-1 group-hover/id:bg-popover group-hover/id:text-popover-foreground group-hover/id:border group-hover/id:border-border group-hover/id:rounded-md group-hover/id:overflow-visible group-hover/id:underline">
@@ -57,18 +45,16 @@ export function IDCell({ value, isSelected, linkPath }: IDCellProps) {
       ) : (
         content
       )}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-6 w-6 opacity-0 group-hover:opacity-100 group-hover/id:opacity-0 transition-opacity duration-200 shrink-0 cursor-pointer"
-        onClick={handleCopy}
-      >
-        {copied ? (
-          <Check className="h-3 w-3 text-status-success" />
-        ) : (
-          <Copy className="h-3 w-3" />
-        )}
-      </Button>
+      <CopyButton
+        value={value}
+        label="Copy ID"
+        size="icon-xs"
+        className="opacity-0 group-hover:opacity-100 group-hover/id:opacity-0 transition-opacity duration-200 shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+      />
     </div>
   );
 }

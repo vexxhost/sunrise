@@ -233,9 +233,9 @@ export function SubnetDetailActions({
             <Button
               size="icon-sm"
               variant="ghost"
-              className="text-destructive hover:text-destructive"
               aria-label={`Delete subnet ${subnet.name || subnet.cidr}`}
               onClick={() => open("delete")}
+              tone="danger"
             >
               <Trash2 className="size-4" />
             </Button>
@@ -418,13 +418,13 @@ export function SubnetDetailActions({
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="text-destructive hover:text-destructive"
                           disabled={pending}
                           onClick={() => {
                             setError(null);
                             setDetachRouterId(routerResource.id);
                             setDialog("detach");
                           }}
+                          tone="danger"
                         >
                           <Unplug className="size-4" />
                           Disconnect

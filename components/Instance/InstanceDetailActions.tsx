@@ -31,7 +31,7 @@ import { InstanceResizeDialog } from "@/components/Instance/InstanceResizeDialog
 import { InstanceSecurityGroupsDialog } from "@/components/Instance/InstanceSecurityGroupsDialog";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -321,19 +321,18 @@ export function InstanceDetailActions({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <Button asChild className="h-10 gap-2">
-          <Link
-            href={`/compute/instances/${encodeURIComponent(server.id)}/console`}
-          >
-            <Monitor className="size-4" />
-            Connect
-          </Link>
-        </Button>
+        <Link
+          className={buttonVariants({ size: "lg" })}
+          href={`/compute/instances/${encodeURIComponent(server.id)}/console`}
+        >
+          <Monitor className="size-4" />
+          Connect
+        </Link>
         <ButtonGroup>
           <Button
             type="button"
             variant="outline"
-            className="size-10 gap-2 sm:w-auto sm:px-4"
+            className="size-10 sm:w-auto sm:px-4"
             aria-label="Refresh instance"
             onClick={() => void refresh()}
           >
@@ -344,8 +343,8 @@ export function InstanceDetailActions({
             <Button
               type="button"
               variant="outline"
-              className="h-10 gap-2"
               onClick={() => setLifecycleAction(primaryAction.kind)}
+              size="lg"
             >
               <PrimaryIcon className="size-4" />
               {primaryAction.label}
@@ -357,8 +356,8 @@ export function InstanceDetailActions({
           <ButtonGroup>
             <Button
               type="button"
-              className="h-10 gap-2"
               onClick={() => setResizeDecision("confirm")}
+              size="lg"
             >
               <Check className="size-4" />
               Confirm resize
@@ -366,8 +365,8 @@ export function InstanceDetailActions({
             <Button
               type="button"
               variant="outline"
-              className="h-10 gap-2"
               onClick={() => setResizeDecision("revert")}
+              size="lg"
             >
               <Undo2 className="size-4" />
               Revert
@@ -379,8 +378,7 @@ export function InstanceDetailActions({
           <DropdownMenuTrigger asChild>
             <Button
               variant="outline"
-              size="icon"
-              className="size-10"
+              size="icon-lg"
               aria-label="Instance actions"
             >
               <MoreHorizontal className="size-4" />

@@ -14,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { securityGroupsQueryOptions } from "@/hooks/queries/useNetworks";
 import {
   addServerSecurityGroupAction,
@@ -215,8 +214,8 @@ export function InstanceSecurityGroupsDialog({
               disabled={
                 pending || ports.length === 0 || !Object.keys(overrides).length
               }
+              loading={pending}
             >
-              {pending ? <Spinner /> : null}
               {pending ? "Applying changes" : "Apply to all interfaces"}
             </Button>
           </DialogFooter>

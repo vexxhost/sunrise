@@ -128,7 +128,6 @@ export function SubnetAddressFields({
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  className="text-destructive hover:text-destructive"
                   aria-label={`Remove allocation range ${index + 1}`}
                   disabled={disabled}
                   onClick={() =>
@@ -138,6 +137,7 @@ export function SubnetAddressFields({
                       ),
                     )
                   }
+                  tone="danger"
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -196,7 +196,6 @@ export function SubnetAddressFields({
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  className="text-destructive hover:text-destructive"
                   aria-label={`Remove DNS server ${index + 1}`}
                   disabled={disabled}
                   onClick={() =>
@@ -206,6 +205,7 @@ export function SubnetAddressFields({
                       ),
                     )
                   }
+                  tone="danger"
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -281,7 +281,6 @@ export function SubnetAddressFields({
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  className="text-destructive hover:text-destructive"
                   aria-label={`Remove host route ${index + 1}`}
                   disabled={disabled}
                   onClick={() =>
@@ -291,6 +290,7 @@ export function SubnetAddressFields({
                       ),
                     )
                   }
+                  tone="danger"
                 >
                   <Trash2 className="size-4" />
                 </Button>

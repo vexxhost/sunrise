@@ -23,7 +23,7 @@ import { BucketSettingsDialog } from "@/components/object-storage/BucketSettings
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { UploadQueueMenu } from "@/components/UploadQueueMenu";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -506,20 +506,22 @@ export function ObjectsClient({
         return (
           <div className="flex items-center gap-1">
             {r.kind === "object" && (
-              <Button asChild size="icon-sm" variant="ghost" title="Download">
-                <a href={downloadUrl(bucket, r.fullPath)}>
-                  <Download className="h-4 w-4" />
-                  <span className="sr-only">Download</span>
-                </a>
-              </Button>
+              <a
+                className={buttonVariants({ size: "icon-sm", variant: "ghost" })}
+                href={downloadUrl(bucket, r.fullPath)}
+                title="Download"
+              >
+                <Download className="h-4 w-4" />
+                <span className="sr-only">Download</span>
+              </a>
             )}
             <Button
               type="button"
               size="icon-sm"
               variant="ghost"
-              className="text-destructive hover:text-destructive"
               title="Remove"
               onClick={() => openRemoveDialog([r])}
+              tone="danger"
             >
               <Trash2 className="h-4 w-4" />
               <span className="sr-only">Remove</span>

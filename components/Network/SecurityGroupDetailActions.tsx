@@ -151,7 +151,7 @@ export function SecurityGroupDetailActions({
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <Button className="h-9 gap-2" onClick={() => open("rule")}>
+        <Button onClick={() => open("rule")}>
           <Plus className="size-4" />
           Add rule
         </Button>
@@ -161,9 +161,9 @@ export function SecurityGroupDetailActions({
         />
         <Button
           variant="outline"
-          className="h-9 gap-2 text-destructive hover:text-destructive"
           disabled={group.name === "default"}
           onClick={() => open("delete")}
+          tone="danger"
         >
           <Trash2 className="size-4" />
           Delete
