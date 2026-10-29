@@ -20,6 +20,7 @@ import {
   type TransitionDefaultMinimumObjectSize,
 } from '@aws-sdk/client-s3';
 import { revalidatePath } from 'next/cache';
+import { createLogger } from '@/lib/logging';
 import {
   validateBucketLifecycleJson,
   validateBucketPolicyJson,
@@ -38,6 +39,9 @@ import { bucketArn } from '@/lib/s3/arn';
 import { removeSavedResourcePreferences } from '@/lib/resource-preference-store';
 import { validateBucketName } from '@/lib/s3/bucket-validation';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
+import { s3FailureLogFields } from '@/lib/s3/logging';
+
+const logger = createLogger('s3.bucket');
 
 export type BucketVersioningState = 'Unversioned' | 'Enabled' | 'Suspended';
 
@@ -449,9 +453,9 @@ export async function deleteBucket(
       },
     );
   } catch (error) {
-    console.warn('[s3/bucket] saved resource cleanup failed', {
-      bucket: normalizedBucket,
-      error,
+    logger.warn('preference-cleanup-failed', {
+      operation: 'delete-bucket',
+      ...(await s3FailureLogFields(error)),
     });
   }
   return mutationSuccess({

@@ -1,13 +1,20 @@
 import { revalidatePath } from "next/cache";
 
+import { createLogger } from "@/lib/logging";
 import { guardMutationContext } from "@/lib/mutation-context";
-import { mutationErrorForStatus, normalizeMutationProjectId } from "@/lib/mutations";
+import {
+  mutationErrorForStatus,
+  normalizeMutationProjectId,
+} from "@/lib/mutations";
 import {
   getServiceCatalog,
   resolveServiceEndpoint,
 } from "@/lib/openstack/catalog";
 import { serviceUrl } from "@/lib/openstack/request";
+import { sunriseRequestIdFromHeaders } from "@/lib/request-correlation";
 import { unavailableServiceRouteResponse } from "@/lib/service-route-guard";
+
+const logger = createLogger("glance.upload");
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -63,7 +70,10 @@ export async function POST(request: Request, { params }: RouteContext) {
   const catalog = await getServiceCatalog(projectToken!);
   if (!catalog) {
     return Response.json(
-      { ok: false, error: "Cloud service discovery is temporarily unavailable." },
+      {
+        ok: false,
+        error: "Cloud service discovery is temporarily unavailable.",
+      },
       { status: 503 },
     );
   }
@@ -101,7 +111,10 @@ export async function POST(request: Request, { params }: RouteContext) {
         normalizeMutationProjectId(scope.projectId)
     ) {
       return Response.json(
-        { ok: false, error: "Only images owned by the active project can receive data." },
+        {
+          ok: false,
+          error: "Only images owned by the active project can receive data.",
+        },
         { status: 403 },
       );
     }
@@ -132,13 +145,16 @@ export async function POST(request: Request, { params }: RouteContext) {
     revalidatePath("/compute");
     revalidatePath("/compute/images");
     revalidatePath(`/compute/images/${id}`);
-    return Response.json({ ok: true, imageId: id, requestId: requestId(uploadResponse) });
-  } catch (error) {
-    console.error("[glance/upload] image upload failed", {
-      error,
+    return Response.json({
+      ok: true,
       imageId: id,
-      projectId: scope.projectId,
+      requestId: requestId(uploadResponse),
+    });
+  } catch (error) {
+    logger.error("upload-failed", {
+      error,
       regionId: scope.regionId,
+      requestId: sunriseRequestIdFromHeaders(request.headers),
     });
     return Response.json(
       { ok: false, error: "Glance could not be reached. Try again shortly." },

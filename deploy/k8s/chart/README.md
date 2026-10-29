@@ -18,6 +18,8 @@ configMap:
   create: true
   data:
     SUNRISE_DASHBOARD_URL: https://sunrise.example.com
+    SUNRISE_LOG_FORMAT: json
+    SUNRISE_LOG_LEVEL: info
     SUNRISE_SESSION_BACKEND: redis
     SUNRISE_REDIS_URL: rediss://redis.example.com:6379
 ```

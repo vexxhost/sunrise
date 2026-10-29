@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { createLogger } from "@/lib/logging";
 import {
   buildGlobalSearchResources,
   GLOBAL_SEARCH_RESOURCE_LIMIT,
@@ -27,6 +28,8 @@ import {
 } from "@/lib/service-policy";
 import { listBuckets } from "@/lib/s3/actions";
 import { getSession } from "@/lib/session";
+
+const logger = createLogger("global-search");
 
 type LoadedSource = {
   kind: ResourceKind;
@@ -231,7 +234,10 @@ async function loadOpenStackSource({
     if (error instanceof OpenStackRequestError && error.status === 401) {
       redirect("/auth/refresh");
     }
-    console.error(`[global-search] failed to load ${source.label}`, { error });
+    logger.warn("source-unavailable", {
+      error,
+      source: source.kind,
+    });
     return {
       kind: source.kind,
       items: [],

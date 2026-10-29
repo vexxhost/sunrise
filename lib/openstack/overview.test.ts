@@ -464,8 +464,7 @@ describe("project overview loading", () => {
       message: "Quota response was not recognized",
     });
     expect(consoleError).toHaveBeenCalledWith(
-      "[overview/load-balancing] invalid quota response",
-      expect.objectContaining({ error: expect.any(Error) }),
+      expect.stringContaining("openstack.overview invalid-quota-response"),
     );
   });
 
@@ -490,8 +489,7 @@ describe("project overview loading", () => {
       message: "Quota response was not recognized",
     });
     expect(consoleError).toHaveBeenCalledWith(
-      "[overview/compute] invalid quota response",
-      expect.objectContaining({ error: expect.any(Error) }),
+      expect.stringContaining("openstack.overview invalid-quota-response"),
     );
   });
 

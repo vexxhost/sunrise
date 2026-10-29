@@ -10,10 +10,14 @@ import {
   GetBucketLocationCommand,
 } from '@aws-sdk/client-s3';
 import { Buffer } from 'node:buffer';
+import { createLogger } from '@/lib/logging';
 import { bucketArn } from '@/lib/s3/arn';
 import { guardMutationContext } from '@/lib/mutation-context';
 import { getS3Client, S3AuthRequiredError } from '@/lib/s3/client';
 import { normalizeStorageClass } from '@/lib/s3/storage-class';
+import { s3FailureLogFields } from '@/lib/s3/logging';
+
+const logger = createLogger('s3');
 
 export type Bucket = {
   name: string;
@@ -103,7 +107,10 @@ async function listBucketsWithCredentialRefresh(
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
     const detail = describeAwsError(e);
-    console.error('[s3/listBuckets] FAILED to acquire S3 client:', detail);
+    logger.error('client-acquisition-failed', {
+      operation: 'list-buckets',
+      ...(await s3FailureLogFields(e)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 
@@ -119,11 +126,17 @@ async function listBucketsWithCredentialRefresh(
     };
   } catch (e) {
     if (isAccessDenied(e)) {
-      console.warn('[s3/listBuckets] access denied; returning empty list');
+      logger.warn('access-denied', {
+        operation: 'list-buckets',
+        ...(await s3FailureLogFields(e)),
+      });
       return { ok: true, buckets: [], owner: {}, accessDenied: true };
     }
     const detail = describeAwsError(e);
-    console.error('[s3/listBuckets] FAILED:', detail, e);
+    logger.error('request-failed', {
+      operation: 'list-buckets',
+      ...(await s3FailureLogFields(e)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }
@@ -208,7 +221,10 @@ async function listObjectsWithCredentialRefresh(
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
     if (isAccessDenied(e)) {
-      console.warn('[s3/listObjects] access denied for', bucket, prefix);
+      logger.warn('access-denied', {
+        operation: 'list-objects',
+        ...(await s3FailureLogFields(e)),
+      });
       return {
         ok: true,
         bucket,
@@ -230,7 +246,10 @@ async function listObjectsWithCredentialRefresh(
       };
     }
     const detail = describeAwsError(e);
-    console.error('[s3/listObjects] FAILED:', detail, e);
+    logger.error('request-failed', {
+      operation: 'list-objects',
+      ...(await s3FailureLogFields(e)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }
@@ -325,7 +344,10 @@ async function headObjectWithCredentialRefresh(
       };
     }
     const detail = describeAwsError(e);
-    console.error('[s3/headObject] FAILED:', detail, e);
+    logger.error('request-failed', {
+      operation: 'head-object',
+      ...(await s3FailureLogFields(e)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }
@@ -363,7 +385,10 @@ export async function getBucketInfo(bucket: string): Promise<BucketInfoResult> {
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
     const detail = describeAwsError(e);
-    console.error('[s3/getBucketInfo] FAILED:', detail, e);
+    logger.error('request-failed', {
+      operation: 'get-bucket-info',
+      ...(await s3FailureLogFields(e)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }
@@ -405,7 +430,10 @@ export async function createFolder(
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
     const detail = describeAwsError(e);
-    console.error('[s3/createFolder] FAILED:', detail, e);
+    logger.error('request-failed', {
+      operation: 'create-folder',
+      ...(await s3FailureLogFields(e)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }
@@ -516,7 +544,10 @@ export async function calculateSelectionSize(
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
     const detail = describeAwsError(e);
-    console.error('[s3/calculateSelectionSize] FAILED:', detail, e);
+    logger.error('request-failed', {
+      operation: 'calculate-selection-size',
+      ...(await s3FailureLogFields(e)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }
@@ -631,7 +662,10 @@ export async function removeSelection(
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
     const detail = describeAwsError(e);
-    console.error('[s3/removeSelection] FAILED:', detail, e);
+    logger.error('request-failed', {
+      operation: 'remove-selection',
+      ...(await s3FailureLogFields(e)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }
@@ -670,7 +704,10 @@ export async function getBucketPolicy(
   } catch (e) {
     if (e instanceof S3AuthRequiredError) return { ok: false, needsAuth: true };
     const detail = describeAwsError(e);
-    console.error('[s3/getBucketPolicy] FAILED:', detail, e);
+    logger.error('request-failed', {
+      operation: 'get-bucket-policy',
+      ...(await s3FailureLogFields(e)),
+    });
     return {
       ok: false,
       needsAuth: false,

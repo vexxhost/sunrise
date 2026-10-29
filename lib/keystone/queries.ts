@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/session";
+import { createLogger } from "@/lib/logging";
 import { getProjectScopedTokenContext } from "@/lib/keystone/login";
 import { isKeystoneAuthFailure } from "@/lib/keystone/session";
 import type { Region, Project } from "@/types/openstack";
@@ -7,12 +8,17 @@ import {
   captureOidcSessionAuthority,
   saveOidcSessionIfAuthoritative,
 } from "@/lib/oidc/session-authority";
+import { openstackRequestId } from "@/lib/openstack/request-id";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
+
+const logger = createLogger("keystone.query");
 
 /**
  * Server-side function to fetch regions
  * Uses the unscoped token from the session
  */
 export async function getRegions(): Promise<Region[]> {
+  const requestId = await currentSunriseRequestId();
   const session = await getSession();
   const authority = captureOidcSessionAuthority(session);
 
@@ -29,7 +35,11 @@ export async function getRegions(): Promise<Region[]> {
       cache: "no-store",
     });
   } catch (error) {
-    console.error("Error fetching regions:", error);
+    logger.error("unreachable", {
+      error,
+      operation: "list-regions",
+      requestId,
+    });
     return [];
   }
 
@@ -37,7 +47,12 @@ export async function getRegions(): Promise<Region[]> {
     if (isKeystoneAuthFailure(response.status)) {
       redirect("/auth/refresh");
     }
-    console.error("Failed to fetch regions:", response.statusText);
+    logger.warn("request-failed", {
+      operation: "list-regions",
+      requestId,
+      status: response.status,
+      upstreamRequestId: openstackRequestId(response),
+    });
     return [];
   }
 
@@ -52,7 +67,11 @@ export async function getRegions(): Promise<Region[]> {
 
     return regions;
   } catch (error) {
-    console.error("Error fetching regions:", error);
+    logger.error("invalid-response", {
+      error,
+      operation: "list-regions",
+      requestId,
+    });
     return [];
   }
 }
@@ -62,6 +81,7 @@ export async function getRegions(): Promise<Region[]> {
  * Uses the unscoped token from the session
  */
 export async function getProjects(): Promise<Project[]> {
+  const requestId = await currentSunriseRequestId();
   const session = await getSession();
   const authority = captureOidcSessionAuthority(session);
 
@@ -78,7 +98,11 @@ export async function getProjects(): Promise<Project[]> {
       cache: "no-store",
     });
   } catch (error) {
-    console.error("Error fetching projects:", error);
+    logger.error("unreachable", {
+      error,
+      operation: "list-projects",
+      requestId,
+    });
     return [];
   }
 
@@ -86,7 +110,12 @@ export async function getProjects(): Promise<Project[]> {
     if (isKeystoneAuthFailure(response.status)) {
       redirect("/auth/refresh");
     }
-    console.error("Failed to fetch projects:", response.statusText);
+    logger.warn("request-failed", {
+      operation: "list-projects",
+      requestId,
+      status: response.status,
+      upstreamRequestId: openstackRequestId(response),
+    });
     return [];
   }
 
@@ -111,7 +140,11 @@ export async function getProjects(): Promise<Project[]> {
 
     return projects;
   } catch (error) {
-    console.error("Error fetching projects:", error);
+    logger.error("invalid-response", {
+      error,
+      operation: "list-projects",
+      requestId,
+    });
     return [];
   }
 }

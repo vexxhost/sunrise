@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { AUTH_PROMPT_COOKIE } from "@/lib/auth-prompt";
+import { createLogger } from "@/lib/logging";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
 import {
   AUTH_RETURN_TO_COOKIE,
   AUTH_RETURN_TO_MAX_AGE_SECONDS,
@@ -23,6 +25,8 @@ import {
   type SessionExpiryReason,
 } from "@/lib/session-lifetime";
 
+const logger = createLogger("auth.logout");
+
 const KEYSTONE_API = process.env.KEYSTONE_API;
 
 async function revokeToken(subjectToken: string, authToken: string) {
@@ -41,14 +45,16 @@ async function revokeToken(subjectToken: string, authToken: string) {
     });
 
     if (!response.ok && response.status !== 404) {
-      console.error(
-        "Failed to revoke Keystone token:",
-        response.status,
-        response.statusText,
-      );
+      logger.warn("keystone-revocation-failed", {
+        requestId: await currentSunriseRequestId(),
+        status: response.status,
+      });
     }
   } catch (error) {
-    console.error("Error revoking Keystone token:", error);
+    logger.warn("keystone-revocation-unreachable", {
+      error,
+      requestId: await currentSunriseRequestId(),
+    });
   }
 }
 
@@ -73,7 +79,10 @@ async function logoutIdToken(identityProvider?: string, refreshToken?: string) {
     const refreshed = await refreshAccessToken(refreshToken, identityProvider);
     return refreshed.id_token;
   } catch (error) {
-    console.warn("Unable to refresh the OIDC ID token for logout:", error);
+    logger.warn("oidc-token-refresh-failed", {
+      error,
+      requestId: await currentSunriseRequestId(),
+    });
     return undefined;
   }
 }
@@ -91,7 +100,10 @@ async function providerLogoutUrl(
       idTokenHint,
     });
   } catch (error) {
-    console.warn("Unable to discover the OIDC logout endpoint:", error);
+    logger.warn("oidc-endpoint-discovery-failed", {
+      error,
+      requestId: await currentSunriseRequestId(),
+    });
     return null;
   }
 }

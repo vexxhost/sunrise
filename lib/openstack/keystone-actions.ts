@@ -1,15 +1,21 @@
 'use server';
 
 import { getSession } from '@/lib/session';
+import { createLogger } from '@/lib/logging';
 import { isKeystoneAuthFailure } from '@/lib/keystone/session';
 import { redirect } from 'next/navigation';
 import { normalizeTokenRoles } from '@/lib/openstack/application-credential-schema';
+import { openstackRequestId } from '@/lib/openstack/request-id';
+import { currentSunriseRequestId } from '@/lib/request-correlation.server';
+
+const logger = createLogger('keystone.action-query');
 
 /**
  * Get user information from the project-scoped token in the session
  * This validates the token and extracts user details from Keystone
  */
 export async function getUserInfo() {
+  const requestId = await currentSunriseRequestId();
   const session = await getSession();
   const token = session.keystoneProjectToken;
 
@@ -29,7 +35,7 @@ export async function getUserInfo() {
       cache: 'no-store',
     });
   } catch (error) {
-    console.error('Error getting user info:', error);
+    logger.error('unreachable', { error, operation: 'get-user', requestId });
     return null;
   }
 
@@ -37,6 +43,12 @@ export async function getUserInfo() {
     if (isKeystoneAuthFailure(response.status)) {
       redirect('/auth/refresh');
     }
+    logger.warn('request-failed', {
+      operation: 'get-user',
+      requestId,
+      status: response.status,
+      upstreamRequestId: openstackRequestId(response),
+    });
     return null;
   }
 
@@ -55,7 +67,11 @@ export async function getUserInfo() {
           : undefined,
     };
   } catch (error) {
-    console.error('Error getting user info:', error);
+    logger.error('invalid-response', {
+      error,
+      operation: 'get-user',
+      requestId,
+    });
     return null;
   }
 }
@@ -65,6 +81,7 @@ export async function getUserInfo() {
  * Uses unscoped token from session
  */
 export async function getRegionsAction() {
+  const requestId = await currentSunriseRequestId();
   const session = await getSession();
   const token = session.keystone_unscoped_token;
 
@@ -81,7 +98,7 @@ export async function getRegionsAction() {
       cache: 'no-store',
     });
   } catch (error) {
-    console.error('Error fetching regions:', error);
+    logger.error('unreachable', { error, operation: 'list-regions', requestId });
     return [];
   }
 
@@ -89,7 +106,12 @@ export async function getRegionsAction() {
     if (isKeystoneAuthFailure(response.status)) {
       redirect('/auth/refresh');
     }
-    console.error('Failed to fetch regions:', response.statusText);
+    logger.warn('request-failed', {
+      operation: 'list-regions',
+      requestId,
+      status: response.status,
+      upstreamRequestId: openstackRequestId(response),
+    });
     return [];
   }
 
@@ -98,7 +120,11 @@ export async function getRegionsAction() {
     // Sort regions alphabetically by ID
     return data.regions.sort((a, b) => a.id.localeCompare(b.id));
   } catch (error) {
-    console.error('Error fetching regions:', error);
+    logger.error('invalid-response', {
+      error,
+      operation: 'list-regions',
+      requestId,
+    });
     return [];
   }
 }
@@ -108,6 +134,7 @@ export async function getRegionsAction() {
  * Uses unscoped token from session
  */
 export async function getProjectsAction() {
+  const requestId = await currentSunriseRequestId();
   const session = await getSession();
   const token = session.keystone_unscoped_token;
 
@@ -124,7 +151,11 @@ export async function getProjectsAction() {
       cache: 'no-store',
     });
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    logger.error('unreachable', {
+      error,
+      operation: 'list-projects',
+      requestId,
+    });
     return [];
   }
 
@@ -132,7 +163,12 @@ export async function getProjectsAction() {
     if (isKeystoneAuthFailure(response.status)) {
       redirect('/auth/refresh');
     }
-    console.error('Failed to fetch projects:', response.statusText);
+    logger.warn('request-failed', {
+      operation: 'list-projects',
+      requestId,
+      status: response.status,
+      upstreamRequestId: openstackRequestId(response),
+    });
     return [];
   }
 
@@ -141,7 +177,11 @@ export async function getProjectsAction() {
     // Sort projects alphabetically by name
     return data.projects.sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
-    console.error('Error fetching projects:', error);
+    logger.error('invalid-response', {
+      error,
+      operation: 'list-projects',
+      requestId,
+    });
     return [];
   }
 }

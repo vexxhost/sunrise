@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { IronSession } from "iron-session";
+import { createLogger } from "@/lib/logging";
 import {
   federateOidcWithKeystone,
   finalizeKeystoneSession,
@@ -14,6 +15,8 @@ import {
 import { getSunriseOidcConfig } from "@/lib/oidc/sunrise";
 import type { SunriseSession } from "@/lib/session";
 import { getSessionLifetimeState } from "@/lib/session-lifetime";
+
+const logger = createLogger("keystone.session");
 
 export type KeystoneRenewalResult =
   "ready" | "no-projects" | "no-role" | "reauthenticate" | "expired";
@@ -36,9 +39,7 @@ export async function refreshKeystoneSession(
     refreshed = await refreshSessionOidcTokens(session, identityProvider);
   } catch (error) {
     if (isOidcSessionSupersededError(error)) throw error;
-    console.warn("[keystone/session] failed to refresh Keycloak token", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn("oidc-refresh-failed", { error, identityProvider });
     return "reauthenticate";
   }
 

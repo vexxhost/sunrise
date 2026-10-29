@@ -164,11 +164,10 @@ describe("OpenStack mutation executor", () => {
 
     expect(result).toMatchObject({ ok: true, status: "success" });
     expect(warn).toHaveBeenCalledWith(
-      "[mutation] saved resource cleanup failed",
-      expect.objectContaining({
-        resource: { kind: "instance", id: "server-a" },
-      }),
+      expect.stringContaining("preference-cleanup-failed"),
     );
+    expect(warn.mock.calls[0]?.[0]).toContain("resourceKind=instance");
+    expect(warn.mock.calls[0]?.[0]).not.toContain("server-a");
   });
 
   it("does not contact a service when the rendered context is stale", async () => {

@@ -1,7 +1,11 @@
 import "server-only";
 import { randomBytes, createHash } from "crypto";
 import { getFederationProviderConfig } from "@/lib/federation/config";
+import { createLogger } from "@/lib/logging";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
 import type { SunriseIdentity } from "@/lib/session";
+
+const logger = createLogger("oidc");
 
 /**
  * OIDC client config for the unified Sunrise login flow.
@@ -174,7 +178,10 @@ export async function resolveOidcIdentity(
       identityProvider,
     };
   } catch (error) {
-    console.warn("Unable to load OIDC UserInfo; using ID token claims:", error);
+    logger.warn("userinfo-unavailable", {
+      error,
+      requestId: await currentSunriseRequestId(),
+    });
     return tokenIdentity;
   }
 }

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   probeRedisReadiness: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/redis", () => mocks);
 
 import { GET } from "./route";

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
+import { createLogger } from "@/lib/logging";
+import { sunriseRequestIdFromHeaders } from "@/lib/request-correlation";
 import { clearS3Credentials, getSession } from "@/lib/session";
 import { refreshActiveProjectS3Credentials } from "@/lib/s3/session";
 import { getS3Endpoint } from "@/lib/s3/endpoint";
@@ -8,6 +10,8 @@ import {
   isOidcSessionSupersededError,
   saveOidcSessionIfAuthoritative,
 } from "@/lib/oidc/session-authority";
+
+const logger = createLogger("s3.session");
 
 const SUNRISE_DASHBOARD_URL =
   process.env.SUNRISE_DASHBOARD_URL ?? "http://localhost";
@@ -34,6 +38,7 @@ async function clearS3CredentialsIfAuthoritative(
 }
 
 export async function GET(request: Request) {
+  const requestId = sunriseRequestIdFromHeaders(request.headers);
   const requestUrl = new URL(request.url);
   const returnTo = normalizeAuthReturnTo(
     requestUrl.searchParams.get("returnTo"),
@@ -64,10 +69,7 @@ export async function GET(request: Request) {
       });
     }
   } catch (error) {
-    console.warn("[s3/auth] automatic credential refresh failed", {
-      projectId: session.projectId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn("automatic-renewal-failed", { error, requestId });
     if (!isOidcSessionSupersededError(error)) {
       await clearS3CredentialsIfAuthoritative(session);
     }

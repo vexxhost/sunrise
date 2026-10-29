@@ -3,6 +3,8 @@ import {
   prepareSessionLifetime,
   saveSessionActivity,
 } from "@/lib/session";
+import { createLogger } from "@/lib/logging";
+import { sunriseRequestIdFromHeaders } from "@/lib/request-correlation";
 import {
   finalizeKeystoneSession,
   KeystoneSessionSetupError,
@@ -12,6 +14,8 @@ import {
   StoredSessionSupersededError,
 } from "@/lib/session-errors";
 import { saveRedisSession } from "@/lib/session-store";
+
+const logger = createLogger("auth.websso");
 
 const SUNRISE_DASHBOARD_URL = process.env.SUNRISE_DASHBOARD_URL ?? "/";
 
@@ -42,12 +46,13 @@ async function saveWebSsoResult(session: WebSsoSession) {
  * OIDC flow at `/auth/oidc/login` is the preferred path.
  */
 export async function POST(request: Request) {
+  const requestId = sunriseRequestIdFromHeaders(request.headers);
   const session = await getSession();
   const formData = await request.formData();
   const token = formData.get("token");
 
   if (typeof token !== "string" || token.length === 0) {
-    console.error("Missing token in WebSSO response");
+    logger.warn("token-missing", { requestId });
     session.keystone_unscoped_token = undefined;
     session.keystoneProjectToken = undefined;
     session.keystoneProjectRoles = undefined;
@@ -80,10 +85,10 @@ export async function POST(request: Request) {
           ? error.reason
           : "session-unavailable",
     };
-    console.error(
-      "[auth/websso] Keystone session finalize failed:",
-      error instanceof Error ? error.message : "unknown error",
-    );
+    logger.error("keystone-session-finalization-failed", {
+      error,
+      requestId,
+    });
   }
   if (!(await saveWebSsoResult(session))) {
     return Response.redirect(SUNRISE_DASHBOARD_URL, 303);

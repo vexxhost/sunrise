@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createLogger } from "@/lib/logging";
 import {
   clearS3Credentials,
   getS3CredentialsForProject,
@@ -23,6 +24,9 @@ import {
   isOidcSessionSupersededError,
   saveOidcSessionIfAuthoritative,
 } from "@/lib/oidc/session-authority";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
+
+const logger = createLogger("keystone.action");
 
 /**
  * Server Action to set the selected region
@@ -64,13 +68,9 @@ export async function setProject(project: Project) {
   );
 
   if (!context) {
-    console.error(
-      "[keystone] failed to switch project: scoped token unavailable",
-      {
-        projectId: project.id,
-        projectName: project.name,
-      },
-    );
+    logger.warn("project-token-unavailable", {
+      requestId: await currentSunriseRequestId(),
+    });
     return;
   }
 
@@ -105,10 +105,9 @@ export async function setProject(project: Project) {
       await refreshActiveProjectS3Credentials(session);
     } catch (err) {
       if (isOidcSessionSupersededError(err)) throw err;
-      console.error("[keystone] failed to refresh S3 credentials for project", {
-        projectId: project.id,
-        projectName: project.name,
-        error: err instanceof Error ? err.message : "unknown error",
+      logger.error("s3-credential-refresh-failed", {
+        error: err,
+        requestId: await currentSunriseRequestId(),
       });
     }
   }

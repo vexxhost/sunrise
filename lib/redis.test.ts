@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("@redis/client", () => ({
   createClient: mocks.createClient,
 }));

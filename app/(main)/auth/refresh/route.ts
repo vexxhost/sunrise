@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
+import { createLogger } from "@/lib/logging";
+import { sunriseRequestIdFromHeaders } from "@/lib/request-correlation";
 import { refreshKeystoneSession } from "@/lib/keystone/renewal";
 import { getSession } from "@/lib/session";
 import {
@@ -7,6 +9,8 @@ import {
   isOidcSessionSupersededError,
   saveOidcSessionIfAuthoritative,
 } from "@/lib/oidc/session-authority";
+
+const logger = createLogger("keystone.session");
 
 const SUNRISE_DASHBOARD_URL =
   process.env.SUNRISE_DASHBOARD_URL ?? "http://localhost";
@@ -20,6 +24,7 @@ function loginUrl(identityProvider: string, returnTo: string) {
 }
 
 export async function GET(request: Request) {
+  const requestId = sunriseRequestIdFromHeaders(request.headers);
   const returnTo = normalizeAuthReturnTo(
     new URL(request.url).searchParams.get("returnTo"),
   );
@@ -56,9 +61,7 @@ export async function GET(request: Request) {
       });
     }
   } catch (error) {
-    console.warn("[keystone/session] automatic renewal failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn("automatic-renewal-failed", { error, requestId });
     if (isOidcSessionSupersededError(error)) {
       return NextResponse.redirect(new URL("/", SUNRISE_DASHBOARD_URL), {
         status: 303,

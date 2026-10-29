@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import type { IronSession } from "iron-session";
+import { createLogger } from "@/lib/logging";
 import {
   OIDC_REFRESH_TIMEOUT_MS,
   refreshAccessToken,
@@ -26,6 +27,8 @@ import {
   OidcSessionSupersededError,
 } from "@/lib/oidc/session-authority";
 import { isStoredSessionSupersededError } from "@/lib/session-errors";
+
+const logger = createLogger("oidc.refresh");
 
 const REFRESH_RESULT_REUSE_MS = 30_000;
 const ACCESS_TOKEN_REUSE_MARGIN_MS = 5_000;
@@ -113,9 +116,7 @@ function reusableCheckpoint(
   ) {
     return undefined;
   }
-  if (
-    !checkpointReferencesToken(checkpoint, refreshTokenDigest)
-  ) {
+  if (!checkpointReferencesToken(checkpoint, refreshTokenDigest)) {
     return undefined;
   }
   return checkpoint;
@@ -384,10 +385,7 @@ function assertRefreshConflictIsSafe(
     authoritativeCheckpoint.issuedTokenDigest ===
       expectedCheckpoint.issuedTokenDigest &&
     authoritativeTokenDigest === authoritativeCheckpoint.issuedTokenDigest &&
-    sameRefreshResult(
-      authoritativeCheckpoint.result,
-      expectedCheckpoint.result,
-    )
+    sameRefreshResult(authoritativeCheckpoint.result, expectedCheckpoint.result)
   ) {
     return;
   }
@@ -448,8 +446,7 @@ function distributedRefreshTiming() {
     2 * refreshRedisOperationBudgetMs +
     DISTRIBUTED_REFRESH_TIMING_MARGIN_MS;
   const sessionSaveOperationCount =
-    REDIS_SESSION_MAX_SAVE_ATTEMPTS +
-    (REDIS_SESSION_MAX_SAVE_ATTEMPTS - 1) * 2;
+    REDIS_SESSION_MAX_SAVE_ATTEMPTS + (REDIS_SESSION_MAX_SAVE_ATTEMPTS - 1) * 2;
   const sessionSaveBudgetMs =
     sessionSaveOperationCount * refreshRedisOperationBudgetMs +
     DISTRIBUTED_REFRESH_TIMING_MARGIN_MS;
@@ -530,15 +527,12 @@ async function saveDistributedRefresh(
       if (attempt === MAX_DISTRIBUTED_SAVE_ATTEMPTS - 1) break;
       try {
         if (!(await renewDistributedLock(lockKey, owner, lockTimeoutMs))) {
-          console.warn(
-            "[oidc/refresh] lease was lost while preserving a rotated token",
-          );
+          logger.warn("lease-lost-during-persistence");
         }
       } catch (renewalError) {
-        console.warn(
-          "[oidc/refresh] could not renew the lease while preserving a rotated token:",
-          renewalError,
-        );
+        logger.warn("lease-renewal-failed-during-persistence", {
+          error: renewalError,
+        });
       }
       await wait(50 * 2 ** attempt);
     }
@@ -589,8 +583,7 @@ async function distributedRefresh(
     const owner = randomUUID();
     let delayMs = 40;
     let restart:
-      | { refreshToken: string; refreshTokenDigest: string }
-      | undefined;
+      { refreshToken: string; refreshTokenDigest: string } | undefined;
 
     while (Date.now() < followerDeadline) {
       const acquisitionResult = await runRedisCommand(
@@ -648,10 +641,7 @@ async function distributedRefresh(
           try {
             await reloadRedisSession(session);
           } catch (error) {
-            console.warn(
-              "[oidc/refresh] could not reload the session after token rotation; preserving through CAS:",
-              error,
-            );
+            logger.warn("session-reload-failed-after-rotation", { error });
           }
           assertRefreshStillAuthoritative(
             session,
@@ -684,15 +674,10 @@ async function distributedRefresh(
           // and revocation checks remain the authority for the following write.
           try {
             if (!(await renewDistributedLock(lockKey, owner, lockTimeoutMs))) {
-              console.warn(
-                "[oidc/refresh] lease expired after token rotation; preserving the result",
-              );
+              logger.warn("lease-expired-after-rotation");
             }
           } catch (error) {
-            console.warn(
-              "[oidc/refresh] could not renew the lease after token rotation; preserving the result:",
-              error,
-            );
+            logger.warn("lease-renewal-failed-after-rotation", { error });
           }
           await saveDistributedRefresh(
             session,
@@ -736,7 +721,7 @@ async function distributedRefresh(
           break;
         } finally {
           await releaseDistributedLock(lockKey, owner).catch((error) => {
-            console.warn("[oidc/refresh] failed to release Redis lock:", error);
+            logger.warn("lease-release-failed", { error });
           });
         }
       }
@@ -769,7 +754,9 @@ async function distributedRefresh(
     }
 
     if (!restart) {
-      throw new Error("Timed out waiting for the distributed OIDC refresh result");
+      throw new Error(
+        "Timed out waiting for the distributed OIDC refresh result",
+      );
     }
     ({ refreshToken, refreshTokenDigest } = restart);
     key = refreshKey(session, identityProvider, refreshTokenDigest);
@@ -875,10 +862,7 @@ async function refreshSessionOidcTokensForAuthority(
       // error. Re-entering reads the authoritative (possibly rotated) token
       // that reloadRedisSession just installed on this session.
       if (refreshEntries.get(key) === existing) refreshEntries.delete(key);
-      return refreshSessionOidcTokensForAuthority(
-        session,
-        authority,
-      );
+      return refreshSessionOidcTokensForAuthority(session, authority);
     }
     if (applyRotatedRefreshToken(session, result)) {
       await session.save();
@@ -936,10 +920,7 @@ async function refreshSessionOidcTokensForAuthority(
           // Skip completed local reuse if the shared clock cannot be sampled;
           // a later request can recover through the normal Redis path.
           entry.reuseUntil = Date.now();
-          console.warn(
-            "[oidc/refresh] could not derive local reuse from Redis time:",
-            error,
-          );
+          logger.warn("reuse-clock-unavailable", { error });
         }
       } else {
         entry.reuseUntil = checkpointReuseUntil(result, 0);

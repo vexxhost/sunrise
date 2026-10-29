@@ -1,6 +1,8 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { createLogger } from "@/lib/logging";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
 import { getSession } from "@/lib/session";
 import { getServiceEndpoint } from "./catalog";
 import {
@@ -8,6 +10,9 @@ import {
   OpenStackRequestError,
   serviceUrl,
 } from "./request";
+import { openstackRequestId } from "./request-id";
+
+const logger = createLogger("openstack.request");
 
 export interface OpenStackRequestOptions {
   regionId: string;
@@ -42,6 +47,7 @@ export async function openstackRequest<T = unknown>({
   errorMode = "return-null",
   endpointOverride,
 }: OpenStackRequestOptions): Promise<T | null> {
+  const requestId = await currentSunriseRequestId();
   const session = await getSession();
   const token = unscoped
     ? session.keystone_unscoped_token
@@ -76,21 +82,40 @@ export async function openstackRequest<T = unknown>({
       cache: "no-store",
     });
   } catch (error) {
+    logger.error("unreachable", {
+      error,
+      method,
+      regionId,
+      requestId,
+      serviceName,
+      serviceType,
+    });
     if (errorMode === "throw") {
       throw new OpenStackConnectionError(error);
     }
-    console.error("OpenStack fetch error:", error);
     return null;
   }
 
   if (!response.ok) {
+    const fields = {
+      method,
+      regionId,
+      requestId,
+      serviceName,
+      serviceType,
+      status: response.status,
+      upstreamRequestId: openstackRequestId(response),
+    };
+    const expectedMissingResource =
+      errorMode === "throw" && response.status === 404;
+    if (!expectedMissingResource) {
+      if (response.status >= 500) logger.error("rejected", fields);
+      else logger.warn("rejected", fields);
+    }
     if (response.status === 401) redirect("/auth/refresh");
     if (errorMode === "throw") {
       throw new OpenStackRequestError(response.status, response.statusText);
     }
-    console.error(
-      `OpenStack API error: ${response.status} ${response.statusText} for ${url}`,
-    );
     return null;
   }
 
