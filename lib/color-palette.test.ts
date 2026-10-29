@@ -10,8 +10,8 @@ describe("Sunrise color palette", () => {
     expect(parseSunriseColorPalette("vexxhost")).toBe("vexxhost");
   });
 
-  it("falls back to the Sunrise palette for missing or invalid values", () => {
-    expect(getSunriseColorPalette(undefined)).toBe("sunrise");
-    expect(getSunriseColorPalette("unknown")).toBe("sunrise");
+  it("falls back to the VEXXHOST palette for missing or invalid values", () => {
+    expect(getSunriseColorPalette(undefined)).toBe("vexxhost");
+    expect(getSunriseColorPalette("unknown")).toBe("vexxhost");
   });
 });

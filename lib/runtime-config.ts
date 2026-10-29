@@ -203,7 +203,7 @@ export function validateRuntimeConfiguration(
 
   const paletteValue = configuredValue(environment, "SUNRISE_COLOR_PALETTE");
   const sunriseColorPalette = parseSunriseColorPalette(
-    paletteValue ?? "sunrise",
+    paletteValue ?? "vexxhost",
   );
   if (!sunriseColorPalette) {
     throw new Error("SUNRISE_COLOR_PALETTE must be one of: sunrise, vexxhost");
