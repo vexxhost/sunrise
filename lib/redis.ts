@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient, type RedisClientType } from "@redis/client";
+import { createLogger } from "@/lib/logging";
+
+const logger = createLogger("redis");
 
 export type SessionBackend = "cookie" | "redis";
 
@@ -135,7 +138,7 @@ function clearClient(client: RedisClientType) {
   if (client.isOpen) client.destroy();
 }
 
-function createRedisConnection(errorPrefix: string) {
+function createRedisConnection(connectionKind: "shared" | "isolated") {
   const url = getRedisUrl();
   const ca = getRedisCa(url);
   const client = createClient({
@@ -149,7 +152,7 @@ function createRedisConnection(errorPrefix: string) {
     },
   });
   client.on("error", (error) => {
-    console.error(`${errorPrefix} connection error:`, error.message);
+    logger.error("connection-error", { connectionKind, error });
   });
   return client;
 }
@@ -160,7 +163,7 @@ export async function getRedisClient(): Promise<RedisClientType> {
 
   if (state.client) clearClient(state.client);
 
-  const client = createRedisConnection("[redis]");
+  const client = createRedisConnection("shared");
   state.client = client;
   state.connectingClient = client;
 
@@ -185,7 +188,7 @@ export async function runIsolatedRedisCommand<T>(
   command: (client: RedisClientType) => Promise<T>,
   maximumTimeoutMs?: number,
 ): Promise<T> {
-  const client = createRedisConnection("[redis/isolated]");
+  const client = createRedisConnection("isolated");
 
   try {
     await client.connect();

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { normalizeAuthReturnTo } from "@/lib/auth-return";
+import { createLogger } from "@/lib/logging";
+import { sunriseRequestIdFromHeaders } from "@/lib/request-correlation";
 import {
   REMEMBERED_IDENTITY_PROVIDER_COOKIE,
   RETURNING_VISITOR_COOKIE,
@@ -45,6 +47,8 @@ import {
   isOidcSessionSupersededError,
   OidcSessionSupersededError,
 } from "@/lib/oidc/session-authority";
+
+const logger = createLogger("auth.oidc-callback");
 
 const SUNRISE_DASHBOARD_URL = process.env.SUNRISE_DASHBOARD_URL ?? "/";
 
@@ -95,6 +99,7 @@ function supersededFlowResponse() {
 }
 
 export async function GET(request: Request) {
+  const requestId = sunriseRequestIdFromHeaders(request.headers);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -164,7 +169,10 @@ export async function GET(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Invalid service policy";
-    console.error("[oidc/callback] invalid service policy:", message);
+    logger.error("configuration-invalid", {
+      errorName: error instanceof Error ? error.name : typeof error,
+      requestId,
+    });
     if (!(await finishOidcFlow(session, callbackFlowId))) {
       return supersededFlowResponse();
     }
@@ -181,7 +189,10 @@ export async function GET(request: Request) {
       return supersededFlowResponse();
     }
     const msg = e instanceof Error ? e.message : "unknown error";
-    console.error("[oidc/callback] code exchange failed:", msg);
+    logger.error("code-exchange-failed", {
+      errorName: e instanceof Error ? e.name : typeof e,
+      requestId,
+    });
     return new NextResponse(`Login failed: ${msg}`, { status: 500 });
   }
 
@@ -240,8 +251,10 @@ export async function GET(request: Request) {
     if (!(await finishOidcFlow(session, callbackFlowId, pendingActivity))) {
       return supersededFlowResponse();
     }
-    const msg = e instanceof Error ? e.message : "unknown error";
-    console.error("[oidc/callback] Keystone federation failed:", msg);
+    logger.error("keystone-federation-failed", {
+      errorName: e instanceof Error ? e.name : typeof e,
+      requestId,
+    });
     return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
   }
 
@@ -261,8 +274,10 @@ export async function GET(request: Request) {
     if (!(await finishOidcFlow(session, callbackFlowId, pendingActivity))) {
       return supersededFlowResponse();
     }
-    const msg = e instanceof Error ? e.message : "unknown error";
-    console.error("[oidc/callback] Keystone session finalize failed:", msg);
+    logger.error("keystone-session-finalization-failed", {
+      errorName: e instanceof Error ? e.name : typeof e,
+      requestId,
+    });
     return NextResponse.redirect(SUNRISE_DASHBOARD_URL, { status: 303 });
   }
 
@@ -334,8 +349,10 @@ export async function GET(request: Request) {
     } catch (e) {
       // Non-fatal: user can still use other services. Object Storage will try
       // one server-side credential refresh before showing its recovery state.
-      const msg = e instanceof Error ? e.message : "unknown error";
-      console.error("[oidc/callback] STS setup failed (non-fatal):", msg);
+      logger.warn("s3-session-setup-failed", {
+        errorName: e instanceof Error ? e.name : typeof e,
+        requestId,
+      });
     }
   }
 

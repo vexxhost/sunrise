@@ -3,9 +3,13 @@ import {
   ListObjectsV2Command,
   type S3Client,
 } from "@aws-sdk/client-s3";
+import { createLogger } from "@/lib/logging";
 import { getS3Client, S3AuthRequiredError } from "@/lib/s3/client";
 import { objectStorageAuthRefreshHref } from "@/lib/s3/auth-navigation";
+import { s3FailureLogFields } from "@/lib/s3/logging";
 import { unavailableS3RouteResponse } from "@/lib/object-storage/route-guard";
+
+const logger = createLogger("s3.download");
 
 interface RouteContext {
   params: Promise<{ bucket: string }>;
@@ -293,7 +297,10 @@ export async function POST(request: Request, { params }: RouteContext) {
         },
       });
     }
-    console.error("[s3/download-selected] FAILED:", e);
+    logger.error("request-failed", {
+      operation: "download-selection",
+      ...(await s3FailureLogFields(e)),
+    });
     return new Response(
       "Unable to download selected objects. Please try again.",
       { status: 502 },

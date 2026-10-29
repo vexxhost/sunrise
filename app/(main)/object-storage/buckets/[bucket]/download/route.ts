@@ -1,8 +1,12 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { redirect } from "next/navigation";
+import { createLogger } from "@/lib/logging";
 import { unavailableS3RouteResponse } from "@/lib/object-storage/route-guard";
 import { getS3Client, S3AuthRequiredError } from "@/lib/s3/client";
 import { objectStorageAuthRefreshHref } from "@/lib/s3/auth-navigation";
+import { s3FailureLogFields } from "@/lib/s3/logging";
+
+const logger = createLogger("s3.download");
 
 interface RouteContext {
   params: Promise<{ bucket: string }>;
@@ -80,7 +84,10 @@ export async function GET(request: Request, { params }: RouteContext) {
       const url = new URL(request.url);
       redirect(objectStorageAuthRefreshHref(`${url.pathname}${url.search}`));
     }
-    console.error("[s3/download] FAILED:", e);
+    logger.error("request-failed", {
+      operation: "download-object",
+      ...(await s3FailureLogFields(e)),
+    });
     return new Response("Unable to download object. Please try again.", {
       status: 502,
     });

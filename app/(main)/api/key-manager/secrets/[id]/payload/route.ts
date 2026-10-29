@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 
+import { createLogger } from "@/lib/logging";
 import { guardMutationContext } from "@/lib/mutation-context";
 import { mutationErrorForStatus } from "@/lib/mutations";
 import { BARBICAN_PAYLOAD_LIMIT_BYTES } from "@/lib/openstack/barbican-input";
@@ -15,8 +16,11 @@ import {
 import { parseBarbicanSecret } from "@/lib/openstack/barbican-schema";
 import { serviceUrl } from "@/lib/openstack/request";
 import { isSameOriginRequest } from "@/lib/request-origin";
+import { sunriseRequestIdFromHeaders } from "@/lib/request-correlation";
 import { getSession } from "@/lib/session";
 import { unavailableServiceRouteResponse } from "@/lib/service-route-guard";
+
+const logger = createLogger("barbican.payload");
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -27,18 +31,24 @@ function normalizedFilename(value: string) {
     .toWellFormed()
     .replace(/[\\/\r\n"\x00-\x1f]/g, "-")
     .trim();
-  return Array.from(normalized || "barbican-secret").slice(0, 120).join("");
+  return Array.from(normalized || "barbican-secret")
+    .slice(0, 120)
+    .join("");
 }
 
 function encodeRfc5987(value: string) {
   return encodeURIComponent(value)
-    .replace(/['()]/g, (character) =>
-      `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+    .replace(
+      /['()]/g,
+      (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
     )
     .replace(/\*/g, "%2A");
 }
 
-function contentDisposition(disposition: "attachment" | "inline", value: string) {
+function contentDisposition(
+  disposition: "attachment" | "inline",
+  value: string,
+) {
   const filename = normalizedFilename(value);
   const fallback = Array.from(filename, (character) =>
     /^[\x20-\x7e]$/.test(character) ? character : "_",
@@ -367,11 +377,10 @@ export async function PUT(request: Request, { params }: RouteContext) {
       requestId: requestId(response),
     });
   } catch (error) {
-    console.error("[barbican/payload] payload upload failed", {
+    logger.error("upload-failed", {
       error,
-      projectId: scope.projectId,
       regionId: scope.regionId,
-      secretId: id,
+      requestId: sunriseRequestIdFromHeaders(request.headers),
     });
     return Response.json(
       {

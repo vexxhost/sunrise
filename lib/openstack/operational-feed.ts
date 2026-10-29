@@ -1,6 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { createLogger } from "@/lib/logging";
 import {
   getServiceCatalog,
   resolveServiceEndpoint,
@@ -24,6 +25,9 @@ import {
   isServiceEnabled,
   type OpenStackServiceId,
 } from "@/lib/service-policy";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
+
+const logger = createLogger("openstack.operations");
 
 const RESOURCE_LIMIT = 20;
 const CINDER_MESSAGE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -482,9 +486,11 @@ async function loadSource(
           signals: [],
         };
       }
-      console.error(
-        `[operations/${definition.id}] request failed: ${error.status} ${error.statusText}`,
-      );
+      logger.warn("request-failed", {
+        requestId: await currentSunriseRequestId(),
+        source: definition.id,
+        status: error.status,
+      });
       return {
         source: unavailableSource(
           definition,
@@ -497,8 +503,10 @@ async function loadSource(
       };
     }
     if (error instanceof OpenStackConnectionError) {
-      console.error(`[operations/${definition.id}] request failed`, {
+      logger.error("unreachable", {
         error: error.originalError,
+        requestId: await currentSunriseRequestId(),
+        source: definition.id,
       });
       return {
         source: unavailableSource(
@@ -509,7 +517,11 @@ async function loadSource(
         signals: [],
       };
     }
-    console.error(`[operations/${definition.id}] invalid response`, { error });
+    logger.error("invalid-response", {
+      error,
+      requestId: await currentSunriseRequestId(),
+      source: definition.id,
+    });
     return {
       source: unavailableSource(
         definition,

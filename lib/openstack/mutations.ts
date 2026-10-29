@@ -1,6 +1,7 @@
 import "server-only";
 
 import { revalidatePath } from "next/cache";
+import { createLogger } from "@/lib/logging";
 import { guardMutationContext } from "@/lib/mutation-context";
 import {
   mutationErrorForStatus,
@@ -14,10 +15,14 @@ import {
   resolveServiceEndpoint,
 } from "@/lib/openstack/catalog";
 import { serviceUrl } from "@/lib/openstack/request";
+import { openstackRequestId } from "@/lib/openstack/request-id";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
 import {
   removeSavedResourcePreferences,
   type SavedResourceTarget,
 } from "@/lib/resource-preference-store";
+
+const logger = createLogger("openstack.mutation");
 
 type OpenStackMutationOptions<T> = {
   actionLabel: string;
@@ -36,15 +41,6 @@ type OpenStackMutationOptions<T> = {
   endpointOverride?: string;
   requireRegion?: boolean;
 };
-
-function responseRequestId(response: Response) {
-  return (
-    response.headers.get("x-openstack-request-id") ??
-    response.headers.get("x-compute-request-id") ??
-    response.headers.get("x-trans-id") ??
-    undefined
-  );
-}
 
 async function responsePayload(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -100,6 +96,7 @@ export async function executeOpenStackMutation<T = null>({
   endpointOverride,
   requireRegion = true,
 }: OpenStackMutationOptions<T>): Promise<MutationResult<T>> {
+  const requestId = await currentSunriseRequestId();
   const guarded = await guardMutationContext(scope, { requireRegion });
   if (!guarded.ok) return guarded.result;
 
@@ -119,12 +116,13 @@ export async function executeOpenStackMutation<T = null>({
       );
     }
 
-    endpoint = resolveServiceEndpoint(
-      catalog,
-      activeScope.regionId!,
-      serviceType,
-      serviceName,
-    ) ?? undefined;
+    endpoint =
+      resolveServiceEndpoint(
+        catalog,
+        activeScope.regionId!,
+        serviceType,
+        serviceName,
+      ) ?? undefined;
   }
 
   if (!endpoint) {
@@ -157,12 +155,13 @@ export async function executeOpenStackMutation<T = null>({
       cache: "no-store",
     });
   } catch (error) {
-    console.error("[mutation] OpenStack service unreachable", {
-      actionLabel,
+    logger.error("unreachable", {
       error,
-      projectId: activeScope.projectId,
+      method,
       regionId: activeScope.regionId,
+      requestId,
       serviceName,
+      serviceType,
     });
     return mutationFailure(
       {
@@ -174,28 +173,29 @@ export async function executeOpenStackMutation<T = null>({
     );
   }
 
-  const requestId = responseRequestId(response);
+  const upstreamRequestId = openstackRequestId(response);
   const payload = await responsePayload(response);
 
   if (!response.ok) {
     const error = mutationErrorForStatus(
       response.status,
       actionLabel,
-      requestId,
+      upstreamRequestId,
     );
     if ([400, 409, 422].includes(response.status)) {
       error.message = validationMessage(payload) ?? error.message;
     }
-    console.error("[mutation] OpenStack action rejected", {
-      actionLabel,
+    const fields = {
       method,
-      path,
-      projectId: activeScope.projectId,
       regionId: activeScope.regionId,
       requestId,
       serviceName,
+      serviceType,
       status: response.status,
-    });
+      upstreamRequestId,
+    };
+    if (response.status >= 500) logger.error("rejected", fields);
+    else logger.warn("rejected", fields);
     return mutationFailure(error, activeScope);
   }
 
@@ -203,20 +203,21 @@ export async function executeOpenStackMutation<T = null>({
   try {
     data = transform ? transform(payload) : (payload as T);
   } catch (error) {
-    console.error("[mutation] invalid OpenStack response", {
-      actionLabel,
+    logger.error("invalid-response", {
       error,
-      projectId: activeScope.projectId,
+      method,
       regionId: activeScope.regionId,
       requestId,
       serviceName,
+      serviceType,
+      upstreamRequestId,
     });
     return mutationFailure(
       {
         code: "invalid-response",
         message:
           "The action completed, but the service returned an unexpected response. Refresh before continuing.",
-        requestId,
+        requestId: upstreamRequestId,
         retryable: true,
       },
       activeScope,
@@ -234,9 +235,10 @@ export async function executeOpenStackMutation<T = null>({
         regionId: activeScope.regionId,
       });
     } catch (error) {
-      console.warn("[mutation] saved resource cleanup failed", {
+      logger.warn("preference-cleanup-failed", {
         error,
-        resource: removedResource,
+        requestId,
+        resourceKind: removedResource.kind,
       });
     }
   }
@@ -244,7 +246,7 @@ export async function executeOpenStackMutation<T = null>({
   return mutationSuccess({
     data,
     message: successMessage,
-    requestId,
+    requestId: upstreamRequestId,
     scope: activeScope,
   });
 }

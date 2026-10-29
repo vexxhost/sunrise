@@ -35,6 +35,8 @@ describe("validateRuntimeConfiguration", () => {
       deploymentId: "0123456789abcdef",
       federationProviderIds: ["demo"],
       identityApiUrl: "http://keystone-api.openstack.svc:5000/v3",
+      logFormat: "json",
+      logLevel: "info",
       objectStorageBackends: ["s3", "swift"],
       publicIdentityApiUrl: "https://identity.example.test/v3",
       redisTransport: "tls",
@@ -173,6 +175,35 @@ describe("validateRuntimeConfiguration", () => {
         SUNRISE_COLOR_PALETTE: "unknown",
       }),
     ).toThrow("SUNRISE_COLOR_PALETTE must be one of: sunrise, vexxhost");
+  });
+
+  it("validates structured logging settings", () => {
+    const configuration = validateRuntimeConfiguration({
+      ...validEnvironment,
+      SUNRISE_LOG_FORMAT: "pretty",
+      SUNRISE_LOG_LEVEL: "debug",
+    });
+
+    expect(configuration).toMatchObject({
+      logFormat: "pretty",
+      logLevel: "debug",
+    });
+  });
+
+  it("rejects unsupported structured logging settings", () => {
+    expect(() =>
+      validateRuntimeConfiguration({
+        ...validEnvironment,
+        SUNRISE_LOG_FORMAT: "xml",
+      }),
+    ).toThrow("SUNRISE_LOG_FORMAT must be one of: json, pretty");
+
+    expect(() =>
+      validateRuntimeConfiguration({
+        ...validEnvironment,
+        SUNRISE_LOG_LEVEL: "verbose",
+      }),
+    ).toThrow("SUNRISE_LOG_LEVEL must be one of: debug, info, warn, error");
   });
 
   it("rejects malformed identity API URLs during startup", () => {

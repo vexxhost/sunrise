@@ -40,7 +40,10 @@ describe("S3 download route errors", () => {
     expect(response.status).toBe(502);
     expect(body).toBe("Unable to download object. Please try again.");
     expect(body).not.toContain("sensitive");
-    expect(log).toHaveBeenCalledWith("[s3/download] FAILED:", error);
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("operation=download-object"),
+    );
+    expect(log.mock.calls[0]?.[0]).not.toContain("sensitive");
   });
 
   it("does not expose selected download errors to the client", async () => {
@@ -66,6 +69,9 @@ describe("S3 download route errors", () => {
     expect(response.status).toBe(502);
     expect(body).toBe("Unable to download selected objects. Please try again.");
     expect(body).not.toContain("sensitive");
-    expect(log).toHaveBeenCalledWith("[s3/download-selected] FAILED:", error);
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("operation=download-selection"),
+    );
+    expect(log.mock.calls[0]?.[0]).not.toContain("sensitive");
   });
 });

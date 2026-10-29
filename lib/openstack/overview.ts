@@ -1,6 +1,7 @@
 import "server-only";
 
 import { redirect } from "next/navigation";
+import { createLogger } from "@/lib/logging";
 import {
   getServiceCatalog,
   resolveServiceEndpoint,
@@ -31,6 +32,9 @@ import {
   isServiceEnabled,
   type OpenStackServiceId,
 } from "@/lib/service-policy";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
+
+const logger = createLogger("openstack.overview");
 
 export type OverviewServiceId =
   | "compute"
@@ -413,9 +417,10 @@ async function loadService(
           status: "forbidden",
         };
       }
-      console.error(`[overview/${definition.id}] quota request failed`, {
+      logger.warn("quota-request-failed", {
+        requestId: await currentSunriseRequestId(),
+        source: definition.id,
         status: error.status,
-        statusText: error.statusText,
       });
       return {
         ...unavailableService(definition, "Quota details are unavailable"),
@@ -423,16 +428,20 @@ async function loadService(
       };
     }
     if (error instanceof OpenStackConnectionError) {
-      console.error(`[overview/${definition.id}] request failed`, {
+      logger.error("unreachable", {
         error: error.originalError,
+        requestId: await currentSunriseRequestId(),
+        source: definition.id,
       });
       return {
         ...unavailableService(definition, "Temporarily unreachable"),
         status: "error",
       };
     }
-    console.error(`[overview/${definition.id}] invalid quota response`, {
+    logger.error("invalid-quota-response", {
       error,
+      requestId: await currentSunriseRequestId(),
+      source: definition.id,
     });
     return {
       ...unavailableService(definition, "Quota response was not recognized"),

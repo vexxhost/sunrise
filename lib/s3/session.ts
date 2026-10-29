@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { IronSession } from "iron-session";
+import { createLogger } from "@/lib/logging";
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
 import {
   captureOidcSessionAuthority,
@@ -18,6 +19,8 @@ import {
 } from "@/lib/session";
 import { getSessionLifetimeState } from "@/lib/session-lifetime";
 import { assumeRoleWithIdToken, tryExtractRgwProjectRoles } from "@/lib/s3/sts";
+
+const logger = createLogger("s3.session");
 
 export class S3ProjectRoleUnavailableError extends Error {
   constructor(projectId: string) {
@@ -46,7 +49,6 @@ function sameProjectRoles(
 async function refreshRgwIdentity(
   session: IronSession<SunriseSession>,
   identityProvider: string,
-  projectId: string,
 ): Promise<RefreshedRgwIdentity | undefined> {
   if (!session.keycloakRefreshToken) return undefined;
 
@@ -60,10 +62,7 @@ async function refreshRgwIdentity(
     };
   } catch (error) {
     if (isOidcSessionSupersededError(error)) throw error;
-    console.warn("[s3/session] failed to renew RGW access from Sunrise OIDC", {
-      projectId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn("oidc-refresh-failed", { error, identityProvider });
     return undefined;
   }
 }
@@ -80,11 +79,7 @@ export async function refreshActiveProjectS3Credentials(
     session.oidcIdentity?.identityProvider;
   if (!identityProvider) return undefined;
 
-  const refreshed = await refreshRgwIdentity(
-    session,
-    identityProvider,
-    projectId,
-  );
+  const refreshed = await refreshRgwIdentity(session, identityProvider);
   if (!refreshed) return undefined;
   if (normalizeProjectId(session.projectId) !== projectId) {
     throw new OidcSessionSupersededError();

@@ -10,6 +10,12 @@ import { getServicePolicy } from "@/lib/deployment-config";
 import { getIdentityProviderOptions } from "@/lib/auth-providers";
 import { getFederationProviderConfigs } from "@/lib/federation/config";
 import {
+  parseLogFormat,
+  parseLogLevel,
+  type LogFormat,
+  type LogLevel,
+} from "@/lib/logging";
+import {
   identityApiUrl,
   publicIdentityApiUrl,
 } from "@/lib/openstack/identity-api";
@@ -38,6 +44,8 @@ export type RuntimeConfiguration = {
   deploymentId?: string;
   federationProviderIds: string[];
   identityApiUrl: string;
+  logFormat: LogFormat;
+  logLevel: LogLevel;
   objectStorageBackends: ObjectStorageBackend[];
   publicIdentityApiUrl: string;
   redisTransport?: "plain" | "tls";
@@ -152,6 +160,11 @@ export function validateRuntimeConfiguration(
   const readFile = dependencies.readFile ?? readFileSync;
   const warnings: string[] = [];
   const production = environment.NODE_ENV === "production";
+  const logFormat = parseLogFormat(
+    environment.SUNRISE_LOG_FORMAT,
+    environment.NODE_ENV,
+  );
+  const logLevel = parseLogLevel(environment.SUNRISE_LOG_LEVEL);
   const dashboardUrl = httpUrl(environment, "SUNRISE_DASHBOARD_URL", {
     originOnly: true,
   });
@@ -248,6 +261,8 @@ export function validateRuntimeConfiguration(
     ...(deploymentId ? { deploymentId } : {}),
     federationProviderIds: [...providers.keys()],
     identityApiUrl: serverIdentityApiUrl,
+    logFormat,
+    logLevel,
     objectStorageBackends: policy.objectStorageBackends,
     publicIdentityApiUrl: browserIdentityApiUrl,
     ...(redisTransport ? { redisTransport } : {}),

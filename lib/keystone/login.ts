@@ -1,11 +1,15 @@
 import 'server-only';
 import type { IronSession } from 'iron-session';
+import { createLogger } from '@/lib/logging';
 import type { OpenStackCatalogService } from '@/lib/openstack/catalog';
 import { normalizeTokenRoles } from '@/lib/openstack/application-credential-schema';
 import type { SunriseSession } from '@/lib/session';
 import { readPrefs, writePrefs } from '@/lib/prefs';
 import { preferenceIdentityFromSession } from '@/lib/preference-identity';
+import { currentSunriseRequestId } from '@/lib/request-correlation.server';
 import type { KeystoneRole, Project, Region } from '@/types/openstack/keystone';
+
+const logger = createLogger('keystone.login');
 
 function keystoneApi() {
   return process.env.KEYSTONE_API;
@@ -219,7 +223,10 @@ export async function getProjectScopedTokenContext(
   try {
     return await requestProjectScopedToken(unscopedToken, projectId);
   } catch (e) {
-    console.error('Error fetching project-scoped token:', e);
+    logger.error('project-token-request-failed', {
+      error: e,
+      requestId: await currentSunriseRequestId(),
+    });
     return undefined;
   }
 }

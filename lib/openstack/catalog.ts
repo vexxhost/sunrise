@@ -1,4 +1,8 @@
 import { redirect } from 'next/navigation';
+import { createLogger } from '@/lib/logging';
+import { openstackRequestId } from '@/lib/openstack/request-id';
+
+const logger = createLogger('openstack.catalog');
 
 export type OpenStackCatalogEndpoint = {
   interface: string;
@@ -26,7 +30,7 @@ export async function getServiceCatalog(
       cache: 'no-store',
     });
   } catch (error) {
-    console.error('[catalog] failed to fetch service catalog', { error });
+    logger.error('unreachable', { error });
     return null;
   }
 
@@ -34,10 +38,9 @@ export async function getServiceCatalog(
     if (catalogResponse.status === 401) {
       redirect('/auth/refresh');
     }
-    console.error('[catalog] service catalog request failed', {
-      requestId:
-        catalogResponse.headers.get('x-openstack-request-id') ?? undefined,
+    logger.error('request-failed', {
       status: catalogResponse.status,
+      upstreamRequestId: openstackRequestId(catalogResponse),
     });
     return null;
   }
@@ -48,7 +51,7 @@ export async function getServiceCatalog(
     };
     return catalogData.catalog ?? [];
   } catch (error) {
-    console.error('[catalog] failed to parse service catalog', { error });
+    logger.error('invalid-response', { error });
     return null;
   }
 }
@@ -93,7 +96,7 @@ export async function getServiceEndpoint(
     serviceName
   );
   if (!endpoint) {
-    console.error('[catalog] public service endpoint not found', {
+    logger.warn('endpoint-unavailable', {
       regionId,
       serviceName,
       serviceType,

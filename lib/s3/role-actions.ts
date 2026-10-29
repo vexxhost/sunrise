@@ -21,6 +21,7 @@ import {
   validateIamPermissionPolicyJson,
   validateIamTrustPolicyJson,
 } from "@/lib/json-document";
+import { createLogger } from "@/lib/logging";
 import { guardMutationContext } from "@/lib/mutation-context";
 import {
   mutationErrorForStatus,
@@ -34,6 +35,7 @@ import {
 import { S3AuthRequiredError } from "@/lib/s3/client";
 import { roleNameFromArn } from "@/lib/s3/arn";
 import { getActiveRoleIamContext } from "@/lib/s3/iam";
+import { s3FailureLogFields } from "@/lib/s3/logging";
 import {
   listRoleTagsWithCephCompatibility,
   untagRoleWithCephCompatibility,
@@ -47,6 +49,8 @@ import {
   validateIamRoleTags,
   validateIamSessionDuration,
 } from "@/lib/s3/role-policy";
+
+const logger = createLogger("s3.iam");
 
 export type IamRoleSummary = {
   name: string;
@@ -195,12 +199,15 @@ function describeRoleDetailError(
     : describeAwsError(error);
 }
 
-function roleDetailWarning(
+async function roleDetailWarning(
   operation: string,
   accessDeniedMessage: string,
   error: unknown,
-): string {
-  console.warn(`[s3/getRoleDetails] ${operation}:`, describeAwsError(error));
+): Promise<string> {
+  logger.warn("role-detail-unavailable", {
+    operation,
+    ...(await s3FailureLogFields(error)),
+  });
   return isAccessDeniedError(error)
     ? accessDeniedMessage
     : `${operation}: ${describeAwsError(error)}`;
@@ -289,7 +296,10 @@ async function listRolesWithCredentialRefresh(
       };
     } catch (error) {
       if (isAccessDeniedError(error)) {
-        console.warn("[s3/listRoles] ACCESS DENIED:", describeAwsError(error));
+        logger.warn("access-denied", {
+          operation: "list-roles",
+          ...(await s3FailureLogFields(error)),
+        });
         return {
           ok: true,
           roles: [],
@@ -308,7 +318,10 @@ async function listRolesWithCredentialRefresh(
     }
 
     const detail = describeAwsError(error);
-    console.error("[s3/listRoles] FAILED:", detail, error);
+    logger.error("request-failed", {
+      operation: "list-roles",
+      ...(await s3FailureLogFields(error)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }
@@ -375,7 +388,7 @@ async function readRoleDetails(
         );
       } catch (error) {
         warnings.push(
-          roleDetailWarning(
+          await roleDetailWarning(
             "Unable to read assume role policy",
             "You do not have permission to view the assume role policy.",
             error,
@@ -389,7 +402,7 @@ async function readRoleDetails(
       } catch (error) {
         if (!tagsAvailable) {
           warnings.push(
-            roleDetailWarning(
+            await roleDetailWarning(
               "Unable to list role tags",
               "You do not have permission to view role tags.",
               error,
@@ -425,10 +438,10 @@ async function readRoleDetails(
               document: formatPolicyDocument(response.PolicyDocument),
             });
           } catch (error) {
-            console.warn(
-              `[s3/getRoleDetails] Unable to read inline role policy ${policyName}:`,
-              describeAwsError(error),
-            );
+            logger.warn("role-detail-unavailable", {
+              operation: "read-inline-policy",
+              ...(await s3FailureLogFields(error)),
+            });
             inlinePolicies.push({
               name: policyName,
               document: null,
@@ -441,7 +454,7 @@ async function readRoleDetails(
         }
       } catch (error) {
         warnings.push(
-          roleDetailWarning(
+          await roleDetailWarning(
             "Unable to list inline role policies",
             "You do not have permission to view inline role policies.",
             error,
@@ -471,7 +484,7 @@ async function readRoleDetails(
         attachedPoliciesAvailable = true;
       } catch (error) {
         warnings.push(
-          roleDetailWarning(
+          await roleDetailWarning(
             "Unable to list attached role policies",
             "You do not have permission to view attached role policies.",
             error,
@@ -512,7 +525,10 @@ async function readRoleDetails(
     }
 
     const detail = describeAwsError(error);
-    console.error("[s3/getRoleDetails] FAILED:", detail, error);
+    logger.error("request-failed", {
+      operation: "get-role-details",
+      ...(await s3FailureLogFields(error)),
+    });
     return { ok: false, needsAuth: false, error: detail };
   }
 }

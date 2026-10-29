@@ -148,9 +148,9 @@ describe('S3 bucket lifecycle actions', () => {
 
     expect(result).toMatchObject({ ok: true, status: 'success' });
     expect(warn).toHaveBeenCalledWith(
-      '[s3/bucket] saved resource cleanup failed',
-      expect.objectContaining({ bucket: 'project-artifacts' }),
+      expect.stringContaining('preference-cleanup-failed'),
     );
+    expect(warn.mock.calls[0]?.[0]).not.toContain('project-artifacts');
   });
 
   it('rejects invalid policy JSON before contacting RGW', async () => {

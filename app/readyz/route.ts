@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { createLogger } from "@/lib/logging";
+import { currentSunriseRequestId } from "@/lib/request-correlation.server";
 import {
   getRedisKeyPrefix,
   getSessionBackend,
   probeRedisReadiness,
 } from "@/lib/redis";
+
+const logger = createLogger("readiness");
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +26,11 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    console.error(
-      "[readyz] dependency check failed:",
-      error instanceof Error ? error.message : error,
-    );
+    logger.error("dependency-check-failed", {
+      dependency: "redis",
+      error,
+      requestId: await currentSunriseRequestId(),
+    });
     return NextResponse.json(
       { status: "not-ready" },
       { status: 503, headers: { "Cache-Control": "no-store" } },

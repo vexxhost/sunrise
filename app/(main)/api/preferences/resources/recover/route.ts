@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createLogger } from "@/lib/logging";
 import {
   isRecoveryResourceKind,
   recoveryDestination,
@@ -9,6 +10,9 @@ import { verifyResourceRecoveryProof } from "@/lib/resource-recovery-proof";
 import { removeSavedResourcePreferences } from "@/lib/resource-preference-store";
 import { getSession } from "@/lib/session";
 import { getRequestRedirectOrigin } from "@/lib/request-origin";
+import { sunriseRequestIdFromHeaders } from "@/lib/request-correlation";
+
+const logger = createLogger("preferences");
 
 // S3 object keys can contain up to 1,024 characters. Other resource IDs are
 // much shorter, but using one bound keeps this internal endpoint predictable.
@@ -70,10 +74,10 @@ export async function GET(request: NextRequest) {
           regionId: session.regionId,
         });
       } catch (error) {
-        console.warn("[preferences] missing resource cleanup failed", {
+        logger.warn("missing-resource-cleanup-failed", {
           error,
-          id,
           kind: preferenceKind,
+          requestId: sunriseRequestIdFromHeaders(request.headers),
         });
       }
     }
