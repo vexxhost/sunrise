@@ -186,7 +186,38 @@ export async function executeOpenStackMutation<T = null>({
   }
 
   const upstreamRequestId = openstackRequestId(response);
-  const payload = await responsePayload(response);
+  let payload: unknown;
+  try {
+    payload = await responsePayload(response);
+  } catch (error) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: "body_error",
+      serviceType,
+      status: response.status,
+    });
+    logger.error("response-body-failed", {
+      error,
+      method,
+      regionId: activeScope.regionId,
+      requestId,
+      serviceName,
+      serviceType,
+      status: response.status,
+      upstreamRequestId,
+    });
+    return mutationFailure(
+      {
+        code: "invalid-response",
+        message:
+          "The service response could not be read. Refresh before continuing.",
+        requestId: upstreamRequestId,
+        retryable: true,
+      },
+      activeScope,
+    );
+  }
 
   if (!response.ok) {
     observeOpenStackRequest({

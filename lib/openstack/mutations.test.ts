@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getServiceCatalog: vi.fn(),
@@ -22,6 +22,7 @@ vi.mock("@/lib/resource-preference-store", () => ({
 }));
 
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
+import { metricsRegistry, resetMetricsForTests } from "@/lib/metrics";
 
 const scope = { projectId: "project-a", regionId: "RegionOne" };
 
@@ -36,6 +37,11 @@ describe("OpenStack mutation executor", () => {
       ok: true,
       context: { projectToken: "token", scope },
     });
+  });
+
+  afterEach(() => {
+    resetMetricsForTests();
+    vi.unstubAllEnvs();
   });
 
   it("returns permission failures without exposing a service response body", async () => {
@@ -139,6 +145,42 @@ describe("OpenStack mutation executor", () => {
     expect(mocks.removeSavedResourcePreferences).toHaveBeenCalledWith(
       [{ kind: "instance", id: "server-a" }],
       scope,
+    );
+  });
+
+  it("records response body stream failures", async () => {
+    vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
+    resetMetricsForTests();
+    const response = new Response(null, {
+      status: 202,
+      headers: { "x-openstack-request-id": "request-body-failed" },
+    });
+    vi.spyOn(response, "text").mockRejectedValue(
+      new TypeError("response stream terminated"),
+    );
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "launch an instance",
+      body: { server: { name: "api" } },
+      method: "POST",
+      path: "/servers",
+      scope,
+      serviceName: "nova",
+      serviceType: "compute",
+      successMessage: "Instance api is being created.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "invalid-response",
+        requestId: "request-body-failed",
+        retryable: true,
+      },
+    });
+    expect(await metricsRegistry()!.metrics()).toContain(
+      'sunrise_openstack_requests_total{method="POST",outcome="body_error",service_type="compute",status_code="202"} 1',
     );
   });
 
