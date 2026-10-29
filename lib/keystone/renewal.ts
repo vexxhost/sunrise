@@ -2,6 +2,7 @@ import "server-only";
 
 import type { IronSession } from "iron-session";
 import { createLogger } from "@/lib/logging";
+import { elapsedSeconds, observeAuthRefresh } from "@/lib/metrics";
 import {
   federateOidcWithKeystone,
   finalizeKeystoneSession,
@@ -22,6 +23,35 @@ export type KeystoneRenewalResult =
   "ready" | "no-projects" | "no-role" | "reauthenticate" | "expired";
 
 export async function refreshKeystoneSession(
+  session: IronSession<SunriseSession>,
+): Promise<KeystoneRenewalResult> {
+  const startedAt = performance.now();
+  try {
+    const result = await refreshKeystoneSessionInternal(session);
+    observeAuthRefresh({
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome:
+        result === "ready"
+          ? "success"
+          : result === "no-projects"
+            ? "no_projects"
+            : result === "no-role"
+              ? "no_role"
+              : result,
+      target: "keystone",
+    });
+    return result;
+  } catch (error) {
+    observeAuthRefresh({
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome: "error",
+      target: "keystone",
+    });
+    throw error;
+  }
+}
+
+async function refreshKeystoneSessionInternal(
   session: IronSession<SunriseSession>,
 ): Promise<KeystoneRenewalResult> {
   if (getSessionLifetimeState(session).status !== "active") return "expired";

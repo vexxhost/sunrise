@@ -7,6 +7,7 @@ import {
   ensureActiveProjectS3Credentials,
   S3ProjectRoleUnavailableError,
 } from '@/lib/s3/session';
+import { instrumentRgwClient } from '@/lib/s3/sdk-metrics';
 
 export class S3AuthRequiredError extends Error {
   constructor() {
@@ -41,7 +42,7 @@ export async function getS3Client({
 
   const endpoint = await getS3Endpoint();
 
-  return new S3Client({
+  return instrumentRgwClient(new S3Client({
     endpoint,
     region: S3_REGION,
     forcePathStyle: true,
@@ -58,5 +59,5 @@ export async function getS3Client({
         rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0',
       }),
     }),
-  });
+  }), 's3');
 }

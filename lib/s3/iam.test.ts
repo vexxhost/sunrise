@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => ({
   getS3Endpoint: vi.fn(),
   getSession: vi.fn(),
   iamClientConstructor: vi.fn(),
-  iamClient: { destroy: vi.fn() },
+  iamClient: {
+    destroy: vi.fn(),
+    middlewareStack: { addRelativeTo: vi.fn() },
+  },
 }));
 
 vi.mock('server-only', () => ({}));

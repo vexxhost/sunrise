@@ -7,10 +7,11 @@ import { Agent } from "https";
 import type { S3StsCredentials } from "@/lib/session";
 import { normalizeProjectId } from "@/lib/session";
 import { getS3Endpoint, S3_REGION } from "@/lib/s3/endpoint";
+import { instrumentRgwClient } from "@/lib/s3/sdk-metrics";
 
 async function getStsClient(endpoint?: string) {
   const resolvedEndpoint = endpoint ?? (await getS3Endpoint());
-  return new STSClient({
+  return instrumentRgwClient(new STSClient({
     endpoint: resolvedEndpoint,
     region: S3_REGION,
     requestHandler: new NodeHttpHandler({
@@ -18,7 +19,7 @@ async function getStsClient(endpoint?: string) {
         rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== "0",
       }),
     }),
-  });
+  }), "sts");
 }
 
 function isUnknownStsError(error: unknown) {

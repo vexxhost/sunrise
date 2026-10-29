@@ -20,6 +20,7 @@ configMap:
     SUNRISE_DASHBOARD_URL: https://sunrise.example.com
     SUNRISE_LOG_FORMAT: json
     SUNRISE_LOG_LEVEL: info
+    SUNRISE_METRICS_ENABLED: "false"
     SUNRISE_SESSION_BACKEND: redis
     SUNRISE_REDIS_URL: rediss://redis.example.com:6379
 ```
@@ -55,6 +56,11 @@ env:
       configMapKeyRef:
         name: openstack-endpoints
         key: keystone-internal
+  - name: SUNRISE_METRICS_BEARER_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: sunrise-metrics
+        key: bearer-token
 ```
 
 For development or simple installations, the chart can create an Opaque
@@ -72,6 +78,35 @@ secret:
 Set `configMap.name` or `secret.name` to control names of chart-managed
 resources. Set `create: false` when another system owns them, then reference
 those resources through `env` or `envFrom`.
+
+## Metrics
+
+Sunrise exposes Prometheus-compatible process and application metrics at
+`/metrics`. The endpoint is disabled by default. Enable it with
+`SUNRISE_METRICS_ENABLED=true` and provide a random bearer token of at least 32
+characters through `SUNRISE_METRICS_BEARER_TOKEN`. Keep the token in a Secret;
+do not place it in `configMap.data`.
+
+Scrape the cluster-internal Sunrise Service on port `http` and send the token as
+an `Authorization: Bearer` header. The same route may still be reachable through
+a catch-all public ingress, but it returns `401` without the token. Monitoring
+integration such as a `ServiceMonitor` remains deployment-owned so the chart
+does not require a particular Prometheus Operator installation or secret
+layout.
+
+Application metrics cover session loading, authentication refreshes, Redis
+commands and readiness, RGW S3/IAM/STS calls through server-side AWS SDK
+clients, and OpenStack calls through Sunrise's standard request and mutation
+layer. Process and Node.js runtime metrics use the `sunrise_` prefix. Resource
+IDs, project IDs, usernames, request IDs, URLs, bucket names, object keys, and
+role ARNs are kept out of metric labels to preserve bounded cardinality and
+avoid exposing tenant data. Browser-direct transfers and specialized streaming
+routes remain visible through structured logs rather than server metrics.
+
+Application metrics use bounded labels only. Request IDs, upstream request IDs,
+project and resource identifiers, usernames, URLs, and other high-cardinality
+or sensitive values remain in structured logs and are not exported as metric
+labels.
 
 ## External Secrets and rollouts
 

@@ -72,6 +72,11 @@ chmod 0600 "$runtime_env"
 
 printf 'SUNRISE_SESSION_SECRET=%s\n' "$SUNRISE_SESSION_SECRET" >>"$runtime_env"
 
+if [[ -n "${SUNRISE_METRICS_BEARER_TOKEN:-}" ]]; then
+  printf 'SUNRISE_METRICS_BEARER_TOKEN=%s\n' \
+    "$SUNRISE_METRICS_BEARER_TOKEN" >>"$runtime_env"
+fi
+
 while IFS= read -r name; do
   [[ -n "$name" ]] || continue
   printf '%s=%s\n' "$name" "${!name}" >>"$runtime_env"

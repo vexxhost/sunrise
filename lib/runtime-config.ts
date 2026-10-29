@@ -15,6 +15,7 @@ import {
   type LogFormat,
   type LogLevel,
 } from "@/lib/logging";
+import { validateMetricsConfiguration } from "@/lib/metrics-config";
 import {
   identityApiUrl,
   publicIdentityApiUrl,
@@ -46,6 +47,7 @@ export type RuntimeConfiguration = {
   identityApiUrl: string;
   logFormat: LogFormat;
   logLevel: LogLevel;
+  metricsEnabled: boolean;
   objectStorageBackends: ObjectStorageBackend[];
   publicIdentityApiUrl: string;
   redisTransport?: "plain" | "tls";
@@ -165,6 +167,7 @@ export function validateRuntimeConfiguration(
     environment.NODE_ENV,
   );
   const logLevel = parseLogLevel(environment.SUNRISE_LOG_LEVEL);
+  const metrics = validateMetricsConfiguration(environment);
   const dashboardUrl = httpUrl(environment, "SUNRISE_DASHBOARD_URL", {
     originOnly: true,
   });
@@ -263,6 +266,7 @@ export function validateRuntimeConfiguration(
     identityApiUrl: serverIdentityApiUrl,
     logFormat,
     logLevel,
+    metricsEnabled: metrics.enabled,
     objectStorageBackends: policy.objectStorageBackends,
     publicIdentityApiUrl: browserIdentityApiUrl,
     ...(redisTransport ? { redisTransport } : {}),

@@ -66,3 +66,24 @@ its provider-specific settings with KEYSTONE_FEDERATION_IDENTITY_PROVIDERS.
 EOF
   exit 1
 fi
+
+metrics_enabled="$(
+  sed -n -E \
+    's/^[[:space:]]*SUNRISE_METRICS_ENABLED:[[:space:]]*(.*)$/\1/p' \
+    "$values_file" | head -n 1
+)"
+metrics_enabled="${metrics_enabled%%#*}"
+metrics_enabled="${metrics_enabled#\"}"
+metrics_enabled="${metrics_enabled%\"}"
+metrics_enabled="${metrics_enabled#\'}"
+metrics_enabled="${metrics_enabled%\'}"
+metrics_enabled="$(
+  printf '%s' "$metrics_enabled" | tr '[:upper:]' '[:lower:]' | xargs
+)"
+metrics_token="${SUNRISE_METRICS_BEARER_TOKEN:-}"
+
+if [[ "$metrics_enabled" == "true" ]] && \
+  [[ ${#metrics_token} -lt 32 ]]; then
+  echo "SUNRISE_METRICS_BEARER_TOKEN must contain at least 32 characters when metrics are enabled" >&2
+  exit 1
+fi

@@ -37,6 +37,7 @@ describe("validateRuntimeConfiguration", () => {
       identityApiUrl: "http://keystone-api.openstack.svc:5000/v3",
       logFormat: "json",
       logLevel: "info",
+      metricsEnabled: false,
       objectStorageBackends: ["s3", "swift"],
       publicIdentityApiUrl: "https://identity.example.test/v3",
       redisTransport: "tls",
@@ -204,6 +205,32 @@ describe("validateRuntimeConfiguration", () => {
         SUNRISE_LOG_LEVEL: "verbose",
       }),
     ).toThrow("SUNRISE_LOG_LEVEL must be one of: debug, info, warn, error");
+  });
+
+  it("validates the protected metrics endpoint configuration", () => {
+    expect(
+      validateRuntimeConfiguration({
+        ...validEnvironment,
+        SUNRISE_METRICS_ENABLED: "true",
+        SUNRISE_METRICS_BEARER_TOKEN:
+          "metrics-token-with-at-least-32-characters",
+      }),
+    ).toMatchObject({ metricsEnabled: true });
+
+    expect(() =>
+      validateRuntimeConfiguration({
+        ...validEnvironment,
+        SUNRISE_METRICS_ENABLED: "true",
+      }),
+    ).toThrow(
+      "SUNRISE_METRICS_BEARER_TOKEN is required when metrics are enabled",
+    );
+    expect(() =>
+      validateRuntimeConfiguration({
+        ...validEnvironment,
+        SUNRISE_METRICS_ENABLED: "sometimes",
+      }),
+    ).toThrow("SUNRISE_METRICS_ENABLED must be true or false");
   });
 
   it("rejects malformed identity API URLs during startup", () => {

@@ -14,6 +14,7 @@ export async function register() {
     deploymentId: configuration.deploymentId ?? "unversioned",
     logFormat: configuration.logFormat,
     logLevel: configuration.logLevel,
+    metricsEnabled: configuration.metricsEnabled,
     providerCount: configuration.federationProviderIds.length,
     sessionBackend: configuration.sessionBackend,
   });

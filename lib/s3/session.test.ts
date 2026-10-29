@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getActiveS3Credentials: vi.fn(),
@@ -41,6 +41,7 @@ import {
   ensureActiveProjectS3Credentials,
   S3ProjectRoleUnavailableError,
 } from "@/lib/s3/session";
+import { metricsRegistry, resetMetricsForTests } from "@/lib/metrics";
 import { OidcSessionSupersededError } from "@/lib/oidc/session-authority";
 
 const credentials = {
@@ -103,6 +104,11 @@ describe("Object Storage credential renewal", () => {
     mocks.assumeRoleWithIdToken.mockResolvedValue(credentials);
   });
 
+  afterEach(() => {
+    resetMetricsForTests();
+    vi.unstubAllEnvs();
+  });
+
   it("silently replaces expired STS credentials from the Sunrise OIDC session", async () => {
     const current = session();
 
@@ -130,6 +136,8 @@ describe("Object Storage credential renewal", () => {
   });
 
   it("does not turn a missing project role into another SSO loop", async () => {
+    vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
+    resetMetricsForTests();
     const current = session();
     mocks.tryExtractRgwProjectRoles.mockReturnValue({});
 
@@ -138,6 +146,13 @@ describe("Object Storage credential renewal", () => {
     ).rejects.toBeInstanceOf(S3ProjectRoleUnavailableError);
     expect(current.save).toHaveBeenCalledTimes(2);
     expect(mocks.assumeRoleWithIdToken).not.toHaveBeenCalled();
+    const metrics = await metricsRegistry()!.metrics();
+    expect(metrics).toContain(
+      'sunrise_auth_refreshes_total{outcome="no_role",target="rgw"} 1',
+    );
+    expect(metrics).not.toContain(
+      'sunrise_auth_refreshes_total{outcome="error",target="rgw"}',
+    );
   });
 
   it("persists a rotated refresh token before a later STS failure", async () => {

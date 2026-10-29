@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createClient, type RedisClientType } from "@redis/client";
 import { createLogger } from "@/lib/logging";
+import {
+  elapsedSeconds,
+  observeRedisCommand,
+  observeRedisReadiness,
+} from "@/lib/metrics";
 
 const logger = createLogger("redis");
 
@@ -189,6 +194,7 @@ export async function runIsolatedRedisCommand<T>(
   maximumTimeoutMs?: number,
 ): Promise<T> {
   const client = createRedisConnection("isolated");
+  const startedAt = performance.now();
 
   try {
     await client.connect();
@@ -211,10 +217,23 @@ export async function runIsolatedRedisCommand<T>(
     });
 
     try {
-      return await Promise.race([command(bounded), timeoutPromise]);
+      const result = await Promise.race([command(bounded), timeoutPromise]);
+      observeRedisCommand({
+        connectionKind: "isolated",
+        durationSeconds: elapsedSeconds(startedAt),
+        outcome: "success",
+      });
+      return result;
     } finally {
       if (timeout) clearTimeout(timeout);
     }
+  } catch (error) {
+    observeRedisCommand({
+      connectionKind: "isolated",
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome: "error",
+    });
+    throw error;
   } finally {
     if (client.isOpen) client.destroy();
   }
@@ -232,7 +251,18 @@ export async function runRedisCommand<T>(
     return runIsolatedRedisCommand(command, maximumTimeoutMs);
   }
 
-  const client = await getRedisClient();
+  const startedAt = performance.now();
+  let client: RedisClientType;
+  try {
+    client = await getRedisClient();
+  } catch (error) {
+    observeRedisCommand({
+      connectionKind: "shared",
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome: "error",
+    });
+    throw error;
+  }
   const timeoutMs =
     maximumTimeoutMs === undefined
       ? configuredTimeoutMs
@@ -256,7 +286,20 @@ export async function runRedisCommand<T>(
   });
 
   try {
-    return await Promise.race([command(bounded), timeoutPromise]);
+    const result = await Promise.race([command(bounded), timeoutPromise]);
+    observeRedisCommand({
+      connectionKind: "shared",
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome: "success",
+    });
+    return result;
+  } catch (error) {
+    observeRedisCommand({
+      connectionKind: "shared",
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome: "error",
+    });
+    throw error;
   } finally {
     if (timeout) clearTimeout(timeout);
   }
@@ -287,24 +330,34 @@ export async function getRedisServerTimeMs(maximumTimeoutMs?: number) {
 
 export async function probeRedisReadiness() {
   const startedAt = performance.now();
-  const prefix = getRedisKeyPrefix();
-  const probeId = randomUUID();
-  const value = Date.now().toString();
-  const response = await runRedisCommand((client) =>
-    client.eval(SESSION_READINESS_SCRIPT, {
-      keys: [
-        `${prefix}:session:{${probeId}}`,
-        `${prefix}:session-revoked:{${probeId}}`,
-        `${prefix}:session-rotated:{${probeId}}`,
-        `${prefix}:oidc-refresh-lock:${probeId}`,
-      ],
-      arguments: [value],
-    }),
-  );
-  if (Number(response) !== 1) {
-    throw new Error("Redis readiness capability probe failed");
+  try {
+    const prefix = getRedisKeyPrefix();
+    const probeId = randomUUID();
+    const value = Date.now().toString();
+    const response = await runRedisCommand((client) =>
+      client.eval(SESSION_READINESS_SCRIPT, {
+        keys: [
+          `${prefix}:session:{${probeId}}`,
+          `${prefix}:session-revoked:{${probeId}}`,
+          `${prefix}:session-rotated:{${probeId}}`,
+          `${prefix}:oidc-refresh-lock:${probeId}`,
+        ],
+        arguments: [value],
+      }),
+    );
+    if (Number(response) !== 1) {
+      throw new Error("Redis readiness capability probe failed");
+    }
+    const durationSeconds = elapsedSeconds(startedAt);
+    observeRedisReadiness({ durationSeconds, outcome: "success" });
+    return Math.round(durationSeconds * 100_000) / 100;
+  } catch (error) {
+    observeRedisReadiness({
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome: "error",
+    });
+    throw error;
   }
-  return Math.round((performance.now() - startedAt) * 100) / 100;
 }
 
 export async function closeRedisForTests() {

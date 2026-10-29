@@ -17,6 +17,7 @@ import {
 } from "@/lib/session-lifetime";
 import { hasAuthenticatedSessionData } from "@/lib/session-data";
 import { getSessionBackend } from "@/lib/redis";
+import { elapsedSeconds, observeSessionLoad } from "@/lib/metrics";
 import type { KeystoneRole } from "@/types/openstack";
 
 export const SESSION_COOKIE_NAME = "sunrise";
@@ -238,37 +239,67 @@ export function clearS3Credentials(session: SunriseSession) {
 export async function getSession(
   options: GetSessionOptions = {},
 ): Promise<IronSession<SunriseSession>> {
-  const cookieStore = await cookies();
   const backend = getSessionBackend();
-  const sessionOptionsValue = sessionOptions(SESSION_COOKIE_NAME, true);
-  const session =
-    backend === "redis"
-      ? await getRedisSession(cookieStore, sessionOptionsValue)
-      : await getIronSession<SunriseSession>(cookieStore, sessionOptionsValue);
+  const startedAt = performance.now();
+  try {
+    const cookieStore = await cookies();
+    const sessionOptionsValue = sessionOptions(SESSION_COOKIE_NAME, true);
+    const session =
+      backend === "redis"
+        ? await getRedisSession(cookieStore, sessionOptionsValue)
+        : await getIronSession<SunriseSession>(
+            cookieStore,
+            sessionOptionsValue,
+          );
 
-  if (session.sessionId) {
-    const activity = await getIronSession<SessionActivity>(
-      cookieStore,
-      sessionOptions(SESSION_ACTIVITY_COOKIE_NAME),
-    );
-    const lastActivityAt =
-      activity.sessionId === session.sessionId
-        ? activity.lastActivityAt
-        : undefined;
-    setTransient(session, "sessionLastActivityAt", lastActivityAt);
-  }
+    if (session.sessionId) {
+      const activity = await getIronSession<SessionActivity>(
+        cookieStore,
+        sessionOptions(SESSION_ACTIVITY_COOKIE_NAME),
+      );
+      const lastActivityAt =
+        activity.sessionId === session.sessionId
+          ? activity.lastActivityAt
+          : undefined;
+      setTransient(session, "sessionLastActivityAt", lastActivityAt);
+    }
 
-  if (!hasAuthenticatedSession(session)) return session;
+    if (!hasAuthenticatedSession(session)) {
+      observeSessionLoad({
+        backend,
+        durationSeconds: elapsedSeconds(startedAt),
+        state: "anonymous",
+      });
+      return session;
+    }
 
-  const lifetime = getSessionLifetimeState(session);
-  if (lifetime.status === "active") {
-    setTransient(session, "sessionExpiryReason", undefined);
+    const lifetime = getSessionLifetimeState(session);
+    if (lifetime.status === "active") {
+      setTransient(session, "sessionExpiryReason", undefined);
+      observeSessionLoad({
+        backend,
+        durationSeconds: elapsedSeconds(startedAt),
+        state: "authenticated",
+      });
+      return session;
+    }
+
+    setTransient(session, "sessionExpiryReason", lifetime.reason);
+    if (!options.allowExpired) denyExpiredCredentials(session);
+    observeSessionLoad({
+      backend,
+      durationSeconds: elapsedSeconds(startedAt),
+      state: "expired",
+    });
     return session;
+  } catch (error) {
+    observeSessionLoad({
+      backend,
+      durationSeconds: elapsedSeconds(startedAt),
+      state: "error",
+    });
+    throw error;
   }
-
-  setTransient(session, "sessionExpiryReason", lifetime.reason);
-  if (!options.allowExpired) denyExpiredCredentials(session);
-  return session;
 }
 
 export async function destroySession(session: IronSession<SunriseSession>) {
