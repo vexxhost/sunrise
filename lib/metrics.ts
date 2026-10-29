@@ -13,7 +13,12 @@ const DURATION_BUCKETS_SECONDS = [
 ];
 
 type OpenStackOutcome =
-  "success" | "client_error" | "server_error" | "network_error";
+  | "success"
+  | "redirect_error"
+  | "client_error"
+  | "server_error"
+  | "network_error"
+  | "unexpected_status";
 type RedisOutcome = "success" | "error";
 type RgwOutcome = "success" | "error";
 type AuthRefreshOutcome =
@@ -158,9 +163,11 @@ export function elapsedSeconds(startedAt: number) {
 
 export function openStackOutcome(status?: number): OpenStackOutcome {
   if (status === undefined) return "network_error";
+  if (status >= 200 && status < 300) return "success";
+  if (status >= 300 && status < 400) return "redirect_error";
+  if (status >= 400 && status < 500) return "client_error";
   if (status >= 500) return "server_error";
-  if (status >= 400) return "client_error";
-  return "success";
+  return "unexpected_status";
 }
 
 export function observeOpenStackRequest(input: {

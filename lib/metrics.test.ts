@@ -89,7 +89,9 @@ describe("Sunrise metrics", () => {
 
   it("classifies OpenStack responses without resource-specific labels", () => {
     expect(openStackOutcome()).toBe("network_error");
+    expect(openStackOutcome(101)).toBe("unexpected_status");
     expect(openStackOutcome(204)).toBe("success");
+    expect(openStackOutcome(304)).toBe("redirect_error");
     expect(openStackOutcome(409)).toBe("client_error");
     expect(openStackOutcome(503)).toBe("server_error");
     expect(elapsedSeconds(performance.now() + 100)).toBe(0);
