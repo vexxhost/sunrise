@@ -19,6 +19,7 @@ type OpenStackOutcome =
   | "server_error"
   | "network_error"
   | "body_error"
+  | "payload_error"
   | "unexpected_status";
 type RedisOutcome = "success" | "error";
 type RgwOutcome = "success" | "error";

@@ -138,6 +138,65 @@ export async function openstackRequest<T = unknown>({
     return null;
   }
 
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (error) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: "body_error",
+      serviceType,
+      status: response.status,
+    });
+    logger.error("response-body-failed", {
+      error,
+      method,
+      regionId,
+      requestId,
+      serviceName,
+      serviceType,
+      status: response.status,
+      upstreamRequestId: openstackRequestId(response),
+    });
+    return null;
+  }
+
+  if (!text.trim()) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: "success",
+      serviceType,
+      status: response.status,
+    });
+    return null;
+  }
+
+  let payload: T;
+  try {
+    payload = JSON.parse(text) as T;
+  } catch (error) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: "payload_error",
+      serviceType,
+      status: response.status,
+    });
+    logger.error("invalid-response", {
+      error,
+      method,
+      regionId,
+      requestId,
+      serviceName,
+      serviceType,
+      status: response.status,
+      upstreamRequestId: openstackRequestId(response),
+    });
+    return null;
+  }
+
   observeOpenStackRequest({
     durationSeconds: elapsedSeconds(startedAt),
     method,
@@ -145,11 +204,5 @@ export async function openstackRequest<T = unknown>({
     serviceType,
     status: response.status,
   });
-
-  try {
-    return (await response.json()) as T;
-  } catch {
-    // Some APIs return empty responses.
-    return null;
-  }
+  return payload;
 }

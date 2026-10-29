@@ -184,6 +184,40 @@ describe("OpenStack mutation executor", () => {
     );
   });
 
+  it("records transform failures without counting the response as successful", async () => {
+    vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
+    resetMetricsForTests();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ unexpected: true }, { status: 202 }),
+    );
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "launch an instance",
+      body: { server: { name: "api" } },
+      method: "POST",
+      path: "/servers",
+      scope,
+      serviceName: "nova",
+      serviceType: "compute",
+      successMessage: "Instance api is being created.",
+      transform: () => {
+        throw new TypeError("missing server payload");
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "invalid-response", retryable: true },
+    });
+    const metrics = await metricsRegistry()!.metrics();
+    expect(metrics).toContain(
+      'sunrise_openstack_requests_total{method="POST",outcome="payload_error",service_type="compute",status_code="202"} 1',
+    );
+    expect(metrics).not.toContain(
+      'sunrise_openstack_requests_total{method="POST",outcome="success",service_type="compute",status_code="202"}',
+    );
+  });
+
   it("keeps a successful mutation successful when preference cleanup fails", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(null, { status: 204 }),

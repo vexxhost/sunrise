@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -21,6 +21,7 @@ import {
   OpenStackRequestError,
 } from "@/lib/openstack/request";
 import { openstackRequest } from "@/lib/openstack/request-server";
+import { metricsRegistry, resetMetricsForTests } from "@/lib/metrics";
 
 describe("server-only OpenStack requests", () => {
   beforeEach(() => {
@@ -31,6 +32,11 @@ describe("server-only OpenStack requests", () => {
     mocks.getServiceEndpoint.mockResolvedValue(
       "https://compute.example.test/v2.1",
     );
+  });
+
+  afterEach(() => {
+    resetMetricsForTests();
+    vi.unstubAllEnvs();
   });
 
   it("keeps request paths on the trusted endpoint origin", async () => {
@@ -70,6 +76,58 @@ describe("server-only OpenStack requests", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "https://identity.example.test/v3/users/user/application_credentials",
       expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("records response body stream failures without counting success", async () => {
+    vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
+    resetMetricsForTests();
+    const response = new Response(null, {
+      status: 200,
+      headers: { "x-openstack-request-id": "request-body-failed" },
+    });
+    vi.spyOn(response, "text").mockRejectedValue(
+      new TypeError("response stream terminated"),
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const result = await openstackRequest({
+      regionId: "RegionOne",
+      serviceType: "compute",
+      serviceName: "nova",
+      path: "/servers/detail",
+    });
+
+    expect(result).toBeNull();
+    const metrics = await metricsRegistry()!.metrics();
+    expect(metrics).toContain(
+      'sunrise_openstack_requests_total{method="GET",outcome="body_error",service_type="compute",status_code="200"} 1',
+    );
+    expect(metrics).not.toContain(
+      'sunrise_openstack_requests_total{method="GET",outcome="success",service_type="compute",status_code="200"}',
+    );
+  });
+
+  it("treats an intentionally empty response as successful", async () => {
+    vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
+    resetMetricsForTests();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 204 })),
+    );
+
+    const result = await openstackRequest({
+      regionId: "RegionOne",
+      serviceType: "compute",
+      serviceName: "nova",
+      path: "/servers/server-a/action",
+      method: "POST",
+    });
+
+    expect(result).toBeNull();
+    expect(await metricsRegistry()!.metrics()).toContain(
+      'sunrise_openstack_requests_total{method="POST",outcome="success",service_type="compute",status_code="204"} 1',
     );
   });
 

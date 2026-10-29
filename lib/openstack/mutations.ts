@@ -249,18 +249,17 @@ export async function executeOpenStackMutation<T = null>({
     return mutationFailure(error, activeScope);
   }
 
-  observeOpenStackRequest({
-    durationSeconds: elapsedSeconds(startedAt),
-    method,
-    outcome: "success",
-    serviceType,
-    status: response.status,
-  });
-
   let data: T;
   try {
     data = transform ? transform(payload) : (payload as T);
   } catch (error) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: "payload_error",
+      serviceType,
+      status: response.status,
+    });
     logger.error("invalid-response", {
       error,
       method,
@@ -281,6 +280,14 @@ export async function executeOpenStackMutation<T = null>({
       activeScope,
     );
   }
+
+  observeOpenStackRequest({
+    durationSeconds: elapsedSeconds(startedAt),
+    method,
+    outcome: "success",
+    serviceType,
+    status: response.status,
+  });
 
   for (const invalidatedPath of new Set(invalidates)) {
     revalidatePath(invalidatedPath);
