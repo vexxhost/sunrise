@@ -2,6 +2,7 @@ import "server-only";
 
 import type { IronSession } from "iron-session";
 import { createLogger } from "@/lib/logging";
+import { elapsedSeconds, observeAuthRefresh } from "@/lib/metrics";
 import { refreshSessionOidcTokens } from "@/lib/oidc/session-refresh";
 import {
   captureOidcSessionAuthority,
@@ -68,6 +69,30 @@ async function refreshRgwIdentity(
 }
 
 export async function refreshActiveProjectS3Credentials(
+  session: IronSession<SunriseSession>,
+): Promise<S3StsCredentials | undefined> {
+  const startedAt = performance.now();
+  const expired = getSessionLifetimeState(session).status !== "active";
+  try {
+    const credentials =
+      await refreshActiveProjectS3CredentialsInternal(session);
+    observeAuthRefresh({
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome: credentials ? "success" : expired ? "expired" : "reauthenticate",
+      target: "rgw",
+    });
+    return credentials;
+  } catch (error) {
+    observeAuthRefresh({
+      durationSeconds: elapsedSeconds(startedAt),
+      outcome: "error",
+      target: "rgw",
+    });
+    throw error;
+  }
+}
+
+async function refreshActiveProjectS3CredentialsInternal(
   session: IronSession<SunriseSession>,
 ): Promise<S3StsCredentials | undefined> {
   if (getSessionLifetimeState(session).status !== "active") return undefined;

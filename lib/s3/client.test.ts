@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ListBucketsCommand } from '@aws-sdk/client-s3';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { metricsRegistry, resetMetricsForTests } from '@/lib/metrics';
 
 const mocks = vi.hoisted(() => {
   class S3ProjectRoleUnavailableError extends Error {}
@@ -44,10 +45,14 @@ const credentials = {
 describe('getS3Client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('SUNRISE_METRICS_ENABLED', 'true');
+    resetMetricsForTests();
     mocks.getS3Endpoint.mockResolvedValue('https://object.example.test');
   });
 
   afterEach(() => {
+    resetMetricsForTests();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -136,6 +141,9 @@ describe('getS3Client', () => {
         /^AWS4-HMAC-SHA256 Credential=access-key\/\d{8}\/RegionOne\/s3\/aws4_request,/
       );
       expect(requestSessionToken).toBe('session-token');
+      expect(await metricsRegistry()!.metrics()).toContain(
+        'sunrise_rgw_requests_total{api="s3",operation="ListBuckets",outcome="success",status_code="200"} 1'
+      );
     } finally {
       client.destroy();
       await new Promise<void>((resolve, reject) => {
@@ -173,5 +181,19 @@ describe('getS3Client', () => {
     await expect(
       getS3Client({ allowCredentialRefresh: true })
     ).rejects.toBeInstanceOf(S3AuthRequiredError);
+  });
+
+  it('does not record RGW requests when backend selection rejects S3', async () => {
+    mocks.getSession.mockResolvedValue({ projectId: 'project-id' });
+    mocks.getActiveS3Credentials.mockReturnValue(credentials);
+    mocks.getS3Endpoint.mockRejectedValue(
+      new Error('Swift is the selected Object Storage backend')
+    );
+
+    await expect(getS3Client()).rejects.toThrow('Swift is the selected');
+
+    expect(await metricsRegistry()!.metrics()).not.toContain(
+      'sunrise_rgw_requests_total{'
+    );
   });
 });

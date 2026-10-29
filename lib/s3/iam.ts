@@ -12,6 +12,7 @@ import { S3AuthRequiredError } from '@/lib/s3/client';
 import { roleNameFromArn } from '@/lib/s3/arn';
 import { getS3Endpoint, S3_REGION } from '@/lib/s3/endpoint';
 import { ensureActiveProjectS3Credentials } from '@/lib/s3/session';
+import { instrumentRgwClient } from '@/lib/s3/sdk-metrics';
 
 export type ActiveRoleIamContext = {
   client: IAMClient;
@@ -45,7 +46,7 @@ export async function getActiveRoleIamContext(
   }
 
   const endpoint = await getS3Endpoint();
-  const client = new IAMClient({
+  const client = instrumentRgwClient(new IAMClient({
     endpoint,
     region: S3_REGION,
     credentials: {
@@ -58,7 +59,7 @@ export async function getActiveRoleIamContext(
         rejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED !== '0',
       }),
     }),
-  });
+  }), 'iam');
 
   return {
     client,

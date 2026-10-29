@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@aws-sdk/client-sts", () => ({
   STSClient: class {
     send = mocks.send;
+    middlewareStack = { add: vi.fn() };
   },
   AssumeRoleWithWebIdentityCommand: class {
     constructor(public readonly input: Record<string, unknown>) {}

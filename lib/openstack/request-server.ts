@@ -2,6 +2,11 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { createLogger } from "@/lib/logging";
+import {
+  elapsedSeconds,
+  observeOpenStackRequest,
+  openStackOutcome,
+} from "@/lib/metrics";
 import { currentSunriseRequestId } from "@/lib/request-correlation.server";
 import { getSession } from "@/lib/session";
 import { getServiceEndpoint } from "./catalog";
@@ -73,6 +78,7 @@ export async function openstackRequest<T = unknown>({
 
   // serviceUrl preserves the trusted endpoint origin even for malformed paths.
   const url = serviceUrl(endpoint, path);
+  const startedAt = performance.now();
   let response: Response;
   try {
     response = await fetch(url, {
@@ -82,6 +88,12 @@ export async function openstackRequest<T = unknown>({
       cache: "no-store",
     });
   } catch (error) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: "network_error",
+      serviceType,
+    });
     logger.error("unreachable", {
       error,
       method,
@@ -97,6 +109,13 @@ export async function openstackRequest<T = unknown>({
   }
 
   if (!response.ok) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: openStackOutcome(response.status),
+      serviceType,
+      status: response.status,
+    });
     const fields = {
       method,
       regionId,
@@ -118,6 +137,14 @@ export async function openstackRequest<T = unknown>({
     }
     return null;
   }
+
+  observeOpenStackRequest({
+    durationSeconds: elapsedSeconds(startedAt),
+    method,
+    outcome: "success",
+    serviceType,
+    status: response.status,
+  });
 
   try {
     return (await response.json()) as T;

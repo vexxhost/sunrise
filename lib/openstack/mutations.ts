@@ -2,6 +2,11 @@ import "server-only";
 
 import { revalidatePath } from "next/cache";
 import { createLogger } from "@/lib/logging";
+import {
+  elapsedSeconds,
+  observeOpenStackRequest,
+  openStackOutcome,
+} from "@/lib/metrics";
 import { guardMutationContext } from "@/lib/mutation-context";
 import {
   mutationErrorForStatus,
@@ -146,6 +151,7 @@ export async function executeOpenStackMutation<T = null>({
     headers["Content-Type"] = "application/json";
   }
 
+  const startedAt = performance.now();
   let response: Response;
   try {
     response = await fetch(url, {
@@ -155,6 +161,12 @@ export async function executeOpenStackMutation<T = null>({
       cache: "no-store",
     });
   } catch (error) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: "network_error",
+      serviceType,
+    });
     logger.error("unreachable", {
       error,
       method,
@@ -177,6 +189,13 @@ export async function executeOpenStackMutation<T = null>({
   const payload = await responsePayload(response);
 
   if (!response.ok) {
+    observeOpenStackRequest({
+      durationSeconds: elapsedSeconds(startedAt),
+      method,
+      outcome: openStackOutcome(response.status),
+      serviceType,
+      status: response.status,
+    });
     const error = mutationErrorForStatus(
       response.status,
       actionLabel,
@@ -198,6 +217,14 @@ export async function executeOpenStackMutation<T = null>({
     else logger.warn("rejected", fields);
     return mutationFailure(error, activeScope);
   }
+
+  observeOpenStackRequest({
+    durationSeconds: elapsedSeconds(startedAt),
+    method,
+    outcome: "success",
+    serviceType,
+    status: response.status,
+  });
 
   let data: T;
   try {
