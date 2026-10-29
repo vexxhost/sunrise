@@ -1,7 +1,7 @@
 import "server-only";
 
 import type {
-  InitializeMiddleware,
+  FinalizeRequestMiddleware,
   MetadataBearer,
   MiddlewareStack,
 } from "@smithy/types";
@@ -28,7 +28,7 @@ function responseStatus(value: unknown) {
 
 export function instrumentRgwClient<T>(client: T, api: RgwApi): T {
   const instrumentable = client as T & InstrumentableClient;
-  const middleware: InitializeMiddleware<object, MetadataBearer> =
+  const middleware: FinalizeRequestMiddleware<object, MetadataBearer> =
     (next, context) => async (args) => {
       const startedAt = performance.now();
       const operation = operationName(context.commandName);
@@ -54,9 +54,10 @@ export function instrumentRgwClient<T>(client: T, api: RgwApi): T {
       }
     };
 
-  instrumentable.middlewareStack.add(middleware, {
+  instrumentable.middlewareStack.addRelativeTo(middleware, {
     name: `sunriseRgw${api.toUpperCase()}Metrics`,
-    step: "initialize",
+    relation: "after",
+    toMiddleware: "awsAuthMiddleware",
   });
   return client;
 }

@@ -1,7 +1,10 @@
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
+  FinalizeRequestMiddleware,
   HandlerExecutionContext,
-  InitializeMiddleware,
   MetadataBearer,
+  RelativeMiddlewareOptions,
 } from "@smithy/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { metricsRegistry, resetMetricsForTests } from "@/lib/metrics";
@@ -20,18 +23,27 @@ describe("RGW SDK metrics", () => {
 
   function captureMiddleware() {
     let middleware:
-      | InitializeMiddleware<Record<string, never>, MetadataBearer>
+      | FinalizeRequestMiddleware<Record<string, never>, MetadataBearer>
       | undefined;
+    let options: RelativeMiddlewareOptions | undefined;
     const client = {
       middlewareStack: {
-        add(candidate: typeof middleware) {
+        addRelativeTo(
+          candidate: typeof middleware,
+          candidateOptions: RelativeMiddlewareOptions,
+        ) {
           middleware = candidate;
+          options = candidateOptions;
         },
       },
     };
 
     expect(instrumentRgwClient(client, "s3")).toBe(client);
     expect(middleware).toBeDefined();
+    expect(options).toMatchObject({
+      relation: "after",
+      toMiddleware: "awsAuthMiddleware",
+    });
     return middleware!;
   }
 
@@ -44,7 +56,7 @@ describe("RGW SDK metrics", () => {
       { commandName: "ListObjectsV2Command" } as HandlerExecutionContext,
     );
 
-    await handler({ input: {} });
+    await handler({ input: {}, request: {} });
 
     const output = await metricsRegistry()!.metrics();
     expect(output).toContain(
@@ -63,10 +75,36 @@ describe("RGW SDK metrics", () => {
       { commandName: "GetBucketPolicyCommand" } as HandlerExecutionContext,
     );
 
-    await expect(handler({ input: {} })).rejects.toBe(error);
+    await expect(handler({ input: {}, request: {} })).rejects.toBe(error);
 
     expect(await metricsRegistry()!.metrics()).toContain(
       'sunrise_rgw_requests_total{api="s3",operation="GetBucketPolicy",outcome="error",status_code="403"} 1',
+    );
+  });
+
+  it("does not record locally presigned S3 requests", async () => {
+    const client = instrumentRgwClient(
+      new S3Client({
+        credentials: {
+          accessKeyId: "access-key",
+          secretAccessKey: "secret-key",
+        },
+        endpoint: "https://rgw.example.test",
+        forcePathStyle: true,
+        region: "RegionOne",
+      }),
+      "s3",
+    );
+
+    const url = await getSignedUrl(
+      client,
+      new GetObjectCommand({ Bucket: "bucket-name", Key: "object-key" }),
+      { expiresIn: 60 },
+    );
+
+    expect(url).toContain("rgw.example.test/bucket-name/object-key");
+    expect(await metricsRegistry()!.metrics()).not.toContain(
+      "sunrise_rgw_requests_total{",
     );
   });
 });
