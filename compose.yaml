@@ -62,7 +62,7 @@ services:
       - "9991:3000"
 
   redis:
-    image: ${SUNRISE_REDIS_IMAGE:-valkey/valkey:9.1.2-alpine}
+    image: ${SUNRISE_REDIS_IMAGE:-valkey/valkey:9.1.3-alpine}
     user: "999:1000"
     environment:
       SUNRISE_REDIS_PASSWORD: ${SUNRISE_REDIS_PASSWORD:-}
