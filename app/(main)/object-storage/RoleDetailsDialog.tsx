@@ -33,7 +33,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   validateIamPermissionPolicyJson,
@@ -416,7 +415,7 @@ export function RoleDetailsDialog({
                                   type="button"
                                   size="icon-sm"
                                   variant="ghost"
-                                  className="self-end text-destructive hover:text-destructive"
+                                  className="self-end"
                                   title="Remove tag"
                                   disabled={pendingAction !== null}
                                   onClick={() =>
@@ -426,6 +425,7 @@ export function RoleDetailsDialog({
                                       ),
                                     )
                                   }
+                                  tone="danger"
                                 >
                                   <Trash2 />
                                   <span className="sr-only">Remove tag</span>
@@ -452,8 +452,9 @@ export function RoleDetailsDialog({
                                 ),
                               )
                             }
+                            loading={pendingAction === "tags"}
                           >
-                            {pendingAction === "tags" ? <Spinner /> : <Save />}
+                            <Save />
                             Save tags
                           </Button>
                         </div>
@@ -519,12 +520,9 @@ export function RoleDetailsDialog({
                               ),
                             )
                           }
+                          loading={pendingAction === "duration"}
                         >
-                          {pendingAction === "duration" ? (
-                            <Spinner />
-                          ) : (
-                            <Save />
-                          )}
+                          <Save />
                           Save duration
                         </Button>
                       </div>
@@ -561,12 +559,9 @@ export function RoleDetailsDialog({
                                 ),
                               )
                             }
+                            loading={pendingAction === "trust-policy"}
                           >
-                            {pendingAction === "trust-policy" ? (
-                              <Spinner />
-                            ) : (
-                              <Save />
-                            )}
+                            <Save />
                             Save trust policy
                           </Button>
                         </div>
@@ -630,23 +625,19 @@ export function RoleDetailsDialog({
                                           ),
                                       )
                                     }
+                                    loading={pendingAction === `inline:${policy.name}`}
                                   >
-                                    {pendingAction ===
-                                    `inline:${policy.name}` ? (
-                                      <Spinner />
-                                    ) : (
-                                      <Save />
-                                    )}
+                                    <Save />
                                     Save
                                   </Button>
                                   <Button
                                     type="button"
                                     variant="ghost"
-                                    className="text-destructive hover:text-destructive"
                                     disabled={pendingAction !== null}
                                     onClick={() =>
                                       setDeletePolicyName(policy.name)
                                     }
+                                    tone="danger"
                                   >
                                     <Trash2 />
                                     Delete
@@ -736,12 +727,9 @@ export function RoleDetailsDialog({
                                 );
                               })
                             }
+                            loading={pendingAction === "new-inline-policy"}
                           >
-                            {pendingAction === "new-inline-policy" ? (
-                              <Spinner />
-                            ) : (
-                              <Plus />
-                            )}
+                            <Plus />
                             Add inline policy
                           </Button>
                         </div>
@@ -795,12 +783,9 @@ export function RoleDetailsDialog({
                                     ),
                                   )
                                 }
+                                loading={pendingAction === `detach:${policy.arn}`}
                               >
-                                {pendingAction === `detach:${policy.arn}` ? (
-                                  <Spinner />
-                                ) : (
-                                  <Unlink />
-                                )}
+                                <Unlink />
                                 Detach
                               </Button>
                             ) : null}
@@ -853,12 +838,9 @@ export function RoleDetailsDialog({
                               if (attached) setAttachPolicyArn("");
                             })
                           }
+                          loading={pendingAction === "attach-policy"}
                         >
-                          {pendingAction === "attach-policy" ? (
-                            <Spinner />
-                          ) : (
-                            <Link2 />
-                          )}
+                          <Link2 />
                           Attach policy
                         </Button>
                       </div>

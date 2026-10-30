@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
 import { bucketsQueryOptions } from "@/hooks/queries/useBuckets";
 import type { Bucket } from "@/lib/s3/actions";
 import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
@@ -103,12 +102,12 @@ export function BucketsClient({
           type="button"
           size="icon-sm"
           variant="ghost"
-          className="text-destructive hover:text-destructive"
           title={`Delete ${row.original.name}`}
           onClick={() => {
             setError(null);
             setDeleteTarget(row.original);
           }}
+          tone="danger"
         >
           <Trash2 className="size-4" />
           <span className="sr-only">Delete bucket</span>
@@ -277,8 +276,9 @@ export function BucketsClient({
               type="button"
               disabled={creating || !createName.trim() || !!createValidation}
               onClick={() => void handleCreate()}
+              loading={creating}
             >
-              {creating ? <Spinner /> : <Plus className="size-4" />}
+              <Plus className="size-4" />
               {creating ? "Creating" : "Create bucket"}
             </Button>
           </DialogFooter>

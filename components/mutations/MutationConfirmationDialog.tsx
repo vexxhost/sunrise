@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
 
 type MutationConfirmationDialogProps = {
   children?: React.ReactNode;
@@ -70,14 +69,11 @@ export function MutationConfirmationDialog({
           <Button
             type="button"
             variant={destructive ? "destructive" : "default"}
-            disabled={pending || confirmDisabled}
+            disabled={confirmDisabled}
+            loading={pending}
             onClick={() => void onConfirm()}
           >
-            {pending ? (
-              <Spinner />
-            ) : destructive ? (
-              <Trash2 className="size-4" />
-            ) : null}
+            {destructive ? <Trash2 className="size-4" /> : null}
             {pending ? pendingLabel : confirmLabel}
           </Button>
         </DialogFooter>

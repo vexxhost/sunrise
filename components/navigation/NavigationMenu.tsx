@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { SunriseBrand } from "@/components/Brand/SunriseBrand";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   NavigationMenu as _NavigationMenu,
   NavigationMenuItem,
@@ -45,21 +45,18 @@ export function NavigationMenu() {
         >
           <NavigationMenuList className="flex items-center gap-1 lg:gap-2">
             <NavigationMenuItem className="hidden list-none min-[1600px]:block">
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="gap-2 text-xs h-9 px-3 hover:bg-muted"
+              <a
+                className={buttonVariants({
+                  variant: "outline",
+                  className: "text-xs hover:bg-muted",
+                })}
+                href="https://github.com/vexxhost/sunrise/issues/new"
+                target="_blank"
+                rel="noopener noreferrer"
               >
-                <a
-                  href="https://github.com/vexxhost/sunrise/issues/new"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Feedback
-                </a>
-              </Button>
+                <MessageSquare className="h-3.5 w-3.5" />
+                Feedback
+              </a>
             </NavigationMenuItem>
 
             <NavigationMenuItem className="list-none">

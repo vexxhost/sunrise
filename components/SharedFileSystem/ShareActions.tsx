@@ -207,9 +207,9 @@ export function ShareActions({
   return (
     <>
       <Button
-        className="h-10 gap-2"
         disabled={!projectId || !regionId}
         onClick={() => setOpen(true)}
+        size="lg"
       >
         <Plus className="size-4" />
         Create share

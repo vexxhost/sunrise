@@ -287,13 +287,13 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
               />
               <Button
                 aria-label={`Delete ${row.original.name}`}
-                className="text-destructive hover:text-destructive"
                 onClick={() => {
                   setDeleteError(null);
                   setDeletingTemplate(row.original);
                 }}
                 size="icon-sm"
                 variant="ghost"
+                tone="danger"
               >
                 <Trash2 className="size-4" />
               </Button>

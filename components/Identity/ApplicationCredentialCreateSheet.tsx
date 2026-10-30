@@ -18,7 +18,6 @@ import {
   WizardDialogTitle,
   WizardReviewStatus,
 } from "@/components/ui/wizard-dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -442,8 +441,9 @@ export function ApplicationCredentialCreateSheet({
                 type="button"
                 disabled={pending || reviewIssues.length > 0}
                 onClick={() => void create()}
+                loading={pending}
               >
-                {pending ? <Spinner /> : <KeyRound className="size-4" />}
+                <KeyRound className="size-4" />
                 {pending ? "Creating" : "Create application credential"}
               </Button>
             )}

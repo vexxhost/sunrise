@@ -241,9 +241,9 @@ export function ImageActions({
   return (
     <>
       <Button
-        className="h-10 gap-2"
         disabled={!projectId || !regionId}
         onClick={() => setDialogOpen(true)}
+        size="lg"
       >
         <Plus className="size-4" />
         Upload image

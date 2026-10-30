@@ -151,10 +151,10 @@ export function ShareNetworkDetailClient({
           <Button
             size="icon"
             variant="outline"
-            className="text-destructive hover:text-destructive"
             title="Delete share network"
             disabled={!scope}
             onClick={() => setDeleting(true)}
+            tone="danger"
           >
             <Trash2 className="size-4" />
             <span className="sr-only">Delete share network</span>
@@ -259,10 +259,10 @@ export function ShareNetworkDetailClient({
                       <Button
                         size="icon-sm"
                         variant="ghost"
-                        className="text-destructive hover:text-destructive"
                         title="Delete network subnet"
                         disabled={!scope}
                         onClick={() => setDeletingSubnet(subnet)}
+                        tone="danger"
                       >
                         <Trash2 className="size-4" />
                         <span className="sr-only">Delete network subnet</span>
@@ -343,10 +343,10 @@ export function ShareNetworkDetailClient({
                       <Button
                         size="icon-sm"
                         variant="ghost"
-                        className="text-destructive hover:text-destructive"
                         title="Detach security service"
                         disabled={!scope}
                         onClick={() => setDetachingService(service)}
+                        tone="danger"
                       >
                         <Unlink className="size-4" />
                         <span className="sr-only">Detach security service</span>

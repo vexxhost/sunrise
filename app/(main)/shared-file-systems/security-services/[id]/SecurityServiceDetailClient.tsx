@@ -106,10 +106,10 @@ export function SecurityServiceDetailClient({
           <Button
             size="icon"
             variant="outline"
-            className="text-destructive hover:text-destructive"
             title="Delete security service"
             disabled={!scope}
             onClick={() => setAction("delete")}
+            tone="danger"
           >
             <Trash2 className="size-4" />
             <span className="sr-only">Delete security service</span>

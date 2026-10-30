@@ -12,5 +12,5 @@ export function parseSunriseColorPalette(
 export function getSunriseColorPalette(
   value = process.env.SUNRISE_COLOR_PALETTE,
 ): SunriseColorPalette {
-  return parseSunriseColorPalette(value) ?? "sunrise";
+  return parseSunriseColorPalette(value) ?? "vexxhost";
 }

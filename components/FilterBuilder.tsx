@@ -352,8 +352,9 @@ export function FilterBuilder<TData>({
         {filters.length > 0 && (
           <Button
             variant="outline"
-            className="h-10 rounded-l-none border-l-0 bg-status-warning-soft hover:brightness-95"
+            className="rounded-l-none border-l-0 bg-status-warning-soft hover:brightness-95"
             onClick={clearAllFilters}
+            size="lg"
           >
             Clear filters
           </Button>

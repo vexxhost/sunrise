@@ -165,14 +165,13 @@ export function PortDetailActions({
       <div className="flex flex-wrap items-center gap-2">
         {computeAttached ? (
           <Button
-            className="h-9 gap-2"
             variant="outline"
             onClick={() => open("detach")}
           >
             <Link2Off className="size-4" /> Detach
           </Button>
         ) : (
-          <Button className="h-9 gap-2" onClick={() => open("attach")}>
+          <Button onClick={() => open("attach")}>
             <Link2 className="size-4" /> Attach to instance
           </Button>
         )}
@@ -180,8 +179,8 @@ export function PortDetailActions({
         {!computeAttached ? (
           <Button
             variant="outline"
-            className="h-9 gap-2 text-destructive hover:text-destructive"
             onClick={() => open("delete")}
+            tone="danger"
           >
             <Trash2 className="size-4" /> Delete
           </Button>

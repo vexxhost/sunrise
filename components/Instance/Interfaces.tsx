@@ -24,7 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 import type {
   Network as NetworkResource,
   Port,
@@ -326,13 +325,14 @@ export function Interfaces({
         </div>
         <Button
           type="button"
-          className="h-10 gap-2 self-start"
+          className="self-start"
           disabled={!canModify}
           onClick={() => {
             setError(null);
             setPortId("");
             setDialog("attach");
           }}
+          size="lg"
         >
           <Link2 className="size-4" />
           Attach interface
@@ -403,8 +403,7 @@ export function Interfaces({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !portId}>
-                {pending ? <Spinner /> : null}
+              <Button type="submit" disabled={pending || !portId} loading={pending}>
                 {pending ? "Attaching" : "Attach interface"}
               </Button>
             </DialogFooter>
@@ -465,8 +464,8 @@ export function Interfaces({
               <Button
                 type="submit"
                 disabled={pending || !securityGroupSelectionChanged}
+                loading={pending}
               >
-                {pending ? <Spinner /> : null}
                 {pending ? "Saving" : "Save port policy"}
               </Button>
             </DialogFooter>

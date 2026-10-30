@@ -22,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 import { flavorsQueryOptions } from "@/hooks/queries/useServers";
 import {
   projectQuotaQueryOptions,
@@ -279,8 +278,8 @@ export function InstanceResizeDialog({
             <Button
               type="submit"
               disabled={pending || !flavorRef || quotaIssues.length > 0}
+              loading={pending}
             >
-              {pending ? <Spinner /> : null}
               {pending ? "Starting resize" : "Resize instance"}
             </Button>
           </DialogFooter>

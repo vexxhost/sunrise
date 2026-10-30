@@ -141,13 +141,13 @@ export function OrdersClient({
           type="button"
           size="icon-sm"
           variant="ghost"
-          className="text-destructive hover:text-destructive"
           title={`Delete ${orderName(row.original)}`}
           onClick={() => {
             setConfirmation("");
             setError(null);
             setDeleteTarget(row.original);
           }}
+          tone="danger"
         >
           <Trash2 className="size-4" />
           <span className="sr-only">Delete order</span>

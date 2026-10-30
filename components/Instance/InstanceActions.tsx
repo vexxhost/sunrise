@@ -614,7 +614,6 @@ export function InstanceActions({
   return (
     <>
       <Button
-        className="h-10 gap-2"
         disabled={!projectId || !regionId}
         onClick={() => handleOpenChange(true)}
         title={
@@ -622,6 +621,7 @@ export function InstanceActions({
             ? "Launch an instance"
             : "Select a project and region first"
         }
+        size="lg"
       >
         <Plus className="size-4" />
         Launch instance

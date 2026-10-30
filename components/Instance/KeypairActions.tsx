@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Copy, Download, KeyRound, Plus } from "lucide-react";
+import { Download, KeyRound, Plus } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +41,6 @@ export function KeypairActions({
   const [publicKey, setPublicKey] = useState("");
   const [privateKey, setPrivateKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const reset = () => {
@@ -49,7 +49,6 @@ export function KeypairActions({
     setPublicKey("");
     setPrivateKey(null);
     setError(null);
-    setCopied(false);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -112,9 +111,9 @@ export function KeypairActions({
   return (
     <>
       <Button
-        className="h-10 gap-2"
         disabled={!projectId || !regionId}
         onClick={() => handleOpenChange(true)}
+        size="lg"
       >
         <Plus className="size-4" />
         Add key pair
@@ -152,17 +151,12 @@ export function KeypairActions({
                   <Download className="size-4" />
                   Download {name}.pem
                 </Button>
-                <Button
-                  type="button"
+                <CopyButton
+                  value={privateKey}
+                  label="Copy"
+                  showLabel
                   variant="outline"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(privateKey);
-                    setCopied(true);
-                  }}
-                >
-                  <Copy className="size-4" />
-                  {copied ? "Copied" : "Copy"}
-                </Button>
+                />
               </div>
             </div>
           ) : (

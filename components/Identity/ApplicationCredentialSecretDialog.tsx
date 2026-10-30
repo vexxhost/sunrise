@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Copy, Download, KeyRound } from "lucide-react";
+import { Download, KeyRound } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Dialog,
   DialogContent,
@@ -85,14 +85,7 @@ export function ApplicationCredentialSecretDialog({
   onClose: () => void;
   regionId: string;
 }) {
-  const [copied, setCopied] = useState<"id" | "secret" | null>(null);
   const fileStem = credential ? safeFileName(credential.name) : "openstack";
-
-  const copy = async (field: "id" | "secret", value: string) => {
-    await navigator.clipboard.writeText(value);
-    setCopied(field);
-    window.setTimeout(() => setCopied(null), 2_000);
-  };
 
   return (
     <Dialog
@@ -135,20 +128,12 @@ export function ApplicationCredentialSecretDialog({
                   readOnly
                   className="font-mono"
                 />
-                <Button
-                  type="button"
-                  size="icon"
+                <CopyButton
+                  value={credential.id}
+                  label="Copy credential ID"
                   variant="outline"
-                  onClick={() => void copy("id", credential.id)}
-                  title="Copy credential ID"
-                >
-                  {copied === "id" ? (
-                    <Check className="size-4" />
-                  ) : (
-                    <Copy className="size-4" />
-                  )}
-                  <span className="sr-only">Copy credential ID</span>
-                </Button>
+                  size="icon"
+                />
               </div>
             </div>
 
@@ -163,20 +148,12 @@ export function ApplicationCredentialSecretDialog({
                   readOnly
                   className="font-mono"
                 />
-                <Button
-                  type="button"
-                  size="icon"
+                <CopyButton
+                  value={credential.secret}
+                  label="Copy secret"
                   variant="outline"
-                  onClick={() => void copy("secret", credential.secret)}
-                  title="Copy secret"
-                >
-                  {copied === "secret" ? (
-                    <Check className="size-4" />
-                  ) : (
-                    <Copy className="size-4" />
-                  )}
-                  <span className="sr-only">Copy secret</span>
-                </Button>
+                  size="icon"
+                />
               </div>
             </div>
 

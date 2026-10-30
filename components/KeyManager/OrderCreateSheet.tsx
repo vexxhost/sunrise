@@ -26,7 +26,6 @@ import {
   WizardReviewRow,
   WizardReviewStatus,
 } from "@/components/ui/wizard-dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { createOrderAction } from "@/lib/openstack/barbican-actions";
 import { createOrderSchema } from "@/lib/openstack/barbican-input";
 import type { MutationScope } from "@/lib/mutations";
@@ -301,8 +300,8 @@ export function OrderCreateSheet({
               type="button"
               disabled={pending || reviewIssues.length > 0}
               onClick={create}
+              loading={pending}
             >
-              {pending ? <Spinner /> : null}
               {pending ? "Creating" : "Create key order"}
             </Button>
           ) : (

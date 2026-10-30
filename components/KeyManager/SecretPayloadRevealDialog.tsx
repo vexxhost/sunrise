@@ -1,11 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, Copy, Eye } from "lucide-react";
+import { Eye } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { BARBICAN_PAYLOAD_LIMIT_BYTES } from "@/lib/openstack/barbican-input";
 import {
@@ -43,7 +43,6 @@ export function SecretPayloadRevealDialog({
   const [pending, setPending] = useState(false);
   const [payload, setPayload] = useState<RevealedPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const clear = () => {
     abortRef.current?.abort();
@@ -51,7 +50,6 @@ export function SecretPayloadRevealDialog({
     setPending(false);
     setPayload(null);
     setError(null);
-    setCopied(false);
   };
 
   const reveal = async () => {
@@ -99,19 +97,6 @@ export function SecretPayloadRevealDialog({
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setPending(false);
-    }
-  };
-
-  const copy = async () => {
-    if (!payload) return;
-    try {
-      await navigator.clipboard.writeText(payload.content);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2_000);
-    } catch {
-      setError(
-        "The payload could not be copied. Select the value manually instead.",
-      );
     }
   };
 
@@ -178,17 +163,20 @@ export function SecretPayloadRevealDialog({
             Close
           </Button>
           {payload ? (
-            <Button type="button" onClick={copy}>
-              {copied ? (
-                <Check className="size-4" />
-              ) : (
-                <Copy className="size-4" />
-              )}
-              {copied ? "Copied" : "Copy payload"}
-            </Button>
+            <CopyButton
+              value={payload.content}
+              label="Copy payload"
+              showLabel
+              variant="default"
+              onError={() =>
+                setError(
+                  "The payload could not be copied. Select the value manually instead.",
+                )
+              }
+            />
           ) : (
-            <Button type="button" disabled={pending} onClick={reveal}>
-              {pending ? <Spinner /> : <Eye className="size-4" />}
+            <Button type="button" onClick={reveal} loading={pending}>
+              <Eye className="size-4" />
               {pending ? "Revealing" : "Reveal payload"}
             </Button>
           )}

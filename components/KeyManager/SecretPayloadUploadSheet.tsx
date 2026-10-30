@@ -16,7 +16,6 @@ import {
   WizardDialogTitle,
   WizardDialogTrigger,
 } from "@/components/ui/wizard-dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { BARBICAN_PAYLOAD_LIMIT_BYTES } from "@/lib/openstack/barbican-input";
@@ -164,8 +163,8 @@ export function SecretPayloadUploadSheet({
           ) : null}
         </div>
         <WizardDialogFooter>
-          <Button disabled={pending || invalid} onClick={upload}>
-            {pending ? <Spinner /> : <Upload className="size-4" />}
+          <Button disabled={pending || invalid} onClick={upload} loading={pending}>
+            <Upload className="size-4" />
             {pending ? "Adding payload" : "Add payload"}
           </Button>
         </WizardDialogFooter>

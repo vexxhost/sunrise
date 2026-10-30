@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 import { volumesQueryOptions } from "@/hooks/queries/useVolumes";
 import { attachVolumeAction } from "@/lib/openstack/cinder-actions";
 import { canAttachVolume } from "@/lib/openstack/storage-lifecycle";
@@ -213,8 +212,7 @@ export function InstanceAttachVolumeDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={pending || !volumeId}>
-              {pending ? <Spinner /> : null}
+            <Button type="submit" disabled={pending || !volumeId} loading={pending}>
               {pending ? "Attaching" : "Attach volume"}
             </Button>
           </DialogFooter>

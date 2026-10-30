@@ -172,13 +172,13 @@ export function ApplicationCredentialsClient({
           type="button"
           size="icon-sm"
           variant="ghost"
-          className="text-destructive hover:text-destructive"
           title={`Delete ${row.original.name}`}
           onClick={() => {
             setError(null);
             setDeleteConfirmation("");
             setDeleteTarget(row.original);
           }}
+          tone="danger"
         >
           <Trash2 className="size-4" />
           <span className="sr-only">Delete application credential</span>

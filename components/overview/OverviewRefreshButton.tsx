@@ -15,9 +15,9 @@ export function OverviewRefreshButton() {
       variant="outline"
       size="sm"
       onClick={() => startTransition(() => router.refresh())}
-      disabled={isPending}
+      loading={isPending}
     >
-      <RefreshCw className={isPending ? 'animate-spin' : undefined} />
+      <RefreshCw />
       Refresh
     </Button>
   );

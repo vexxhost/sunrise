@@ -25,7 +25,6 @@ import {
   WizardDialogTitle,
   WizardReviewStatus,
 } from "@/components/ui/wizard-dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { createSecretSchema } from "@/lib/openstack/barbican-input";
@@ -423,8 +422,8 @@ export function SecretCreateSheet({
               disabled={pending || reviewIssues.length > 0}
               title={validationError ?? undefined}
               onClick={create}
+              loading={pending}
             >
-              {pending ? <Spinner /> : null}
               {pending ? "Creating" : "Create secret"}
             </Button>
           ) : (

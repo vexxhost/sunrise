@@ -28,7 +28,6 @@ import {
   WizardReviewRow,
   WizardReviewStatus,
 } from "@/components/ui/wizard-dialog";
-import { Spinner } from "@/components/ui/spinner";
 import { createContainerAction } from "@/lib/openstack/barbican-actions";
 import { createContainerSchema } from "@/lib/openstack/barbican-input";
 import type { MutationScope } from "@/lib/mutations";
@@ -379,8 +378,8 @@ export function ContainerCreateSheet({
               type="button"
               disabled={pending || reviewIssues.length > 0}
               onClick={create}
+              loading={pending}
             >
-              {pending ? <Spinner /> : null}
               {pending ? "Creating" : "Create secret container"}
             </Button>
           ) : (
