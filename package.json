@@ -2,7 +2,7 @@
   "name": "sunrise",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@11.28.8",
+  "packageManager": "pnpm@11.28.9",
   "engines": {
     "node": ">=24.18.1",
     "pnpm": ">=11.19.0 <12"
@@ -67,7 +67,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "reflect-metadata": "^0.2.2",
-    "simple-icons": "16.35.0",
+    "simple-icons": "16.36.0",
     "tailwind-merge": "^3.7.0",
     "tailwindcss-animate": "^1.0.7",
     "title-case": "^4.3.2",
