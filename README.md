@@ -18,6 +18,25 @@
 
    [http://localhost:9990](http://localhost:9990)
 
+## Nova Console Integration
+
+Sunrise runs the noVNC client in the browser and connects directly to
+`nova-novncproxy`. The browser therefore sends the Sunrise dashboard hostname
+as the WebSocket origin. Add every public Sunrise hostname to Nova's
+[`[console] allowed_origins`](https://docs.openstack.org/nova/latest/configuration/config.html#console.allowed_origins)
+list in each region:
+
+```ini
+[console]
+allowed_origins = sunrise.example.com
+```
+
+Use hostnames only, without a scheme, port, path, or wildcard. Separate multiple
+hostnames with commas. Local development on this repository's default URL needs
+`localhost`. Reconfigure or restart `nova-novncproxy` after changing the list.
+When TLS terminates in front of Nova, the proxy must also preserve WebSocket
+upgrades and set `X-Forwarded-Proto` to the browser-facing scheme.
+
 ## Local Production Container
 
 The Compose stack builds the Next.js standalone runtime for the local host
@@ -171,9 +190,9 @@ docker compose --profile replica up -d sunrise-replica
 Replica 2 is available at `http://localhost:9991`. Browser cookies are scoped
 to `localhost`, not its port, so switching between ports exercises the same
 opaque session through two processes without load-balancer affinity. Compose
-explicitly allows this secondary origin for the noVNC parent-window bridge;
-production remains restricted to `SUNRISE_DASHBOARD_URL` unless additional
-exact origins are configured.
+explicitly allows this secondary origin as a trusted same-host dashboard
+origin; production remains restricted to `SUNRISE_DASHBOARD_URL` unless
+additional exact origins are configured.
 
 Stop and remove the local stack with `docker compose down`. The Compose Redis
 data directory is deliberately ephemeral: it models a disposable local QA
