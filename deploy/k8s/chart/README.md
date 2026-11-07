@@ -4,11 +4,6 @@ This chart runs Sunrise as a horizontally scalable, non-root, read-only
 Kubernetes workload. Sessions are expected to use an external Redis-compatible
 service so any replica can serve the next request.
 
-Before exposing instance consoles, configure Nova to allow the public Sunrise
-hostname as a WebSocket origin. See
-[Nova Console Integration](../../../README.md#nova-console-integration). The
-chart cannot configure `nova-novncproxy` in the target OpenStack deployment.
-
 ## Configuration
 
 The chart accepts native Kubernetes environment sources instead of imposing a
