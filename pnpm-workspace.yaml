@@ -2,9 +2,13 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
-# CodeMirror extensions exchange class instances at runtime. Pin the core
-# packages exactly so pnpm cannot install incompatible duplicate copies.
 overrides:
+  # ESLint's current dependency graph still requests vulnerable minimatch 10.
+  # Remove this once its supported ranges include a patched 11.x release.
+  "minimatch@>=7.0.0 <11.0.1": "11.0.5"
+
+  # CodeMirror extensions exchange class instances at runtime. Pin the core
+  # packages exactly so pnpm cannot install incompatible duplicate copies.
   "@codemirror/commands": "6.11.1"
   "@codemirror/language": "6.13.1"
   "@codemirror/state": "6.7.6"
