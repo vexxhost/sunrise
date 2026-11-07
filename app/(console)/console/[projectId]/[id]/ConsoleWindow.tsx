@@ -1,13 +1,7 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import type RFB from "@novnc/novnc";
 import { ExternalLink, Keyboard, RefreshCw } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -22,6 +16,7 @@ import {
   getRemoteConsoleAction,
   type ConsoleProtocol,
 } from "@/lib/openstack/console-actions";
+import { toNoVncWebSocketUrl } from "@/lib/openstack/console-url";
 import { ThemeToggle } from "@/components/navigation/ThemeToggle";
 
 interface ConsoleWindowProps {
@@ -58,15 +53,6 @@ function pickIp(
   return undefined;
 }
 
-function originOf(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url).origin;
-  } catch {
-    return null;
-  }
-}
-
 export function ConsoleWindow({
   serverId,
   projectId,
@@ -81,65 +67,108 @@ export function ConsoleWindow({
   const [url, setUrl] = useState<string | null>(initialUrl);
   const [rawUrl, setRawUrl] = useState<string | null>(initialRawUrl);
   const [error, setError] = useState<string | null>(initialError);
-  const [bridgeReadyUrl, setBridgeReadyUrl] = useState<string | null>(null);
+  const [connectedUrl, setConnectedUrl] = useState<string | null>(null);
   const [confirmCtrlAltDelOpen, setConfirmCtrlAltDelOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  const proxyOrigin = useMemo(() => originOf(url), [url]);
+  const rfbRef = useRef<RFB | null>(null);
+  const vncTargetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     document.title = `${serverName} – Console`;
   }, [serverName]);
 
-  // ---- postMessage bridge -------------------------------------------------
-  // sunrise.html (deployed alongside noVNC via ConfigMap) posts
-  //   { type: 'sunrise:ready' }   when RFB is initialized
-  //   { type: 'sunrise:pong'  }   in reply to ping
-  //
-  // CAVEATS:
-  // - For this to work, sunrise.html MUST be served from the same origin as
-  //   the Nova noVNC proxy and MUST allow our dashboard origin in its
-  //   `parentOrigin` query value. The server derives it from the external
-  //   origin of the current request only when that origin is configured as
-  //   trusted; SUNRISE_DASHBOARD_URL remains the canonical fallback.
-  // - We always send with a strict targetOrigin (the proxy origin) — never '*'
-  //   — so a hijacked iframe location can't receive Ctrl+Alt+Del.
-  // - The overlay uses same-origin external CSS and JS. If those assets are
-  //   absent or blocked, no `sunrise:ready` arrives and the button stays disabled.
   useEffect(() => {
-    if (!proxyOrigin) return;
+    if (protocol !== "vnc" || !url) return;
 
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== proxyOrigin) return;
-      if (e.source !== iframeRef.current?.contentWindow) return;
-      const data = e.data as { type?: string } | null;
-      if (!data || typeof data.type !== "string") return;
-      if (data.type === "sunrise:ready" || data.type === "sunrise:pong") {
-        setBridgeReadyUrl(url);
+    const target = vncTargetRef.current;
+    if (!target) return;
+
+    let disposed = false;
+    let client: RFB | null = null;
+
+    setConnectedUrl(null);
+    setError(null);
+    target.replaceChildren();
+
+    const onConnect = () => {
+      if (disposed) return;
+      setConnectedUrl(url);
+      setError(null);
+    };
+    const onDisconnect = (event: CustomEvent<{ clean: boolean }>) => {
+      if (disposed) return;
+      setConnectedUrl(null);
+      setError(
+        event.detail.clean ? "Console disconnected" : "Console connection lost",
+      );
+    };
+    const onCredentialsRequired = () => {
+      if (!disposed) setError("Console credentials are required");
+    };
+    const onSecurityFailure = (
+      event: CustomEvent<{ status: number; reason?: string }>,
+    ) => {
+      if (disposed) return;
+      setError(event.detail.reason || "Console authentication failed");
+    };
+
+    const connect = async () => {
+      try {
+        const webSocketUrl = toNoVncWebSocketUrl(url);
+        const { default: RFBClient } = await import("@novnc/novnc");
+        if (disposed) return;
+
+        client = new RFBClient(target, webSocketUrl);
+        rfbRef.current = client;
+        client.viewOnly = false;
+        client.scaleViewport = true;
+        // Nova/QEMU commonly rejects SetDesktopSize; fit the canvas locally.
+        client.resizeSession = false;
+        client.background = "#000";
+        client.showDotCursor = true;
+        client.addEventListener("connect", onConnect);
+        client.addEventListener("disconnect", onDisconnect);
+        client.addEventListener("credentialsrequired", onCredentialsRequired);
+        client.addEventListener("securityfailure", onSecurityFailure);
+      } catch (connectionError) {
+        if (disposed) return;
+        setError(
+          connectionError instanceof Error
+            ? connectionError.message
+            : "Failed to initialize console",
+        );
       }
     };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [proxyOrigin, url]);
 
-  const postToConsole = useCallback(
-    (message: Record<string, unknown>) => {
-      if (!proxyOrigin) return;
-      iframeRef.current?.contentWindow?.postMessage(message, proxyOrigin);
-    },
-    [proxyOrigin],
-  );
+    void connect();
+
+    return () => {
+      disposed = true;
+      if (rfbRef.current === client) rfbRef.current = null;
+      if (client) {
+        client.removeEventListener("connect", onConnect);
+        client.removeEventListener("disconnect", onDisconnect);
+        client.removeEventListener(
+          "credentialsrequired",
+          onCredentialsRequired,
+        );
+        client.removeEventListener("securityfailure", onSecurityFailure);
+        client.disconnect();
+      }
+      target.replaceChildren();
+    };
+  }, [protocol, url]);
 
   const confirmCtrlAltDel = useCallback(() => {
-    postToConsole({ type: "sunrise:ctrlAltDel" });
+    rfbRef.current?.sendCtrlAltDel();
+    rfbRef.current?.focus();
     setConfirmCtrlAltDelOpen(false);
-  }, [postToConsole]);
+  }, []);
 
   const reconnect = () => {
     startTransition(async () => {
       setError(null);
-      setBridgeReadyUrl(null);
+      setConnectedUrl(null);
       try {
         // projectId is encoded in the URL purely so the operator can keep
         // multiple sessions open across projects in different popups; the
@@ -163,14 +192,26 @@ export function ConsoleWindow({
 
   const ipv4 = pickIp(addresses, 4);
   const canSendKeys =
-    bridgeReadyUrl === url && url !== null && protocol === "vnc";
+    connectedUrl === url && url !== null && protocol === "vnc";
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground">
       <div className="flex-1 min-h-0 relative bg-black">
-        {url ? (
+        {url && protocol === "vnc" ? (
+          <>
+            <div
+              ref={vncTargetRef}
+              className="absolute inset-0 overflow-hidden bg-black"
+              aria-label={`VNC console for ${serverName}`}
+            />
+            {connectedUrl !== url && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black text-sm text-white/60">
+                {error ?? "Connecting console…"}
+              </div>
+            )}
+          </>
+        ) : url ? (
           <iframe
-            ref={iframeRef}
             key={url}
             src={url}
             title={`${protocol} console for ${serverName}`}
@@ -213,7 +254,7 @@ export function ConsoleWindow({
             title={
               canSendKeys
                 ? "Send Ctrl+Alt+Del to guest"
-                : "Available once the patched sunrise.html console is loaded (VNC only)"
+                : "Available once the VNC console is connected"
             }
             className="gap-2"
           >
@@ -242,9 +283,7 @@ export function ConsoleWindow({
             className="gap-2"
             loading={isPending}
           >
-            <RefreshCw
-              className="h-3.5 w-3.5"
-            />
+            <RefreshCw className="h-3.5 w-3.5" />
             Reconnect
           </Button>
         </div>

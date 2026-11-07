@@ -1,36 +1,44 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-import { rewriteNoVncUrl } from '@/lib/openstack/console-url';
+import { toNoVncWebSocketUrl } from "@/lib/openstack/console-url";
 
-describe('noVNC console URL rewriting', () => {
-  it('preserves Nova token data and adds the dashboard origin', () => {
-    const result = rewriteNoVncUrl(
-      'https://console.example/vnc_lite.html?path=websockify%3Ftoken%3Dsecret',
-      'https://cloud.example/compute',
-    );
-    const url = new URL(result);
-
-    expect(url.pathname).toBe('/sunrise.html');
-    expect(url.searchParams.get('path')).toBe('websockify?token=secret');
-    expect(url.searchParams.get('parentOrigin')).toBe('https://cloud.example');
-  });
-
-  it('supports the upstream full noVNC page name', () => {
+describe("noVNC WebSocket URLs", () => {
+  it("uses Nova's path parameter and preserves its token", () => {
     expect(
-      rewriteNoVncUrl('https://console.example/novnc/vnc.html?token=abc'),
-    ).toBe('https://console.example/novnc/sunrise.html?token=abc');
+      toNoVncWebSocketUrl(
+        "https://console.example/vnc_lite.html?path=websockify%3Ftoken%3Dsecret",
+      ),
+    ).toBe("wss://console.example/websockify?token=secret");
   });
 
-  it('leaves unrelated and malformed URLs unchanged', () => {
-    expect(rewriteNoVncUrl('https://console.example/serial.html?token=abc')).toBe(
-      'https://console.example/serial.html?token=abc',
-    );
-    expect(rewriteNoVncUrl('not a URL')).toBe('not a URL');
-  });
-
-  it('ignores invalid dashboard URLs without dropping the console URL', () => {
+  it("matches noVNC behavior when Nova supplies only the token path", () => {
     expect(
-      rewriteNoVncUrl('https://console.example/vnc.html?token=abc', '/relative'),
-    ).toBe('https://console.example/sunrise.html?token=abc');
+      toNoVncWebSocketUrl(
+        "https://console.example/vnc_lite.html?path=%3Ftoken%3Dsecret",
+      ),
+    ).toBe("wss://console.example/vnc_lite.html?token=secret");
+  });
+
+  it("defaults to websockify relative to the console page", () => {
+    expect(
+      toNoVncWebSocketUrl(
+        "https://console.example/novnc/vnc_lite.html?token=secret",
+      ),
+    ).toBe("wss://console.example/novnc/websockify");
+  });
+
+  it("supports explicit noVNC hosts and ports", () => {
+    expect(
+      toNoVncWebSocketUrl(
+        "http://console.example/vnc_lite.html?host=proxy.example&port=6080&path=socket%3Ftoken%3Dsecret",
+      ),
+    ).toBe("ws://proxy.example:6080/socket?token=secret");
+  });
+
+  it("rejects malformed and unsupported console page URLs", () => {
+    expect(() => toNoVncWebSocketUrl("not a URL")).toThrow();
+    expect(() =>
+      toNoVncWebSocketUrl("ftp://console.example/vnc_lite.html"),
+    ).toThrow("Nova returned an unsupported VNC console URL");
   });
 });
