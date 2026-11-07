@@ -1,10 +1,7 @@
 "use server";
 
-import { headers } from "next/headers";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import { getSession } from "@/lib/session";
-import { rewriteNoVncUrl } from "@/lib/openstack/console-url";
-import { getTrustedRequestOrigin } from "@/lib/request-origin";
 
 export type ConsoleProtocol = "vnc" | "serial";
 export type ConsoleType = "novnc" | "xvpvnc" | "serial";
@@ -12,7 +9,7 @@ export type ConsoleType = "novnc" | "xvpvnc" | "serial";
 export interface RemoteConsole {
   protocol: ConsoleProtocol;
   type: ConsoleType;
-  /** URL to render in the dashboard (rewritten to sunrise.html when applicable). */
+  /** Original URL returned by Nova. VNC clients derive the WebSocket URL from it. */
   url: string;
   /** Original, unmodified URL Nova returned. Use this for "Open raw". */
   rawUrl: string;
@@ -23,18 +20,6 @@ const DEFAULTS: Record<ConsoleProtocol, ConsoleType> = {
   serial: "serial",
 };
 
-/**
- * Nova-issued noVNC URLs are rewritten to the small Sunrise page deployed
- * alongside the upstream assets. The token query remains intact, and the
- * request's external dashboard origin is included for the postMessage bridge.
- *
- * CAVEATS:
- * - The proxy must serve `sunrise.html` at the same origin as the websocket
- *   endpoint. If the file is missing the iframe will 404 — fall back to rawUrl.
- * - The proxy origin must allow framing from the dashboard origin
- *   (no `X-Frame-Options: DENY`, permissive `Content-Security-Policy:
- *   frame-ancestors`).
- */
 export async function getRemoteConsoleAction(
   serverId: string,
   protocol: ConsoleProtocol = "vnc",
@@ -69,12 +54,5 @@ export async function getRemoteConsoleAction(
 
   const remote = data.remote_console;
   const rawUrl = remote.url;
-  const dashboardOrigin = getTrustedRequestOrigin(
-    await headers(),
-    process.env.SUNRISE_DASHBOARD_URL,
-    process.env.SUNRISE_ALLOWED_DASHBOARD_ORIGINS,
-  );
-  const url =
-    protocol === "vnc" ? rewriteNoVncUrl(rawUrl, dashboardOrigin) : rawUrl;
-  return { ...remote, url, rawUrl };
+  return { ...remote, rawUrl };
 }

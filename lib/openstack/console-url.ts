@@ -1,35 +1,24 @@
-export function rewriteNoVncUrl(
-  originalUrl: string,
-  dashboardUrl?: string,
-): string {
-  try {
-    const consoleUrl = new URL(originalUrl);
-    if (
-      !consoleUrl.pathname.endsWith('/vnc_lite.html') &&
-      !consoleUrl.pathname.endsWith('/vnc.html')
-    ) {
-      return originalUrl;
-    }
-
-    consoleUrl.pathname = consoleUrl.pathname.replace(
-      /(vnc_lite|vnc)\.html$/,
-      'sunrise.html',
-    );
-
-    if (dashboardUrl) {
-      try {
-        const dashboard = new URL(dashboardUrl);
-        if (dashboard.protocol === 'http:' || dashboard.protocol === 'https:') {
-          consoleUrl.searchParams.set('parentOrigin', dashboard.origin);
-        }
-      } catch {
-        // The custom page remains usable even when the optional bridge origin
-        // is unavailable. Ctrl+Alt+Del stays disabled in that configuration.
-      }
-    }
-
-    return consoleUrl.toString();
-  } catch {
-    return originalUrl;
+export function toNoVncWebSocketUrl(consolePageUrl: string): string {
+  const pageUrl = new URL(consolePageUrl);
+  if (pageUrl.protocol !== "http:" && pageUrl.protocol !== "https:") {
+    throw new Error("Nova returned an unsupported VNC console URL");
   }
+
+  const webSocketProtocol = pageUrl.protocol === "https:" ? "wss:" : "ws:";
+  const host = pageUrl.searchParams.get("host");
+  const port = pageUrl.searchParams.get("port");
+  const path = pageUrl.searchParams.get("path") ?? "websockify";
+
+  let webSocketUrl: URL;
+  if (host) {
+    webSocketUrl = new URL(`https://${host}`);
+    webSocketUrl.protocol = webSocketProtocol;
+    if (port) webSocketUrl.port = port;
+    webSocketUrl = new URL(`./${path}`, webSocketUrl);
+  } else {
+    webSocketUrl = new URL(path, pageUrl);
+    webSocketUrl.protocol = webSocketProtocol;
+  }
+
+  return webSocketUrl.toString();
 }
