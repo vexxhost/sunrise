@@ -16,6 +16,7 @@ export async function register() {
     logLevel: configuration.logLevel,
     metricsEnabled: configuration.metricsEnabled,
     providerCount: configuration.federationProviderIds.length,
+    s3DirectBrowser: configuration.s3DirectBrowser,
     sessionBackend: configuration.sessionBackend,
   });
   for (const warning of configuration.warnings) {

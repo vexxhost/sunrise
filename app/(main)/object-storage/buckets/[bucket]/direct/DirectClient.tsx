@@ -67,6 +67,7 @@ interface DirectClientProps {
   activeRegionId: string;
   bucket: string;
   objectKey?: string;
+  showServerBrowserMode: boolean;
 }
 
 type SizeState = BrowserSizeResult & { label: string };
@@ -109,6 +110,7 @@ export function DirectClient({
   activeRegionId,
   bucket,
   objectKey = "",
+  showServerBrowserMode,
 }: DirectClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -588,9 +590,9 @@ export function DirectClient({
       <div className="font-medium">Direct browser mode</div>
       <div className="text-muted-foreground">
         S3 operations on this page go from your browser straight to{" "}
-        <code>{endpoint || "the S3 endpoint"}</code>. Ceph 20.2.3 requires CORS
-        on this bucket; global RGW CORS may become available after a future Ceph
-        21.x or later upgrade.
+        <code>{endpoint || "the S3 endpoint"}</code>. RGW must allow this
+        Sunrise origin through either its global CORS policy or a compatible
+        CORS configuration on this bucket.
       </div>
     </div>
   );
@@ -691,14 +693,16 @@ export function DirectClient({
             );
           })}
         </div>
-        <Link
-          href={`/object-storage/buckets/${encodeURIComponent(bucket)}${
-            prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""
-          }`}
-          className="text-xs text-muted-foreground underline hover:text-foreground"
-        >
-          Server browser mode
-        </Link>
+        {showServerBrowserMode && (
+          <Link
+            href={`/object-storage/buckets/${encodeURIComponent(bucket)}${
+              prefix ? `?prefix=${encodeURIComponent(prefix)}` : ""
+            }`}
+            className="text-xs text-muted-foreground underline hover:text-foreground"
+          >
+            Server browser mode
+          </Link>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded-md border p-3">
@@ -894,8 +898,10 @@ export function DirectClient({
             </div>
             {!isBrowserAccessDenied(listQuery.error) && (
               <div className="mt-1 text-muted-foreground">
-                If this is a CORS error, inspect the request in browser
-                DevTools.
+                If the browser reports a CORS or network failure, verify that
+                RGW allows the Sunrise origin through global CORS or a
+                compatible CORS configuration on this bucket, then inspect the
+                request in browser DevTools.
               </div>
             )}
           </div>

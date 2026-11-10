@@ -30,6 +30,7 @@ import {
   type SessionBackend,
 } from "@/lib/redis";
 import { getSessionLifetimePolicy } from "@/lib/session-lifetime";
+import { s3DirectBrowser } from "@/lib/s3/browser-mode";
 import type { ObjectStorageBackend } from "@/lib/service-policy";
 
 type RuntimeEnvironment = Record<string, string | undefined>;
@@ -51,6 +52,7 @@ export type RuntimeConfiguration = {
   objectStorageBackends: ObjectStorageBackend[];
   publicIdentityApiUrl: string;
   redisTransport?: "plain" | "tls";
+  s3DirectBrowser: boolean;
   sessionBackend: SessionBackend;
   sunriseColorPalette: SunriseColorPalette;
   warnings: string[];
@@ -213,6 +215,9 @@ export function validateRuntimeConfiguration(
   }
 
   const policy = getServicePolicy(environment);
+  const directBrowser = s3DirectBrowser(
+    environment.SUNRISE_S3_DIRECT_BROWSER,
+  );
   getIdentityProviderOptions(environment);
   const providers = getFederationProviderConfigs(environment);
   const sessionBackend = getSessionBackend(environment.SUNRISE_SESSION_BACKEND);
@@ -270,6 +275,7 @@ export function validateRuntimeConfiguration(
     objectStorageBackends: policy.objectStorageBackends,
     publicIdentityApiUrl: browserIdentityApiUrl,
     ...(redisTransport ? { redisTransport } : {}),
+    s3DirectBrowser: directBrowser,
     sessionBackend,
     sunriseColorPalette,
     warnings,

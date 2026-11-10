@@ -1,3 +1,8 @@
+export function directBucketPath(bucket: string, prefix = '') {
+  const path = `/object-storage/buckets/${encodeURIComponent(bucket)}/direct`;
+  return prefix ? `${path}?prefix=${encodeURIComponent(prefix)}` : path;
+}
+
 export function directObjectPath(bucket: string, objectKey: string) {
   const basePath = `/object-storage/buckets/${encodeURIComponent(
     bucket
