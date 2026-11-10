@@ -1,16 +1,39 @@
 import "server-only";
 
-import type {
-  FinalizeRequestMiddleware,
-  MetadataBearer,
-  MiddlewareStack,
-} from "@smithy/types";
 import { elapsedSeconds, observeRgwRequest } from "@/lib/metrics";
 
 type RgwApi = "iam" | "s3" | "sts";
 
+type MiddlewareArguments<Input extends object> = {
+  input: Input;
+  request?: unknown;
+};
+
+type MiddlewareResult<Output extends object> = {
+  output: Output;
+  response: unknown;
+};
+
+type MiddlewareHandler<Input extends object, Output extends object> = (
+  args: MiddlewareArguments<Input>,
+) => Promise<MiddlewareResult<Output>>;
+
+type RgwMetricsMiddleware = <Input extends object, Output extends object>(
+  next: MiddlewareHandler<Input, Output>,
+  context: { commandName?: string },
+) => MiddlewareHandler<Input, Output>;
+
 type InstrumentableClient = {
-  middlewareStack: MiddlewareStack<object, MetadataBearer>;
+  middlewareStack: {
+    addRelativeTo(
+      middleware: RgwMetricsMiddleware,
+      options: {
+        name: string;
+        relation: "after";
+        toMiddleware: string;
+      },
+    ): void;
+  };
 };
 
 function operationName(commandName?: string) {
@@ -26,35 +49,36 @@ function responseStatus(value: unknown) {
     : undefined;
 }
 
-export function instrumentRgwClient<T>(client: T, api: RgwApi): T {
-  const instrumentable = client as T & InstrumentableClient;
-  const middleware: FinalizeRequestMiddleware<object, MetadataBearer> =
-    (next, context) => async (args) => {
-      const startedAt = performance.now();
-      const operation = operationName(context.commandName);
-      try {
-        const result = await next(args);
-        observeRgwRequest({
-          api,
-          durationSeconds: elapsedSeconds(startedAt),
-          operation,
-          outcome: "success",
-          status: responseStatus(result.output),
-        });
-        return result;
-      } catch (error) {
-        observeRgwRequest({
-          api,
-          durationSeconds: elapsedSeconds(startedAt),
-          operation,
-          outcome: "error",
-          status: responseStatus(error),
-        });
-        throw error;
-      }
-    };
+export function instrumentRgwClient<T extends InstrumentableClient>(
+  client: T,
+  api: RgwApi,
+): T {
+  const middleware: RgwMetricsMiddleware = (next, context) => async (args) => {
+    const startedAt = performance.now();
+    const operation = operationName(context.commandName);
+    try {
+      const result = await next(args);
+      observeRgwRequest({
+        api,
+        durationSeconds: elapsedSeconds(startedAt),
+        operation,
+        outcome: "success",
+        status: responseStatus(result.output),
+      });
+      return result;
+    } catch (error) {
+      observeRgwRequest({
+        api,
+        durationSeconds: elapsedSeconds(startedAt),
+        operation,
+        outcome: "error",
+        status: responseStatus(error),
+      });
+      throw error;
+    }
+  };
 
-  instrumentable.middlewareStack.addRelativeTo(middleware, {
+  client.middlewareStack.addRelativeTo(middleware, {
     name: `sunriseRgw${api.toUpperCase()}Metrics`,
     relation: "after",
     toMiddleware: "awsAuthMiddleware",
