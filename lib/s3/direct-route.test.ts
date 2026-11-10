@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { directObjectPath } from './direct-route';
+import { directBucketPath, directObjectPath } from './direct-route';
+
+describe('directBucketPath', () => {
+  it('encodes the bucket and preserves an object prefix', () => {
+    expect(directBucketPath('shared bucket', 'reports/2026/')).toBe(
+      '/object-storage/buckets/shared%20bucket/direct?prefix=reports%2F2026%2F'
+    );
+  });
+
+  it('omits an empty prefix', () => {
+    expect(directBucketPath('shared bucket')).toBe(
+      '/object-storage/buckets/shared%20bucket/direct'
+    );
+  });
+});
 
 describe('directObjectPath', () => {
   it('keeps folder separators while encoding bucket and object segments', () => {

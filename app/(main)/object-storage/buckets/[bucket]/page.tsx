@@ -1,15 +1,18 @@
+import { redirect } from "next/navigation";
 import { ObjectsClient } from "./ObjectsClient";
 import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
 import { DataTableHeader } from "@/components/DataTable/Header";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { requireS3Backend } from "@/components/services/ServiceGuards";
 import { listObjectsForRender } from "@/lib/s3/actions";
+import { s3DirectBrowser } from "@/lib/s3/browser-mode";
+import { directBucketPath } from "@/lib/s3/direct-route";
 import { getSession, normalizeProjectId } from "@/lib/session";
 import { recoverMissingResource } from "@/lib/resource-recovery-server";
 
 interface PageProps {
   params: Promise<{ bucket: string }>;
-  searchParams: Promise<{ prefix?: string }>;
+  searchParams: Promise<{ prefix?: string | string[] }>;
 }
 
 export default async function Page({ params, searchParams }: PageProps) {
@@ -17,7 +20,12 @@ export default async function Page({ params, searchParams }: PageProps) {
   const { bucket: rawBucket } = await params;
   const { prefix: rawPrefix } = await searchParams;
   const bucket = decodeURIComponent(rawBucket);
-  const prefix = rawPrefix ?? "";
+  const prefix = typeof rawPrefix === "string" ? rawPrefix : "";
+
+  if (s3DirectBrowser()) {
+    redirect(directBucketPath(bucket, prefix));
+  }
+
   const session = await getSession();
   const activeProjectId = normalizeProjectId(session.projectId);
   const activeRegionId = session.regionId ?? "";

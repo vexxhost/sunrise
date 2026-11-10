@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
 import { DataTableHeader } from "@/components/DataTable/Header";
 import { requireS3Backend } from "@/components/services/ServiceGuards";
+import { s3DirectBrowser } from "@/lib/s3/browser-mode";
 import {
   getActiveS3Credentials,
   getSession,
@@ -45,6 +46,7 @@ export default async function Page({ params, searchParams }: PageProps) {
         activeRegionId={activeRegionId}
         bucket={bucket}
         objectKey={objectKey}
+        showServerBrowserMode={!s3DirectBrowser()}
       />
     </>
   );

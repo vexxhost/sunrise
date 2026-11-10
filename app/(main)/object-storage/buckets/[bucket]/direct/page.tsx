@@ -4,6 +4,7 @@ import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRe
 import { DataTableHeader } from "@/components/DataTable/Header";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { requireS3Backend } from "@/components/services/ServiceGuards";
+import { s3DirectBrowser } from "@/lib/s3/browser-mode";
 import { directObjectPath } from "@/lib/s3/direct-route";
 import {
   getActiveS3Credentials,
@@ -44,6 +45,7 @@ export default async function Page({ params, searchParams }: PageProps) {
         activeProjectId={activeProjectId}
         activeRegionId={activeRegionId}
         bucket={bucket}
+        showServerBrowserMode={!s3DirectBrowser()}
       />
     </>
   );

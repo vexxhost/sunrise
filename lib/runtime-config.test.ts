@@ -41,6 +41,7 @@ describe("validateRuntimeConfiguration", () => {
       objectStorageBackends: ["s3", "swift"],
       publicIdentityApiUrl: "https://identity.example.test/v3",
       redisTransport: "tls",
+      s3DirectBrowser: false,
       sessionBackend: "redis",
       sunriseColorPalette: "sunrise",
       warnings: [],
@@ -176,6 +177,28 @@ describe("validateRuntimeConfiguration", () => {
         SUNRISE_COLOR_PALETTE: "unknown",
       }),
     ).toThrow("SUNRISE_COLOR_PALETTE must be one of: sunrise, vexxhost");
+  });
+
+  it("reports direct S3 browser mode and validates its value", () => {
+    expect(
+      validateRuntimeConfiguration(
+        {
+          ...validEnvironment,
+          SUNRISE_S3_DIRECT_BROWSER: "true",
+        },
+        { buildDeploymentId: "0123456789abcdef" },
+      ).s3DirectBrowser,
+    ).toBe(true);
+
+    expect(() =>
+      validateRuntimeConfiguration(
+        {
+          ...validEnvironment,
+          SUNRISE_S3_DIRECT_BROWSER: "enabled",
+        },
+        { buildDeploymentId: "0123456789abcdef" },
+      ),
+    ).toThrow("SUNRISE_S3_DIRECT_BROWSER must be true or false");
   });
 
   it("validates structured logging settings", () => {

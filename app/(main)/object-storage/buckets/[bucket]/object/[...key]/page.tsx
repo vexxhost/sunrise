@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { ObjectDetailClient } from "./ObjectDetailClient";
 import { ObjectStorageAuthRedirect } from "@/components/Auth/ObjectStorageAuthRedirect";
 import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
@@ -7,6 +8,8 @@ import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { headObjectForRender } from "@/lib/s3/actions";
 import { makeQueryClient } from "@/lib/query-client";
 import { getSession, normalizeProjectId } from "@/lib/session";
+import { s3DirectBrowser } from "@/lib/s3/browser-mode";
+import { directObjectPath } from "@/lib/s3/direct-route";
 import { recoverMissingResource } from "@/lib/resource-recovery-server";
 
 interface PageProps {
@@ -18,6 +21,11 @@ export default async function Page({ params }: PageProps) {
   const { bucket: rawBucket, key: rawKeyParts } = await params;
   const bucket = decodeURIComponent(rawBucket);
   const objectKey = rawKeyParts.map((p) => decodeURIComponent(p)).join("/");
+
+  if (s3DirectBrowser()) {
+    redirect(directObjectPath(bucket, objectKey));
+  }
+
   const session = await getSession();
   const activeProjectId = normalizeProjectId(session.projectId);
 
