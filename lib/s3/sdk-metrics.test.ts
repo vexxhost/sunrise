@@ -1,14 +1,29 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import type {
-  FinalizeRequestMiddleware,
-  HandlerExecutionContext,
-  MetadataBearer,
-  RelativeMiddlewareOptions,
-} from "@smithy/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { metricsRegistry, resetMetricsForTests } from "@/lib/metrics";
 import { instrumentRgwClient } from "@/lib/s3/sdk-metrics";
+
+type TestMiddlewareArguments<Input extends object> = {
+  input: Input;
+  request?: unknown;
+};
+type TestMiddlewareResult<Output extends object> = {
+  output: Output;
+  response: unknown;
+};
+type TestMiddlewareHandler<Input extends object, Output extends object> = (
+  args: TestMiddlewareArguments<Input>,
+) => Promise<TestMiddlewareResult<Output>>;
+type TestMiddleware = <Input extends object, Output extends object>(
+  next: TestMiddlewareHandler<Input, Output>,
+  context: { commandName?: string },
+) => TestMiddlewareHandler<Input, Output>;
+type TestMiddlewareOptions = {
+  name?: string;
+  relation: "after";
+  toMiddleware: string;
+};
 
 describe("RGW SDK metrics", () => {
   beforeEach(() => {
@@ -22,15 +37,13 @@ describe("RGW SDK metrics", () => {
   });
 
   function captureMiddleware() {
-    let middleware:
-      | FinalizeRequestMiddleware<Record<string, never>, MetadataBearer>
-      | undefined;
-    let options: RelativeMiddlewareOptions | undefined;
+    let middleware: TestMiddleware | undefined;
+    let options: TestMiddlewareOptions | undefined;
     const client = {
       middlewareStack: {
         addRelativeTo(
           candidate: typeof middleware,
-          candidateOptions: RelativeMiddlewareOptions,
+          candidateOptions: TestMiddlewareOptions,
         ) {
           middleware = candidate;
           options = candidateOptions;
@@ -52,8 +65,9 @@ describe("RGW SDK metrics", () => {
     const handler = middleware(
       vi.fn().mockResolvedValue({
         output: { $metadata: { httpStatusCode: 200 } },
+        response: {},
       }),
-      { commandName: "ListObjectsV2Command" } as HandlerExecutionContext,
+      { commandName: "ListObjectsV2Command" },
     );
 
     await handler({ input: {}, request: {} });
@@ -70,10 +84,9 @@ describe("RGW SDK metrics", () => {
     const error = Object.assign(new Error("denied"), {
       $metadata: { httpStatusCode: 403 },
     });
-    const handler = middleware(
-      vi.fn().mockRejectedValue(error),
-      { commandName: "GetBucketPolicyCommand" } as HandlerExecutionContext,
-    );
+    const handler = middleware(vi.fn().mockRejectedValue(error), {
+      commandName: "GetBucketPolicyCommand",
+    });
 
     await expect(handler({ input: {}, request: {} })).rejects.toBe(error);
 

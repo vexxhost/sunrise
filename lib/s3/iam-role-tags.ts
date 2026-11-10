@@ -8,9 +8,26 @@ import {
   type UntagRoleCommandOutput,
 } from "@aws-sdk/client-iam";
 import { parseXML, XmlNode } from "@aws-sdk/xml-builder";
-import type { BuildMiddleware, DeserializeMiddleware } from "@smithy/types";
 
 type XmlRecord = Record<string, unknown>;
+
+type MiddlewareArguments<Input extends object> = {
+  input: Input;
+  request?: unknown;
+};
+
+type MiddlewareResult<Output extends object> = {
+  output: Output;
+  response: unknown;
+};
+
+type MiddlewareHandler<Input extends object, Output extends object> = (
+  args: MiddlewareArguments<Input>,
+) => Promise<MiddlewareResult<Output>>;
+
+type RelativeMiddleware<Input extends object, Output extends object> = (
+  next: MiddlewareHandler<Input, Output>,
+) => MiddlewareHandler<Input, Output>;
 
 function asRecord(value: unknown): XmlRecord | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -85,7 +102,7 @@ export async function listRoleTagsWithCephCompatibility(
   input: ListRoleTagsCommandInput,
 ): Promise<ListRoleTagsCommandOutput> {
   const command = new ListRoleTagsCommand(input);
-  const compatibilityMiddleware: DeserializeMiddleware<
+  const compatibilityMiddleware: RelativeMiddleware<
     ListRoleTagsCommandInput,
     ListRoleTagsCommandOutput
   > = (next) => async (args) => {
@@ -124,7 +141,7 @@ export async function untagRoleWithCephCompatibility(
       TagKeys: [tagKey],
     };
     const command = new UntagRoleCommand(input);
-    const compatibilityMiddleware: BuildMiddleware<
+    const compatibilityMiddleware: RelativeMiddleware<
       UntagRoleCommandInput,
       UntagRoleCommandOutput
     > = (next) => async (args) => {
