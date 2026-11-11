@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import {
@@ -15,6 +15,7 @@ import {
   Home,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import bytes from "bytes";
 import { DataTable } from "@/components/DataTable";
@@ -22,6 +23,7 @@ import { MutationConfirmationDialog } from "@/components/mutations/MutationConfi
 import { BucketSettingsDialog } from "@/components/object-storage/BucketSettingsDialog";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { UploadQueueMenu } from "@/components/UploadQueueMenu";
+import { UploadSpeedIndicator } from "@/components/UploadSpeedIndicator";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -46,6 +48,14 @@ import {
   type SizeSelectionEntry,
 } from "@/lib/s3/actions";
 import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
+import {
+  findProxyUploadConflicts,
+  ProxyS3AuthRequiredError,
+  uploadProxyFiles,
+} from "@/lib/s3/proxy-upload";
+import type { S3UploadProgress } from "@/lib/s3/upload-batch";
+import { buildS3UploadMetrics } from "@/lib/s3/upload-telemetry-client";
+import { recordS3UploadMetrics } from "@/lib/s3/upload-telemetry";
 
 type Row =
   | { kind: "folder"; name: string; fullPath: string }
@@ -62,17 +72,6 @@ type Row =
 type SizeState = Extract<CalculateSelectionSizeResult, { ok: true }> & {
   label: string;
 };
-
-type UploadResult =
-  | { ok: true; uploaded: number; errors: { key: string; error: string }[] }
-  | { ok: false; needsAuth: true }
-  | {
-      ok: false;
-      needsAuth: false;
-      conflict: true;
-      existingKeys: string[];
-    }
-  | { ok: false; needsAuth: false; error: string };
 
 function basenameOf(prefix: string, key: string) {
   const tail = key.startsWith(prefix) ? key.slice(prefix.length) : key;
@@ -152,6 +151,7 @@ export function ObjectsClient({
   const prefix = searchParams.get("prefix") ?? "";
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const objectListOptions = useMemo(
     () => objectsQueryOptions(activeProjectId, bucket, prefix),
     [activeProjectId, bucket, prefix],
@@ -169,10 +169,9 @@ export function ObjectsClient({
 
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadPhase, setUploadPhase] = useState<"sending" | "storing" | null>(
+  const [uploadProgress, setUploadProgress] = useState<S3UploadProgress | null>(
     null,
   );
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [overwriteOpen, setOverwriteOpen] = useState(false);
@@ -189,6 +188,13 @@ export function ObjectsClient({
   const [sizeBusy, setSizeBusy] = useState(false);
   const [sizeResult, setSizeResult] = useState<SizeState | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
+
+  useEffect(
+    () => () => {
+      uploadAbortRef.current?.abort();
+    },
+    [],
+  );
 
   const rows: Row[] = useMemo(
     () => [
@@ -218,109 +224,87 @@ export function ObjectsClient({
     input.value = "";
     setUploadMessage(null);
     setUploadError(null);
-    setUploadPhase(null);
     setUploadProgress(null);
     setOverwriteOpen(false);
     setOverwriteKeys([]);
   };
 
-  const sendUploadRequest = (confirmOverwrite: boolean) => {
-    return new Promise<UploadResult>((resolve) => {
-      const formData = new FormData();
-      for (const file of uploadFiles) {
-        formData.append("files", file, file.name);
-        formData.append("keys", `${prefix}${filePath(file)}`);
-      }
-      if (confirmOverwrite) {
-        formData.append("confirmOverwrite", "true");
-      }
-
-      const request = new XMLHttpRequest();
-      request.open(
-        "POST",
-        `/object-storage/buckets/${encodeURIComponent(bucket)}/upload`,
-      );
-      request.setRequestHeader("X-Sunrise-Project-Id", activeProjectId);
-      request.upload.onprogress = (event) => {
-        if (!event.lengthComputable) return;
-        setUploadPhase("sending");
-        setUploadProgress(
-          Math.min(99, Math.round((event.loaded / event.total) * 100)),
-        );
-      };
-      request.upload.onload = () => {
-        setUploadPhase("storing");
-        setUploadProgress(null);
-      };
-      request.onload = () => {
-        try {
-          resolve(JSON.parse(request.responseText) as UploadResult);
-        } catch {
-          resolve({
-            ok: false,
-            needsAuth: false,
-            error:
-              request.responseText || `Upload failed with ${request.status}`,
-          });
-        }
-      };
-      request.onerror = () => {
-        resolve({
-          ok: false,
-          needsAuth: false,
-          error: "Upload request failed",
-        });
-      };
-      request.send(formData);
-    });
-  };
-
   const handleUpload = async (confirmOverwrite = false) => {
     if (uploadFiles.length === 0 || uploading) return;
     setUploading(true);
-    setUploadPhase("sending");
-    setUploadProgress(0);
+    setUploadProgress(null);
     setUploadMessage(null);
     setUploadError(null);
-    if (confirmOverwrite) {
-      setOverwriteOpen(false);
-    }
+    if (confirmOverwrite) setOverwriteOpen(false);
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+    const progressSnapshot: { current: S3UploadProgress | null } = {
+      current: null,
+    };
+    const files = uploadFiles.map((file) => ({
+      file,
+      key: `${prefix}${filePath(file)}`,
+    }));
 
-    const result = await sendUploadRequest(confirmOverwrite);
-    setUploading(false);
-    setUploadPhase(null);
-    setUploadProgress(null);
+    try {
+      if (!confirmOverwrite) {
+        const conflicts = await findProxyUploadConflicts(
+          activeProjectId,
+          bucket,
+          files.map(({ key }) => key),
+          controller.signal,
+        );
+        if (conflicts.length > 0) {
+          setOverwriteKeys(conflicts);
+          setOverwriteOpen(true);
+          return;
+        }
+      }
 
-    if (!result.ok) {
-      if (result.needsAuth) {
+      const result = await uploadProxyFiles(
+        activeProjectId,
+        bucket,
+        files,
+        (progress) => {
+          progressSnapshot.current = progress;
+          setUploadProgress(progress);
+        },
+        controller.signal,
+      );
+      void recordS3UploadMetrics(
+        buildS3UploadMetrics("proxy", files, progressSnapshot.current),
+      ).catch(() => undefined);
+      setUploadMessage(
+        result.cancelled
+          ? "Upload cancelled. Completed objects were preserved."
+          : `Uploaded ${result.uploaded} ${result.uploaded === 1 ? "object" : "objects"}.`,
+      );
+      if (result.errors.length > 0) {
+        setUploadError(
+          `${result.errors.length} upload failed. ${result.errors[0].key}: ${result.errors[0].error}`,
+        );
+      }
+      setUploadFiles(
+        progressSnapshot.current
+          ? progressSnapshot.current.files
+              .filter((progress) => progress.state !== "complete")
+              .map((progress) => uploadFiles[progress.index])
+          : uploadFiles,
+      );
+      if (result.uploaded > 0) await refreshObjects();
+    } catch (error) {
+      if (error instanceof ProxyS3AuthRequiredError) {
         startObjectStorageCredentialRefresh();
-        return;
+      } else if (controller.signal.aborted) {
+        setUploadMessage("Upload cancelled.");
+      } else {
+        setUploadError(error instanceof Error ? error.message : String(error));
       }
-      if ("conflict" in result && result.conflict) {
-        setOverwriteKeys(result.existingKeys);
-        setOverwriteOpen(true);
-        return;
-      }
-      setUploadError(
-        "error" in result
-          ? result.error
-          : "Upload requires overwrite confirmation",
-      );
-      return;
+    } finally {
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
+      setUploading(false);
+      setUploadProgress(null);
     }
-
-    setUploadMessage(
-      `Uploaded ${result.uploaded} ${result.uploaded === 1 ? "object" : "objects"}.`,
-    );
-    if (result.errors.length > 0) {
-      setUploadError(
-        `${result.errors.length} upload failed. ${result.errors[0].key}: ${result.errors[0].error}`,
-      );
-    }
-    setUploadFiles([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    if (folderInputRef.current) folderInputRef.current.value = "";
-    await refreshObjects();
   };
 
   const handleCreateFolder = async () => {
@@ -507,7 +491,10 @@ export function ObjectsClient({
           <div className="flex items-center gap-1">
             {r.kind === "object" && (
               <a
-                className={buttonVariants({ size: "icon-sm", variant: "ghost" })}
+                className={buttonVariants({
+                  size: "icon-sm",
+                  variant: "ghost",
+                })}
                 href={downloadUrl(bucket, r.fullPath)}
                 title="Download"
               >
@@ -627,6 +614,7 @@ export function ObjectsClient({
         <UploadQueueMenu
           files={uploadFiles}
           disabled={uploading}
+          progress={uploadProgress}
           onChange={setUploadFiles}
         />
         <Button
@@ -635,15 +623,27 @@ export function ObjectsClient({
           onClick={() => {
             void handleUpload();
           }}
-          disabled={uploadFiles.length === 0 || uploading}
+          disabled={uploadFiles.length === 0}
+          loading={uploading}
         >
           <Upload className="h-4 w-4" />
           {uploading
-            ? uploadPhase === "storing"
-              ? "Storing in RGW"
-              : `Sending ${uploadProgress ?? 0}%`
+            ? `Uploading ${uploadProgress?.batchPercentage ?? 0}%`
             : "Upload"}
         </Button>
+        {uploading ? <UploadSpeedIndicator progress={uploadProgress} /> : null}
+        {uploading ? (
+          <Button
+            type="button"
+            variant="outline"
+            tone="danger"
+            size="sm"
+            onClick={() => uploadAbortRef.current?.abort()}
+          >
+            <X className="h-4 w-4" />
+            Cancel upload
+          </Button>
+        ) : null}
 
         <div className="h-6 w-px bg-border" />
 
@@ -829,9 +829,7 @@ export function ObjectsClient({
             >
               <Upload className="h-4 w-4" />
               {uploading
-                ? uploadPhase === "storing"
-                  ? "Storing in RGW"
-                  : `Sending ${uploadProgress ?? 0}%`
+                ? `Uploading ${uploadProgress?.batchPercentage ?? 0}%`
                 : "Overwrite"}
             </Button>
           </DialogFooter>

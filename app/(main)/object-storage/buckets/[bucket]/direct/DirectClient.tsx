@@ -16,6 +16,7 @@ import {
   Home,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import bytes from "bytes";
 import { DataTable } from "@/components/DataTable";
@@ -27,6 +28,7 @@ import {
   type ObjectMetadataDetailsData,
 } from "@/components/ObjectMetadataDetails";
 import { UploadQueueMenu } from "@/components/UploadQueueMenu";
+import { UploadSpeedIndicator } from "@/components/UploadSpeedIndicator";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -59,6 +61,9 @@ import {
   type BrowserSizeResult,
 } from "@/lib/s3/browser-objects";
 import { normalizeStorageClass } from "@/lib/s3/storage-class";
+import type { S3UploadProgress } from "@/lib/s3/upload-batch";
+import { buildS3UploadMetrics } from "@/lib/s3/upload-telemetry-client";
+import { recordS3UploadMetrics } from "@/lib/s3/upload-telemetry";
 import { useMutationRefresh } from "@/hooks/useMutationRefresh";
 import { resourceRecoveryPath } from "@/lib/resource-recovery";
 
@@ -118,6 +123,7 @@ export function DirectClient({
   const inspectKey = objectKey;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
 
   const [browserSession, setBrowserSession] =
     useState<DirectBrowserSession | null>(null);
@@ -125,7 +131,9 @@ export function DirectClient({
     useState<DirectBrowserCredentialsError | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<S3UploadProgress | null>(
+    null,
+  );
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [overwriteOpen, setOverwriteOpen] = useState(false);
@@ -158,6 +166,13 @@ export function DirectClient({
       : null;
   const s3 = activeBrowserSession?.client ?? null;
   const endpoint = activeBrowserSession?.endpoint ?? null;
+
+  useEffect(
+    () => () => {
+      uploadAbortRef.current?.abort();
+    },
+    [],
+  );
   const directObjectsKey = useMemo(
     () => ["s3-direct", activeProjectId, "objects", bucket, prefix] as const,
     [activeProjectId, bucket, prefix],
@@ -165,6 +180,7 @@ export function DirectClient({
 
   useEffect(() => {
     let cancelled = false;
+    let client: S3Client | null = null;
     void (async () => {
       const result = await getStsCredentialsForBrowser();
       if (cancelled) return;
@@ -180,18 +196,42 @@ export function DirectClient({
         });
         return;
       }
+      const refreshCredentials = async () => {
+        const refreshed = await getStsCredentialsForBrowser();
+        if (!refreshed.ok) {
+          if (refreshed.needsAuth) startObjectStorageCredentialRefresh();
+          throw new Error(
+            refreshed.needsAuth
+              ? "Object Storage credentials need to be renewed"
+              : refreshed.error,
+          );
+        }
+        const expectedProject = activeProjectId.replace(/-/g, "").toLowerCase();
+        const credentialProject = refreshed.credentials.projectId
+          .replace(/-/g, "")
+          .toLowerCase();
+        if (credentialProject !== expectedProject) {
+          throw new Error(
+            "The active project changed while this upload was running",
+          );
+        }
+        return refreshed.credentials;
+      };
+      client = makeBrowserS3Client(
+        result.credentials,
+        result.endpoint,
+        result.region,
+        refreshCredentials,
+      );
       setBrowserSession({
-        client: makeBrowserS3Client(
-          result.credentials,
-          result.endpoint,
-          result.region,
-        ),
+        client,
         endpoint: result.endpoint,
         projectId: activeProjectId,
       });
     })();
     return () => {
       cancelled = true;
+      client?.destroy();
     };
   }, [activeProjectId]);
 
@@ -300,8 +340,13 @@ export function DirectClient({
     if (!s3 || uploadFiles.length === 0 || uploading) return;
     clearMessages();
     setUploading(true);
-    setUploadProgress(0);
+    setUploadProgress(null);
     if (confirmOverwrite) setOverwriteOpen(false);
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+    const progressSnapshot: { current: S3UploadProgress | null } = {
+      current: null,
+    };
 
     const files = uploadFiles.map((file) => ({
       file,
@@ -314,6 +359,7 @@ export function DirectClient({
           s3,
           bucket,
           files.map(({ key }) => key),
+          controller.signal,
         );
         if (conflicts.length > 0) {
           setOverwriteKeys(conflicts);
@@ -326,23 +372,43 @@ export function DirectClient({
         s3,
         bucket,
         files,
-        setUploadProgress,
+        (progress) => {
+          progressSnapshot.current = progress;
+          setUploadProgress(progress);
+        },
+        controller.signal,
       );
+      void recordS3UploadMetrics(
+        buildS3UploadMetrics("direct", files, progressSnapshot.current),
+      ).catch(() => undefined);
       setUploadMessage(
-        `Uploaded ${result.uploaded} ${
-          result.uploaded === 1 ? "object" : "objects"
-        } directly to RGW.`,
+        result.cancelled
+          ? "Upload cancelled. Completed objects were preserved."
+          : `Uploaded ${result.uploaded} ${
+              result.uploaded === 1 ? "object" : "objects"
+            } directly to RGW.`,
       );
       if (result.errors.length > 0) {
         setUploadError(
           `${result.errors.length} upload failed. ${result.errors[0].key}: ${result.errors[0].error}`,
         );
       }
-      setUploadFiles([]);
-      await refreshObjects();
+      setUploadFiles(
+        progressSnapshot.current
+          ? progressSnapshot.current.files
+              .filter((progress) => progress.state !== "complete")
+              .map((progress) => uploadFiles[progress.index])
+          : uploadFiles,
+      );
+      if (result.uploaded > 0) await refreshObjects();
     } catch (error) {
-      setUploadError(describeBrowserS3Error(error));
+      if (controller.signal.aborted) {
+        setUploadMessage("Upload cancelled.");
+      } else {
+        setUploadError(describeBrowserS3Error(error));
+      }
     } finally {
+      if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
       setUploading(false);
       setUploadProgress(null);
     }
@@ -745,21 +811,36 @@ export function DirectClient({
         <UploadQueueMenu
           files={uploadFiles}
           disabled={uploading}
+          progress={uploadProgress}
           onChange={setUploadFiles}
         />
         <Button
           type="button"
           size="sm"
-          disabled={uploadFiles.length === 0 || uploading}
+          disabled={uploadFiles.length === 0}
+          loading={uploading}
           onClick={() => void handleUpload()}
         >
           <Upload className="h-4 w-4" />
           {uploading
             ? uploadProgress === null
               ? "Uploading"
-              : `Uploading ${uploadProgress}%`
+              : `Uploading ${uploadProgress.batchPercentage}%`
             : "Upload"}
         </Button>
+        {uploading ? <UploadSpeedIndicator progress={uploadProgress} /> : null}
+        {uploading ? (
+          <Button
+            type="button"
+            variant="outline"
+            tone="danger"
+            size="sm"
+            onClick={() => uploadAbortRef.current?.abort()}
+          >
+            <X className="h-4 w-4" />
+            Cancel upload
+          </Button>
+        ) : null}
 
         <div className="h-6 w-px bg-border" />
 
@@ -958,7 +1039,7 @@ export function DirectClient({
               {uploading
                 ? uploadProgress === null
                   ? "Uploading"
-                  : `Uploading ${uploadProgress}%`
+                  : `Uploading ${uploadProgress.batchPercentage}%`
                 : "Overwrite"}
             </Button>
           </DialogFooter>

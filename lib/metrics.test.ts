@@ -7,6 +7,7 @@ import {
   observeRedisCommand,
   observeRedisReadiness,
   observeRgwRequest,
+  observeS3Upload,
   observeSessionLoad,
   openStackOutcome,
   resetMetricsForTests,
@@ -45,6 +46,14 @@ describe("Sunrise metrics", () => {
       outcome: "success",
       status: 200,
     });
+    observeS3Upload({
+      bytes: 104857600,
+      durationSeconds: 12,
+      mode: "direct",
+      outcome: "success",
+      parts: 7,
+      strategy: "multipart",
+    });
     observeSessionLoad({
       backend: "redis",
       durationSeconds: 0.03,
@@ -69,6 +78,12 @@ describe("Sunrise metrics", () => {
     expect(output).toContain("sunrise_redis_readiness 1");
     expect(output).toContain(
       'sunrise_rgw_requests_total{api="s3",operation="ListBuckets",outcome="success",status_code="200"} 1',
+    );
+    expect(output).toContain(
+      'sunrise_s3_uploads_total{mode="direct",outcome="success",strategy="multipart"} 1',
+    );
+    expect(output).toContain(
+      'sunrise_s3_upload_bytes_total{mode="direct",outcome="success",strategy="multipart"} 104857600',
     );
     expect(output).toContain(
       'sunrise_session_loads_total{backend="redis",state="authenticated"} 1',
