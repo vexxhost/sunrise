@@ -276,6 +276,14 @@ export const MAGNUM_DRIVER_LABELS: MagnumDriverLabelSpec[] = [
   },
   {
     category: "Identity and security",
+    key: "kubelet_serving_cert_verification_enabled",
+    label: "Kubelet serving certificate verification",
+    defaultValue: "false",
+    description:
+      "Uses cluster-CA-signed kubelet serving certificates for new clusters; requires cluster-api-csr-approver in the management cluster.",
+  },
+  {
+    category: "Identity and security",
     key: "audit_log_enabled",
     label: "Kubernetes audit log",
     defaultValue: "false",

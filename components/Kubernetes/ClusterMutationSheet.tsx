@@ -96,6 +96,7 @@ interface FormState {
   fixedSubnetCidr: string;
   apiServerFloatingIp: string;
   apiServerCertSans: string;
+  kubeletServingCertVerification: string;
   availabilityZone: string;
   controlPlaneAvailabilityZones: string;
   apiServerLbAvailabilityZone: string;
@@ -129,6 +130,7 @@ const INITIAL_FORM: FormState = {
   fixedSubnetCidr: "",
   apiServerFloatingIp: "",
   apiServerCertSans: "",
+  kubeletServingCertVerification: INHERIT,
   availabilityZone: "",
   controlPlaneAvailabilityZones: "",
   apiServerLbAvailabilityZone: "",
@@ -275,6 +277,12 @@ export function ClusterMutationSheet({
   const effectiveManilaCsi =
     booleanOverride(form.manilaCsi) ??
     labelEnabled(selectedTemplate?.labels?.manila_csi_enabled, true);
+  const effectiveKubeletServingCertVerification =
+    booleanOverride(form.kubeletServingCertVerification) ??
+    labelEnabled(
+      selectedTemplate?.labels?.kubelet_serving_cert_verification_enabled,
+      false,
+    );
   const selectedNetwork = networks.find(
     (network) =>
       network.id === effectiveFixedNetwork ||
@@ -341,6 +349,9 @@ export function ClusterMutationSheet({
           fixedSubnetCidr: form.fixedSubnetCidr || undefined,
           apiServerFloatingIp: form.apiServerFloatingIp || undefined,
           apiServerCertSans: form.apiServerCertSans || undefined,
+          kubeletServingCertVerificationEnabled: booleanOverride(
+            form.kubeletServingCertVerification,
+          ),
           availabilityZone: form.availabilityZone || undefined,
           controlPlaneAvailabilityZones:
             form.controlPlaneAvailabilityZones || undefined,
@@ -1074,6 +1085,28 @@ export function ClusterMutationSheet({
                     </p>
                   </div>
                   <Field
+                    label="Kubelet serving certificate verification"
+                    description="Creation-only. Requires cluster-api-csr-approver in the management cluster so kubelet serving certificates can be approved and renewed."
+                  >
+                    <Select
+                      value={form.kubeletServingCertVerification}
+                      onValueChange={(value) =>
+                        update("kubeletServingCertVerification", value)
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={INHERIT}>
+                          Template default
+                        </SelectItem>
+                        <SelectItem value="enabled">Enabled</SelectItem>
+                        <SelectItem value="disabled">Disabled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field
                     label="Additional certificate SANs"
                     description="Optional comma-separated DNS names or IPv4 addresses for this cluster's API certificate."
                   >
@@ -1316,6 +1349,18 @@ export function ClusterMutationSheet({
                   <ReviewRow
                     label="Additional certificate SANs"
                     value={form.apiServerCertSans || "None"}
+                  />
+                  <ReviewRow
+                    label="Kubelet certificate verification"
+                    value={`${
+                      effectiveKubeletServingCertVerification
+                        ? "Enabled"
+                        : "Disabled"
+                    }${
+                      form.kubeletServingCertVerification === INHERIT
+                        ? " (template default)"
+                        : ""
+                    }`}
                   />
                   <ReviewRow
                     label="OpenID Connect"

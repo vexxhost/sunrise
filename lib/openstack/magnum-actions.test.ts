@@ -59,6 +59,7 @@ function input(
     podCidr: "10.100.0.0/16",
     serviceCidr: "10.254.0.0/16",
     clusterDomain: "cluster.local",
+    kubeletServingCertVerificationEnabled: false,
     differentFailureDomain: false,
     octaviaLbHealthcheck: true,
     cinderCsiEnabled: true,
@@ -150,6 +151,16 @@ describe("Magnum cluster template mutations", () => {
     );
 
     expect(labels).toEqual({ kube_tag: "v1.35.4" });
+  });
+
+  it("enables verified kubelet serving certificates for new clusters", () => {
+    expect(
+      buildClusterTemplateLabels(
+        input({ kubeletServingCertVerificationEnabled: true }),
+      ),
+    ).toMatchObject({
+      kubelet_serving_cert_verification_enabled: "true",
+    });
   });
 
   it("allows a template to leave DNS and a Manila share network unset", async () => {

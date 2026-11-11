@@ -95,6 +95,7 @@ type FormState = {
   apiServerCertSans: string;
   apiServerTlsCipherSuites: string;
   kubeletTlsCipherSuites: string;
+  kubeletServingCertVerificationEnabled: boolean;
   admissionControlList: string;
   availabilityZone: string;
   controlPlaneAvailabilityZones: string;
@@ -195,6 +196,10 @@ function initialState(template?: MagnumClusterTemplate): FormState {
     apiServerCertSans: labels.api_server_cert_sans ?? "",
     apiServerTlsCipherSuites: labels.api_server_tls_cipher_suites ?? "",
     kubeletTlsCipherSuites: labels.kubelet_tls_cipher_suites ?? "",
+    kubeletServingCertVerificationEnabled: booleanLabel(
+      labels.kubelet_serving_cert_verification_enabled,
+      false,
+    ),
     admissionControlList: labels.admission_control_list ?? "",
     availabilityZone: labels.availability_zone ?? "",
     controlPlaneAvailabilityZones:
@@ -525,6 +530,8 @@ export function ClusterTemplateMutationSheet({
       apiServerCertSans: form.apiServerCertSans || undefined,
       apiServerTlsCipherSuites: form.apiServerTlsCipherSuites || undefined,
       kubeletTlsCipherSuites: form.kubeletTlsCipherSuites || undefined,
+      kubeletServingCertVerificationEnabled:
+        form.kubeletServingCertVerificationEnabled,
       admissionControlList: form.admissionControlList || undefined,
       availabilityZone: form.availabilityZone || undefined,
       controlPlaneAvailabilityZones:
@@ -1300,6 +1307,17 @@ export function ClusterTemplateMutationSheet({
                         update("auditLogEnabled", value)
                       }
                     />
+                    <ToggleRow
+                      checked={form.kubeletServingCertVerificationEnabled}
+                      label="Verify kubelet serving certificates"
+                      description="Require cluster-CA-signed kubelet certificates for new clusters. The cloud must run cluster-api-csr-approver."
+                      onCheckedChange={(value) =>
+                        update(
+                          "kubeletServingCertVerificationEnabled",
+                          value,
+                        )
+                      }
+                    />
                   </div>
                   {form.auditLogEnabled ? (
                     <div className="grid gap-4 md:grid-cols-3">
@@ -1681,6 +1699,14 @@ export function ClusterTemplateMutationSheet({
                   <WizardReviewRow
                     label="Auto-healing"
                     value={form.autoHealingEnabled ? "Enabled" : "Disabled"}
+                  />
+                  <WizardReviewRow
+                    label="Kubelet certificate verification"
+                    value={
+                      form.kubeletServingCertVerificationEnabled
+                        ? "Enabled for new clusters"
+                        : "Disabled"
+                    }
                   />
                   <WizardReviewRow
                     label="Custom labels"

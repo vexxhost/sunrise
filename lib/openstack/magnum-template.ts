@@ -61,6 +61,8 @@ export function buildClusterTemplateLabels(
     api_server_cert_sans: input.apiServerCertSans || undefined,
     api_server_tls_cipher_suites: input.apiServerTlsCipherSuites || undefined,
     kubelet_tls_cipher_suites: input.kubeletTlsCipherSuites || undefined,
+    kubelet_serving_cert_verification_enabled:
+      input.kubeletServingCertVerificationEnabled ? "true" : undefined,
     admission_control_list: input.admissionControlList || undefined,
     availability_zone: input.availabilityZone || undefined,
     control_plane_availability_zones:
