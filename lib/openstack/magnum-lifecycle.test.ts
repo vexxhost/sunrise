@@ -78,6 +78,7 @@ describe("Magnum lifecycle request builders", () => {
         createTimeout: 60,
         apiServerFloatingIp: "203.0.113.10",
         apiServerCertSans: "api.tenant-a.example",
+        kubeletServingCertVerificationEnabled: true,
         availabilityZone: "nova-2",
         controlPlaneAvailabilityZones: "nova-1,nova-2",
         apiServerLbAvailabilityZone: "octavia-a",
@@ -93,6 +94,7 @@ describe("Magnum lifecycle request builders", () => {
       labels: {
         api_server_floating_ip: "203.0.113.10",
         api_server_cert_sans: "api.tenant-a.example",
+        kubelet_serving_cert_verification_enabled: "true",
         availability_zone: "nova-2",
         control_plane_availability_zones: "nova-1,nova-2",
         api_server_lb_availability_zone: "octavia-a",
@@ -102,6 +104,25 @@ describe("Magnum lifecycle request builders", () => {
         manila_csi_share_network_id: "share-network-a",
         oidc_issuer_url: "https://identity.example/realms/tenant-a",
         oidc_client_id: "kubernetes",
+      },
+    });
+  });
+
+  it("can explicitly disable template kubelet certificate verification", () => {
+    expect(
+      buildClusterRequest({
+        name: "legacy-kubelet-tls",
+        clusterTemplateId: "template-a",
+        networkDriver: "cilium",
+        controlPlaneCount: 3,
+        workerCount: 0,
+        createTimeout: 60,
+        kubeletServingCertVerificationEnabled: false,
+      }),
+    ).toMatchObject({
+      merge_labels: true,
+      labels: {
+        kubelet_serving_cert_verification_enabled: "false",
       },
     });
   });

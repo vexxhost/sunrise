@@ -35,6 +35,10 @@ function clusterLabels(input: MagnumClusterMutationInput) {
           ? undefined
           : optionalText(input.apiServerFloatingIp),
       api_server_cert_sans: optionalText(input.apiServerCertSans),
+      kubelet_serving_cert_verification_enabled:
+        input.kubeletServingCertVerificationEnabled === undefined
+          ? undefined
+          : String(input.kubeletServingCertVerificationEnabled),
       availability_zone: optionalText(input.availabilityZone),
       control_plane_availability_zones: optionalText(
         input.controlPlaneAvailabilityZones,

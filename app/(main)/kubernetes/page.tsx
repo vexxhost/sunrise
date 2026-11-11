@@ -211,14 +211,14 @@ export default async function KubernetesPage() {
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-3 text-xs text-muted-foreground">
         <GitCommit aria-hidden="true" className="size-3.5 shrink-0" />
-        <span>Driver baseline: VEXXHOST magnum-cluster-api 0.38.2</span>
+        <span>Driver baseline: VEXXHOST magnum-cluster-api 0.39.0</span>
         <a
           className="font-mono hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline"
-          href="https://github.com/vexxhost/magnum-cluster-api/commit/74e85108717104bfe754c7295173d3cf8f128190"
+          href="https://github.com/vexxhost/magnum-cluster-api/commit/066fdc23d45f2d0f9a0633bc7c9b61e2f64e4268"
           rel="noreferrer"
           target="_blank"
         >
-          74e85108717104bfe754c7295173d3cf8f128190
+          066fdc23d45f2d0f9a0633bc7c9b61e2f64e4268
         </a>
       </div>
     </ServiceLandingPage>

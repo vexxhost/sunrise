@@ -136,6 +136,7 @@ export interface MagnumClusterTemplateMutationInput {
   apiServerCertSans?: string;
   apiServerTlsCipherSuites?: string;
   kubeletTlsCipherSuites?: string;
+  kubeletServingCertVerificationEnabled: boolean;
   admissionControlList?: string;
   availabilityZone?: string;
   controlPlaneAvailabilityZones?: string;
@@ -239,6 +240,7 @@ export interface MagnumClusterMutationInput {
   fixedSubnetCidr?: string;
   apiServerFloatingIp?: string;
   apiServerCertSans?: string;
+  kubeletServingCertVerificationEnabled?: boolean;
   availabilityZone?: string;
   controlPlaneAvailabilityZones?: string;
   apiServerLbAvailabilityZone?: string;
