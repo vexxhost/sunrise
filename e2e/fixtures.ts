@@ -52,8 +52,9 @@ function isExpectedHeadNotFound(
 ) {
   return (
     diagnostic.kind === "console" &&
-    diagnostic.text ===
-      "console.error: Failed to load resource: the server responded with a status of 404 ()" &&
+    /^console\.error: Failed to load resource: the server responded with a status of 404(?: \([^)]*\))?$/.test(
+      diagnostic.text,
+    ) &&
     !!diagnostic.url &&
     expectedHeadNotFoundUrls.has(diagnostic.url)
   );

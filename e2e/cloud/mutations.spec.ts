@@ -49,11 +49,16 @@ async function removeKeyPair(page: Page, name: string) {
   await expect(link).toHaveCount(0);
 }
 
-async function createBucket(page: Page, name: string) {
+async function createBucket(
+  page: Page,
+  name: string,
+  markSubmitted: () => void,
+) {
   await page.goto("/object-storage/buckets");
   await page.getByRole("button", { name: "Create bucket" }).click();
   const dialog = page.getByRole("dialog", { name: "Create bucket" });
   await dialog.getByLabel("Bucket name").fill(name);
+  markSubmitted();
   await dialog
     .getByRole("button", { name: "Create bucket", exact: true })
     .click();
@@ -161,14 +166,15 @@ test.describe("disposable S3 multipart mutations", () => {
     const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
     const bucket = `sunrise-e2e-multipart-${suffix}`;
     const object = `multipart-${suffix}.bin`;
-    let bucketCreated = false;
+    let bucketCreationSubmitted = false;
     let directMode = false;
     let temporaryDirectory: string | null = null;
     let testError: unknown;
 
     try {
-      await createBucket(page, bucket);
-      bucketCreated = true;
+      await createBucket(page, bucket, () => {
+        bucketCreationSubmitted = true;
+      });
       await page.getByRole("link", { name: bucket, exact: true }).click();
       await expect(page).toHaveURL(
         new RegExp(`/object-storage/buckets/${bucket}(?:/direct)?(?:\\?|$)`),
@@ -200,7 +206,7 @@ test.describe("disposable S3 multipart mutations", () => {
       testError = error;
     } finally {
       const cleanupErrors: unknown[] = [];
-      if (bucketCreated) {
+      if (bucketCreationSubmitted) {
         await removeObject(page, bucket, object, directMode).catch((error) =>
           cleanupErrors.push(error),
         );
