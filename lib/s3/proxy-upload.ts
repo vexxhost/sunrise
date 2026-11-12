@@ -16,6 +16,7 @@ import {
 } from "@/lib/s3/upload-batch";
 
 type JsonRecord = Record<string, unknown>;
+const CONFLICT_CHECK_BATCH_SIZE = 1000;
 
 export class ProxyS3AuthRequiredError extends Error {
   constructor() {
@@ -84,15 +85,39 @@ export async function findProxyUploadConflicts(
   keys: string[],
   signal?: AbortSignal,
 ) {
-  const body = await multipartRequest(
-    projectId,
-    bucket,
-    { action: "check", keys },
-    signal,
-  );
-  return Array.isArray(body.existingKeys)
-    ? body.existingKeys.filter((key): key is string => typeof key === "string")
-    : [];
+  const conflicts = new Set<string>();
+  const seenKeys = new Set<string>();
+  const uniqueKeys: string[] = [];
+  for (const key of keys) {
+    if (seenKeys.has(key)) {
+      conflicts.add(key);
+    } else {
+      seenKeys.add(key);
+      uniqueKeys.push(key);
+    }
+  }
+
+  for (
+    let offset = 0;
+    offset < uniqueKeys.length;
+    offset += CONFLICT_CHECK_BATCH_SIZE
+  ) {
+    const body = await multipartRequest(
+      projectId,
+      bucket,
+      {
+        action: "check",
+        keys: uniqueKeys.slice(offset, offset + CONFLICT_CHECK_BATCH_SIZE),
+      },
+      signal,
+    );
+    if (!Array.isArray(body.existingKeys)) continue;
+    for (const key of body.existingKeys) {
+      if (typeof key === "string") conflicts.add(key);
+    }
+  }
+
+  return Array.from(conflicts);
 }
 
 function uploadSingleObject(

@@ -2,6 +2,7 @@ import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
+  HeadObjectCommand,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -114,6 +115,37 @@ describe("S3 multipart proxy route", () => {
     expect(await aborted.json()).toEqual({ ok: true });
   });
 
+  it("checks object conflicts with bounded concurrency", async () => {
+    let active = 0;
+    let maxActive = 0;
+    mocks.send.mockImplementation(async (command: unknown) => {
+      expect(command).toBeInstanceOf(HeadObjectCommand);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      active -= 1;
+      if ((command as HeadObjectCommand).input.Key === "file-11") return {};
+      throw Object.assign(new Error("Not found"), {
+        name: "NotFound",
+        $metadata: { httpStatusCode: 404 },
+      });
+    });
+    const keys = Array.from({ length: 12 }, (_, index) => `file-${index}`);
+    keys.push("file-0");
+
+    const response = await POST(
+      request("POST", { action: "check", keys }),
+      context,
+    );
+
+    expect(await response.json()).toEqual({
+      ok: true,
+      existingKeys: expect.arrayContaining(["file-0", "file-11"]),
+    });
+    expect(mocks.send).toHaveBeenCalledTimes(12);
+    expect(maxActive).toBe(10);
+  });
+
   it("rejects stale project context before reading the request body", async () => {
     mocks.guardMutationContext.mockResolvedValue({
       ok: false,
@@ -131,10 +163,7 @@ describe("S3 multipart proxy route", () => {
       headers: { "X-Sunrise-Project-Id": "project-a" },
       body: JSON.stringify({ action: "initiate", key: "disk.raw" }),
     });
-    const response = await POST(
-      staleRequest,
-      context,
-    );
+    const response = await POST(staleRequest, context);
 
     expect(response.status).toBe(409);
     expect(mocks.getS3Client).not.toHaveBeenCalled();

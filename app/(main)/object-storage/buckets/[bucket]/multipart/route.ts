@@ -142,17 +142,34 @@ async function checkConflicts(
   bucket: string,
   keys: string[],
 ) {
-  const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
-  const conflicts = new Set(duplicates);
-
-  for (const key of Array.from(new Set(keys))) {
-    try {
-      await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+  const conflicts = new Set<string>();
+  const seenKeys = new Set<string>();
+  const uniqueKeys: string[] = [];
+  for (const key of keys) {
+    if (seenKeys.has(key)) {
       conflicts.add(key);
-    } catch (error) {
-      if (!isNoSuchObject(error)) throw error;
+    } else {
+      seenKeys.add(key);
+      uniqueKeys.push(key);
     }
   }
+  let nextKey = 0;
+
+  const worker = async () => {
+    while (nextKey < uniqueKeys.length) {
+      const key = uniqueKeys[nextKey];
+      nextKey += 1;
+      try {
+        await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+        conflicts.add(key);
+      } catch (error) {
+        if (!isNoSuchObject(error)) throw error;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(10, uniqueKeys.length) }, () => worker()),
+  );
   return Array.from(conflicts);
 }
 

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { uploadProxyFiles } from "@/lib/s3/proxy-upload";
+import {
+  findProxyUploadConflicts,
+  uploadProxyFiles,
+} from "@/lib/s3/proxy-upload";
 
 const fetchMock = vi.fn();
 
@@ -111,5 +114,27 @@ describe("proxy S3 multipart upload", () => {
     };
     expect(completeBody.parts).toHaveLength(3);
     expect(progress.at(-1)).toBe(100);
+  });
+
+  it("batches conflict checks and preserves duplicates across batches", async () => {
+    const keys = Array.from({ length: 1001 }, (_, index) => `file-${index}`);
+    keys.push("file-0");
+    fetchMock.mockImplementation(async (_input, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as {
+        action: string;
+        keys: string[];
+      };
+      expect(body.action).toBe("check");
+      expect(body.keys.length).toBeLessThanOrEqual(1000);
+      return Response.json({
+        ok: true,
+        existingKeys: body.keys.includes("file-1000") ? ["file-1000"] : [],
+      });
+    });
+
+    await expect(
+      findProxyUploadConflicts("project-a", "bucket-a", keys),
+    ).resolves.toEqual(expect.arrayContaining(["file-0", "file-1000"]));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
