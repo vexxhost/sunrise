@@ -88,10 +88,26 @@ SUNRISE_E2E_CLOUD_PROFILE=cloud \
 SUNRISE_E2E_CLOUD_MUTATIONS=key-pairs pnpm test:e2e:cloud
 ```
 
+The S3 multipart check creates a uniquely named disposable bucket and uploads a
+sparse file just above the configured browser mode's multipart threshold. It
+uses 9 MiB in server-browser mode and 101 MiB in direct-browser mode, verifying
+the real Sunrise proxy path or RGW multipart API and CORS configuration before
+removing the object and bucket:
+
+```bash
+SUNRISE_E2E_CLOUD_PROFILE=cloud \
+SUNRISE_E2E_CLOUD_MUTATIONS=s3-multipart pnpm test:e2e:cloud
+```
+
+Run the check once with `SUNRISE_S3_DIRECT_BROWSER=false` and once with it set
+to `true` to cover both transports. The test follows the active mode selected
+by the Sunrise server; changing the variable requires restarting that server.
+
 Run mutation checks only with a disposable test identity and project. An
 interrupted process cannot guarantee cleanup, so confirm that no key pair whose
-name starts with `sunrise-e2e-` remains after an interrupted run. Never enable
-cloud mutations in the deterministic browser workflow.
+name starts with `sunrise-e2e-` and no bucket whose name starts with
+`sunrise-e2e-multipart-` remains after an interrupted run. Never enable cloud
+mutations in the deterministic browser workflow.
 
 To test an already deployed Sunrise instead of local development, capture and
 run against the same origin:

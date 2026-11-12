@@ -9,28 +9,72 @@ type BrowserDiagnostics = {
   browserDiagnostics: void;
 };
 
-function consoleError(message: ConsoleMessage) {
-  return `console.error: ${message.text()}`;
+type BrowserDiagnostic = {
+  kind: "console" | "page";
+  text: string;
+  url?: string;
+};
+
+function consoleError(message: ConsoleMessage): BrowserDiagnostic {
+  return {
+    kind: "console",
+    text: `console.error: ${message.text()}`,
+    url: message.location().url,
+  };
 }
 
-function pageError(error: Error) {
-  return `pageerror: ${error.stack ?? error.message}`;
+function pageError(error: Error): BrowserDiagnostic {
+  return {
+    kind: "page",
+    text: `pageerror: ${error.stack ?? error.message}`,
+  };
 }
 
-function collectDiagnostics(page: Page, diagnostics: string[]) {
+function collectDiagnostics(
+  page: Page,
+  diagnostics: BrowserDiagnostic[],
+  expectedHeadNotFoundUrls: Set<string>,
+) {
+  page.on("response", (response) => {
+    if (response.status() === 404 && response.request().method() === "HEAD") {
+      expectedHeadNotFoundUrls.add(response.url());
+    }
+  });
   page.on("console", (message) => {
     if (message.type() === "error") diagnostics.push(consoleError(message));
   });
   page.on("pageerror", (error) => diagnostics.push(pageError(error)));
 }
 
+function isExpectedHeadNotFound(
+  diagnostic: BrowserDiagnostic,
+  expectedHeadNotFoundUrls: Set<string>,
+) {
+  return (
+    diagnostic.kind === "console" &&
+    diagnostic.text ===
+      "console.error: Failed to load resource: the server responded with a status of 404 ()" &&
+    !!diagnostic.url &&
+    expectedHeadNotFoundUrls.has(diagnostic.url)
+  );
+}
+
 export const test = base.extend<BrowserDiagnostics>({
   browserDiagnostics: [
     async ({ page }, use) => {
-      const diagnostics: string[] = [];
-      collectDiagnostics(page, diagnostics);
+      const diagnostics: BrowserDiagnostic[] = [];
+      const expectedHeadNotFoundUrls = new Set<string>();
+      collectDiagnostics(page, diagnostics, expectedHeadNotFoundUrls);
       await use();
-      expect(diagnostics, "browser diagnostics").toEqual([]);
+      expect(
+        diagnostics
+          .filter(
+            (diagnostic) =>
+              !isExpectedHeadNotFound(diagnostic, expectedHeadNotFoundUrls),
+          )
+          .map((diagnostic) => diagnostic.text),
+        "browser diagnostics",
+      ).toEqual([]);
     },
     { auto: true },
   ],
