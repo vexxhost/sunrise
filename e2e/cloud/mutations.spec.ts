@@ -5,6 +5,13 @@ import { join } from "node:path";
 import type { Page, Request, Response } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
+const MINUTE = 60_000;
+const S3_MULTIPART_CLEANUP_TIMEOUT = 3 * MINUTE;
+const S3_MULTIPART_UPLOAD_TIMEOUT = 4 * MINUTE;
+const S3_MULTIPART_WORKFLOW_TIMEOUT = 6 * MINUTE;
+const S3_MULTIPART_TEST_TIMEOUT =
+  2 * MINUTE + S3_MULTIPART_WORKFLOW_TIMEOUT + S3_MULTIPART_CLEANUP_TIMEOUT;
+
 const enabledMutations = new Set(
   (process.env.SUNRISE_E2E_CLOUD_MUTATIONS ?? "")
     .split(",")
@@ -104,6 +111,18 @@ async function removeBucket(page: Page, name: string) {
     .click();
   await expect(dialog).toBeHidden();
   await expect(link).toHaveCount(0);
+}
+
+async function cancelActiveUpload(page: Page) {
+  const cancel = page.getByRole("button", {
+    name: "Cancel upload",
+    exact: true,
+  });
+  if (!(await cancel.isVisible().catch(() => false))) return;
+
+  await cancel.click();
+  await expect(cancel).toBeHidden({ timeout: MINUTE });
+  await page.waitForLoadState("networkidle");
 }
 
 async function sparseUploadFile(name: string, size: number) {
@@ -249,6 +268,7 @@ test.describe("disposable cloud mutations", () => {
 });
 
 test.describe("disposable S3 multipart mutations", () => {
+  test.describe.configure({ timeout: S3_MULTIPART_TEST_TIMEOUT });
   test.use({ cloudReturnTo: "/object-storage/buckets" });
   test.skip(
     !enabledMutations.has("s3-multipart"),
@@ -256,62 +276,82 @@ test.describe("disposable S3 multipart mutations", () => {
   );
 
   test("uploads and removes a multipart object", async ({ page }) => {
-    test.setTimeout(5 * 60_000);
     const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
     const bucket = `sunrise-e2e-multipart-${suffix}`;
     const object = `multipart-${suffix}.bin`;
     let bucketCreationSubmitted = false;
     let directMode = false;
     let temporaryDirectory: string | null = null;
+    const multipartObservation: { stop: (() => void) | null } = { stop: null };
     let testError: unknown;
 
     try {
-      await createBucket(page, bucket, () => {
-        bucketCreationSubmitted = true;
-      });
-      await page.getByRole("link", { name: bucket, exact: true }).click();
-      await expect(page).toHaveURL(
-        new RegExp(`/object-storage/buckets/${bucket}(?:/direct)?(?:\\?|$)`),
-      );
-      await expect(page.locator('input[type="file"]').first()).toBeAttached();
+      await test.step(
+        "create a bucket and upload a multipart object",
+        async () => {
+          await createBucket(page, bucket, () => {
+            bucketCreationSubmitted = true;
+          });
+          await page.getByRole("link", { name: bucket, exact: true }).click();
+          await expect(page).toHaveURL(
+            new RegExp(
+              `/object-storage/buckets/${bucket}(?:/direct)?(?:\\?|$)`,
+            ),
+          );
+          await expect(
+            page.locator('input[type="file"]').first(),
+          ).toBeAttached();
 
-      directMode = new URL(page.url()).pathname.endsWith("/direct");
-      const size = (directMode ? 101 : 9) * 1024 * 1024;
-      const upload = await sparseUploadFile(object, size);
-      temporaryDirectory = upload.directory;
-      const multipartResponses = observeMultipartResponses(
-        page,
-        bucket,
-        object,
-        directMode,
-      );
+          directMode = new URL(page.url()).pathname.endsWith("/direct");
+          const size = (directMode ? 101 : 9) * 1024 * 1024;
+          const upload = await sparseUploadFile(object, size);
+          temporaryDirectory = upload.directory;
+          const multipartResponses = observeMultipartResponses(
+            page,
+            bucket,
+            object,
+            directMode,
+          );
+          multipartObservation.stop = multipartResponses.stop;
 
-      await page
-        .locator('input[type="file"]')
-        .first()
-        .setInputFiles(upload.path);
-      await page.getByRole("button", { name: "Upload", exact: true }).click();
-      await expect(
-        page.getByText(
-          directMode
-            ? "Uploaded 1 object directly to RGW."
-            : "Uploaded 1 object.",
-          { exact: true },
-        ),
-      ).toBeVisible({ timeout: 4 * 60_000 });
-      await expect(
-        page.getByRole("link", { name: object, exact: true }),
-      ).toBeVisible();
-      multipartResponses.stop();
-      expectSuccessfulMultipartResponses(multipartResponses.statuses);
+          await page
+            .locator('input[type="file"]')
+            .first()
+            .setInputFiles(upload.path);
+          await page
+            .getByRole("button", { name: "Upload", exact: true })
+            .click();
+          await expect(
+            page.getByText(
+              directMode
+                ? "Uploaded 1 object directly to RGW."
+                : "Uploaded 1 object.",
+              { exact: true },
+            ),
+          ).toBeVisible({ timeout: S3_MULTIPART_UPLOAD_TIMEOUT });
+          await expect(
+            page.getByRole("link", { name: object, exact: true }),
+          ).toBeVisible();
+          multipartResponses.stop();
+          multipartObservation.stop = null;
+          expectSuccessfulMultipartResponses(multipartResponses.statuses);
+        },
+        { timeout: S3_MULTIPART_WORKFLOW_TIMEOUT },
+      );
     } catch (error) {
       testError = error;
     } finally {
       const cleanupErrors: unknown[] = [];
+      multipartObservation.stop?.();
       if (bucketCreationSubmitted) {
-        await removeObject(page, bucket, object, directMode).catch((error) =>
+        await cancelActiveUpload(page).catch((error) =>
           cleanupErrors.push(error),
         );
+        if (temporaryDirectory) {
+          await removeObject(page, bucket, object, directMode).catch((error) =>
+            cleanupErrors.push(error),
+          );
+        }
         await removeBucket(page, bucket).catch((error) =>
           cleanupErrors.push(error),
         );
