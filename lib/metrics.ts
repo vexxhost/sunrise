@@ -11,6 +11,9 @@ import type { SessionBackend } from "@/lib/redis";
 const DURATION_BUCKETS_SECONDS = [
   0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 ];
+const UPLOAD_DURATION_BUCKETS_SECONDS = [
+  1, 5, 15, 30, 60, 300, 900, 1800, 3600,
+];
 
 type OpenStackOutcome =
   | "success"
@@ -23,6 +26,7 @@ type OpenStackOutcome =
   | "unexpected_status";
 type RedisOutcome = "success" | "error";
 type RgwOutcome = "success" | "error";
+type S3UploadOutcome = "success" | "error" | "cancelled";
 type AuthRefreshOutcome =
   | "success"
   | "reauthenticate"
@@ -44,6 +48,10 @@ type MetricsRuntime = {
   redisReadinessDuration: Histogram<"outcome">;
   rgwRequests: Counter<"api" | "operation" | "outcome" | "status_code">;
   rgwRequestDuration: Histogram<"api" | "operation" | "outcome">;
+  s3Uploads: Counter<"mode" | "strategy" | "outcome">;
+  s3UploadBytes: Counter<"mode" | "strategy" | "outcome">;
+  s3UploadParts: Counter<"mode" | "strategy" | "outcome">;
+  s3UploadDuration: Histogram<"mode" | "strategy" | "outcome">;
   sessionLoads: Counter<"backend" | "state">;
   sessionLoadDuration: Histogram<"backend" | "state">;
   authRefreshes: Counter<"target" | "outcome">;
@@ -122,6 +130,31 @@ function createMetricsRuntime(): MetricsRuntime {
       help: "Duration of RGW API requests made through server-side AWS SDK clients.",
       labelNames: ["api", "operation", "outcome"] as const,
       buckets: DURATION_BUCKETS_SECONDS,
+      registers: [registry],
+    }),
+    s3Uploads: new Counter({
+      name: "sunrise_s3_uploads_total",
+      help: "S3 object uploads completed through Sunrise by browser mode and upload strategy.",
+      labelNames: ["mode", "strategy", "outcome"] as const,
+      registers: [registry],
+    }),
+    s3UploadBytes: new Counter({
+      name: "sunrise_s3_upload_bytes_total",
+      help: "Bytes transferred by S3 object uploads without bucket or object labels.",
+      labelNames: ["mode", "strategy", "outcome"] as const,
+      registers: [registry],
+    }),
+    s3UploadParts: new Counter({
+      name: "sunrise_s3_upload_parts_total",
+      help: "Parts attempted by S3 object uploads without resource-specific labels.",
+      labelNames: ["mode", "strategy", "outcome"] as const,
+      registers: [registry],
+    }),
+    s3UploadDuration: new Histogram({
+      name: "sunrise_s3_upload_duration_seconds",
+      help: "End-to-end duration of S3 object uploads.",
+      labelNames: ["mode", "strategy", "outcome"] as const,
+      buckets: UPLOAD_DURATION_BUCKETS_SECONDS,
       registers: [registry],
     }),
     sessionLoads: new Counter({
@@ -240,6 +273,27 @@ export function observeRgwRequest(input: {
     status_code: input.status?.toString() ?? "none",
   });
   metrics.rgwRequestDuration.observe(labels, input.durationSeconds);
+}
+
+export function observeS3Upload(input: {
+  bytes: number;
+  durationSeconds: number;
+  mode: "proxy" | "direct";
+  outcome: S3UploadOutcome;
+  parts: number;
+  strategy: "single" | "multipart";
+}) {
+  const metrics = runtime();
+  if (!metrics) return;
+  const labels = {
+    mode: input.mode,
+    outcome: input.outcome,
+    strategy: input.strategy,
+  };
+  metrics.s3Uploads.inc(labels);
+  metrics.s3UploadBytes.inc(labels, Math.max(0, input.bytes));
+  metrics.s3UploadParts.inc(labels, Math.max(0, input.parts));
+  metrics.s3UploadDuration.observe(labels, Math.max(0, input.durationSeconds));
 }
 
 export function observeSessionLoad(input: {
