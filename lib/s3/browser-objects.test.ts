@@ -235,6 +235,36 @@ describe("uploadBrowserFiles", () => {
     expect(mocks.getSignedUrl).not.toHaveBeenCalled();
     expect(mocks.multipartOptions).toBeUndefined();
   });
+
+  it("settles cancellation while a direct request is being signed", async () => {
+    let resolveSignedUrl: ((url: string) => void) | undefined;
+    mocks.getSignedUrl.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSignedUrl = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const file = new File([new Uint8Array(4)], "cancelled.bin");
+
+    const result = uploadBrowserFiles(
+      clientWithSend(async () => ({})),
+      "tadas",
+      [{ file, key: "cancelled.bin" }],
+      () => undefined,
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(resolveSignedUrl).toBeTypeOf("function"));
+    controller.abort();
+    resolveSignedUrl?.("https://rgw.example.test/signed");
+
+    await expect(result).resolves.toEqual({
+      uploaded: 0,
+      errors: [],
+      cancelled: true,
+    });
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
+  });
 });
 
 describe("listBrowserObjects", () => {

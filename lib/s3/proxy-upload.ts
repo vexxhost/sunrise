@@ -189,7 +189,8 @@ function uploadSingleObject(
     };
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) {
-      abort();
+      cleanup();
+      reject(uploadAbortError());
       return;
     }
     request.send(formData);
@@ -264,7 +265,8 @@ function uploadPartRequest(
     };
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) {
-      abort();
+      cleanup();
+      reject(uploadAbortError());
       return;
     }
     request.send(body);

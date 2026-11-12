@@ -233,6 +233,7 @@ async function uploadBrowserFile(
     }),
     { expiresIn: 15 * 60 },
   );
+  throwIfUploadAborted(signal);
 
   await new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
@@ -279,7 +280,8 @@ async function uploadBrowserFile(
     };
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) {
-      abort();
+      cleanup();
+      reject(uploadAbortError());
       return;
     }
     request.send(file);
