@@ -1,6 +1,16 @@
 import { generateKeyPairSync, randomUUID } from "node:crypto";
-import type { Page } from "@playwright/test";
+import { mkdtemp, open, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Page, Request, Response } from "@playwright/test";
 import { expect, test } from "./fixtures";
+
+const MINUTE = 60_000;
+const S3_MULTIPART_CLEANUP_TIMEOUT = 3 * MINUTE;
+const S3_MULTIPART_UPLOAD_TIMEOUT = 4 * MINUTE;
+const S3_MULTIPART_WORKFLOW_TIMEOUT = 6 * MINUTE;
+const S3_MULTIPART_TEST_TIMEOUT =
+  2 * MINUTE + S3_MULTIPART_WORKFLOW_TIMEOUT + S3_MULTIPART_CLEANUP_TIMEOUT;
 
 const enabledMutations = new Set(
   (process.env.SUNRISE_E2E_CLOUD_MUTATIONS ?? "")
@@ -46,6 +56,181 @@ async function removeKeyPair(page: Page, name: string) {
   await expect(link).toHaveCount(0);
 }
 
+async function createBucket(
+  page: Page,
+  name: string,
+  markSubmitted: () => void,
+) {
+  await page.goto("/object-storage/buckets");
+  await page.getByRole("button", { name: "Create bucket" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create bucket" });
+  await dialog.getByLabel("Bucket name").fill(name);
+  markSubmitted();
+  await dialog
+    .getByRole("button", { name: "Create bucket", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
+}
+
+async function removeObject(
+  page: Page,
+  bucket: string,
+  key: string,
+  directMode: boolean,
+) {
+  const path = `/object-storage/buckets/${encodeURIComponent(bucket)}${
+    directMode ? "/direct" : ""
+  }`;
+  if (new URL(page.url()).pathname !== path) await page.goto(path);
+  await page.waitForLoadState("networkidle");
+  const link = page.getByRole("link", { name: key, exact: true });
+  if ((await link.count()) === 0) return;
+
+  const row = page.getByRole("row").filter({ has: link });
+  await row.getByRole("checkbox", { name: "Select row" }).click();
+  await page.getByRole("button", { name: "Actions" }).click();
+  await page.getByRole("menuitem", { name: "Remove selected" }).click();
+  const dialog = page.getByRole("dialog", { name: "Remove item?" });
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(link).toHaveCount(0);
+  await page.waitForLoadState("networkidle");
+}
+
+async function removeBucket(page: Page, name: string) {
+  await page.goto("/object-storage/buckets");
+  await page.waitForLoadState("networkidle");
+  const link = page.getByRole("link", { name, exact: true });
+  if ((await link.count()) === 0) return;
+
+  await page.getByTitle(`Delete ${name}`).click();
+  const dialog = page.getByRole("dialog", { name: "Delete bucket?" });
+  await dialog
+    .getByRole("button", { name: "Delete bucket", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(link).toHaveCount(0);
+}
+
+async function cancelActiveUpload(page: Page) {
+  const cancel = page.getByRole("button", {
+    name: "Cancel upload",
+    exact: true,
+  });
+  if (!(await cancel.isVisible().catch(() => false))) return;
+
+  await cancel.click();
+  await expect(cancel).toBeHidden({ timeout: MINUTE });
+  await page.waitForLoadState("networkidle");
+}
+
+async function sparseUploadFile(name: string, size: number) {
+  const directory = await mkdtemp(join(tmpdir(), "sunrise-s3-e2e-"));
+  const path = join(directory, name);
+  const file = await open(path, "w");
+  try {
+    await file.truncate(size);
+  } finally {
+    await file.close();
+  }
+  return { directory, path };
+}
+
+type MultipartPhase = "initiate" | "part" | "complete";
+
+function proxyMultipartPhase(
+  request: Request,
+  bucket: string,
+): MultipartPhase | null {
+  const url = new URL(request.url());
+  const multipartPath = `/object-storage/buckets/${encodeURIComponent(
+    bucket,
+  )}/multipart`;
+  if (request.method() === "PUT" && url.pathname === `${multipartPath}/part`) {
+    return "part";
+  }
+  if (request.method() !== "POST" || url.pathname !== multipartPath) {
+    return null;
+  }
+
+  try {
+    const action = request.postDataJSON()?.action;
+    return action === "initiate" || action === "complete" ? action : null;
+  } catch {
+    return null;
+  }
+}
+
+function directMultipartPhase(
+  request: Request,
+  bucket: string,
+  key: string,
+): MultipartPhase | null {
+  const url = new URL(request.url());
+  if (decodeURIComponent(url.pathname) !== `/${bucket}/${key}`) return null;
+
+  const operation = url.searchParams.get("x-id");
+  if (
+    request.method() === "POST" &&
+    (url.searchParams.has("uploads") || operation === "CreateMultipartUpload")
+  ) {
+    return "initiate";
+  }
+  if (
+    request.method() === "PUT" &&
+    url.searchParams.has("partNumber") &&
+    url.searchParams.has("uploadId")
+  ) {
+    return "part";
+  }
+  if (
+    request.method() === "POST" &&
+    url.searchParams.has("uploadId") &&
+    (operation === null || operation === "CompleteMultipartUpload")
+  ) {
+    return "complete";
+  }
+  return null;
+}
+
+function observeMultipartResponses(
+  page: Page,
+  bucket: string,
+  key: string,
+  directMode: boolean,
+) {
+  const statuses: Record<MultipartPhase, number[]> = {
+    initiate: [],
+    part: [],
+    complete: [],
+  };
+  const listener = (response: Response) => {
+    const phase = directMode
+      ? directMultipartPhase(response.request(), bucket, key)
+      : proxyMultipartPhase(response.request(), bucket);
+    if (phase) statuses[phase].push(response.status());
+  };
+  page.on("response", listener);
+
+  return {
+    statuses,
+    stop: () => page.off("response", listener),
+  };
+}
+
+function expectSuccessfulMultipartResponses(
+  statuses: Record<MultipartPhase, number[]>,
+) {
+  const successful = (status: number) => status >= 200 && status < 300;
+  expect(statuses.initiate.some(successful), "multipart initiation").toBe(true);
+  expect(
+    statuses.part.filter(successful).length,
+    "multipart part uploads",
+  ).toBeGreaterThan(1);
+  expect(statuses.complete.some(successful), "multipart completion").toBe(true);
+}
+
 test.describe("disposable cloud mutations", () => {
   test.use({ cloudReturnTo: "/compute/key-pairs" });
   test.skip(
@@ -79,5 +264,112 @@ test.describe("disposable cloud mutations", () => {
     } finally {
       if (creationSubmitted) await removeKeyPair(page, name);
     }
+  });
+});
+
+test.describe("disposable S3 multipart mutations", () => {
+  test.describe.configure({ timeout: S3_MULTIPART_TEST_TIMEOUT });
+  test.use({ cloudReturnTo: "/object-storage/buckets" });
+  test.skip(
+    !enabledMutations.has("s3-multipart"),
+    "Set SUNRISE_E2E_CLOUD_MUTATIONS=s3-multipart to allow disposable S3 multipart CRUD",
+  );
+
+  test("uploads and removes a multipart object", async ({ page }) => {
+    const suffix = `${Date.now()}-${randomUUID().slice(0, 8)}`;
+    const bucket = `sunrise-e2e-multipart-${suffix}`;
+    const object = `multipart-${suffix}.bin`;
+    let bucketCreationSubmitted = false;
+    let directMode = false;
+    let temporaryDirectory: string | null = null;
+    const multipartObservation: { stop: (() => void) | null } = { stop: null };
+    let testError: unknown;
+
+    try {
+      await test.step(
+        "create a bucket and upload a multipart object",
+        async () => {
+          await createBucket(page, bucket, () => {
+            bucketCreationSubmitted = true;
+          });
+          await page.getByRole("link", { name: bucket, exact: true }).click();
+          await expect(page).toHaveURL(
+            new RegExp(
+              `/object-storage/buckets/${bucket}(?:/direct)?(?:\\?|$)`,
+            ),
+          );
+          await expect(
+            page.locator('input[type="file"]').first(),
+          ).toBeAttached();
+
+          directMode = new URL(page.url()).pathname.endsWith("/direct");
+          const size = (directMode ? 101 : 9) * 1024 * 1024;
+          const upload = await sparseUploadFile(object, size);
+          temporaryDirectory = upload.directory;
+          const multipartResponses = observeMultipartResponses(
+            page,
+            bucket,
+            object,
+            directMode,
+          );
+          multipartObservation.stop = multipartResponses.stop;
+
+          await page
+            .locator('input[type="file"]')
+            .first()
+            .setInputFiles(upload.path);
+          await page
+            .getByRole("button", { name: "Upload", exact: true })
+            .click();
+          await expect(
+            page.getByText(
+              directMode
+                ? "Uploaded 1 object directly to RGW."
+                : "Uploaded 1 object.",
+              { exact: true },
+            ),
+          ).toBeVisible({ timeout: S3_MULTIPART_UPLOAD_TIMEOUT });
+          await expect(
+            page.getByRole("link", { name: object, exact: true }),
+          ).toBeVisible();
+          multipartResponses.stop();
+          multipartObservation.stop = null;
+          expectSuccessfulMultipartResponses(multipartResponses.statuses);
+        },
+        { timeout: S3_MULTIPART_WORKFLOW_TIMEOUT },
+      );
+    } catch (error) {
+      testError = error;
+    } finally {
+      const cleanupErrors: unknown[] = [];
+      multipartObservation.stop?.();
+      if (bucketCreationSubmitted) {
+        await cancelActiveUpload(page).catch((error) =>
+          cleanupErrors.push(error),
+        );
+        if (temporaryDirectory) {
+          await removeObject(page, bucket, object, directMode).catch((error) =>
+            cleanupErrors.push(error),
+          );
+        }
+        await removeBucket(page, bucket).catch((error) =>
+          cleanupErrors.push(error),
+        );
+      }
+      if (temporaryDirectory) {
+        await rm(temporaryDirectory, { recursive: true, force: true }).catch(
+          (error) => cleanupErrors.push(error),
+        );
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          testError ? [testError, ...cleanupErrors] : cleanupErrors,
+          testError
+            ? "The multipart test failed and its disposable resources could not be fully cleaned up"
+            : "Could not clean up the disposable multipart test resources",
+        );
+      }
+    }
+    if (testError) throw testError;
   });
 });
