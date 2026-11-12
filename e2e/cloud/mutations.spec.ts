@@ -2,7 +2,7 @@ import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { mkdtemp, open, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Page } from "@playwright/test";
+import type { Page, Request, Response } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
 const enabledMutations = new Set(
@@ -118,6 +118,100 @@ async function sparseUploadFile(name: string, size: number) {
   return { directory, path };
 }
 
+type MultipartPhase = "initiate" | "part" | "complete";
+
+function proxyMultipartPhase(
+  request: Request,
+  bucket: string,
+): MultipartPhase | null {
+  const url = new URL(request.url());
+  const multipartPath = `/object-storage/buckets/${encodeURIComponent(
+    bucket,
+  )}/multipart`;
+  if (request.method() === "PUT" && url.pathname === `${multipartPath}/part`) {
+    return "part";
+  }
+  if (request.method() !== "POST" || url.pathname !== multipartPath) {
+    return null;
+  }
+
+  try {
+    const action = request.postDataJSON()?.action;
+    return action === "initiate" || action === "complete" ? action : null;
+  } catch {
+    return null;
+  }
+}
+
+function directMultipartPhase(
+  request: Request,
+  bucket: string,
+  key: string,
+): MultipartPhase | null {
+  const url = new URL(request.url());
+  if (decodeURIComponent(url.pathname) !== `/${bucket}/${key}`) return null;
+
+  const operation = url.searchParams.get("x-id");
+  if (
+    request.method() === "POST" &&
+    (url.searchParams.has("uploads") || operation === "CreateMultipartUpload")
+  ) {
+    return "initiate";
+  }
+  if (
+    request.method() === "PUT" &&
+    url.searchParams.has("partNumber") &&
+    url.searchParams.has("uploadId")
+  ) {
+    return "part";
+  }
+  if (
+    request.method() === "POST" &&
+    url.searchParams.has("uploadId") &&
+    (operation === null || operation === "CompleteMultipartUpload")
+  ) {
+    return "complete";
+  }
+  return null;
+}
+
+function observeMultipartResponses(
+  page: Page,
+  bucket: string,
+  key: string,
+  directMode: boolean,
+) {
+  const statuses: Record<MultipartPhase, number[]> = {
+    initiate: [],
+    part: [],
+    complete: [],
+  };
+  const listener = (response: Response) => {
+    const phase = directMode
+      ? directMultipartPhase(response.request(), bucket, key)
+      : proxyMultipartPhase(response.request(), bucket);
+    if (phase) statuses[phase].push(response.status());
+  };
+  page.on("response", listener);
+
+  return {
+    statuses,
+    stop: () => page.off("response", listener),
+  };
+}
+
+function expectSuccessfulMultipartResponses(
+  statuses: Record<MultipartPhase, number[]>,
+) {
+  const successful = (status: number) => status >= 200 && status < 300;
+  expect(statuses.initiate.some(successful), "multipart initiation").toBe(true);
+  expect(
+    statuses.part.filter(successful).length,
+    "multipart part uploads",
+  ).toBeGreaterThan(1);
+  expect(statuses.complete.some(successful), "multipart completion").toBe(true);
+}
+
 test.describe("disposable cloud mutations", () => {
   test.use({ cloudReturnTo: "/compute/key-pairs" });
   test.skip(
@@ -185,6 +279,12 @@ test.describe("disposable S3 multipart mutations", () => {
       const size = (directMode ? 101 : 9) * 1024 * 1024;
       const upload = await sparseUploadFile(object, size);
       temporaryDirectory = upload.directory;
+      const multipartResponses = observeMultipartResponses(
+        page,
+        bucket,
+        object,
+        directMode,
+      );
 
       await page
         .locator('input[type="file"]')
@@ -202,6 +302,8 @@ test.describe("disposable S3 multipart mutations", () => {
       await expect(
         page.getByRole("link", { name: object, exact: true }),
       ).toBeVisible();
+      multipartResponses.stop();
+      expectSuccessfulMultipartResponses(multipartResponses.statuses);
     } catch (error) {
       testError = error;
     } finally {
