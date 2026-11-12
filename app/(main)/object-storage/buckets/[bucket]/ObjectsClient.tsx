@@ -56,6 +56,7 @@ import {
 import type { S3UploadProgress } from "@/lib/s3/upload-batch";
 import { buildS3UploadMetrics } from "@/lib/s3/upload-telemetry-client";
 import { recordS3UploadMetrics } from "@/lib/s3/upload-telemetry";
+import { s3WebUploadLimitError } from "@/lib/s3/web-upload-limits";
 
 type Row =
   | { kind: "folder"; name: string; fullPath: string }
@@ -218,19 +219,34 @@ export function ObjectsClient({
 
   const handleFilesSelected = (input: HTMLInputElement) => {
     const selectedFiles = input.files ? Array.from(input.files) : [];
-    if (selectedFiles.length > 0) {
-      setUploadFiles((currentFiles) => [...currentFiles, ...selectedFiles]);
-    }
     input.value = "";
     setUploadMessage(null);
-    setUploadError(null);
     setUploadProgress(null);
     setOverwriteOpen(false);
     setOverwriteKeys([]);
+    if (selectedFiles.length === 0) {
+      setUploadError(null);
+      return;
+    }
+
+    const nextFiles = [...uploadFiles, ...selectedFiles];
+    const limitError = s3WebUploadLimitError(nextFiles);
+    if (limitError) {
+      setUploadError(limitError);
+      return;
+    }
+    setUploadFiles(nextFiles);
+    setUploadError(null);
   };
 
   const handleUpload = async (confirmOverwrite = false) => {
     if (uploadFiles.length === 0 || uploading) return;
+    const limitError = s3WebUploadLimitError(uploadFiles);
+    if (limitError) {
+      setUploadMessage(null);
+      setUploadError(limitError);
+      return;
+    }
     setUploading(true);
     setUploadProgress(null);
     setUploadMessage(null);

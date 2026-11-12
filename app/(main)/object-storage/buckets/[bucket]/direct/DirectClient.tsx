@@ -64,6 +64,7 @@ import { normalizeStorageClass } from "@/lib/s3/storage-class";
 import type { S3UploadProgress } from "@/lib/s3/upload-batch";
 import { buildS3UploadMetrics } from "@/lib/s3/upload-telemetry-client";
 import { recordS3UploadMetrics } from "@/lib/s3/upload-telemetry";
+import { s3WebUploadLimitError } from "@/lib/s3/web-upload-limits";
 import { useMutationRefresh } from "@/hooks/useMutationRefresh";
 import { resourceRecoveryPath } from "@/lib/resource-recovery";
 
@@ -326,19 +327,30 @@ export function DirectClient({
 
   const handleFilesSelected = (input: HTMLInputElement) => {
     const selectedFiles = input.files ? Array.from(input.files) : [];
-    if (selectedFiles.length > 0) {
-      setUploadFiles((current) => [...current, ...selectedFiles]);
-    }
     input.value = "";
     clearMessages();
     setUploadProgress(null);
     setOverwriteOpen(false);
     setOverwriteKeys([]);
+    if (selectedFiles.length === 0) return;
+
+    const nextFiles = [...uploadFiles, ...selectedFiles];
+    const limitError = s3WebUploadLimitError(nextFiles);
+    if (limitError) {
+      setUploadError(limitError);
+      return;
+    }
+    setUploadFiles(nextFiles);
   };
 
   const handleUpload = async (confirmOverwrite = false) => {
     if (!s3 || uploadFiles.length === 0 || uploading) return;
     clearMessages();
+    const limitError = s3WebUploadLimitError(uploadFiles);
+    if (limitError) {
+      setUploadError(limitError);
+      return;
+    }
     setUploading(true);
     setUploadProgress(null);
     if (confirmOverwrite) setOverwriteOpen(false);

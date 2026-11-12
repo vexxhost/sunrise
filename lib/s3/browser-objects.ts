@@ -21,6 +21,7 @@ import {
   type S3UploadFile,
   type S3UploadProgress,
 } from "@/lib/s3/upload-batch";
+import { assertS3WebUploadLimits } from "@/lib/s3/web-upload-limits";
 
 export type BrowserObjectRow =
   | { kind: "folder"; name: string; fullPath: string }
@@ -341,6 +342,7 @@ export async function uploadBrowserFiles(
   onProgress: (progress: S3UploadProgress) => void,
   signal: AbortSignal,
 ) {
+  assertS3WebUploadLimits(files);
   return runS3UploadBatch(
     files,
     ({ file, key }, report, uploadSignal) =>

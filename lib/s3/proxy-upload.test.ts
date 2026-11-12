@@ -3,6 +3,7 @@ import {
   findProxyUploadConflicts,
   uploadProxyFiles,
 } from "@/lib/s3/proxy-upload";
+import { S3_WEB_UPLOAD_MAX_FILE_SIZE_BYTES } from "@/lib/s3/web-upload-limits";
 
 const fetchMock = vi.fn();
 
@@ -143,5 +144,21 @@ describe("proxy S3 multipart upload", () => {
       findProxyUploadConflicts("project-a", "bucket-a", keys),
     ).resolves.toEqual(expect.arrayContaining(["file-0", "file-1000"]));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects files over 100 GB before initiating a multipart upload", () => {
+    const file = largeFile(S3_WEB_UPLOAD_MAX_FILE_SIZE_BYTES + 1);
+
+    expect(() =>
+      uploadProxyFiles(
+        "project-a",
+        "bucket-a",
+        [{ file, key: "large.raw" }],
+        () => undefined,
+        new AbortController().signal,
+      ),
+    ).toThrow("100 GB web UI upload limit");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
   });
 });

@@ -14,6 +14,7 @@ import {
   type S3UploadFile,
   type S3UploadProgress,
 } from "@/lib/s3/upload-batch";
+import { assertS3WebUploadLimits } from "@/lib/s3/web-upload-limits";
 
 type JsonRecord = Record<string, unknown>;
 const CONFLICT_CHECK_BATCH_SIZE = 1000;
@@ -460,6 +461,7 @@ export function uploadProxyFiles(
   onProgress: (progress: S3UploadProgress) => void,
   signal: AbortSignal,
 ): Promise<S3UploadBatchResult> {
+  assertS3WebUploadLimits(files);
   return runS3UploadBatch(
     files,
     (item, report, uploadSignal) =>

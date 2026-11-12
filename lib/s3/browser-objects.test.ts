@@ -69,6 +69,7 @@ import {
   removeBrowserSelection,
   uploadBrowserFiles,
 } from "@/lib/s3/browser-objects";
+import { S3_WEB_UPLOAD_MAX_FILE_SIZE_BYTES } from "@/lib/s3/web-upload-limits";
 
 class FakeXMLHttpRequest {
   static requests: FakeXMLHttpRequest[] = [];
@@ -213,6 +214,26 @@ describe("uploadBrowserFiles", () => {
       params: { ContentLength: 100 * 1024 * 1024 },
     });
     expect(progress.at(-1)).toBe(100);
+  });
+
+  it("rejects files over 100 GB before creating a multipart upload", async () => {
+    const client = clientWithSend(async () => ({}));
+    const file = new File([], "too-large.raw");
+    Object.defineProperty(file, "size", {
+      value: S3_WEB_UPLOAD_MAX_FILE_SIZE_BYTES + 1,
+    });
+
+    await expect(
+      uploadBrowserFiles(
+        client,
+        "tadas",
+        [{ file, key: "too-large.raw" }],
+        () => undefined,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("100 GB web UI upload limit");
+    expect(mocks.getSignedUrl).not.toHaveBeenCalled();
+    expect(mocks.multipartOptions).toBeUndefined();
   });
 });
 
