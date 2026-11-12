@@ -8,8 +8,8 @@ const nextConfig = {
     },
   },
   experimental: {
-    // Proxy request bodies are buffered by Next.js. S3 proxy uploads keep raw
-    // multipart parts below this explicit ceiling.
+    // Legacy single-request S3 uploads remain below this ceiling. Multipart
+    // part streams bypass proxy.ts so Next.js does not buffer or truncate them.
     proxyClientMaxBodySize: "10mb",
   },
 };

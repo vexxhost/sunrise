@@ -39,6 +39,10 @@ function multipartPath(bucket: string) {
   return `/object-storage/buckets/${encodeURIComponent(bucket)}/multipart`;
 }
 
+function multipartPartPath(bucket: string) {
+  return `${multipartPath(bucket)}/part`;
+}
+
 function uploadPath(bucket: string) {
   return `/object-storage/buckets/${encodeURIComponent(bucket)}/upload`;
 }
@@ -210,7 +214,7 @@ function uploadPartRequest(
     const request = new XMLHttpRequest();
     const abort = () => request.abort();
     const cleanup = () => signal.removeEventListener("abort", abort);
-    request.open("PUT", `${multipartPath(bucket)}?${search}`);
+    request.open("PUT", `${multipartPartPath(bucket)}?${search}`);
     request.setRequestHeader("Content-Type", "application/octet-stream");
     request.setRequestHeader("X-Sunrise-Project-Id", projectId);
     request.setRequestHeader("X-Sunrise-Part-Size", String(body.size));

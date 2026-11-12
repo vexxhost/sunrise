@@ -106,6 +106,13 @@ describe("proxy S3 multipart upload", () => {
     expect(
       FakeXMLHttpRequest.requests.every((request) => request.method === "PUT"),
     ).toBe(true);
+    expect(
+      FakeXMLHttpRequest.requests.every((request) =>
+        request.url.startsWith(
+          "/object-storage/buckets/bucket-a/multipart/part?",
+        ),
+      ),
+    ).toBe(true);
     const completeCall = fetchMock.mock.calls.find(([, init]) =>
       String(init?.body).includes('"action":"complete"'),
     );

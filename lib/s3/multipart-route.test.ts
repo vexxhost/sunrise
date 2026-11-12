@@ -29,8 +29,8 @@ vi.mock("@/lib/s3/client", () => ({
 import {
   DELETE,
   POST,
-  PUT,
 } from "@/app/(main)/object-storage/buckets/[bucket]/multipart/route";
+import { PUT } from "@/app/(main)/object-storage/buckets/[bucket]/multipart/part/route";
 
 const context = { params: Promise.resolve({ bucket: "test-bucket" }) };
 
