@@ -115,6 +115,19 @@ async function discardRemoteCheckpoint(
   await deleteS3MultipartCheckpoint(checkpoint.id);
 }
 
+async function cleanupExplicitCancellation(
+  input: ResumableMultipartInput,
+  checkpoint: S3MultipartCheckpoint,
+) {
+  if (!input.signal.aborted || isS3UploadPause(input.signal)) return false;
+  try {
+    await discardRemoteCheckpoint(input.transport, checkpoint);
+  } catch {
+    // Keep the checkpoint so the user can retry cleanup explicitly.
+  }
+  return true;
+}
+
 export async function discardS3MultipartCheckpoint(
   transport: S3MultipartTransport,
   checkpoint: S3MultipartCheckpoint,
@@ -170,6 +183,9 @@ async function loadCheckpoint(
     await saveS3MultipartCheckpoint(checkpoint);
     return { checkpoint, persisted: true };
   } catch (error) {
+    if (await cleanupExplicitCancellation(input, checkpoint)) {
+      throw uploadAbortError();
+    }
     if (!input.transport.isMissingUpload(error)) throw error;
     await deleteS3MultipartCheckpoint(checkpoint.id);
     return initiateCheckpoint(input, fingerprint);
@@ -274,12 +290,7 @@ export async function uploadResumableS3Multipart(
     partsController.abort(input.signal.reason);
     await Promise.allSettled(workers);
     await checkpointWrite.catch(() => undefined);
-    if (input.signal.aborted && !isS3UploadPause(input.signal)) {
-      try {
-        await discardRemoteCheckpoint(input.transport, checkpoint);
-      } catch {
-        // Keep the checkpoint so the user can retry cleanup explicitly.
-      }
+    if (await cleanupExplicitCancellation(input, checkpoint)) {
       throw uploadAbortError();
     }
     if (!persisted) {

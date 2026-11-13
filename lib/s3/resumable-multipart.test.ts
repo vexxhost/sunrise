@@ -210,6 +210,66 @@ describe("uploadResumableS3Multipart", () => {
     );
   });
 
+  it("cleans up an existing upload when cancelled during reconciliation", async () => {
+    checkpointMocks.get.mockResolvedValue(checkpoint());
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const multipartTransport = transport({
+      listParts: vi.fn(async (_key, _uploadId, signal) => {
+        started.resolve();
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(new Error("cancelled")),
+            { once: true },
+          );
+        });
+        return [];
+      }),
+    });
+    const uploading = uploadResumableS3Multipart(
+      uploadInput(multipartTransport, controller.signal),
+    );
+    await started.promise;
+
+    controller.abort();
+
+    await expect(uploading).rejects.toMatchObject({ name: "AbortError" });
+    expect(multipartTransport.abort).toHaveBeenCalledWith(
+      "images/disk.raw",
+      "upload-a",
+    );
+    expect(checkpointMocks.delete).toHaveBeenCalledWith("checkpoint-a");
+    expect(multipartTransport.uploadPart).not.toHaveBeenCalled();
+  });
+
+  it("preserves an existing upload when navigation pauses reconciliation", async () => {
+    checkpointMocks.get.mockResolvedValue(checkpoint());
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const multipartTransport = transport({
+      listParts: vi.fn(async (_key, _uploadId, signal) => {
+        started.resolve();
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new Error("paused")), {
+            once: true,
+          });
+        });
+        return [];
+      }),
+    });
+    const uploading = uploadResumableS3Multipart(
+      uploadInput(multipartTransport, controller.signal),
+    );
+    await started.promise;
+
+    pauseS3Upload(controller);
+
+    await expect(uploading).rejects.toThrow("paused");
+    expect(multipartTransport.abort).not.toHaveBeenCalled();
+    expect(checkpointMocks.delete).not.toHaveBeenCalled();
+  });
+
   it("preserves a persistent upload when navigation pauses it", async () => {
     const controller = new AbortController();
     const started = Promise.withResolvers<void>();
