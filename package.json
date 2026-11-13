@@ -23,11 +23,11 @@
     "ui:sync": "pnpm dlx shadcn@4.23.0 add vexxhost/ui/theme vexxhost/ui/button vexxhost/ui/copy-button --overwrite --yes"
   },
   "dependencies": {
-    "@aws-sdk/client-iam": "3.1164.0",
-    "@aws-sdk/client-s3": "3.1164.0",
-    "@aws-sdk/client-sts": "3.1164.0",
-    "@aws-sdk/s3-request-presigner": "3.1164.0",
-    "@aws-sdk/xml-builder": "3.972.42",
+    "@aws-sdk/client-iam": "3.1165.0",
+    "@aws-sdk/client-s3": "3.1165.0",
+    "@aws-sdk/client-sts": "3.1165.0",
+    "@aws-sdk/s3-request-presigner": "3.1165.0",
+    "@aws-sdk/xml-builder": "3.972.43",
     "@base-ui/react": "^1.9.0",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lint": "^6.9.7",
