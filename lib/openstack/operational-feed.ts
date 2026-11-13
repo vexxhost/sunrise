@@ -380,7 +380,7 @@ const sourceDefinitions: SourceDefinition[] = [
     href: "/compute/volumes",
     serviceType: "volumev3",
     serviceName: "cinder",
-    apiVersion: "volume 3.67",
+    apiVersion: "volume 3.0",
     load: loadCinderSignals,
   },
   {

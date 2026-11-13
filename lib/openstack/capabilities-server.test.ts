@@ -16,6 +16,7 @@ vi.mock("@/lib/openstack/catalog", () => ({
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
 
 import {
+  discoverBlockStorageCapabilities,
   discoverComputeCapabilities,
   discoverNetworkCapabilities,
 } from "@/lib/openstack/capabilities-server";
@@ -77,6 +78,44 @@ describe("OpenStack capability discovery", () => {
       configuredMicroversionMaximum: "2.90",
       discoveryStatus: "available",
       message: expect.stringContaining("not request newer than 2.90"),
+    });
+  });
+
+  it("discovers the Cinder microversion range and regional ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_VOLUME", "3.71");
+    vi.stubEnv("SUNRISE_API_MICROVERSION_VOLUME_REGIONONE", "3.66");
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://volume.example.test/v3/project-a",
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        min_version: "3.0",
+        status: "CURRENT",
+        version: "3.71",
+      },
+    });
+
+    await expect(
+      discoverBlockStorageCapabilities("RegionOne"),
+    ).resolves.toMatchObject({
+      configuredMicroversionMaximum: "3.66",
+      discoveryStatus: "available",
+      microversions: { minimum: "3.0", maximum: "3.71" },
+      serviceType: "volume",
+    });
+    expect(mocks.getServiceEndpoint).toHaveBeenCalledWith(
+      "RegionOne",
+      "volumev3",
+      "cinder",
+      "project-token",
+    );
+    expect(mocks.openstackRequest).toHaveBeenCalledWith({
+      acceptedStatuses: [300],
+      endpointOverride: "https://volume.example.test/v3",
+      path: "/",
+      regionId: "RegionOne",
+      serviceName: "cinder",
+      serviceType: "volumev3",
     });
   });
 

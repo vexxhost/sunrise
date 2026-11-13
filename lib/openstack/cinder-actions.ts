@@ -2,10 +2,15 @@
 
 import { microversionSupport } from "@/lib/openstack/capabilities";
 import {
+  CINDER_BASELINE_MICROVERSION,
+  CINDER_IN_USE_SNAPSHOT_MICROVERSION,
+  discoverBlockStorageCapabilities,
   discoverComputeCapabilities,
   NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION,
 } from "@/lib/openstack/capabilities-server";
+import { guardMutationContext } from "@/lib/mutation-context";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
+import { openstackRequest } from "@/lib/openstack/request-server";
 import {
   mutationFailure,
   type MutationResult,
@@ -22,7 +27,7 @@ const NOVA_SERVICE = {
   serviceType: "compute",
   serviceName: "nova",
 } as const;
-const CINDER_API_VERSION = "volume 3.66";
+const CINDER_API_VERSION = `volume ${CINDER_BASELINE_MICROVERSION}`;
 const NOVA_API_VERSION = "compute 2.79";
 
 const resourceIdSchema = z.string().trim().min(1).max(255);
@@ -100,6 +105,96 @@ function parseInput<T>(
 
 function parseResourceId(scope: MutationScope, id: string) {
   return parseInput(resourceIdSchema, id, scope);
+}
+
+function unsupportedCapability(scope: MutationScope, message: string) {
+  return mutationFailure(
+    {
+      code: "service-unavailable",
+      message,
+      retryable: false,
+    },
+    scope,
+  );
+}
+
+async function snapshotRequestOptions(scope: MutationScope, volumeId: string) {
+  const guarded = await guardMutationContext(scope);
+  if (!guarded.ok) return { ok: false, result: guarded.result } as const;
+
+  const activeScope = guarded.context.scope;
+  const [payload, capabilities] = await Promise.all([
+    openstackRequest<{ volume?: { status?: unknown } }>({
+      apiVersion: CINDER_API_VERSION,
+      regionId: activeScope.regionId!,
+      ...CINDER_SERVICE,
+      path: `/volumes/${encodeURIComponent(volumeId)}`,
+    }),
+    discoverBlockStorageCapabilities(activeScope.regionId!),
+  ]);
+  const status = payload?.volume?.status;
+  if (typeof status !== "string") {
+    return {
+      ok: false,
+      result: mutationFailure(
+        {
+          code: "service-error",
+          message:
+            "The volume status could not be verified. Refresh and try again.",
+          retryable: true,
+        },
+        activeScope,
+      ),
+    } as const;
+  }
+  if (status !== "available" && status !== "in-use") {
+    return {
+      ok: false,
+      result: validationFailure(
+        activeScope,
+        "Only available or attached volumes can be snapshotted.",
+      ),
+    } as const;
+  }
+
+  const baselineSupport = microversionSupport(
+    capabilities,
+    CINDER_BASELINE_MICROVERSION,
+    "Creating volume snapshots",
+  );
+  if (baselineSupport.status === "unsupported") {
+    return {
+      ok: false,
+      result: unsupportedCapability(activeScope, baselineSupport.message),
+    } as const;
+  }
+
+  if (status === "available") {
+    return {
+      ok: true,
+      apiVersion: `volume ${baselineSupport.requestedMicroversion ?? CINDER_BASELINE_MICROVERSION}`,
+      force: undefined,
+    } as const;
+  }
+
+  const modernSupport = microversionSupport(
+    capabilities,
+    CINDER_IN_USE_SNAPSHOT_MICROVERSION,
+    "Creating snapshots of attached volumes without the legacy force flag",
+  );
+  if (modernSupport.status !== "unsupported") {
+    return {
+      ok: true,
+      apiVersion: `volume ${modernSupport.requestedMicroversion ?? CINDER_IN_USE_SNAPSHOT_MICROVERSION}`,
+      force: undefined,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    apiVersion: `volume ${baselineSupport.requestedMicroversion ?? CINDER_BASELINE_MICROVERSION}`,
+    force: true,
+  } as const;
 }
 
 export async function createVolumeAction(
@@ -197,6 +292,8 @@ export async function createSnapshotAction(
   const parsed = parseInput(snapshotCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const request = await snapshotRequestOptions(scope, value.volumeId);
+  if (!request.ok) return request.result;
 
   return executeOpenStackMutation<Snapshot>({
     actionLabel: "create a volume snapshot",
@@ -204,12 +301,13 @@ export async function createSnapshotAction(
     ...CINDER_SERVICE,
     path: "/snapshots",
     method: "POST",
-    apiVersion: CINDER_API_VERSION,
+    apiVersion: request.apiVersion,
     body: {
       snapshot: {
         volume_id: value.volumeId,
         name: value.name,
         description: value.description || undefined,
+        force: request.force,
       },
     },
     invalidates: ["/compute", "/compute/snapshots", "/compute/volumes"],

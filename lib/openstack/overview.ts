@@ -90,7 +90,7 @@ const serviceDefinitions: ServiceDefinition[] = [
     serviceType: "volumev3",
     serviceName: "cinder",
     path: (projectId) => `/os-quota-sets/${projectId}?usage=true`,
-    apiVersion: "volume 3.67",
+    apiVersion: "volume 3.0",
     parse: parseCinderQuotaDetails,
   },
   {

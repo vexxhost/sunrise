@@ -120,6 +120,24 @@ describe("server-only OpenStack requests", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects Cinder reads above the configured volume ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_VOLUME_REGIONONE", "3.65");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      openstackRequest({
+        apiVersion: "volume 3.66",
+        errorMode: "throw",
+        regionId: "RegionOne",
+        serviceType: "volumev3",
+        serviceName: "cinder",
+        path: "/volumes/detail",
+      }),
+    ).rejects.toThrow("exceeds the configured maximum 3.65");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("records response body stream failures without counting success", async () => {
     vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
     resetMetricsForTests();

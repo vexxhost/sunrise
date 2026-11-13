@@ -1,16 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  discoverBlockStorageCapabilities: vi.fn(),
   discoverComputeCapabilities: vi.fn(),
   executeOpenStackMutation: vi.fn(),
+  guardMutationContext: vi.fn(),
+  openstackRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/openstack/mutations", () => ({
   executeOpenStackMutation: mocks.executeOpenStackMutation,
 }));
 vi.mock("@/lib/openstack/capabilities-server", () => ({
+  CINDER_BASELINE_MICROVERSION: "3.0",
+  CINDER_IN_USE_SNAPSHOT_MICROVERSION: "3.66",
+  discoverBlockStorageCapabilities: mocks.discoverBlockStorageCapabilities,
   discoverComputeCapabilities: mocks.discoverComputeCapabilities,
   NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION: "2.85",
+}));
+vi.mock("@/lib/mutation-context", () => ({
+  guardMutationContext: mocks.guardMutationContext,
+}));
+vi.mock("@/lib/openstack/request-server", () => ({
+  openstackRequest: mocks.openstackRequest,
 }));
 
 import {
@@ -27,6 +39,22 @@ const scope = { projectId: "project-a", regionId: "RegionOne" };
 describe("Cinder mutation actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.guardMutationContext.mockResolvedValue({
+      ok: true,
+      context: {
+        projectToken: "project-token",
+        scope,
+      },
+    });
+    mocks.openstackRequest.mockResolvedValue({
+      volume: { status: "available" },
+    });
+    mocks.discoverBlockStorageCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      message: "",
+      microversions: { minimum: "3.0", maximum: "3.71" },
+      serviceType: "volume",
+    });
     mocks.discoverComputeCapabilities.mockResolvedValue({
       discoveryStatus: "available",
       message: "",
@@ -56,7 +84,7 @@ describe("Cinder mutation actions", () => {
       expect.objectContaining({
         method: "POST",
         path: "/volumes",
-        apiVersion: "volume 3.66",
+        apiVersion: "volume 3.0",
         body: {
           volume: {
             name: "database",
@@ -71,6 +99,10 @@ describe("Cinder mutation actions", () => {
   });
 
   it("uses modern snapshot semantics without a force flag", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      volume: { status: "in-use" },
+    });
+
     await createSnapshotAction(scope, {
       volumeId: "volume-a",
       name: "before-upgrade",
@@ -78,6 +110,7 @@ describe("Cinder mutation actions", () => {
 
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
       expect.objectContaining({
+        apiVersion: "volume 3.66",
         path: "/snapshots",
         body: {
           snapshot: {
@@ -91,6 +124,117 @@ describe("Cinder mutation actions", () => {
     expect(
       mocks.executeOpenStackMutation.mock.calls[0][0].body.snapshot.force,
     ).toBeUndefined();
+  });
+
+  it("uses baseline snapshot semantics for available volumes", async () => {
+    await createSnapshotAction(scope, {
+      volumeId: "volume-a",
+      name: "detached-volume",
+    });
+
+    expect(mocks.openstackRequest).toHaveBeenCalledWith({
+      apiVersion: "volume 3.0",
+      path: "/volumes/volume-a",
+      regionId: "RegionOne",
+      serviceName: "cinder",
+      serviceType: "volumev3",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({ apiVersion: "volume 3.0" }),
+    );
+  });
+
+  it("uses the legacy force flag for attached volumes on older Cinder APIs", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      volume: { status: "in-use" },
+    });
+    mocks.discoverBlockStorageCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      message: "",
+      microversions: { minimum: "3.0", maximum: "3.65" },
+      serviceType: "volume",
+    });
+
+    await createSnapshotAction(scope, {
+      volumeId: "volume-a",
+      name: "legacy-cinder",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "volume 3.0",
+        body: {
+          snapshot: expect.objectContaining({ force: true }),
+        },
+      }),
+    );
+  });
+
+  it("uses the legacy force flag below the configured Cinder ceiling", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      volume: { status: "in-use" },
+    });
+    mocks.discoverBlockStorageCapabilities.mockResolvedValue({
+      configuredMicroversionMaximum: "3.65",
+      discoveryStatus: "available",
+      message: "",
+      microversions: { minimum: "3.0", maximum: "3.71" },
+      serviceType: "volume",
+    });
+
+    await createSnapshotAction(scope, {
+      volumeId: "volume-a",
+      name: "operator-ceiling",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "volume 3.0",
+        body: {
+          snapshot: expect.objectContaining({ force: true }),
+        },
+      }),
+    );
+  });
+
+  it("preserves modern snapshot behavior when Cinder discovery is unavailable", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      volume: { status: "in-use" },
+    });
+    mocks.discoverBlockStorageCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "",
+      serviceType: "volume",
+    });
+
+    await createSnapshotAction(scope, {
+      volumeId: "volume-a",
+      name: "unknown-cinder",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "volume 3.66",
+        body: {
+          snapshot: expect.objectContaining({ force: undefined }),
+        },
+      }),
+    );
+  });
+
+  it("does not create a snapshot when the volume status cannot be verified", async () => {
+    mocks.openstackRequest.mockResolvedValue(null);
+
+    const result = await createSnapshotAction(scope, {
+      volumeId: "volume-a",
+      name: "unknown-volume",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "service-error", retryable: true },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("removes a deleted volume from saved resources", async () => {

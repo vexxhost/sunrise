@@ -11,6 +11,8 @@ import type {
   VolumeType,
 } from '@/types/openstack';
 
+const CINDER_API_VERSION = 'volume 3.0';
+
 /**
  * Query options for fetching list of volumes
  */
@@ -25,6 +27,7 @@ export function volumesQueryOptions(
         regionId: regionId!,
         serviceType: 'volumev3',
         serviceName: 'cinder',
+        apiVersion: CINDER_API_VERSION,
         path: '/volumes/detail',
       });
 
@@ -53,6 +56,7 @@ export function volumeQueryOptions(
         regionId: regionId!,
         serviceType: 'volumev3',
         serviceName: 'cinder',
+        apiVersion: CINDER_API_VERSION,
         path: `/volumes/${id}`,
         errorMode: 'throw',
       });
@@ -81,6 +85,7 @@ export function snapshotsQueryOptions(
         regionId: regionId!,
         serviceType: 'volumev3',
         serviceName: 'cinder',
+        apiVersion: CINDER_API_VERSION,
         path: '/snapshots/detail',
       });
 
@@ -109,6 +114,7 @@ export function snapshotQueryOptions(
         regionId: regionId!,
         serviceType: 'volumev3',
         serviceName: 'cinder',
+        apiVersion: CINDER_API_VERSION,
         path: `/snapshots/${id}`,
         errorMode: 'throw',
       });
@@ -134,6 +140,7 @@ export function volumeTypesQueryOptions(
         regionId: regionId!,
         serviceType: 'volumev3',
         serviceName: 'cinder',
+        apiVersion: CINDER_API_VERSION,
         path: '/types',
       });
 
@@ -156,6 +163,7 @@ export function volumeAvailabilityZonesQueryOptions(
         regionId: regionId!,
         serviceType: 'volumev3',
         serviceName: 'cinder',
+        apiVersion: CINDER_API_VERSION,
         path: '/os-availability-zone',
       });
 

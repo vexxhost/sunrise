@@ -175,6 +175,32 @@ describe("OpenStack mutation executor", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects Cinder mutations above the configured volume ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_VOLUME_REGIONONE", "3.65");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "create a snapshot",
+      apiVersion: "volume 3.66",
+      method: "POST",
+      path: "/snapshots",
+      scope,
+      serviceName: "cinder",
+      serviceType: "volumev3",
+      successMessage: "Snapshot creation requested.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("configured maximum 3.65"),
+        retryable: false,
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("records response body stream failures", async () => {
     vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
     resetMetricsForTests();
