@@ -1,19 +1,35 @@
 import {
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetBucketPolicyCommand,
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  ListPartsCommand,
   PutObjectCommand,
+  UploadPartCommand,
   type S3Client,
 } from "@aws-sdk/client-s3";
-import { Upload } from "@aws-sdk/lib-storage";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type {
+  S3MultipartCheckpoint,
+  S3MultipartCheckpointPart,
+  S3MultipartCheckpointScope,
+} from "@/lib/s3/multipart-checkpoints";
 import {
   S3_MULTIPART_CONCURRENCY,
   s3MultipartPartSize,
   shouldUseS3MultipartUpload,
 } from "@/lib/s3/multipart-policy";
+import {
+  assertNoPendingS3MultipartUpload,
+  discardS3MultipartCheckpoint,
+  S3MultipartFileMismatchError,
+  uploadResumableS3Multipart,
+  type S3MultipartTransport,
+} from "@/lib/s3/resumable-multipart";
 import {
   runS3UploadBatch,
   throwIfUploadAborted,
@@ -288,51 +304,292 @@ async function uploadBrowserFile(
   });
 }
 
-async function uploadBrowserMultipartFile(
-  client: S3Client,
-  bucket: string,
-  file: File,
-  key: string,
-  onProgress: (uploadedBytes: number) => void,
-  signal: AbortSignal,
-) {
-  throwIfUploadAborted(signal);
-  const upload = new Upload({
-    client,
-    params: {
-      Bucket: bucket,
-      Key: key,
-      Body: file,
-      ContentLength: file.size,
-      ContentType: file.type || undefined,
-    },
-    leavePartsOnError: false,
-    partSize: s3MultipartPartSize(file.size),
-    queueSize: S3_MULTIPART_CONCURRENCY,
-  });
-  upload.on("httpUploadProgress", (progress) => {
-    if (typeof progress.loaded === "number") onProgress(progress.loaded);
-  });
-  const abort = () => {
-    void upload.abort().catch(() => undefined);
-  };
-  signal.addEventListener("abort", abort, { once: true });
-  try {
-    await upload.done();
-    throwIfUploadAborted(signal);
-    onProgress(file.size);
-  } catch (error) {
-    if (signal.aborted) throw uploadAbortError();
-    throw error;
-  } finally {
-    signal.removeEventListener("abort", abort);
+class DirectMultipartRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = "DirectMultipartRequestError";
   }
 }
 
+function waitForDirectRetry(delayMs: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    let timeout = 0;
+    const abort = () => {
+      window.clearTimeout(timeout);
+      signal.removeEventListener("abort", abort);
+      reject(uploadAbortError());
+    };
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    timeout = window.setTimeout(() => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", abort, { once: true });
+  });
+}
+
+async function uploadBrowserPartRequest(
+  client: S3Client,
+  bucket: string,
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  body: Blob,
+  onProgress: (loadedBytes: number) => void,
+  signal: AbortSignal,
+) {
+  throwIfUploadAborted(signal);
+  const url = await getSignedUrl(
+    client,
+    new UploadPartCommand({
+      Bucket: bucket,
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+    }),
+    { expiresIn: 15 * 60 },
+  );
+  throwIfUploadAborted(signal);
+
+  return new Promise<string>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    const abort = () => request.abort();
+    const cleanup = () => signal.removeEventListener("abort", abort);
+    request.open("PUT", url);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.min(body.size, event.loaded));
+      }
+    };
+    request.onload = () => {
+      cleanup();
+      if (request.status >= 200 && request.status < 300) {
+        const etag = request.getResponseHeader("ETag");
+        if (!etag) {
+          reject(
+            new DirectMultipartRequestError(
+              "RGW did not expose the upload part ETag. Add ETag to the bucket or global CORS expose headers.",
+              request.status,
+            ),
+          );
+          return;
+        }
+        onProgress(body.size);
+        resolve(etag);
+        return;
+      }
+      const detail = request.responseText
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 240);
+      reject(
+        new DirectMultipartRequestError(
+          `Direct upload part failed with HTTP ${request.status}${
+            detail ? `: ${detail}` : ""
+          }`,
+          request.status,
+        ),
+      );
+    };
+    request.onerror = () => {
+      cleanup();
+      reject(
+        new DirectMultipartRequestError(
+          "Direct upload part request failed. Check the bucket CORS policy and network connection.",
+        ),
+      );
+    };
+    request.onabort = () => {
+      cleanup();
+      reject(uploadAbortError());
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) {
+      cleanup();
+      reject(uploadAbortError());
+      return;
+    }
+    request.send(body);
+  });
+}
+
+async function uploadBrowserPartWithRetry(
+  client: S3Client,
+  bucket: string,
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  body: Blob,
+  onProgress: (loadedBytes: number) => void,
+  signal: AbortSignal,
+) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await uploadBrowserPartRequest(
+        client,
+        bucket,
+        key,
+        uploadId,
+        partNumber,
+        body,
+        onProgress,
+        signal,
+      );
+    } catch (error) {
+      onProgress(0);
+      const retryable =
+        error instanceof DirectMultipartRequestError &&
+        (error.status === undefined ||
+          error.status === 408 ||
+          error.status === 429 ||
+          error.status >= 500);
+      if (attempt === 2 || signal.aborted || !retryable) throw error;
+      await waitForDirectRetry(500 * 2 ** attempt, signal);
+    }
+  }
+  throw new DirectMultipartRequestError("Direct upload part failed");
+}
+
+function browserMultipartTransport(
+  client: S3Client,
+  bucket: string,
+): S3MultipartTransport {
+  return {
+    initiate: async (item) => {
+      const response = await client.send(
+        new CreateMultipartUploadCommand({
+          Bucket: bucket,
+          Key: item.key,
+          ContentType: item.file.type || undefined,
+        }),
+      );
+      if (!response.UploadId) {
+        throw new DirectMultipartRequestError(
+          "RGW did not return a multipart upload ID",
+        );
+      }
+      return response.UploadId;
+    },
+    listParts: async (key, uploadId, signal) => {
+      const parts: S3MultipartCheckpointPart[] = [];
+      let partNumberMarker: string | undefined;
+      do {
+        const response = await client.send(
+          new ListPartsCommand({
+            Bucket: bucket,
+            Key: key,
+            UploadId: uploadId,
+            PartNumberMarker: partNumberMarker,
+          }),
+          { abortSignal: signal },
+        );
+        for (const part of response.Parts ?? []) {
+          if (
+            typeof part.PartNumber === "number" &&
+            typeof part.ETag === "string" &&
+            typeof part.Size === "number"
+          ) {
+            parts.push({
+              partNumber: part.PartNumber,
+              etag: part.ETag,
+              size: part.Size,
+            });
+          }
+        }
+        partNumberMarker = response.IsTruncated
+          ? response.NextPartNumberMarker
+          : undefined;
+      } while (partNumberMarker);
+      return parts;
+    },
+    uploadPart: (key, uploadId, partNumber, body, onProgress, signal) =>
+      uploadBrowserPartWithRetry(
+        client,
+        bucket,
+        key,
+        uploadId,
+        partNumber,
+        body,
+        onProgress,
+        signal,
+      ),
+    complete: async (key, uploadId, parts) => {
+      await client.send(
+        new CompleteMultipartUploadCommand({
+          Bucket: bucket,
+          Key: key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: parts.map((part) => ({
+              ETag: part.etag,
+              PartNumber: part.partNumber,
+            })),
+          },
+        }),
+      );
+    },
+    abort: async (key, uploadId) => {
+      await client.send(
+        new AbortMultipartUploadCommand({
+          Bucket: bucket,
+          Key: key,
+          UploadId: uploadId,
+        }),
+      );
+    },
+    isMissingUpload: (error) => {
+      const { name } = awsErrorName(error);
+      return name === "NoSuchUpload";
+    },
+  };
+}
+
+export function discardBrowserS3MultipartCheckpoint(
+  client: S3Client,
+  bucket: string,
+  checkpoint: S3MultipartCheckpoint,
+) {
+  return discardS3MultipartCheckpoint(
+    browserMultipartTransport(client, bucket),
+    checkpoint,
+  );
+}
+
+async function uploadBrowserMultipartFile(
+  client: S3Client,
+  bucket: string,
+  checkpointScope: S3MultipartCheckpointScope,
+  item: S3UploadFile,
+  onProgress: (uploadedBytes: number) => void,
+  signal: AbortSignal,
+) {
+  return uploadResumableS3Multipart({
+    scope: checkpointScope,
+    item,
+    partSize: s3MultipartPartSize(item.file.size),
+    concurrency: S3_MULTIPART_CONCURRENCY,
+    transport: browserMultipartTransport(client, bucket),
+    onProgress,
+    signal,
+  });
+}
+
 function describeBrowserUploadError(error: unknown) {
+  if (
+    error instanceof S3MultipartFileMismatchError ||
+    error instanceof DirectMultipartRequestError
+  ) {
+    return error.message;
+  }
   const detail = describeBrowserS3Error(error);
   if (/failed to fetch|networkerror|load failed|cors/i.test(detail)) {
-    return `${detail}. Direct multipart uploads require RGW CORS to allow HEAD, POST, PUT, and DELETE and expose the ETag response header.`;
+    return `${detail}. Direct multipart uploads require RGW CORS to allow HEAD, GET, POST, PUT, and DELETE and expose the ETag response header.`;
   }
   return detail;
 }
@@ -340,6 +597,7 @@ function describeBrowserUploadError(error: unknown) {
 export async function uploadBrowserFiles(
   client: S3Client,
   bucket: string,
+  checkpointScope: S3MultipartCheckpointScope,
   files: S3UploadFile[],
   onProgress: (progress: S3UploadProgress) => void,
   signal: AbortSignal,
@@ -347,17 +605,26 @@ export async function uploadBrowserFiles(
   assertS3WebUploadLimits(files);
   return runS3UploadBatch(
     files,
-    ({ file, key }, report, uploadSignal) =>
-      shouldUseS3MultipartUpload(file.size)
+    (item, report, uploadSignal) =>
+      shouldUseS3MultipartUpload(item.file.size)
         ? uploadBrowserMultipartFile(
             client,
             bucket,
-            file,
-            key,
+            checkpointScope,
+            item,
             report,
             uploadSignal,
           )
-        : uploadBrowserFile(client, bucket, file, key, report, uploadSignal),
+        : assertNoPendingS3MultipartUpload(checkpointScope, item).then(() =>
+            uploadBrowserFile(
+              client,
+              bucket,
+              item.file,
+              item.key,
+              report,
+              uploadSignal,
+            ),
+          ),
     describeBrowserUploadError,
     onProgress,
     signal,

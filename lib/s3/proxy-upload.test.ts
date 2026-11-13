@@ -59,9 +59,24 @@ function largeFile(size: number) {
     name: "large.raw",
     size,
     type: "application/octet-stream",
-    slice: (start: number, end: number) => ({ size: end - start }) as Blob,
+    lastModified: 123,
+    slice: (start: number, end?: number) => {
+      const partSize = Math.max(0, Math.min(size, end ?? size) - start);
+      return {
+        size: partSize,
+        arrayBuffer: async () => new ArrayBuffer(0),
+      } as Blob;
+    },
   } as File;
 }
+
+const proxyCheckpointScope = {
+  identityScope: "user-a",
+  projectId: "project-a",
+  regionId: "RegionOne",
+  mode: "proxy" as const,
+  bucket: "bucket-a",
+};
 
 describe("proxy S3 multipart upload", () => {
   beforeEach(() => {
@@ -97,6 +112,7 @@ describe("proxy S3 multipart upload", () => {
     const result = await uploadProxyFiles(
       "project-a",
       "bucket-a",
+      proxyCheckpointScope,
       [{ file, key: "large.raw" }],
       (update) => progress.push(update.batchPercentage),
       new AbortController().signal,
@@ -153,6 +169,7 @@ describe("proxy S3 multipart upload", () => {
       uploadProxyFiles(
         "project-a",
         "bucket-a",
+        proxyCheckpointScope,
         [{ file, key: "large.raw" }],
         () => undefined,
         new AbortController().signal,

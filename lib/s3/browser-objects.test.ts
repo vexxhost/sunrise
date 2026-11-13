@@ -1,63 +1,22 @@
 import {
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
   DeleteObjectsCommand,
   GetBucketPolicyCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
+  UploadPartCommand,
   type S3Client,
 } from "@aws-sdk/client-s3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getSignedUrl: vi.fn(),
-  multipartAbort: vi.fn(),
-  multipartDone: vi.fn(),
-  multipartOptions: undefined as
-    | {
-        leavePartsOnError: boolean;
-        partSize: number;
-        queueSize: number;
-        params: { ContentLength: number };
-      }
-    | undefined,
-  multipartProgress: undefined as
-    ((progress: { loaded: number }) => void) | undefined,
 }));
 
 vi.mock("@aws-sdk/s3-request-presigner", () => ({
   getSignedUrl: mocks.getSignedUrl,
-}));
-
-vi.mock("@aws-sdk/lib-storage", () => ({
-  Upload: class Upload {
-    constructor(
-      readonly options: {
-        leavePartsOnError: boolean;
-        partSize: number;
-        queueSize: number;
-        params: { ContentLength: number };
-      },
-    ) {
-      mocks.multipartOptions = options;
-    }
-
-    on(_event: string, progress: (value: { loaded: number }) => void) {
-      mocks.multipartProgress = progress;
-      return this;
-    }
-
-    async done() {
-      mocks.multipartProgress?.({
-        loaded: this.options.params.ContentLength,
-      });
-      return mocks.multipartDone();
-    }
-
-    abort() {
-      mocks.multipartAbort();
-      return Promise.resolve();
-    }
-  },
 }));
 
 import {
@@ -99,6 +58,12 @@ class FakeXMLHttpRequest {
     this.headers.set(name, value);
   }
 
+  getResponseHeader(name: string) {
+    return name.toLowerCase() === "etag"
+      ? `"part-${FakeXMLHttpRequest.requests.indexOf(this) + 1}"`
+      : null;
+  }
+
   send(body: XMLHttpRequestBodyInit | Document | null) {
     const file = body as File;
     this.upload.onprogress?.({
@@ -123,6 +88,30 @@ function clientWithSend(
   return { send: vi.fn(send) } as unknown as S3Client;
 }
 
+const directCheckpointScope = {
+  identityScope: "user-a",
+  projectId: "project-a",
+  regionId: "RegionOne",
+  mode: "direct" as const,
+  bucket: "tadas",
+};
+
+function largeFile(size: number) {
+  return {
+    name: "large.raw",
+    size,
+    type: "application/octet-stream",
+    lastModified: 123,
+    slice: (start: number, end?: number) => {
+      const partSize = Math.max(0, Math.min(size, end ?? size) - start);
+      return {
+        size: partSize,
+        arrayBuffer: async () => new ArrayBuffer(0),
+      } as Blob;
+    },
+  } as File;
+}
+
 describe("browserUploadKey", () => {
   it("joins a folder prefix and relative file path", () => {
     expect(browserUploadKey("releases/2026", "linux/sunrise.img")).toBe(
@@ -141,9 +130,6 @@ describe("uploadBrowserFiles", () => {
   beforeEach(() => {
     FakeXMLHttpRequest.requests = [];
     mocks.getSignedUrl.mockResolvedValue("https://rgw.example.test/signed");
-    mocks.multipartDone.mockResolvedValue({});
-    mocks.multipartOptions = undefined;
-    mocks.multipartProgress = undefined;
     globalThis.XMLHttpRequest =
       FakeXMLHttpRequest as unknown as typeof XMLHttpRequest;
   });
@@ -166,6 +152,7 @@ describe("uploadBrowserFiles", () => {
     const result = await uploadBrowserFiles(
       client,
       "tadas",
+      directCheckpointScope,
       [
         { file: first, key: "first.bin" },
         { file: second, key: "second.bin" },
@@ -191,49 +178,53 @@ describe("uploadBrowserFiles", () => {
     );
   });
 
-  it("uses managed multipart uploads for large files", async () => {
-    const client = clientWithSend(async () => ({}));
-    const file = new File([], "large.raw");
-    Object.defineProperty(file, "size", { value: 100 * 1024 * 1024 });
+  it("uses explicit resumable multipart uploads for large files", async () => {
+    const client = clientWithSend(async (command) => {
+      if (command instanceof CreateMultipartUploadCommand) {
+        return { UploadId: "upload-a" };
+      }
+      if (command instanceof CompleteMultipartUploadCommand) return {};
+      throw new Error("Unexpected S3 command");
+    });
+    const file = largeFile(100 * 1024 * 1024);
     const progress: number[] = [];
 
     const result = await uploadBrowserFiles(
       client,
       "tadas",
+      directCheckpointScope,
       [{ file, key: "large.raw" }],
       (update) => progress.push(update.batchPercentage),
       new AbortController().signal,
     );
 
     expect(result).toEqual({ uploaded: 1, errors: [], cancelled: false });
-    expect(mocks.getSignedUrl).not.toHaveBeenCalled();
-    expect(mocks.multipartOptions).toMatchObject({
-      leavePartsOnError: false,
-      partSize: 16 * 1024 * 1024,
-      queueSize: 4,
-      params: { ContentLength: 100 * 1024 * 1024 },
-    });
+    expect(mocks.getSignedUrl).toHaveBeenCalledTimes(7);
+    expect(
+      mocks.getSignedUrl.mock.calls.every(
+        ([, command]) => command instanceof UploadPartCommand,
+      ),
+    ).toBe(true);
+    expect(FakeXMLHttpRequest.requests).toHaveLength(7);
+    expect(client.send).toHaveBeenCalledTimes(2);
     expect(progress.at(-1)).toBe(100);
   });
 
   it("rejects files over 100 GB before creating a multipart upload", async () => {
     const client = clientWithSend(async () => ({}));
-    const file = new File([], "too-large.raw");
-    Object.defineProperty(file, "size", {
-      value: S3_WEB_UPLOAD_MAX_FILE_SIZE_BYTES + 1,
-    });
+    const file = largeFile(S3_WEB_UPLOAD_MAX_FILE_SIZE_BYTES + 1);
 
     await expect(
       uploadBrowserFiles(
         client,
         "tadas",
+        directCheckpointScope,
         [{ file, key: "too-large.raw" }],
         () => undefined,
         new AbortController().signal,
       ),
     ).rejects.toThrow("100 GB web UI upload limit");
     expect(mocks.getSignedUrl).not.toHaveBeenCalled();
-    expect(mocks.multipartOptions).toBeUndefined();
   });
 
   it("settles cancellation while a direct request is being signed", async () => {
@@ -250,6 +241,7 @@ describe("uploadBrowserFiles", () => {
     const result = uploadBrowserFiles(
       clientWithSend(async () => ({})),
       "tadas",
+      directCheckpointScope,
       [{ file, key: "cancelled.bin" }],
       () => undefined,
       controller.signal,

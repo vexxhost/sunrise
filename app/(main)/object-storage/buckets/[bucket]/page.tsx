@@ -5,6 +5,7 @@ import { DataTableHeader } from "@/components/DataTable/Header";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { requireS3Backend } from "@/components/services/ServiceGuards";
 import { listObjectsForRender } from "@/lib/s3/actions";
+import { s3BrowserStorageIdentityScope } from "@/lib/s3/browser-storage-scope";
 import { s3DirectBrowser } from "@/lib/s3/browser-mode";
 import { directBucketPath } from "@/lib/s3/direct-route";
 import { getSession, normalizeProjectId } from "@/lib/session";
@@ -48,6 +49,7 @@ export default async function Page({ params, searchParams }: PageProps) {
       <ObjectsClient
         activeProjectId={activeProjectId}
         activeRegionId={activeRegionId}
+        browserStorageIdentityScope={s3BrowserStorageIdentityScope(session)}
         bucket={bucket}
         initialPrefix={prefix}
         initialData={probe}

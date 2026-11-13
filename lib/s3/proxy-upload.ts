@@ -5,10 +5,20 @@ import {
   s3MultipartPartSize,
   shouldUseS3MultipartUpload,
 } from "@/lib/s3/multipart-policy";
+import type {
+  S3MultipartCheckpoint,
+  S3MultipartCheckpointPart,
+  S3MultipartCheckpointScope,
+} from "@/lib/s3/multipart-checkpoints";
+import {
+  assertNoPendingS3MultipartUpload,
+  discardS3MultipartCheckpoint,
+  uploadResumableS3Multipart,
+  type S3MultipartTransport,
+} from "@/lib/s3/resumable-multipart";
 import {
   isUploadAbortError,
   runS3UploadBatch,
-  throwIfUploadAborted,
   uploadAbortError,
   type S3UploadBatchResult,
   type S3UploadFile,
@@ -30,6 +40,7 @@ class ProxyUploadRequestError extends Error {
   constructor(
     message: string,
     readonly status?: number,
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ProxyUploadRequestError";
@@ -55,6 +66,7 @@ function responseError(body: JsonRecord, status: number) {
       ? body.error
       : `Upload request failed with HTTP ${status}`,
     status,
+    typeof body.code === "string" ? body.code : undefined,
   );
 }
 
@@ -354,102 +366,84 @@ async function abortMultipart(
   );
 }
 
-async function uploadMultipartObject(
+function proxyMultipartTransport(
   projectId: string,
   bucket: string,
-  item: S3UploadFile,
-  onProgress: (loadedBytes: number) => void,
-  signal: AbortSignal,
-) {
-  throwIfUploadAborted(signal);
-  const initiated = await multipartRequest(
-    projectId,
-    bucket,
-    {
-      action: "initiate",
-      key: item.key,
-      contentType: item.file.type || undefined,
+): S3MultipartTransport {
+  return {
+    initiate: async (item) => {
+      const initiated = await multipartRequest(projectId, bucket, {
+        action: "initiate",
+        key: item.key,
+        contentType: item.file.type || undefined,
+      });
+      if (typeof initiated.uploadId !== "string") {
+        throw new ProxyUploadRequestError(
+          "RGW did not return a multipart upload ID",
+        );
+      }
+      return initiated.uploadId;
     },
-    signal,
-  );
-  if (typeof initiated.uploadId !== "string") {
-    throw new ProxyUploadRequestError(
-      "RGW did not return a multipart upload ID",
-    );
-  }
-  const uploadId = initiated.uploadId;
-  const partSize = s3MultipartPartSize(item.file.size, "proxy");
-  const partCount = Math.ceil(item.file.size / partSize);
-  const etags = new Array<string>(partCount);
-  const loadedByPart = new Array<number>(partCount).fill(0);
-  let nextPart = 0;
-  const partsController = new AbortController();
-  const abortParts = () => partsController.abort();
-  signal.addEventListener("abort", abortParts, { once: true });
-  if (signal.aborted) partsController.abort();
-
-  const updateProgress = (index: number, loadedBytes: number) => {
-    loadedByPart[index] = loadedBytes;
-    onProgress(loadedByPart.reduce((total, loaded) => total + loaded, 0));
-  };
-
-  const worker = async () => {
-    while (true) {
-      throwIfUploadAborted(partsController.signal);
-      const partIndex = nextPart;
-      nextPart += 1;
-      if (partIndex >= partCount) return;
-      const start = partIndex * partSize;
-      const body = item.file.slice(
-        start,
-        Math.min(item.file.size, start + partSize),
-      );
-      etags[partIndex] = await uploadPartWithRetry(
+    listParts: async (key, uploadId, signal) => {
+      const listed = await multipartRequest(
         projectId,
         bucket,
-        item.key,
-        uploadId,
-        partIndex + 1,
-        body,
-        (loadedBytes) => updateProgress(partIndex, loadedBytes),
-        partsController.signal,
+        { action: "list", key, uploadId },
+        signal,
       );
-    }
-  };
-  const workers = Array.from(
-    { length: Math.min(S3_PROXY_MULTIPART_CONCURRENCY, partCount) },
-    () => worker(),
-  );
-
-  try {
-    await Promise.all(workers);
-    throwIfUploadAborted(signal);
-    await multipartRequest(
-      projectId,
-      bucket,
-      {
-        action: "complete",
-        key: item.key,
+      if (!Array.isArray(listed.parts)) return [];
+      return listed.parts.flatMap((part): S3MultipartCheckpointPart[] => {
+        const candidate = part as JsonRecord;
+        return typeof candidate.partNumber === "number" &&
+          typeof candidate.etag === "string" &&
+          typeof candidate.size === "number"
+          ? [
+              {
+                partNumber: candidate.partNumber,
+                etag: candidate.etag,
+                size: candidate.size,
+              },
+            ]
+          : [];
+      });
+    },
+    uploadPart: (key, uploadId, partNumber, body, onProgress, signal) =>
+      uploadPartWithRetry(
+        projectId,
+        bucket,
+        key,
         uploadId,
-        parts: etags.map((etag, index) => ({
-          partNumber: index + 1,
-          etag,
+        partNumber,
+        body,
+        onProgress,
+        signal,
+      ),
+    complete: async (key, uploadId, parts) => {
+      await multipartRequest(projectId, bucket, {
+        action: "complete",
+        key,
+        uploadId,
+        parts: parts.map((part) => ({
+          partNumber: part.partNumber,
+          etag: part.etag,
         })),
-      },
-      signal,
-    );
-    onProgress(item.file.size);
-  } catch (error) {
-    partsController.abort();
-    await Promise.allSettled(workers);
-    await abortMultipart(projectId, bucket, item.key, uploadId).catch(
-      () => undefined,
-    );
-    if (signal.aborted) throw uploadAbortError();
-    throw error;
-  } finally {
-    signal.removeEventListener("abort", abortParts);
-  }
+      });
+    },
+    abort: (key, uploadId) => abortMultipart(projectId, bucket, key, uploadId),
+    isMissingUpload: (error) =>
+      error instanceof ProxyUploadRequestError && error.code === "NoSuchUpload",
+  };
+}
+
+export function discardProxyS3MultipartCheckpoint(
+  projectId: string,
+  bucket: string,
+  checkpoint: S3MultipartCheckpoint,
+) {
+  return discardS3MultipartCheckpoint(
+    proxyMultipartTransport(projectId, bucket),
+    checkpoint,
+  );
 }
 
 export function describeProxyUploadError(error: unknown) {
@@ -459,17 +453,29 @@ export function describeProxyUploadError(error: unknown) {
 export function uploadProxyFiles(
   projectId: string,
   bucket: string,
+  checkpointScope: S3MultipartCheckpointScope,
   files: S3UploadFile[],
   onProgress: (progress: S3UploadProgress) => void,
   signal: AbortSignal,
 ): Promise<S3UploadBatchResult> {
   assertS3WebUploadLimits(files);
+  const multipartTransport = proxyMultipartTransport(projectId, bucket);
   return runS3UploadBatch(
     files,
     (item, report, uploadSignal) =>
       shouldUseS3MultipartUpload(item.file.size, "proxy")
-        ? uploadMultipartObject(projectId, bucket, item, report, uploadSignal)
-        : uploadSingleObject(projectId, bucket, item, report, uploadSignal),
+        ? uploadResumableS3Multipart({
+            scope: checkpointScope,
+            item,
+            partSize: s3MultipartPartSize(item.file.size, "proxy"),
+            concurrency: S3_PROXY_MULTIPART_CONCURRENCY,
+            transport: multipartTransport,
+            onProgress: report,
+            signal: uploadSignal,
+          })
+        : assertNoPendingS3MultipartUpload(checkpointScope, item).then(() =>
+            uploadSingleObject(projectId, bucket, item, report, uploadSignal),
+          ),
     describeProxyUploadError,
     onProgress,
     signal,

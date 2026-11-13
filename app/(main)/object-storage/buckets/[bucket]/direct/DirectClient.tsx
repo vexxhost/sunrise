@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HeadObjectCommand, type S3Client } from "@aws-sdk/client-s3";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -22,6 +22,7 @@ import bytes from "bytes";
 import { DataTable } from "@/components/DataTable";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { BucketSettingsDialog } from "@/components/object-storage/BucketSettingsDialog";
+import { ResumableUploadNotice } from "@/components/object-storage/ResumableUploadNotice";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import {
   ObjectMetadataDetails,
@@ -50,6 +51,7 @@ import {
   collectBrowserSelectionKeys,
   createBrowserFolder,
   describeBrowserS3Error,
+  discardBrowserS3MultipartCheckpoint,
   findBrowserUploadConflicts,
   getBrowserDownloadUrl,
   isBrowserAccessDenied,
@@ -60,8 +62,15 @@ import {
   type BrowserObjectRow,
   type BrowserSizeResult,
 } from "@/lib/s3/browser-objects";
+import {
+  isS3MultipartCheckpointExpired,
+  listS3MultipartCheckpoints,
+  type S3MultipartCheckpoint,
+  type S3MultipartCheckpointScope,
+} from "@/lib/s3/multipart-checkpoints";
+import { pauseS3Upload } from "@/lib/s3/resumable-multipart";
 import { normalizeStorageClass } from "@/lib/s3/storage-class";
-import type { S3UploadProgress } from "@/lib/s3/upload-batch";
+import type { S3UploadFile, S3UploadProgress } from "@/lib/s3/upload-batch";
 import { buildS3UploadMetrics } from "@/lib/s3/upload-telemetry-client";
 import { recordS3UploadMetrics } from "@/lib/s3/upload-telemetry";
 import { s3WebUploadLimitError } from "@/lib/s3/web-upload-limits";
@@ -71,6 +80,7 @@ import { resourceRecoveryPath } from "@/lib/resource-recovery";
 interface DirectClientProps {
   activeProjectId: string;
   activeRegionId: string;
+  browserStorageIdentityScope: string;
   bucket: string;
   objectKey?: string;
   showServerBrowserMode: boolean;
@@ -114,6 +124,7 @@ function triggerNativeDownload(url: string) {
 export function DirectClient({
   activeProjectId,
   activeRegionId,
+  browserStorageIdentityScope,
   bucket,
   objectKey = "",
   showServerBrowserMode,
@@ -125,6 +136,16 @@ export function DirectClient({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const uploadAbortRef = useRef<AbortController | null>(null);
+  const checkpointScope = useMemo<S3MultipartCheckpointScope>(
+    () => ({
+      identityScope: browserStorageIdentityScope,
+      projectId: activeProjectId,
+      regionId: activeRegionId,
+      mode: "direct",
+      bucket,
+    }),
+    [activeProjectId, activeRegionId, browserStorageIdentityScope, bucket],
+  );
 
   const [browserSession, setBrowserSession] =
     useState<DirectBrowserSession | null>(null);
@@ -137,6 +158,10 @@ export function DirectClient({
   );
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadCheckpoints, setUploadCheckpoints] = useState<
+    S3MultipartCheckpoint[]
+  >([]);
+  const [checkpointBusy, setCheckpointBusy] = useState(false);
   const [overwriteOpen, setOverwriteOpen] = useState(false);
   const [overwriteKeys, setOverwriteKeys] = useState<string[]>([]);
   const [folderName, setFolderName] = useState("");
@@ -168,11 +193,36 @@ export function DirectClient({
   const s3 = activeBrowserSession?.client ?? null;
   const endpoint = activeBrowserSession?.endpoint ?? null;
 
+  const loadUploadCheckpoints = useCallback(async () => {
+    if (!s3) {
+      return [];
+    }
+    let checkpoints = await listS3MultipartCheckpoints(checkpointScope);
+    for (const checkpoint of checkpoints.filter((item) =>
+      isS3MultipartCheckpointExpired(item),
+    )) {
+      await discardBrowserS3MultipartCheckpoint(s3, bucket, checkpoint).catch(
+        () => undefined,
+      );
+    }
+    return listS3MultipartCheckpoints(checkpointScope);
+  }, [bucket, checkpointScope, s3]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadUploadCheckpoints().then((checkpoints) => {
+      if (!cancelled) setUploadCheckpoints(checkpoints);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadUploadCheckpoints]);
+
   useEffect(
     () => () => {
-      uploadAbortRef.current?.abort();
+      if (uploadAbortRef.current) pauseS3Upload(uploadAbortRef.current);
     },
-    [],
+    [checkpointScope],
   );
   const directObjectsKey = useMemo(
     () => ["s3-direct", activeProjectId, "objects", bucket, prefix] as const,
@@ -343,10 +393,14 @@ export function DirectClient({
     setUploadFiles(nextFiles);
   };
 
-  const handleUpload = async (confirmOverwrite = false) => {
-    if (!s3 || uploadFiles.length === 0 || uploading) return;
+  const handleUpload = async (
+    confirmOverwrite = false,
+    selectedItems?: S3UploadFile[],
+  ) => {
+    const sourceFiles = selectedItems?.map((item) => item.file) ?? uploadFiles;
+    if (!s3 || sourceFiles.length === 0 || uploading) return;
     clearMessages();
-    const limitError = s3WebUploadLimitError(uploadFiles);
+    const limitError = s3WebUploadLimitError(sourceFiles);
     if (limitError) {
       setUploadError(limitError);
       return;
@@ -360,10 +414,12 @@ export function DirectClient({
       current: null,
     };
 
-    const files = uploadFiles.map((file) => ({
-      file,
-      key: browserUploadKey(prefix, filePath(file)),
-    }));
+    const files =
+      selectedItems ??
+      sourceFiles.map((file) => ({
+        file,
+        key: browserUploadKey(prefix, filePath(file)),
+      }));
 
     try {
       if (!confirmOverwrite) {
@@ -383,6 +439,7 @@ export function DirectClient({
       const result = await uploadBrowserFiles(
         s3,
         bucket,
+        checkpointScope,
         files,
         (progress) => {
           progressSnapshot.current = progress;
@@ -409,8 +466,8 @@ export function DirectClient({
         progressSnapshot.current
           ? progressSnapshot.current.files
               .filter((progress) => progress.state !== "complete")
-              .map((progress) => uploadFiles[progress.index])
-          : uploadFiles,
+              .map((progress) => sourceFiles[progress.index])
+          : sourceFiles,
       );
       if (result.uploaded > 0) await refreshObjects();
     } catch (error) {
@@ -423,6 +480,27 @@ export function DirectClient({
       if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
       setUploading(false);
       setUploadProgress(null);
+      setUploadCheckpoints(await loadUploadCheckpoints());
+    }
+  };
+
+  const resumeUpload = (checkpoint: S3MultipartCheckpoint, file: File) => {
+    setUploadFiles([file]);
+    void handleUpload(true, [{ file, key: checkpoint.key }]);
+  };
+
+  const discardUpload = async (checkpoint: S3MultipartCheckpoint) => {
+    if (!s3 || checkpointBusy || uploading) return;
+    setCheckpointBusy(true);
+    setUploadError(null);
+    try {
+      await discardBrowserS3MultipartCheckpoint(s3, bucket, checkpoint);
+      setUploadMessage(`Discarded interrupted upload ${checkpoint.key}.`);
+      setUploadCheckpoints(await loadUploadCheckpoints());
+    } catch (error) {
+      setUploadError(describeBrowserS3Error(error));
+    } finally {
+      setCheckpointBusy(false);
     }
   };
 
@@ -916,6 +994,15 @@ export function DirectClient({
           )}
         </div>
       )}
+
+      <ResumableUploadNotice
+        checkpoints={uploadCheckpoints}
+        busy={checkpointBusy || uploading}
+        onResume={resumeUpload}
+        onDiscard={(checkpoint) => {
+          void discardUpload(checkpoint);
+        }}
+      />
 
       {(sizeResult || sizeError) && (
         <div className="rounded-md border p-3 text-sm">

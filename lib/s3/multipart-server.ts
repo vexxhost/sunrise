@@ -34,9 +34,22 @@ export function s3MultipartUploadError(error: unknown) {
   if (error instanceof S3AuthRequiredError) {
     return Response.json({ ok: false, needsAuth: true }, { status: 401 });
   }
+  const candidate = error as {
+    name?: string;
+    Code?: string;
+    code?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  const code = candidate?.name ?? candidate?.Code ?? candidate?.code;
+  const missingUpload = code === "NoSuchUpload";
   return Response.json(
-    { ok: false, needsAuth: false, error: describeS3UploadError(error) },
-    { status: 502 },
+    {
+      ok: false,
+      needsAuth: false,
+      code: code ?? null,
+      error: describeS3UploadError(error),
+    },
+    { status: missingUpload ? 404 : 502 },
   );
 }
 
@@ -81,8 +94,6 @@ export async function prepareS3MultipartMutation(request: Request) {
   }
 }
 
-export async function s3MultipartBucketName(
-  context: S3MultipartRouteContext,
-) {
+export async function s3MultipartBucketName(context: S3MultipartRouteContext) {
   return decodeURIComponent((await context.params).bucket);
 }
