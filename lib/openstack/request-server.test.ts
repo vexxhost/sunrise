@@ -79,6 +79,28 @@ describe("server-only OpenStack requests", () => {
     );
   });
 
+  it("accepts explicitly allowed discovery response statuses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ versions: [] }), {
+          status: 300,
+          statusText: "Multiple Choices",
+        }),
+      ),
+    );
+
+    await expect(
+      openstackRequest({
+        acceptedStatuses: [300],
+        regionId: "RegionOne",
+        serviceType: "compute",
+        serviceName: "nova",
+        path: "/",
+      }),
+    ).resolves.toEqual({ versions: [] });
+  });
+
   it("records response body stream failures without counting success", async () => {
     vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
     resetMetricsForTests();

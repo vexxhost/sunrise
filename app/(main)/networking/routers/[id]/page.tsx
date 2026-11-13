@@ -10,6 +10,11 @@ import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { RouterDetailClient } from "./RouterDetailClient";
 import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
+import { extensionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverNetworkCapabilities,
+  NEUTRON_EXTRA_ROUTE_EXTENSION,
+} from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
   params,
@@ -18,6 +23,15 @@ export default async function Page({
 }) {
   const [{ id }, session] = await Promise.all([params, getSession()]);
   if (!session.projectId || !session.regionId) return null;
+  const routeSupportPromise = discoverNetworkCapabilities(
+    session.regionId,
+  ).then((capabilities) =>
+    extensionSupport(
+      capabilities,
+      NEUTRON_EXTRA_ROUTE_EXTENSION,
+      "Static router routes",
+    ),
+  );
   const queryClient = makeQueryClient();
   const routerQuery = routerQueryOptions(
     session.regionId,
@@ -40,12 +54,14 @@ export default async function Page({
     ),
   ]);
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
+  const routeSupport = await routeSupportPromise;
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <RouterDetailClient
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}
+        routeSupport={routeSupport}
       />
     </QueryHydrationBoundary>
   );

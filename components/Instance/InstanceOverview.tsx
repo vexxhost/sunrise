@@ -18,12 +18,14 @@ import { normalizeOpenStackTimestamp } from "@/lib/openstack/time";
 import type { AddressItem, Server } from "@/types/openstack";
 import type { ResolvedServerFlavor } from "@/lib/openstack/server-flavor";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface InstanceOverviewProps {
   projectId?: string;
   regionId?: string;
   server: Server;
   flavor: ResolvedServerFlavor;
+  attachmentPolicySupport: OpenStackFeatureSupport;
 }
 
 interface SummaryItemProps {
@@ -40,9 +42,7 @@ function SummaryItem({ icon: Icon, label, value, detail }: SummaryItemProps) {
         <Icon className="size-4" />
         {label}
       </div>
-      <div className="mt-2 truncate text-base font-semibold">
-        {value}
-      </div>
+      <div className="mt-2 truncate text-base font-semibold">{value}</div>
       <p className="mt-1 truncate text-xs text-muted-foreground" title={detail}>
         {detail}
       </p>
@@ -65,7 +65,9 @@ function primaryAddress(server: Server) {
 
 function instanceAge(server: Server) {
   try {
-    return formatDistanceToNow(parseISO(normalizeOpenStackTimestamp(server.created)));
+    return formatDistanceToNow(
+      parseISO(normalizeOpenStackTimestamp(server.created)),
+    );
   } catch {
     return "Unknown age";
   }
@@ -82,11 +84,15 @@ function ServerFault({ server }: { server: Server }) {
       <div className="flex items-start gap-3">
         <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
         <div className="min-w-0">
-          <h2 id="server-fault-title" className="text-sm font-semibold text-destructive">
+          <h2
+            id="server-fault-title"
+            className="text-sm font-semibold text-destructive"
+          >
             Instance error
           </h2>
           <p className="mt-1 text-sm">
-            {server.fault?.message || "Nova reported an error without additional details."}
+            {server.fault?.message ||
+              "Nova reported an error without additional details."}
           </p>
           {server.fault?.details ? (
             <details className="mt-2 text-xs text-muted-foreground">
@@ -109,6 +115,7 @@ export function InstanceOverview({
   regionId,
   server,
   flavor: resolvedFlavor,
+  attachmentPolicySupport,
 }: InstanceOverviewProps) {
   const addresses = flattenAddresses(server);
   const address = primaryAddress(server);
@@ -172,7 +179,12 @@ export function InstanceOverview({
           <ServerIPAddresses server={server} />
         </div>
         <div className="space-y-6">
-          <VolumeInfo server={server} regionId={regionId} projectId={projectId} />
+          <VolumeInfo
+            server={server}
+            regionId={regionId}
+            projectId={projectId}
+            attachmentPolicySupport={attachmentPolicySupport}
+          />
           <SecurityGroupListByNames
             server={server}
             regionId={regionId}

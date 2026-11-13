@@ -21,14 +21,22 @@ import {
 } from "@/hooks/queries/useNetworks";
 import { isRouterInterfacePort } from "@/lib/openstack/neutron-topology";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { MutationAlert } from "@/components/mutations/MutationAlert";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface Props {
   id: string;
   projectId: string;
   regionId: string;
+  routeSupport: OpenStackFeatureSupport;
 }
 
-export function RouterDetailClient({ id, projectId, regionId }: Props) {
+export function RouterDetailClient({
+  id,
+  projectId,
+  regionId,
+  routeSupport,
+}: Props) {
   const router = useSuspenseQuery(routerQueryOptions(regionId, projectId, id));
   const ports = useSuspenseQuery(
     routerPortsQueryOptions(regionId, projectId, id),
@@ -125,7 +133,7 @@ export function RouterDetailClient({ id, projectId, regionId }: Props) {
             <h3 className="text-sm font-semibold">Static routes</h3>
             <Badge variant="outline">{routes.length}</Badge>
           </div>
-          {owned ? (
+          {owned && routeSupport.status !== "unsupported" ? (
             <AddRouterRouteAction
               projectId={projectId}
               regionId={regionId}
@@ -134,6 +142,11 @@ export function RouterDetailClient({ id, projectId, regionId }: Props) {
             />
           ) : null}
         </div>
+        {routeSupport.status === "unsupported" ? (
+          <MutationAlert variant="info" title="Static routes unavailable">
+            {routeSupport.message}
+          </MutationAlert>
+        ) : null}
         {routes.length ? (
           <div className="overflow-hidden rounded-md border">
             <div className="grid grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_5rem] border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
@@ -149,7 +162,7 @@ export function RouterDetailClient({ id, projectId, regionId }: Props) {
                 <span className="font-mono text-xs">{route.destination}</span>
                 <span className="font-mono text-xs">{route.nexthop}</span>
                 <span>
-                  {owned ? (
+                  {owned && routeSupport.status !== "unsupported" ? (
                     <RouterRouteRowActions
                       projectId={projectId}
                       regionId={regionId}

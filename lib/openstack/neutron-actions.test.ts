@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ executeOpenStackMutation: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  discoverNetworkCapabilities: vi.fn(),
+  executeOpenStackMutation: vi.fn(),
+}));
 
 vi.mock("@/lib/openstack/mutations", () => ({
   executeOpenStackMutation: mocks.executeOpenStackMutation,
+}));
+vi.mock("@/lib/openstack/capabilities-server", () => ({
+  discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
+  NEUTRON_EXTRA_ROUTE_EXTENSION: "extraroute",
 }));
 
 import {
@@ -33,6 +40,12 @@ const scope = { projectId: "project-a", regionId: "RegionOne" };
 describe("Neutron mutation actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["extraroute"],
+      message: "",
+      serviceType: "network",
+    });
     mocks.executeOpenStackMutation.mockImplementation(async (options) => ({
       ok: true,
       status: "success",
@@ -181,6 +194,29 @@ describe("Neutron mutation actions", () => {
       error: {
         code: "validation-failed",
         message: "The destination and next hop must use the same IP version.",
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects router route mutations when Neutron lacks extraroute", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["security-group"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await addRouterRouteAction(scope, "router-a", {
+      destination: "172.20.0.0/16",
+      nexthop: "10.20.30.2",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("extraroute"),
       },
     });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();

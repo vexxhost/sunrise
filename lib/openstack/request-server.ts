@@ -20,6 +20,7 @@ import { openstackRequestId } from "./request-id";
 const logger = createLogger("openstack.request");
 
 export interface OpenStackRequestOptions {
+  acceptedStatuses?: number[];
   regionId: string;
   serviceType: string;
   serviceName: string;
@@ -40,6 +41,7 @@ export interface OpenStackRequestOptions {
  * Browser-callable reads must go through the constrained action in actions.ts.
  */
 export async function openstackRequest<T = unknown>({
+  acceptedStatuses = [],
   regionId,
   serviceType,
   serviceName,
@@ -108,7 +110,7 @@ export async function openstackRequest<T = unknown>({
     return null;
   }
 
-  if (!response.ok) {
+  if (!response.ok && !acceptedStatuses.includes(response.status)) {
     observeOpenStackRequest({
       durationSeconds: elapsedSeconds(startedAt),
       method,
