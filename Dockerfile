@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.28
+# syntax=docker/dockerfile:1.29
 # check=error=true
 
 ARG SUNRISE_DEPLOYMENT_ID=local
