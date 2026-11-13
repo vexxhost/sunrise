@@ -9,12 +9,17 @@ export type OpenStackServiceCapabilities = {
   discoveryStatus: CapabilityDiscoveryStatus;
   extensions?: string[];
   message: string;
-  microversions?: MicroversionRange;
+  microversions?: MicroversionRange | null;
   serviceType: string;
+};
+
+export type MicroversionDiscovery = {
+  microversions: MicroversionRange | null;
 };
 
 export type OpenStackFeatureSupport = {
   message: string;
+  requestedMicroversion?: string;
   status: "supported" | "unsupported" | "unknown";
 };
 
@@ -58,29 +63,56 @@ export function compareMicroversions(left: string, right: string): number {
 export function parseMicroversionRange(
   payload: unknown,
 ): MicroversionRange | null {
+  return parseMicroversionDiscovery(payload)?.microversions ?? null;
+}
+
+export function parseMicroversionDiscovery(
+  payload: unknown,
+): MicroversionDiscovery | null {
   const root = asRecord(payload);
   if (!root) return null;
 
   const candidates = Array.isArray(root.versions)
     ? root.versions.map(versionDescription).filter(Boolean)
     : [versionDescription(root.version)].filter(Boolean);
-  const supported = candidates.filter((candidate) => {
+  const supported = candidates.flatMap((candidate) => {
     const status =
       typeof candidate?.status === "string"
         ? candidate.status.toUpperCase()
         : "";
-    return status === "CURRENT" || status === "SUPPORTED" || !status;
-  });
+    if (status && status !== "CURRENT" && status !== "SUPPORTED") return [];
 
-  for (const candidate of supported) {
+    return [
+      {
+        candidate,
+        priority: status === "CURRENT" ? 2 : status === "SUPPORTED" ? 1 : 0,
+      },
+    ];
+  });
+  if (!supported.length) return null;
+
+  const priority = Math.max(...supported.map((entry) => entry.priority));
+  const preferred = supported.filter((entry) => entry.priority === priority);
+  const ranges = preferred.flatMap(({ candidate }) => {
     const minimum = usableVersion(candidate?.min_version);
     const maximum = usableVersion(candidate?.version);
     if (minimum && maximum && compareMicroversions(minimum, maximum) <= 0) {
-      return { minimum, maximum };
+      return [{ maximum, minimum }];
     }
-  }
+    return [];
+  });
+  ranges.sort((left, right) =>
+    compareMicroversions(right.maximum, left.maximum),
+  );
 
-  return null;
+  const selected = ranges[0];
+  if (selected) return { microversions: selected };
+
+  const explicitlyUnsupported = preferred.every(
+    ({ candidate }) =>
+      candidate?.min_version === "" && candidate?.version === "",
+  );
+  return explicitlyUnsupported ? { microversions: null } : null;
 }
 
 export function parseExtensionAliases(payload: unknown): string[] | null {
@@ -100,20 +132,34 @@ export function microversionSupport(
   feature: string,
 ): OpenStackFeatureSupport {
   const range = capabilities.microversions;
-  if (capabilities.discoveryStatus !== "available" || !range) {
+  if (capabilities.discoveryStatus !== "available") {
     return {
       status: "unknown",
       message: `${feature} support could not be verified. The service will validate it when used.`,
     };
   }
+  if (range === undefined) {
+    return {
+      status: "unknown",
+      message: `${feature} support could not be verified. The service will validate it when used.`,
+    };
+  }
+  if (range === null) {
+    return {
+      status: "unsupported",
+      message: `${feature} requires API microversion ${required}, but this cloud does not advertise microversion support.`,
+    };
+  }
 
-  if (
-    compareMicroversions(required, range.minimum) >= 0 &&
-    compareMicroversions(required, range.maximum) <= 0
-  ) {
+  if (compareMicroversions(required, range.maximum) <= 0) {
+    const requestedMicroversion =
+      compareMicroversions(required, range.minimum) < 0
+        ? range.minimum
+        : required;
     return {
       status: "supported",
       message: `${feature} is supported by the active cloud.`,
+      requestedMicroversion,
     };
   }
 

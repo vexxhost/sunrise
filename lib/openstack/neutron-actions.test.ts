@@ -10,7 +10,7 @@ vi.mock("@/lib/openstack/mutations", () => ({
 }));
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
-  NEUTRON_EXTRA_ROUTE_EXTENSION: "extraroute",
+  NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
 }));
 
 import {
@@ -42,7 +42,7 @@ describe("Neutron mutation actions", () => {
     vi.clearAllMocks();
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",
-      extensions: ["extraroute"],
+      extensions: ["extraroute", "extraroute-atomic"],
       message: "",
       serviceType: "network",
     });
@@ -199,10 +199,10 @@ describe("Neutron mutation actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
-  it("rejects router route mutations when Neutron lacks extraroute", async () => {
+  it("rejects atomic router route mutations when Neutron only has extraroute", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",
-      extensions: ["security-group"],
+      extensions: ["extraroute", "security-group"],
       message: "",
       serviceType: "network",
     });
@@ -216,10 +216,29 @@ describe("Neutron mutation actions", () => {
       ok: false,
       error: {
         code: "service-unavailable",
-        message: expect.stringContaining("extraroute"),
+        message: expect.stringContaining("extraroute-atomic"),
       },
     });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("preserves router route mutations when extension discovery is unavailable", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "",
+      serviceType: "network",
+    });
+
+    await addRouterRouteAction(scope, "router-a", {
+      destination: "172.20.0.0/16",
+      nexthop: "10.20.30.2",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        path: "/v2.0/routers/router-a/add_extraroutes",
+      }),
+    );
   });
 
   it("replaces a router route without replacing the full route table", async () => {

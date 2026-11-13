@@ -12,7 +12,7 @@ import { getCidrPrefixLength } from "@/lib/network-address";
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
-  NEUTRON_EXTRA_ROUTE_EXTENSION,
+  NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import {
   getIpv6ConfigurationAttributes,
@@ -632,8 +632,8 @@ async function unsupportedRouterRouteFailure(scope: MutationScope) {
   const capabilities = await discoverNetworkCapabilities(scope.regionId);
   const support = extensionSupport(
     capabilities,
-    NEUTRON_EXTRA_ROUTE_EXTENSION,
-    "Static router routes",
+    NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+    "Static router route changes",
   );
   if (support.status !== "unsupported") return null;
 

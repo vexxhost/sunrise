@@ -3,7 +3,7 @@ import "server-only";
 import { createLogger } from "@/lib/logging";
 import {
   parseExtensionAliases,
-  parseMicroversionRange,
+  parseMicroversionDiscovery,
   type OpenStackServiceCapabilities,
 } from "@/lib/openstack/capabilities";
 import { openstackRequest } from "@/lib/openstack/request-server";
@@ -13,7 +13,7 @@ import { getSession } from "@/lib/session";
 const logger = createLogger("openstack.capabilities");
 
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
-export const NEUTRON_EXTRA_ROUTE_EXTENSION = "extraroute";
+export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
 
 function unavailable(
   serviceType: string,
@@ -62,19 +62,22 @@ export async function discoverComputeCapabilities(
     serviceName: "nova",
     path: "/",
   });
-  const microversions = parseMicroversionRange(payload);
+  const discovery = parseMicroversionDiscovery(payload);
 
-  if (!microversions) {
+  if (!discovery) {
     logger.warn("compute-microversions-unavailable", { regionId });
     return unavailable(
       "compute",
       "Compute API microversion discovery was unavailable.",
     );
   }
+  const { microversions } = discovery;
 
   return {
     discoveryStatus: "available",
-    message: `Compute API microversions ${microversions.minimum} through ${microversions.maximum} are available.`,
+    message: microversions
+      ? `Compute API microversions ${microversions.minimum} through ${microversions.maximum} are available.`
+      : "The Compute API does not advertise microversion support.",
     microversions,
     serviceType: "compute",
   };

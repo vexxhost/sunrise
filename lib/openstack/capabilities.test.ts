@@ -5,6 +5,7 @@ import {
   extensionSupport,
   microversionSupport,
   parseExtensionAliases,
+  parseMicroversionDiscovery,
   parseMicroversionRange,
   type OpenStackServiceCapabilities,
 } from "@/lib/openstack/capabilities";
@@ -21,6 +22,28 @@ describe("OpenStack capability evaluation", () => {
         },
       }),
     ).toEqual({ minimum: "2.1", maximum: "2.100" });
+
+    expect(
+      parseMicroversionDiscovery({
+        version: {
+          id: "v2.0",
+          min_version: "",
+          status: "SUPPORTED",
+          version: "",
+        },
+      }),
+    ).toEqual({ microversions: null });
+    expect(parseMicroversionDiscovery({ version: {} })).toBeNull();
+    expect(
+      parseMicroversionDiscovery({
+        version: {
+          id: "v2.1",
+          min_version: "not-a-version",
+          status: "CURRENT",
+          version: "2.100",
+        },
+      }),
+    ).toBeNull();
 
     expect(
       parseMicroversionRange({
@@ -40,6 +63,42 @@ describe("OpenStack capability evaluation", () => {
         ],
       }),
     ).toEqual({ minimum: "2.1", maximum: "2.85" });
+
+    expect(
+      parseMicroversionRange({
+        versions: [
+          {
+            min_version: "2.1",
+            status: "SUPPORTED",
+            version: "2.90",
+          },
+          {
+            min_version: "2.1",
+            status: "CURRENT",
+            version: "2.100",
+          },
+        ],
+      }),
+    ).toEqual({ minimum: "2.1", maximum: "2.100" });
+
+    expect(
+      parseMicroversionDiscovery({
+        versions: [
+          {
+            id: "v2.0",
+            min_version: "",
+            status: "SUPPORTED",
+            version: "",
+          },
+          {
+            id: "v2.1",
+            min_version: "invalid",
+            status: "CURRENT",
+            version: "2.100",
+          },
+        ],
+      }),
+    ).toBeNull();
   });
 
   it("compares numeric microversions without lexical ordering errors", () => {
@@ -60,6 +119,7 @@ describe("OpenStack capability evaluation", () => {
       microversionSupport(available, "2.79", "Attachment metadata"),
     ).toMatchObject({
       status: "supported",
+      requestedMicroversion: "2.79",
     });
     expect(
       microversionSupport(available, "2.85", "Delete with instance"),
@@ -78,6 +138,50 @@ describe("OpenStack capability evaluation", () => {
         "Delete with instance",
       ),
     ).toMatchObject({ status: "unknown" });
+
+    expect(
+      microversionSupport(
+        {
+          discoveryStatus: "available",
+          message: "",
+          serviceType: "network",
+        },
+        "2.85",
+        "Delete with instance",
+      ),
+    ).toMatchObject({ status: "unknown" });
+
+    expect(
+      microversionSupport(
+        {
+          discoveryStatus: "available",
+          message: "",
+          microversions: null,
+          serviceType: "compute",
+        },
+        "2.85",
+        "Delete with instance",
+      ),
+    ).toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("does not advertise"),
+    });
+
+    expect(
+      microversionSupport(
+        {
+          discoveryStatus: "available",
+          message: "",
+          microversions: { minimum: "2.90", maximum: "2.100" },
+          serviceType: "compute",
+        },
+        "2.85",
+        "Delete with instance",
+      ),
+    ).toMatchObject({
+      status: "supported",
+      requestedMicroversion: "2.90",
+    });
   });
 
   it("normalizes Neutron extension aliases and distinguishes absence from discovery failure", () => {
@@ -86,11 +190,12 @@ describe("OpenStack capability evaluation", () => {
         extensions: [
           { alias: "security-group" },
           { alias: "extraroute" },
+          { alias: "extraroute-atomic" },
           { alias: "extraroute" },
           { name: "invalid" },
         ],
       }),
-    ).toEqual(["extraroute", "security-group"]);
+    ).toEqual(["extraroute", "extraroute-atomic", "security-group"]);
     expect(parseExtensionAliases({ extensions: [] })).toEqual([]);
     expect(parseExtensionAliases({})).toBeNull();
 

@@ -24,7 +24,6 @@ const NOVA_SERVICE = {
 } as const;
 const CINDER_API_VERSION = "volume 3.66";
 const NOVA_API_VERSION = "compute 2.79";
-const NOVA_ATTACHMENT_UPDATE_API_VERSION = `compute ${NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION}`;
 
 const resourceIdSchema = z.string().trim().min(1).max(255);
 const optionalText = z.string().trim().max(255).optional();
@@ -311,6 +310,7 @@ export async function updateVolumeAttachmentAction(
   const parsed = parseInput(volumeAttachmentUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  let requestedMicroversion = NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION;
   if (scope.regionId) {
     const capabilities = await discoverComputeCapabilities(scope.regionId);
     const support = microversionSupport(
@@ -328,6 +328,8 @@ export async function updateVolumeAttachmentAction(
         scope,
       );
     }
+    requestedMicroversion =
+      support.requestedMicroversion ?? requestedMicroversion;
   }
 
   return executeOpenStackMutation({
@@ -336,7 +338,7 @@ export async function updateVolumeAttachmentAction(
     ...NOVA_SERVICE,
     path: `/servers/${encodeURIComponent(value.serverId)}/os-volume_attachments/${encodeURIComponent(value.volumeId)}`,
     method: "PUT",
-    apiVersion: NOVA_ATTACHMENT_UPDATE_API_VERSION,
+    apiVersion: `compute ${requestedMicroversion}`,
     body: {
       volumeAttachment: {
         volumeId: value.volumeId,

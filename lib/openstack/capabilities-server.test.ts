@@ -58,13 +58,17 @@ describe("OpenStack capability discovery", () => {
 
   it("discovers Neutron extension aliases, including a confirmed empty set", async () => {
     mocks.openstackRequest.mockResolvedValue({
-      extensions: [{ alias: "extraroute" }, { alias: "security-group" }],
+      extensions: [
+        { alias: "extraroute" },
+        { alias: "extraroute-atomic" },
+        { alias: "security-group" },
+      ],
     });
     await expect(
       discoverNetworkCapabilities("RegionOne"),
     ).resolves.toMatchObject({
       discoveryStatus: "available",
-      extensions: ["extraroute", "security-group"],
+      extensions: ["extraroute", "extraroute-atomic", "security-group"],
     });
 
     mocks.openstackRequest.mockResolvedValueOnce({ extensions: [] });
@@ -90,6 +94,25 @@ describe("OpenStack capability discovery", () => {
     ).resolves.toMatchObject({
       discoveryStatus: "unavailable",
       serviceType: "network",
+    });
+  });
+
+  it("distinguishes a recognized API without microversions from a failed probe", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        id: "v2.0",
+        min_version: "",
+        status: "SUPPORTED",
+        version: "",
+      },
+    });
+
+    await expect(
+      discoverComputeCapabilities("RegionOne"),
+    ).resolves.toMatchObject({
+      discoveryStatus: "available",
+      microversions: null,
+      message: expect.stringContaining("does not advertise"),
     });
   });
 });

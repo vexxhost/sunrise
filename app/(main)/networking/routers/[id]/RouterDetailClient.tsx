@@ -143,7 +143,10 @@ export function RouterDetailClient({
           ) : null}
         </div>
         {routeSupport.status === "unsupported" ? (
-          <MutationAlert variant="info" title="Static routes unavailable">
+          <MutationAlert
+            variant="info"
+            title="Static route changes unavailable"
+          >
             {routeSupport.message}
           </MutationAlert>
         ) : null}

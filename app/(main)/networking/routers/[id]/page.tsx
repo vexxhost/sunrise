@@ -13,7 +13,7 @@ import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server"
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
-  NEUTRON_EXTRA_ROUTE_EXTENSION,
+  NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
@@ -28,8 +28,8 @@ export default async function Page({
   ).then((capabilities) =>
     extensionSupport(
       capabilities,
-      NEUTRON_EXTRA_ROUTE_EXTENSION,
-      "Static router routes",
+      NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+      "Static router route changes",
     ),
   );
   const queryClient = makeQueryClient();

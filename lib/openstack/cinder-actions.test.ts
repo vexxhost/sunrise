@@ -160,6 +160,43 @@ describe("Cinder mutation actions", () => {
     );
   });
 
+  it("negotiates up to Nova's advertised minimum microversion", async () => {
+    mocks.discoverComputeCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      message: "",
+      microversions: { minimum: "2.90", maximum: "2.100" },
+      serviceType: "compute",
+    });
+
+    await updateVolumeAttachmentAction(scope, {
+      volumeId: "volume-a",
+      serverId: "server-a",
+      deleteOnTermination: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ apiVersion: "compute 2.90" }),
+    );
+  });
+
+  it("preserves the API call when Nova capability discovery is unavailable", async () => {
+    mocks.discoverComputeCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "",
+      serviceType: "compute",
+    });
+
+    await updateVolumeAttachmentAction(scope, {
+      volumeId: "volume-a",
+      serverId: "server-a",
+      deleteOnTermination: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({ apiVersion: "compute 2.85" }),
+    );
+  });
+
   it("rejects attachment policy updates when Nova is too old", async () => {
     mocks.discoverComputeCapabilities.mockResolvedValue({
       discoveryStatus: "available",
