@@ -5,6 +5,7 @@ import { getApiMicroversionPolicy } from "@/lib/deployment-config";
 import {
   parseExtensionAliases,
   parseMicroversionDiscovery,
+  preferredMicroversionSupport,
   type OpenStackServiceCapabilities,
 } from "@/lib/openstack/capabilities";
 import { openstackRequest } from "@/lib/openstack/request-server";
@@ -17,6 +18,7 @@ const logger = createLogger("openstack.capabilities");
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
 export const CINDER_BASELINE_MICROVERSION = "3.0";
+export const CINDER_DETAIL_MICROVERSION = "3.65";
 export const CINDER_IN_USE_SNAPSHOT_MICROVERSION = "3.66";
 
 function unavailable(
@@ -180,6 +182,23 @@ export async function discoverBlockStorageCapabilities(
     microversions,
     serviceType: "volume",
   };
+}
+
+export async function cinderDetailApiVersion(regionId?: string) {
+  if (!regionId) return `volume ${CINDER_BASELINE_MICROVERSION}`;
+
+  const capabilities = await discoverBlockStorageCapabilities(regionId);
+  const support = preferredMicroversionSupport(
+    capabilities,
+    CINDER_BASELINE_MICROVERSION,
+    CINDER_DETAIL_MICROVERSION,
+    "Extended Block Storage details",
+  );
+  if (support.status === "unsupported") {
+    throw new Error(support.message);
+  }
+
+  return `volume ${support.requestedMicroversion ?? CINDER_BASELINE_MICROVERSION}`;
 }
 
 export async function discoverDeploymentCapabilities(regionId: string) {

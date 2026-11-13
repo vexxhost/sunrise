@@ -4,6 +4,7 @@ import { makeQueryClient } from "@/lib/query-client";
 import { getSession } from "@/lib/session";
 import { SnapshotDetailClient } from "./SnapshotDetailClient";
 import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
+import { cinderDetailApiVersion } from "@/lib/openstack/capabilities-server";
 
 interface SnapshotPageProps {
   params: Promise<{ id: string }>;
@@ -13,7 +14,13 @@ export default async function SnapshotPage({ params }: SnapshotPageProps) {
   const { id } = await params;
   const session = await getSession();
   const queryClient = makeQueryClient();
-  const query = snapshotQueryOptions(session.regionId, session.projectId, id);
+  const apiVersion = await cinderDetailApiVersion(session.regionId);
+  const query = snapshotQueryOptions(
+    session.regionId,
+    session.projectId,
+    id,
+    apiVersion,
+  );
 
   await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(query), {
     kind: "snapshot",
@@ -26,6 +33,7 @@ export default async function SnapshotPage({ params }: SnapshotPageProps) {
         snapshotId={id}
         regionId={session.regionId}
         projectId={session.projectId}
+        apiVersion={apiVersion}
       />
     </PrefetchHydrationBoundary>
   );

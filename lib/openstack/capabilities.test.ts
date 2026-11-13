@@ -7,6 +7,7 @@ import {
   parseExtensionAliases,
   parseMicroversionDiscovery,
   parseMicroversionRange,
+  preferredMicroversionSupport,
   type OpenStackServiceCapabilities,
 } from "@/lib/openstack/capabilities";
 
@@ -248,6 +249,96 @@ describe("OpenStack capability evaluation", () => {
     ).toMatchObject({
       status: "unsupported",
       message: expect.stringContaining("cloud advertises 2.1 through 2.83"),
+    });
+  });
+
+  it("selects the richest permitted microversion for optional response fields", () => {
+    const available: OpenStackServiceCapabilities = {
+      discoveryStatus: "available",
+      message: "",
+      microversions: { minimum: "3.0", maximum: "3.71" },
+      serviceType: "volume",
+    };
+
+    expect(
+      preferredMicroversionSupport(
+        available,
+        "3.0",
+        "3.65",
+        "Extended volume details",
+      ),
+    ).toMatchObject({
+      status: "supported",
+      requestedMicroversion: "3.65",
+    });
+    expect(
+      preferredMicroversionSupport(
+        {
+          ...available,
+          microversions: { minimum: "3.0", maximum: "3.60" },
+        },
+        "3.0",
+        "3.65",
+        "Extended volume details",
+      ),
+    ).toMatchObject({
+      status: "supported",
+      requestedMicroversion: "3.60",
+    });
+    expect(
+      preferredMicroversionSupport(
+        { ...available, configuredMicroversionMaximum: "3.55" },
+        "3.0",
+        "3.65",
+        "Extended volume details",
+      ),
+    ).toMatchObject({
+      status: "supported",
+      requestedMicroversion: "3.55",
+    });
+    expect(
+      preferredMicroversionSupport(
+        {
+          ...available,
+          microversions: { minimum: "3.68", maximum: "3.71" },
+        },
+        "3.0",
+        "3.65",
+        "Extended volume details",
+      ),
+    ).toMatchObject({
+      status: "supported",
+      requestedMicroversion: "3.68",
+    });
+    expect(
+      preferredMicroversionSupport(
+        {
+          discoveryStatus: "unavailable",
+          message: "",
+          serviceType: "volume",
+        },
+        "3.0",
+        "3.65",
+        "Extended volume details",
+      ),
+    ).toMatchObject({
+      status: "unknown",
+      requestedMicroversion: "3.0",
+    });
+    expect(
+      preferredMicroversionSupport(
+        {
+          ...available,
+          configuredMicroversionMaximum: "3.60",
+          microversions: { minimum: "3.61", maximum: "3.71" },
+        },
+        "3.0",
+        "3.65",
+        "Extended volume details",
+      ),
+    ).toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("cloud's minimum 3.61"),
     });
   });
 

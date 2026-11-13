@@ -47,16 +47,17 @@ export function volumesQueryOptions(
 export function volumeQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
-  id: string
+  id: string,
+  apiVersion = CINDER_API_VERSION
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'volume', id],
+    queryKey: [regionId, projectId, 'volume', id, apiVersion],
     queryFn: async () => {
       const data = await openstack<{ volume: Volume }>({
         regionId: regionId!,
         serviceType: 'volumev3',
         serviceName: 'cinder',
-        apiVersion: CINDER_API_VERSION,
+        apiVersion,
         path: `/volumes/${id}`,
         errorMode: 'throw',
       });
@@ -105,16 +106,17 @@ export function snapshotsQueryOptions(
 export function snapshotQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
-  id: string
+  id: string,
+  apiVersion = CINDER_API_VERSION
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'snapshot', id],
+    queryKey: [regionId, projectId, 'snapshot', id, apiVersion],
     queryFn: async () => {
       const data = await openstack<{ snapshot: Snapshot }>({
         regionId: regionId!,
         serviceType: 'volumev3',
         serviceName: 'cinder',
-        apiVersion: CINDER_API_VERSION,
+        apiVersion,
         path: `/snapshots/${id}`,
         errorMode: 'throw',
       });

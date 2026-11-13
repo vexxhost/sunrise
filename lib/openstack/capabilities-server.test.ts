@@ -16,6 +16,7 @@ vi.mock("@/lib/openstack/catalog", () => ({
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
 
 import {
+  cinderDetailApiVersion,
   discoverBlockStorageCapabilities,
   discoverComputeCapabilities,
   discoverNetworkCapabilities,
@@ -117,6 +118,31 @@ describe("OpenStack capability discovery", () => {
       serviceName: "cinder",
       serviceType: "volumev3",
     });
+  });
+
+  it("selects the richest Cinder detail microversion supported by the cloud", async () => {
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://volume.example.test/v3/project-a",
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        min_version: "3.0",
+        status: "CURRENT",
+        version: "3.64",
+      },
+    });
+
+    await expect(cinderDetailApiVersion("RegionOne")).resolves.toBe(
+      "volume 3.64",
+    );
+  });
+
+  it("uses the Cinder baseline when detail discovery is unavailable", async () => {
+    mocks.getServiceEndpoint.mockResolvedValue(null);
+
+    await expect(cinderDetailApiVersion("RegionOne")).resolves.toBe(
+      "volume 3.0",
+    );
   });
 
   it("discovers Neutron extension aliases, including a confirmed empty set", async () => {

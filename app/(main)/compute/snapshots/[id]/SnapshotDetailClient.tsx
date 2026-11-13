@@ -19,12 +19,19 @@ import { formatSnapshotStatus } from "@/lib/openstack/storage-status";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 
 interface SnapshotDetailClientProps {
+  apiVersion: string;
   projectId?: string;
   regionId?: string;
   snapshotId: string;
 }
 
+function formatOptionalBoolean(value: boolean | undefined) {
+  if (value === undefined) return "-";
+  return value ? "Yes" : "No";
+}
+
 export function SnapshotDetailClient({
+  apiVersion,
   projectId,
   regionId,
   snapshotId,
@@ -32,8 +39,8 @@ export function SnapshotDetailClient({
   const queryClient = useQueryClient();
   const router = useRouter();
   const query = useMemo(
-    () => snapshotQueryOptions(regionId, projectId, snapshotId),
-    [projectId, regionId, snapshotId],
+    () => snapshotQueryOptions(regionId, projectId, snapshotId, apiVersion),
+    [apiVersion, projectId, regionId, snapshotId],
   );
   const { data: snapshot } = useSuspenseQuery({
     ...query,
@@ -107,6 +114,9 @@ export function SnapshotDetailClient({
           </DetailField>
           <DetailField label="Created">{snapshot.created_at}</DetailField>
           <DetailField label="Updated">{snapshot.updated_at || "-"}</DetailField>
+          <DetailField label="Consumes Quota">
+            {formatOptionalBoolean(snapshot.consumes_quota)}
+          </DetailField>
         </DetailSection>
         <DetailSection title="Metadata">
           {metadata.length ? metadata.map(([key, value]) => (
