@@ -19,6 +19,11 @@ import { imageQueryOptions } from "@/hooks/queries/useImages";
 import { makeQueryClient } from "@/lib/query-client";
 import type { InstanceDetailTab } from "./tabs";
 import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
+import { microversionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverComputeCapabilities,
+  NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION,
+} from "@/lib/openstack/capabilities-server";
 
 interface InstanceDetailPageProps {
   id: string;
@@ -31,6 +36,19 @@ export async function InstanceDetailPage({
 }: InstanceDetailPageProps) {
   const session = await getSession();
   const { regionId, projectId } = session;
+  const attachmentPolicySupportPromise = regionId
+    ? discoverComputeCapabilities(regionId).then((capabilities) =>
+        microversionSupport(
+          capabilities,
+          NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION,
+          "Changing delete-with-instance behavior",
+        ),
+      )
+    : Promise.resolve({
+        status: "unknown" as const,
+        message:
+          "Changing delete-with-instance behavior will be verified when used.",
+      });
 
   // Fetch the server first so we can prefetch its dependent queries on the server.
   const queryClient = makeQueryClient();
@@ -76,6 +94,7 @@ export async function InstanceDetailPage({
       serverConsoleOutputQueryOptions(regionId, projectId, id, 35) as any,
     );
   }
+  const attachmentPolicySupport = await attachmentPolicySupportPromise;
 
   return (
     <PrefetchHydrationBoundary queries={queries} queryClient={queryClient}>
@@ -84,6 +103,7 @@ export async function InstanceDetailPage({
         regionId={regionId}
         projectId={projectId}
         activeTab={activeTab}
+        attachmentPolicySupport={attachmentPolicySupport}
       />
     </PrefetchHydrationBoundary>
   );

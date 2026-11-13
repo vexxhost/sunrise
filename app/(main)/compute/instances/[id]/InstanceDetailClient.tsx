@@ -36,6 +36,7 @@ import {
   isServerTransitioning,
 } from "@/lib/openstack/server-lifecycle";
 import { resolveServerFlavor } from "@/lib/openstack/server-flavor";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
 
@@ -44,6 +45,7 @@ interface InstanceDetailClientProps {
   regionId?: string;
   projectId?: string;
   activeTab: InstanceDetailTab;
+  attachmentPolicySupport: OpenStackFeatureSupport;
 }
 
 const tabContentClass = "mt-4";
@@ -53,6 +55,7 @@ export function InstanceDetailClient({
   regionId,
   projectId,
   activeTab,
+  attachmentPolicySupport,
 }: InstanceDetailClientProps) {
   const pathname = usePathname();
   const { data: server } = useSuspenseQuery({
@@ -212,6 +215,7 @@ export function InstanceDetailClient({
             regionId={regionId}
             projectId={projectId}
             flavor={resolvedFlavor}
+            attachmentPolicySupport={attachmentPolicySupport}
           />
         </TabsContent>
         <TabsContent

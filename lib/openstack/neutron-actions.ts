@@ -9,6 +9,11 @@ import {
   type MutationScope,
 } from "@/lib/mutations";
 import { getCidrPrefixLength } from "@/lib/network-address";
+import { extensionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverNetworkCapabilities,
+  NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+} from "@/lib/openstack/capabilities-server";
 import {
   getIpv6ConfigurationAttributes,
   usesIpv6AutoAddressing,
@@ -622,6 +627,26 @@ function validateRouterRoute(
   return null;
 }
 
+async function unsupportedRouterRouteFailure(scope: MutationScope) {
+  if (!scope.regionId) return null;
+  const capabilities = await discoverNetworkCapabilities(scope.regionId);
+  const support = extensionSupport(
+    capabilities,
+    NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+    "Static router route changes",
+  );
+  if (support.status !== "unsupported") return null;
+
+  return mutationFailure(
+    {
+      code: "service-unavailable",
+      message: support.message,
+      retryable: false,
+    },
+    scope,
+  );
+}
+
 function mutateRouterRoute(
   scope: MutationScope,
   routerId: string,
@@ -658,6 +683,8 @@ export async function addRouterRouteAction(
   if (!parsed.ok) return parsed.result;
   const invalid = validateRouterRoute(scope, parsed.value);
   if (invalid) return invalid;
+  const unsupported = await unsupportedRouterRouteFailure(scope);
+  if (unsupported) return unsupported;
   return mutateRouterRoute(
     scope,
     parsedId.value,
@@ -677,6 +704,8 @@ export async function removeRouterRouteAction(
   if (!parsed.ok) return parsed.result;
   const invalid = validateRouterRoute(scope, parsed.value);
   if (invalid) return invalid;
+  const unsupported = await unsupportedRouterRouteFailure(scope);
+  if (unsupported) return unsupported;
   return mutateRouterRoute(
     scope,
     parsedId.value,
@@ -699,6 +728,8 @@ export async function replaceRouterRouteAction(
   if (!replacement.ok) return replacement.result;
   const invalid = validateRouterRoute(scope, replacement.value);
   if (invalid) return invalid;
+  const unsupported = await unsupportedRouterRouteFailure(scope);
+  if (unsupported) return unsupported;
 
   if (
     original.value.destination === replacement.value.destination &&

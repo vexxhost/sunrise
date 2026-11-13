@@ -24,22 +24,26 @@ import {
   volumeDetachPollState,
 } from "@/lib/openstack/storage-lifecycle";
 import { Link2Off } from "lucide-react";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface VolumeInfoProps {
   server: Server;
   regionId?: string;
   projectId?: string;
+  attachmentPolicySupport: OpenStackFeatureSupport;
 }
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
-type TrackedServerVolumeAttachment = Server["os-extended-volumes:volumes_attached"][number] & {
-  sunrise_detaching?: boolean;
-};
+type TrackedServerVolumeAttachment =
+  Server["os-extended-volumes:volumes_attached"][number] & {
+    sunrise_detaching?: boolean;
+  };
 
 export default function VolumeInfo({
   server,
   regionId,
   projectId,
+  attachmentPolicySupport,
 }: VolumeInfoProps) {
   const queryClient = useQueryClient();
   const [detachTarget, setDetachTarget] = useState<Volume | null>(null);
@@ -64,8 +68,7 @@ export default function VolumeInfo({
       ...volumeQueryOptions(regionId, projectId, id),
       refetchInterval: (query: { state: { data?: Volume } }) => {
         const detaching = serverVolumeAttachments.some(
-          (attachment) =>
-            attachment.id === id && attachment.sunrise_detaching,
+          (attachment) => attachment.id === id && attachment.sunrise_detaching,
         );
         return (query.state.data && isVolumeTransitioning(query.state.data)) ||
           detaching
@@ -357,7 +360,8 @@ export default function VolumeInfo({
                         )}
                         disabled={
                           attachmentPolicyPending ||
-                          !canModifyServerAttachments(server)
+                          !canModifyServerAttachments(server) ||
+                          attachmentPolicySupport.status === "unsupported"
                         }
                         onCheckedChange={(checked) =>
                           updateDeleteWithInstance(volume, checked === true)
@@ -379,6 +383,14 @@ export default function VolumeInfo({
         )}
         {attachmentPolicyError ? (
           <MutationAlert>{attachmentPolicyError}</MutationAlert>
+        ) : null}
+        {attachmentPolicySupport.status === "unsupported" ? (
+          <MutationAlert
+            variant="info"
+            title="Delete-with-instance changes unavailable"
+          >
+            {attachmentPolicySupport.message}
+          </MutationAlert>
         ) : null}
         {volumes.some(
           (volume) => volume.status.toLowerCase() === "error_detaching",

@@ -1,5 +1,10 @@
 "use server";
 
+import { microversionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverComputeCapabilities,
+  NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION,
+} from "@/lib/openstack/capabilities-server";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import {
   mutationFailure,
@@ -19,7 +24,6 @@ const NOVA_SERVICE = {
 } as const;
 const CINDER_API_VERSION = "volume 3.66";
 const NOVA_API_VERSION = "compute 2.79";
-const NOVA_ATTACHMENT_UPDATE_API_VERSION = "compute 2.85";
 
 const resourceIdSchema = z.string().trim().min(1).max(255);
 const optionalText = z.string().trim().max(255).optional();
@@ -47,7 +51,10 @@ const volumeAttachSchema = z.object({
     .string()
     .trim()
     .max(60)
-    .regex(/^[A-Za-z0-9_.-]*$/, "Use letters, numbers, periods, underscores, or hyphens.")
+    .regex(
+      /^[A-Za-z0-9_.-]*$/,
+      "Use letters, numbers, periods, underscores, or hyphens.",
+    )
     .optional(),
 });
 const volumeDetachSchema = z.object({
@@ -74,7 +81,11 @@ function validationFailure(scope: MutationScope, message: string) {
   );
 }
 
-function parseInput<T>(schema: z.ZodType<T>, value: unknown, scope: MutationScope) {
+function parseInput<T>(
+  schema: z.ZodType<T>,
+  value: unknown,
+  scope: MutationScope,
+) {
   const parsed = schema.safeParse(value);
   return parsed.success
     ? ({ ok: true, value: parsed.data } as const)
@@ -144,10 +155,7 @@ export async function updateVolumeAction(
     method: "PUT",
     apiVersion: CINDER_API_VERSION,
     body: { volume: parsed.value },
-    invalidates: [
-      "/compute/volumes",
-      `/compute/volumes/${parsedId.value}`,
-    ],
+    invalidates: ["/compute/volumes", `/compute/volumes/${parsedId.value}`],
     successMessage: "Volume details updated.",
     transform: (payload) => {
       if (!payload || typeof payload !== "object" || !("volume" in payload)) {
@@ -302,6 +310,27 @@ export async function updateVolumeAttachmentAction(
   const parsed = parseInput(volumeAttachmentUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  let requestedMicroversion = NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION;
+  if (scope.regionId) {
+    const capabilities = await discoverComputeCapabilities(scope.regionId);
+    const support = microversionSupport(
+      capabilities,
+      NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION,
+      "Changing delete-with-instance behavior",
+    );
+    if (support.status === "unsupported") {
+      return mutationFailure(
+        {
+          code: "service-unavailable",
+          message: support.message,
+          retryable: false,
+        },
+        scope,
+      );
+    }
+    requestedMicroversion =
+      support.requestedMicroversion ?? requestedMicroversion;
+  }
 
   return executeOpenStackMutation({
     actionLabel: "update this volume attachment",
@@ -309,7 +338,7 @@ export async function updateVolumeAttachmentAction(
     ...NOVA_SERVICE,
     path: `/servers/${encodeURIComponent(value.serverId)}/os-volume_attachments/${encodeURIComponent(value.volumeId)}`,
     method: "PUT",
-    apiVersion: NOVA_ATTACHMENT_UPDATE_API_VERSION,
+    apiVersion: `compute ${requestedMicroversion}`,
     body: {
       volumeAttachment: {
         volumeId: value.volumeId,
