@@ -5,6 +5,7 @@ import { DataTableHeader } from "@/components/DataTable/Header";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { requireS3Backend } from "@/components/services/ServiceGuards";
 import { s3DirectBrowser } from "@/lib/s3/browser-mode";
+import { s3BrowserStorageIdentityScope } from "@/lib/s3/browser-storage-scope";
 import { directObjectPath } from "@/lib/s3/direct-route";
 import {
   getActiveS3Credentials,
@@ -44,6 +45,7 @@ export default async function Page({ params, searchParams }: PageProps) {
       <DirectClient
         activeProjectId={activeProjectId}
         activeRegionId={activeRegionId}
+        browserStorageIdentityScope={s3BrowserStorageIdentityScope(session)}
         bucket={bucket}
         showServerBrowserMode={!s3DirectBrowser()}
       />

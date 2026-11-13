@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
 import {
@@ -21,6 +21,7 @@ import bytes from "bytes";
 import { DataTable } from "@/components/DataTable";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { BucketSettingsDialog } from "@/components/object-storage/BucketSettingsDialog";
+import { ResumableUploadNotice } from "@/components/object-storage/ResumableUploadNotice";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { UploadQueueMenu } from "@/components/UploadQueueMenu";
 import { UploadSpeedIndicator } from "@/components/UploadSpeedIndicator";
@@ -49,11 +50,19 @@ import {
 } from "@/lib/s3/actions";
 import { startObjectStorageCredentialRefresh } from "@/lib/s3/auth-navigation";
 import {
+  discardProxyS3MultipartCheckpoint,
   findProxyUploadConflicts,
   ProxyS3AuthRequiredError,
   uploadProxyFiles,
 } from "@/lib/s3/proxy-upload";
-import type { S3UploadProgress } from "@/lib/s3/upload-batch";
+import {
+  isS3MultipartCheckpointExpired,
+  listS3MultipartCheckpoints,
+  type S3MultipartCheckpoint,
+  type S3MultipartCheckpointScope,
+} from "@/lib/s3/multipart-checkpoints";
+import { pauseS3Upload } from "@/lib/s3/resumable-multipart";
+import type { S3UploadFile, S3UploadProgress } from "@/lib/s3/upload-batch";
 import { buildS3UploadMetrics } from "@/lib/s3/upload-telemetry-client";
 import { recordS3UploadMetrics } from "@/lib/s3/upload-telemetry";
 import { s3WebUploadLimitError } from "@/lib/s3/web-upload-limits";
@@ -136,6 +145,7 @@ function downloadSelection(bucket: string, rows: Row[]) {
 interface ObjectsClientProps {
   activeProjectId: string;
   activeRegionId: string;
+  browserStorageIdentityScope: string;
   bucket: string;
   initialPrefix: string;
   initialData: Extract<ListObjectsResult, { ok: true }>;
@@ -144,6 +154,7 @@ interface ObjectsClientProps {
 export function ObjectsClient({
   activeProjectId,
   activeRegionId,
+  browserStorageIdentityScope,
   bucket,
   initialPrefix,
   initialData,
@@ -153,6 +164,16 @@ export function ObjectsClient({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const uploadAbortRef = useRef<AbortController | null>(null);
+  const checkpointScope = useMemo<S3MultipartCheckpointScope>(
+    () => ({
+      identityScope: browserStorageIdentityScope,
+      projectId: activeProjectId,
+      regionId: activeRegionId,
+      mode: "proxy",
+      bucket,
+    }),
+    [activeProjectId, activeRegionId, browserStorageIdentityScope, bucket],
+  );
   const objectListOptions = useMemo(
     () => objectsQueryOptions(activeProjectId, bucket, prefix),
     [activeProjectId, bucket, prefix],
@@ -175,6 +196,10 @@ export function ObjectsClient({
   );
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadCheckpoints, setUploadCheckpoints] = useState<
+    S3MultipartCheckpoint[]
+  >([]);
+  const [checkpointBusy, setCheckpointBusy] = useState(false);
   const [overwriteOpen, setOverwriteOpen] = useState(false);
   const [overwriteKeys, setOverwriteKeys] = useState<string[]>([]);
   const [folderName, setFolderName] = useState("");
@@ -190,11 +215,35 @@ export function ObjectsClient({
   const [sizeResult, setSizeResult] = useState<SizeState | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
 
+  const loadUploadCheckpoints = useCallback(async () => {
+    let checkpoints = await listS3MultipartCheckpoints(checkpointScope);
+    for (const checkpoint of checkpoints.filter((item) =>
+      isS3MultipartCheckpointExpired(item),
+    )) {
+      await discardProxyS3MultipartCheckpoint(
+        activeProjectId,
+        bucket,
+        checkpoint,
+      ).catch(() => undefined);
+    }
+    return listS3MultipartCheckpoints(checkpointScope);
+  }, [activeProjectId, bucket, checkpointScope]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadUploadCheckpoints().then((checkpoints) => {
+      if (!cancelled) setUploadCheckpoints(checkpoints);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadUploadCheckpoints]);
+
   useEffect(
     () => () => {
-      uploadAbortRef.current?.abort();
+      if (uploadAbortRef.current) pauseS3Upload(uploadAbortRef.current);
     },
-    [],
+    [checkpointScope],
   );
 
   const rows: Row[] = useMemo(
@@ -239,9 +288,13 @@ export function ObjectsClient({
     setUploadError(null);
   };
 
-  const handleUpload = async (confirmOverwrite = false) => {
-    if (uploadFiles.length === 0 || uploading) return;
-    const limitError = s3WebUploadLimitError(uploadFiles);
+  const handleUpload = async (
+    confirmOverwrite = false,
+    selectedItems?: S3UploadFile[],
+  ) => {
+    const sourceFiles = selectedItems?.map((item) => item.file) ?? uploadFiles;
+    if (sourceFiles.length === 0 || uploading) return;
+    const limitError = s3WebUploadLimitError(sourceFiles);
     if (limitError) {
       setUploadMessage(null);
       setUploadError(limitError);
@@ -257,10 +310,12 @@ export function ObjectsClient({
     const progressSnapshot: { current: S3UploadProgress | null } = {
       current: null,
     };
-    const files = uploadFiles.map((file) => ({
-      file,
-      key: `${prefix}${filePath(file)}`,
-    }));
+    const files =
+      selectedItems ??
+      sourceFiles.map((file) => ({
+        file,
+        key: `${prefix}${filePath(file)}`,
+      }));
 
     try {
       if (!confirmOverwrite) {
@@ -280,6 +335,7 @@ export function ObjectsClient({
       const result = await uploadProxyFiles(
         activeProjectId,
         bucket,
+        checkpointScope,
         files,
         (progress) => {
           progressSnapshot.current = progress;
@@ -304,8 +360,8 @@ export function ObjectsClient({
         progressSnapshot.current
           ? progressSnapshot.current.files
               .filter((progress) => progress.state !== "complete")
-              .map((progress) => uploadFiles[progress.index])
-          : uploadFiles,
+              .map((progress) => sourceFiles[progress.index])
+          : sourceFiles,
       );
       if (result.uploaded > 0) await refreshObjects();
     } catch (error) {
@@ -320,6 +376,31 @@ export function ObjectsClient({
       if (uploadAbortRef.current === controller) uploadAbortRef.current = null;
       setUploading(false);
       setUploadProgress(null);
+      setUploadCheckpoints(await loadUploadCheckpoints());
+    }
+  };
+
+  const resumeUpload = (checkpoint: S3MultipartCheckpoint, file: File) => {
+    setUploadFiles([file]);
+    void handleUpload(true, [{ file, key: checkpoint.key }]);
+  };
+
+  const discardUpload = async (checkpoint: S3MultipartCheckpoint) => {
+    if (checkpointBusy || uploading) return;
+    setCheckpointBusy(true);
+    setUploadError(null);
+    try {
+      await discardProxyS3MultipartCheckpoint(
+        activeProjectId,
+        bucket,
+        checkpoint,
+      );
+      setUploadMessage(`Discarded interrupted upload ${checkpoint.key}.`);
+      setUploadCheckpoints(await loadUploadCheckpoints());
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCheckpointBusy(false);
     }
   };
 
@@ -717,6 +798,15 @@ export function ObjectsClient({
           {removeError && <div className="text-destructive">{removeError}</div>}
         </div>
       )}
+
+      <ResumableUploadNotice
+        checkpoints={uploadCheckpoints}
+        busy={checkpointBusy || uploading}
+        onResume={resumeUpload}
+        onDiscard={(checkpoint) => {
+          void discardUpload(checkpoint);
+        }}
+      />
 
       {(sizeResult || sizeError) && (
         <div className="rounded-md border p-3 text-sm">

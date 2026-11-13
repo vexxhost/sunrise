@@ -3,6 +3,7 @@ import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   HeadObjectCommand,
+  ListPartsCommand,
   type S3Client,
 } from "@aws-sdk/client-s3";
 import { z } from "zod";
@@ -24,6 +25,11 @@ const postInput = z.discriminatedUnion("action", [
     action: z.literal("initiate"),
     key: s3MultipartObjectKey,
     contentType: z.string().max(255).optional(),
+  }),
+  z.object({
+    action: z.literal("list"),
+    key: s3MultipartObjectKey,
+    uploadId: z.string().min(1).max(2048),
   }),
   z.object({
     action: z.literal("complete"),
@@ -96,10 +102,7 @@ async function checkConflicts(
   return Array.from(conflicts);
 }
 
-export async function POST(
-  request: Request,
-  context: S3MultipartRouteContext,
-) {
+export async function POST(request: Request, context: S3MultipartRouteContext) {
   const prepared = await prepareS3MultipartMutation(request);
   if (!prepared.ok) return prepared.response;
 
@@ -129,6 +132,38 @@ export async function POST(
         throw new Error("RGW did not return a multipart upload ID");
       }
       return Response.json({ ok: true, uploadId: response.UploadId });
+    }
+
+    if (parsed.data.action === "list") {
+      const parts: { partNumber: number; etag: string; size: number }[] = [];
+      let partNumberMarker: string | undefined;
+      do {
+        const response = await prepared.client.send(
+          new ListPartsCommand({
+            Bucket: bucket,
+            Key: parsed.data.key,
+            UploadId: parsed.data.uploadId,
+            PartNumberMarker: partNumberMarker,
+          }),
+        );
+        for (const part of response.Parts ?? []) {
+          if (
+            typeof part.PartNumber === "number" &&
+            typeof part.ETag === "string" &&
+            typeof part.Size === "number"
+          ) {
+            parts.push({
+              partNumber: part.PartNumber,
+              etag: part.ETag,
+              size: part.Size,
+            });
+          }
+        }
+        partNumberMarker = response.IsTruncated
+          ? response.NextPartNumberMarker
+          : undefined;
+      } while (partNumberMarker);
+      return Response.json({ ok: true, parts });
     }
 
     const parts = [...parsed.data.parts]

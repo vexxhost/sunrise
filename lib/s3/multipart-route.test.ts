@@ -3,6 +3,7 @@ import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   HeadObjectCommand,
+  ListPartsCommand,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +60,19 @@ describe("S3 multipart proxy route", () => {
         return { UploadId: "upload-a" };
       }
       if (command instanceof UploadPartCommand) return { ETag: '"part-a"' };
+      if (command instanceof ListPartsCommand) {
+        if (command.input.PartNumberMarker === "1") {
+          return {
+            Parts: [{ PartNumber: 2, ETag: '"part-b"', Size: 3 }],
+            IsTruncated: false,
+          };
+        }
+        return {
+          Parts: [{ PartNumber: 1, ETag: '"part-a"', Size: 4 }],
+          IsTruncated: true,
+          NextPartNumberMarker: "1",
+        };
+      }
       if (command instanceof CompleteMultipartUploadCommand) {
         return { ETag: '"object-a"' };
       }
@@ -93,6 +107,22 @@ describe("S3 multipart proxy route", () => {
       context,
     );
     expect(await uploaded.json()).toEqual({ ok: true, etag: '"part-a"' });
+
+    const listed = await POST(
+      request("POST", {
+        action: "list",
+        key: "images/disk.raw",
+        uploadId: "upload-a",
+      }),
+      context,
+    );
+    expect(await listed.json()).toEqual({
+      ok: true,
+      parts: [
+        { partNumber: 1, etag: '"part-a"', size: 4 },
+        { partNumber: 2, etag: '"part-b"', size: 3 },
+      ],
+    });
 
     const completed = await POST(
       request("POST", {
@@ -144,6 +174,30 @@ describe("S3 multipart proxy route", () => {
     });
     expect(mocks.send).toHaveBeenCalledTimes(12);
     expect(maxActive).toBe(10);
+  });
+
+  it("returns a typed 404 when the multipart upload no longer exists", async () => {
+    mocks.send.mockRejectedValue(
+      Object.assign(new Error("The specified upload does not exist"), {
+        name: "NoSuchUpload",
+        $metadata: { httpStatusCode: 404 },
+      }),
+    );
+
+    const response = await POST(
+      request("POST", {
+        action: "list",
+        key: "images/disk.raw",
+        uploadId: "expired-upload",
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      code: "NoSuchUpload",
+    });
   });
 
   it("rejects stale project context before reading the request body", async () => {
