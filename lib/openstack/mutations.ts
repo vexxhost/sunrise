@@ -22,6 +22,8 @@ import {
 import { serviceUrl } from "@/lib/openstack/request";
 import { openstackRequestId } from "@/lib/openstack/request-id";
 import { currentSunriseRequestId } from "@/lib/request-correlation.server";
+import { getApiMicroversionPolicy } from "@/lib/deployment-config";
+import { apiMicroversionPolicyViolation } from "@/lib/openstack/microversion-policy";
 import {
   removeSavedResourcePreferences,
   type SavedResourceTarget,
@@ -106,6 +108,23 @@ export async function executeOpenStackMutation<T = null>({
   if (!guarded.ok) return guarded.result;
 
   const { projectToken, scope: activeScope } = guarded.context;
+  const microversionViolation = apiMicroversionPolicyViolation(
+    getApiMicroversionPolicy(),
+    serviceType,
+    activeScope.regionId,
+    apiVersion,
+  );
+  if (microversionViolation) {
+    return mutationFailure(
+      {
+        code: "service-unavailable",
+        message: microversionViolation,
+        retryable: false,
+      },
+      activeScope,
+    );
+  }
+
   let endpoint = endpointOverride;
   if (!endpoint) {
     const catalog = await getServiceCatalog(projectToken!);

@@ -6,6 +6,7 @@ export type MicroversionRange = {
 };
 
 export type OpenStackServiceCapabilities = {
+  configuredMicroversionMaximum?: string;
   discoveryStatus: CapabilityDiscoveryStatus;
   extensions?: string[];
   message: string;
@@ -132,13 +133,17 @@ export function microversionSupport(
   feature: string,
 ): OpenStackFeatureSupport {
   const range = capabilities.microversions;
-  if (capabilities.discoveryStatus !== "available") {
-    return {
-      status: "unknown",
-      message: `${feature} support could not be verified. The service will validate it when used.`,
-    };
-  }
-  if (range === undefined) {
+  const configuredMaximum = capabilities.configuredMicroversionMaximum;
+  const configuredMaximumBlocksFeature = Boolean(
+    configuredMaximum && compareMicroversions(required, configuredMaximum) > 0,
+  );
+  const configuredMaximumFailure = (): OpenStackFeatureSupport => ({
+    status: "unsupported",
+    message: `${feature} requires API microversion ${required}, but Sunrise is configured not to request newer than ${configuredMaximum}.`,
+  });
+
+  if (capabilities.discoveryStatus !== "available" || range === undefined) {
+    if (configuredMaximumBlocksFeature) return configuredMaximumFailure();
     return {
       status: "unknown",
       message: `${feature} support could not be verified. The service will validate it when used.`,
@@ -150,8 +155,28 @@ export function microversionSupport(
       message: `${feature} requires API microversion ${required}, but this cloud does not advertise microversion support.`,
     };
   }
+  if (compareMicroversions(required, range.maximum) > 0) {
+    return {
+      status: "unsupported",
+      message: `${feature} requires API microversion ${required}, but this cloud advertises ${range.minimum} through ${range.maximum}.`,
+    };
+  }
+  if (configuredMaximumBlocksFeature) return configuredMaximumFailure();
 
-  if (compareMicroversions(required, range.maximum) <= 0) {
+  const effectiveMaximum =
+    configuredMaximum &&
+    compareMicroversions(configuredMaximum, range.maximum) < 0
+      ? configuredMaximum
+      : range.maximum;
+
+  if (compareMicroversions(effectiveMaximum, range.minimum) < 0) {
+    return {
+      status: "unsupported",
+      message: `${feature} is unavailable because the configured maximum microversion ${effectiveMaximum} is older than this cloud's minimum ${range.minimum}.`,
+    };
+  }
+
+  if (compareMicroversions(required, effectiveMaximum) <= 0) {
     const requestedMicroversion =
       compareMicroversions(required, range.minimum) < 0
         ? range.minimum
@@ -165,7 +190,7 @@ export function microversionSupport(
 
   return {
     status: "unsupported",
-    message: `${feature} requires API microversion ${required}, but this cloud advertises ${range.minimum} through ${range.maximum}.`,
+    message: `${feature} requires API microversion ${required}, but the effective maximum is ${effectiveMaximum}.`,
   };
 }
 

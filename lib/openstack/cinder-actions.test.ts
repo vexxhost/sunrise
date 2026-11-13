@@ -221,6 +221,31 @@ describe("Cinder mutation actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
+  it("rejects attachment policy updates above the configured ceiling", async () => {
+    mocks.discoverComputeCapabilities.mockResolvedValue({
+      configuredMicroversionMaximum: "2.84",
+      discoveryStatus: "available",
+      message: "",
+      microversions: { minimum: "2.1", maximum: "2.100" },
+      serviceType: "compute",
+    });
+
+    const result = await updateVolumeAttachmentAction(scope, {
+      volumeId: "volume-a",
+      serverId: "server-a",
+      deleteOnTermination: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("configured not to request newer"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("rejects an invalid device tag before contacting Nova", async () => {
     const result = await attachVolumeAction(scope, {
       volumeId: "volume-a",

@@ -182,6 +182,73 @@ describe("OpenStack capability evaluation", () => {
       status: "supported",
       requestedMicroversion: "2.90",
     });
+
+    expect(
+      microversionSupport(
+        {
+          configuredMicroversionMaximum: "2.84",
+          discoveryStatus: "available",
+          message: "",
+          microversions: { minimum: "2.1", maximum: "2.100" },
+          serviceType: "compute",
+        },
+        "2.85",
+        "Delete with instance",
+      ),
+    ).toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("configured not to request newer"),
+    });
+
+    expect(
+      microversionSupport(
+        {
+          configuredMicroversionMaximum: "2.84",
+          discoveryStatus: "unavailable",
+          message: "",
+          serviceType: "compute",
+        },
+        "2.85",
+        "Delete with instance",
+      ),
+    ).toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("configured not to request newer"),
+    });
+
+    expect(
+      microversionSupport(
+        {
+          configuredMicroversionMaximum: "2.90",
+          discoveryStatus: "available",
+          message: "",
+          microversions: { minimum: "2.95", maximum: "2.100" },
+          serviceType: "compute",
+        },
+        "2.85",
+        "Delete with instance",
+      ),
+    ).toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("cloud's minimum 2.95"),
+    });
+
+    expect(
+      microversionSupport(
+        {
+          configuredMicroversionMaximum: "2.84",
+          discoveryStatus: "available",
+          message: "",
+          microversions: { minimum: "2.1", maximum: "2.83" },
+          serviceType: "compute",
+        },
+        "2.85",
+        "Delete with instance",
+      ),
+    ).toMatchObject({
+      status: "unsupported",
+      message: expect.stringContaining("cloud advertises 2.1 through 2.83"),
+    });
   });
 
   it("normalizes Neutron extension aliases and distinguishes absence from discovery failure", () => {

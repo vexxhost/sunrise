@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createLogger } from "@/lib/logging";
+import { getApiMicroversionPolicy } from "@/lib/deployment-config";
 import {
   parseExtensionAliases,
   parseMicroversionDiscovery,
@@ -9,6 +10,7 @@ import {
 import { openstackRequest } from "@/lib/openstack/request-server";
 import { getServiceEndpoint } from "@/lib/openstack/catalog";
 import { getSession } from "@/lib/session";
+import { configuredApiMicroversion } from "@/lib/openstack/microversion-policy";
 
 const logger = createLogger("openstack.capabilities");
 
@@ -43,16 +45,24 @@ function versionRoot(endpoint: string, majorVersion: RegExp): string {
 export async function discoverComputeCapabilities(
   regionId: string,
 ): Promise<OpenStackServiceCapabilities> {
+  const configuredMicroversionMaximum = configuredApiMicroversion(
+    getApiMicroversionPolicy(),
+    "compute",
+    regionId,
+  );
   const session = await getSession();
   const token = session.keystoneProjectToken;
   const endpoint = token
     ? await getServiceEndpoint(regionId, "compute", "nova", token)
     : null;
   if (!endpoint) {
-    return unavailable(
+    const capabilities = unavailable(
       "compute",
       "Compute API microversion discovery was unavailable.",
     );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
   }
   const payload = await openstackRequest<unknown>({
     acceptedStatuses: [300],
@@ -66,17 +76,21 @@ export async function discoverComputeCapabilities(
 
   if (!discovery) {
     logger.warn("compute-microversions-unavailable", { regionId });
-    return unavailable(
+    const capabilities = unavailable(
       "compute",
       "Compute API microversion discovery was unavailable.",
     );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
   }
   const { microversions } = discovery;
 
   return {
+    ...(configuredMicroversionMaximum ? { configuredMicroversionMaximum } : {}),
     discoveryStatus: "available",
     message: microversions
-      ? `Compute API microversions ${microversions.minimum} through ${microversions.maximum} are available.`
+      ? `Compute API microversions ${microversions.minimum} through ${microversions.maximum} are available.${configuredMicroversionMaximum ? ` Sunrise will not request newer than ${configuredMicroversionMaximum}.` : ""}`
       : "The Compute API does not advertise microversion support.",
     microversions,
     serviceType: "compute",

@@ -30,6 +30,7 @@ describe("validateRuntimeConfiguration", () => {
         buildDeploymentId: "0123456789abcdef",
       }),
     ).toEqual({
+      apiMicroversionOverrideCount: 0,
       buildDeploymentId: "0123456789abcdef",
       dashboardUrl: "https://sunrise.example.test",
       deploymentId: "0123456789abcdef",
@@ -177,6 +178,25 @@ describe("validateRuntimeConfiguration", () => {
         SUNRISE_COLOR_PALETTE: "unknown",
       }),
     ).toThrow("SUNRISE_COLOR_PALETTE must be one of: sunrise, vexxhost");
+  });
+
+  it("validates configured API microversion ceilings", () => {
+    expect(
+      validateRuntimeConfiguration({
+        ...validEnvironment,
+        SUNRISE_API_MICROVERSION_COMPUTE: "2.95",
+        SUNRISE_API_MICROVERSION_COMPUTE_REGIONONE: "2.90",
+      }),
+    ).toMatchObject({ apiMicroversionOverrideCount: 2 });
+
+    expect(() =>
+      validateRuntimeConfiguration({
+        ...validEnvironment,
+        SUNRISE_API_MICROVERSION_COMPUTE: "latest",
+      }),
+    ).toThrow(
+      "SUNRISE_API_MICROVERSION_COMPUTE must use major.minor numeric syntax",
+    );
   });
 
   it("reports direct S3 browser mode and validates its value", () => {

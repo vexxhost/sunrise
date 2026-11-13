@@ -6,7 +6,10 @@ import {
   parseSunriseColorPalette,
   type SunriseColorPalette,
 } from "@/lib/color-palette";
-import { getServicePolicy } from "@/lib/deployment-config";
+import {
+  getApiMicroversionPolicy,
+  getServicePolicy,
+} from "@/lib/deployment-config";
 import { getIdentityProviderOptions } from "@/lib/auth-providers";
 import { getFederationProviderConfigs } from "@/lib/federation/config";
 import {
@@ -32,6 +35,7 @@ import {
 import { getSessionLifetimePolicy } from "@/lib/session-lifetime";
 import { s3DirectBrowser } from "@/lib/s3/browser-mode";
 import type { ObjectStorageBackend } from "@/lib/service-policy";
+import { apiMicroversionOverrideCount } from "@/lib/openstack/microversion-policy";
 
 type RuntimeEnvironment = Record<string, string | undefined>;
 type ReadFile = (path: string) => Buffer;
@@ -41,6 +45,7 @@ type RuntimeConfigurationDependencies = {
 };
 
 export type RuntimeConfiguration = {
+  apiMicroversionOverrideCount: number;
   buildDeploymentId?: string;
   dashboardUrl: string;
   deploymentId?: string;
@@ -215,9 +220,8 @@ export function validateRuntimeConfiguration(
   }
 
   const policy = getServicePolicy(environment);
-  const directBrowser = s3DirectBrowser(
-    environment.SUNRISE_S3_DIRECT_BROWSER,
-  );
+  const microversionPolicy = getApiMicroversionPolicy(environment);
+  const directBrowser = s3DirectBrowser(environment.SUNRISE_S3_DIRECT_BROWSER);
   getIdentityProviderOptions(environment);
   const providers = getFederationProviderConfigs(environment);
   const sessionBackend = getSessionBackend(environment.SUNRISE_SESSION_BACKEND);
@@ -264,6 +268,8 @@ export function validateRuntimeConfiguration(
   }
 
   return {
+    apiMicroversionOverrideCount:
+      apiMicroversionOverrideCount(microversionPolicy),
     ...(buildDeploymentId ? { buildDeploymentId } : {}),
     dashboardUrl: dashboardUrl.origin,
     ...(deploymentId ? { deploymentId } : {}),
