@@ -148,6 +148,33 @@ describe("OpenStack mutation executor", () => {
     );
   });
 
+  it("rejects mutations above the configured regional microversion ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_COMPUTE", "2.95");
+    vi.stubEnv("SUNRISE_API_MICROVERSION_COMPUTE_REGIONONE", "2.90");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "update this attachment",
+      apiVersion: "compute 2.91",
+      method: "PUT",
+      path: "/servers/server-a/os-volume_attachments/volume-a",
+      scope,
+      serviceName: "nova",
+      serviceType: "compute",
+      successMessage: "Attachment updated.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("configured maximum 2.90"),
+        retryable: false,
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("records response body stream failures", async () => {
     vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
     resetMetricsForTests();

@@ -101,6 +101,25 @@ describe("server-only OpenStack requests", () => {
     ).resolves.toEqual({ versions: [] });
   });
 
+  it("rejects reads above the configured regional microversion ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_COMPUTE", "2.95");
+    vi.stubEnv("SUNRISE_API_MICROVERSION_COMPUTE_REGIONONE", "2.90");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      openstackRequest({
+        apiVersion: "compute 2.91",
+        errorMode: "throw",
+        regionId: "RegionOne",
+        serviceType: "compute",
+        serviceName: "nova",
+        path: "/servers/detail",
+      }),
+    ).rejects.toThrow("exceeds the configured maximum 2.90");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("records response body stream failures without counting success", async () => {
     vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
     resetMetricsForTests();

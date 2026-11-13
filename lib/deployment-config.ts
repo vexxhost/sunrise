@@ -1,5 +1,6 @@
 import "server-only";
 
+import { parseApiMicroversionPolicy } from "@/lib/openstack/microversion-policy";
 import { parseServicePolicy } from "@/lib/service-policy";
 
 const REGIONAL_DISABLED_SERVICES_PREFIX = "SUNRISE_DISABLED_SERVICES_";
@@ -25,4 +26,10 @@ export function getServicePolicy(
     disabledServicesByRegion: regionalDisabledServices(environment),
     objectStorageBackends: environment.SUNRISE_OBJECT_STORAGE_BACKENDS,
   });
+}
+
+export function getApiMicroversionPolicy(
+  environment: DeploymentEnvironment = process.env,
+) {
+  return parseApiMicroversionPolicy(environment);
 }

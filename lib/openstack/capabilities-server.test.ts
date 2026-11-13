@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getServiceEndpoint: vi.fn(),
@@ -31,6 +31,10 @@ describe("OpenStack capability discovery", () => {
     );
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("discovers the Nova microversion range", async () => {
     mocks.openstackRequest.mockResolvedValue({
       version: {
@@ -53,6 +57,26 @@ describe("OpenStack capability discovery", () => {
       regionId: "RegionOne",
       serviceName: "nova",
       serviceType: "compute",
+    });
+  });
+
+  it("includes the effective regional Nova microversion ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_COMPUTE", "2.95");
+    vi.stubEnv("SUNRISE_API_MICROVERSION_COMPUTE_REGIONONE", "2.90");
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        min_version: "2.1",
+        status: "CURRENT",
+        version: "2.100",
+      },
+    });
+
+    await expect(
+      discoverComputeCapabilities("RegionOne"),
+    ).resolves.toMatchObject({
+      configuredMicroversionMaximum: "2.90",
+      discoveryStatus: "available",
+      message: expect.stringContaining("not request newer than 2.90"),
     });
   });
 

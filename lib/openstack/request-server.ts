@@ -9,6 +9,8 @@ import {
 } from "@/lib/metrics";
 import { currentSunriseRequestId } from "@/lib/request-correlation.server";
 import { getSession } from "@/lib/session";
+import { getApiMicroversionPolicy } from "@/lib/deployment-config";
+import { apiMicroversionPolicyViolation } from "@/lib/openstack/microversion-policy";
 import { getServiceEndpoint } from "./catalog";
 import {
   OpenStackConnectionError,
@@ -62,6 +64,25 @@ export async function openstackRequest<T = unknown>({
 
   if (!token) {
     redirect("/auth/refresh");
+  }
+
+  const microversionViolation = apiMicroversionPolicyViolation(
+    getApiMicroversionPolicy(),
+    serviceType,
+    regionId,
+    apiVersion,
+  );
+  if (microversionViolation) {
+    logger.warn("microversion-policy-rejected", {
+      apiVersion,
+      message: microversionViolation,
+      regionId,
+      requestId,
+      serviceName,
+      serviceType,
+    });
+    if (errorMode === "throw") throw new Error(microversionViolation);
+    return null;
   }
 
   const endpoint =

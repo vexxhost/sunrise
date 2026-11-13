@@ -11,6 +11,7 @@ export async function register() {
   const configuration = validateRuntimeConfiguration();
 
   logger.info("startup.configuration.validated", {
+    apiMicroversionOverrideCount: configuration.apiMicroversionOverrideCount,
     deploymentId: configuration.deploymentId ?? "unversioned",
     logFormat: configuration.logFormat,
     logLevel: configuration.logLevel,
