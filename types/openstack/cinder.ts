@@ -71,7 +71,7 @@ export type Volume = {
   availability_zone?: string;
   "os-vol-host-attr:host"?: string;
   encrypted: boolean;
-  encryption_key_id?: string;
+  encryption_key_id?: string | null;
   updated_at: string;
   replication_status: string;
   snapshot_id?: string;
@@ -93,13 +93,13 @@ export type Volume = {
   created_at: string;
   volumes: [];
   volume_type: string;
-  volume_type_id: object;
+  volume_type_id?: string | null;
   group_id?: string;
   volumes_links?: [];
   provider_id?: string;
-  service_uuid: string;
-  shared_targets: boolean;
-  cluster_name?: string;
+  service_uuid?: string | null;
+  shared_targets?: boolean | null;
+  cluster_name?: string | null;
   consumes_quota?: boolean;
   count?: number;
 };
@@ -144,5 +144,6 @@ export type Snapshot = {
   user_id: string;
   "os-extended-snapshot-attributes:project_id"?: string;
   "os-extended-snapshot-attributes:progress"?: string;
+  consumes_quota?: boolean;
   count?: number;
 };

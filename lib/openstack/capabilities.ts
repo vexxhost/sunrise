@@ -194,6 +194,46 @@ export function microversionSupport(
   };
 }
 
+export function preferredMicroversionSupport(
+  capabilities: OpenStackServiceCapabilities,
+  baseline: string,
+  preferred: string,
+  feature: string,
+): OpenStackFeatureSupport {
+  if (compareMicroversions(preferred, baseline) < 0) {
+    throw new Error(
+      `Preferred microversion ${preferred} cannot be older than baseline ${baseline}`,
+    );
+  }
+
+  const baselineSupport = microversionSupport(capabilities, baseline, feature);
+  if (baselineSupport.status === "unsupported") return baselineSupport;
+  if (baselineSupport.status === "unknown") {
+    return {
+      ...baselineSupport,
+      requestedMicroversion: baseline,
+    };
+  }
+
+  const range = capabilities.microversions!;
+  const maximums = [preferred, range.maximum];
+  if (capabilities.configuredMicroversionMaximum) {
+    maximums.push(capabilities.configuredMicroversionMaximum);
+  }
+  let requestedMicroversion = maximums.reduce((lowest, candidate) =>
+    compareMicroversions(candidate, lowest) < 0 ? candidate : lowest,
+  );
+  if (compareMicroversions(requestedMicroversion, range.minimum) < 0) {
+    requestedMicroversion = range.minimum;
+  }
+
+  return {
+    status: "supported",
+    message: `${feature} will use API microversion ${requestedMicroversion}.`,
+    requestedMicroversion,
+  };
+}
+
 export function extensionSupport(
   capabilities: OpenStackServiceCapabilities,
   required: string,

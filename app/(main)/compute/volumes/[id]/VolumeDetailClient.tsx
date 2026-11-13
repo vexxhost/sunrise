@@ -29,6 +29,7 @@ import {
 import { formatVolumeStatus } from "@/lib/openstack/storage-status";
 
 interface VolumeDetailClientProps {
+  apiVersion: string;
   volumeId: string;
   regionId?: string;
   projectId?: string;
@@ -107,6 +108,7 @@ function AttachmentValue({ attachment }: { attachment: Volume["attachments"][num
 }
 
 export function VolumeDetailClient({
+  apiVersion,
   volumeId,
   regionId,
   projectId,
@@ -114,8 +116,8 @@ export function VolumeDetailClient({
   const queryClient = useQueryClient();
   const router = useRouter();
   const query = useMemo(
-    () => volumeQueryOptions(regionId, projectId, volumeId),
-    [projectId, regionId, volumeId],
+    () => volumeQueryOptions(regionId, projectId, volumeId, apiVersion),
+    [apiVersion, projectId, regionId, volumeId],
   );
   const { data: volume } = useSuspenseQuery({
     ...query,
@@ -247,11 +249,17 @@ export function VolumeDetailClient({
           </DetailField>
           <DetailField label="Size">{volume.size} GB</DetailField>
           <DetailField label="Type">{emptyToDash(volume.volume_type)}</DetailField>
+          <DetailField label="Type ID" className="font-mono text-xs">
+            {emptyToDash(volume.volume_type_id)}
+          </DetailField>
           <DetailField label="Availability Zone">
             {emptyToDash(volume.availability_zone)}
           </DetailField>
           <DetailField label="Bootable">{formatBooleanLike(volume.bootable)}</DetailField>
           <DetailField label="Encrypted">{formatBooleanLike(volume.encrypted)}</DetailField>
+          <DetailField label="Encryption Key ID" className="font-mono text-xs">
+            {emptyToDash(volume.encryption_key_id)}
+          </DetailField>
           <DetailField label="Multi-Attached">
             {formatBooleanLike(volume.multiattach)}
           </DetailField>
