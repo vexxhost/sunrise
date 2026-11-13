@@ -70,7 +70,7 @@ const openStackSources: OpenStackSearchSource[] = [
     serviceName: "cinder",
     path: `/volumes/detail?limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
     responseKey: "volumes",
-    apiVersion: "volume 3.67",
+    apiVersion: "volume 3.0",
   },
   {
     kind: "image",

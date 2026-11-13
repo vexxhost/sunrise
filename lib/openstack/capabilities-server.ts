@@ -16,6 +16,8 @@ const logger = createLogger("openstack.capabilities");
 
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
+export const CINDER_BASELINE_MICROVERSION = "3.0";
+export const CINDER_IN_USE_SNAPSHOT_MICROVERSION = "3.66";
 
 function unavailable(
   serviceType: string,
@@ -124,10 +126,67 @@ export async function discoverNetworkCapabilities(
   };
 }
 
+export async function discoverBlockStorageCapabilities(
+  regionId: string,
+): Promise<OpenStackServiceCapabilities> {
+  const configuredMicroversionMaximum = configuredApiMicroversion(
+    getApiMicroversionPolicy(),
+    "volume",
+    regionId,
+  );
+  const session = await getSession();
+  const token = session.keystoneProjectToken;
+  const endpoint = token
+    ? await getServiceEndpoint(regionId, "volumev3", "cinder", token)
+    : null;
+  if (!endpoint) {
+    const capabilities = unavailable(
+      "volume",
+      "Block Storage API microversion discovery was unavailable.",
+    );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
+  }
+
+  const payload = await openstackRequest<unknown>({
+    acceptedStatuses: [300],
+    endpointOverride: versionRoot(endpoint, /^v3$/i),
+    regionId,
+    serviceType: "volumev3",
+    serviceName: "cinder",
+    path: "/",
+  });
+  const discovery = parseMicroversionDiscovery(payload);
+
+  if (!discovery) {
+    logger.warn("block-storage-microversions-unavailable", { regionId });
+    const capabilities = unavailable(
+      "volume",
+      "Block Storage API microversion discovery was unavailable.",
+    );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
+  }
+  const { microversions } = discovery;
+
+  return {
+    ...(configuredMicroversionMaximum ? { configuredMicroversionMaximum } : {}),
+    discoveryStatus: "available",
+    message: microversions
+      ? `Block Storage API microversions ${microversions.minimum} through ${microversions.maximum} are available.${configuredMicroversionMaximum ? ` Sunrise will not request newer than ${configuredMicroversionMaximum}.` : ""}`
+      : "The Block Storage API does not advertise microversion support.",
+    microversions,
+    serviceType: "volume",
+  };
+}
+
 export async function discoverDeploymentCapabilities(regionId: string) {
-  const [compute, network] = await Promise.all([
+  const [compute, network, volume] = await Promise.all([
     discoverComputeCapabilities(regionId),
     discoverNetworkCapabilities(regionId),
+    discoverBlockStorageCapabilities(regionId),
   ]);
-  return { compute, network };
+  return { compute, network, volume };
 }

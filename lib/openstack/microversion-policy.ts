@@ -1,7 +1,7 @@
 import { compareMicroversions } from "@/lib/openstack/capabilities";
 import { regionEnvironmentSuffix } from "@/lib/service-policy";
 
-export const configurableMicroversionServices = ["compute"] as const;
+export const configurableMicroversionServices = ["compute", "volume"] as const;
 
 export type ConfigurableMicroversionService =
   (typeof configurableMicroversionServices)[number];
@@ -18,8 +18,19 @@ type MicroversionEnvironment = Record<string, string | undefined>;
 const ENVIRONMENT_PREFIX = "SUNRISE_API_MICROVERSION_";
 const minimumSupportedVersions = {
   compute: "2.79",
+  volume: "3.0",
 } as const satisfies Record<ConfigurableMicroversionService, string>;
 const microversionPattern = /^\d+\.\d+$/;
+const requestServiceIdentities = {
+  compute: { headerService: "compute", serviceTypes: ["compute"] },
+  volume: {
+    headerService: "volume",
+    serviceTypes: ["volume", "volumev2", "volumev3"],
+  },
+} as const satisfies Record<
+  ConfigurableMicroversionService,
+  { headerService: string; serviceTypes: readonly string[] }
+>;
 
 function serviceEnvironmentSuffix(service: ConfigurableMicroversionService) {
   return service.toUpperCase().replaceAll("-", "_");
@@ -120,23 +131,23 @@ export function apiMicroversionPolicyViolation(
   regionId: string | null | undefined,
   apiVersion: string | undefined,
 ) {
-  if (
-    !apiVersion ||
-    !configurableMicroversionServices.includes(
-      serviceType as ConfigurableMicroversionService,
-    )
-  ) {
-    return undefined;
-  }
+  if (!apiVersion) return undefined;
 
-  const service = serviceType as ConfigurableMicroversionService;
+  const service = configurableMicroversionServices.find((candidate) =>
+    requestServiceIdentities[candidate].serviceTypes.some(
+      (requestServiceType) => requestServiceType === serviceType,
+    ),
+  );
+  if (!service) return undefined;
+
   const maximum = configuredApiMicroversion(policy, service, regionId);
   if (!maximum) return undefined;
 
   const [headerService, requested, ...extra] = apiVersion.trim().split(/\s+/);
+  const expectedHeaderService = requestServiceIdentities[service].headerService;
   if (
     extra.length > 0 ||
-    headerService !== service ||
+    headerService !== expectedHeaderService ||
     !requested ||
     !microversionPattern.test(requested)
   ) {
