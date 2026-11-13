@@ -21,7 +21,7 @@ import {
 const PAUSE_REASON = "sunrise:s3-upload-paused";
 
 export interface S3MultipartTransport {
-  initiate: (item: S3UploadFile, signal: AbortSignal) => Promise<string>;
+  initiate: (item: S3UploadFile) => Promise<string>;
   listParts: (
     key: string,
     uploadId: string,
@@ -39,7 +39,6 @@ export interface S3MultipartTransport {
     key: string,
     uploadId: string,
     parts: S3MultipartCheckpointPart[],
-    signal: AbortSignal,
   ) => Promise<void>;
   abort: (key: string, uploadId: string) => Promise<void>;
   isMissingUpload: (error: unknown) => boolean;
@@ -117,9 +116,13 @@ async function discardRemoteCheckpoint(
 
 async function cleanupExplicitCancellation(
   input: ResumableMultipartInput,
-  checkpoint: S3MultipartCheckpoint,
+  knownCheckpoint?: S3MultipartCheckpoint,
 ) {
   if (!input.signal.aborted || isS3UploadPause(input.signal)) return false;
+  const checkpoint =
+    knownCheckpoint ??
+    (await getS3MultipartCheckpoint(input.scope, input.item.key));
+  if (!checkpoint) return true;
   try {
     await discardRemoteCheckpoint(input.transport, checkpoint);
   } catch {
@@ -139,7 +142,9 @@ async function initiateCheckpoint(
   input: ResumableMultipartInput,
   fingerprint: string,
 ) {
-  const uploadId = await input.transport.initiate(input.item, input.signal);
+  throwIfUploadAborted(input.signal);
+  // Wait for the upload ID so cancellation can address the remote upload.
+  const uploadId = await input.transport.initiate(input.item);
   const checkpoint = createS3MultipartCheckpoint({
     scope: input.scope,
     key: input.item.key,
@@ -157,9 +162,11 @@ async function loadCheckpoint(
   fingerprint: string,
 ) {
   let checkpoint = await getS3MultipartCheckpoint(input.scope, input.item.key);
+  throwIfUploadAborted(input.signal);
   if (checkpoint && isS3MultipartCheckpointExpired(checkpoint)) {
     await discardRemoteCheckpoint(input.transport, checkpoint);
     checkpoint = null;
+    throwIfUploadAborted(input.signal);
   }
   if (
     checkpoint &&
@@ -183,11 +190,10 @@ async function loadCheckpoint(
     await saveS3MultipartCheckpoint(checkpoint);
     return { checkpoint, persisted: true };
   } catch (error) {
-    if (await cleanupExplicitCancellation(input, checkpoint)) {
-      throw uploadAbortError();
-    }
+    if (input.signal.aborted) throw error;
     if (!input.transport.isMissingUpload(error)) throw error;
     await deleteS3MultipartCheckpoint(checkpoint.id);
+    throwIfUploadAborted(input.signal);
     return initiateCheckpoint(input, fingerprint);
   }
 }
@@ -195,10 +201,18 @@ async function loadCheckpoint(
 export async function uploadResumableS3Multipart(
   input: ResumableMultipartInput,
 ) {
-  throwIfUploadAborted(input.signal);
-  const fingerprint = await fingerprintS3UploadFile(input.item.file);
-  throwIfUploadAborted(input.signal);
-  const loaded = await loadCheckpoint(input, fingerprint);
+  let loaded: Awaited<ReturnType<typeof loadCheckpoint>> | undefined;
+  try {
+    throwIfUploadAborted(input.signal);
+    const fingerprint = await fingerprintS3UploadFile(input.item.file);
+    throwIfUploadAborted(input.signal);
+    loaded = await loadCheckpoint(input, fingerprint);
+  } catch (error) {
+    if (await cleanupExplicitCancellation(input, loaded?.checkpoint)) {
+      throw uploadAbortError();
+    }
+    throw error;
+  }
   const checkpoint = loaded.checkpoint;
   let persisted = loaded.persisted;
   const partCount = Math.ceil(input.item.file.size / checkpoint.partSize);
@@ -278,12 +292,8 @@ export async function uploadResumableS3Multipart(
     const parts = Array.from(completed.values()).sort(
       (left, right) => left.partNumber - right.partNumber,
     );
-    await input.transport.complete(
-      input.item.key,
-      checkpoint.uploadId,
-      parts,
-      input.signal,
-    );
+    // Completion is a commit boundary; aborting its response leaves the result unknown.
+    await input.transport.complete(input.item.key, checkpoint.uploadId, parts);
     await deleteS3MultipartCheckpoint(checkpoint.id);
     input.onProgress(input.item.file.size);
   } catch (error) {

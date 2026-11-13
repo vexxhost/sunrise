@@ -157,7 +157,6 @@ describe("uploadResumableS3Multipart", () => {
         { partNumber: 2, etag: '"part-2"', size: 4 },
         { partNumber: 3, etag: '"part-3"', size: 4 },
       ],
-      input.signal,
     );
     expect(checkpointMocks.delete).toHaveBeenCalledWith("checkpoint-a");
     expect(input.onProgress).toHaveBeenLastCalledWith(12);
@@ -206,8 +205,50 @@ describe("uploadResumableS3Multipart", () => {
       "images/disk.raw",
       "upload-new",
       expect.any(Array),
-      expect.any(AbortSignal),
     );
+  });
+
+  it("cleans up an existing upload when cancelled during fingerprinting", async () => {
+    const existing = checkpoint();
+    checkpointMocks.get.mockResolvedValue(existing);
+    const fingerprinting = Promise.withResolvers<string>();
+    checkpointMocks.fingerprint.mockReturnValue(fingerprinting.promise);
+    const controller = new AbortController();
+    const multipartTransport = transport();
+    const uploading = uploadResumableS3Multipart(
+      uploadInput(multipartTransport, controller.signal),
+    );
+
+    controller.abort();
+    fingerprinting.resolve("fingerprint-a");
+
+    await expect(uploading).rejects.toMatchObject({ name: "AbortError" });
+    expect(multipartTransport.abort).toHaveBeenCalledWith(
+      "images/disk.raw",
+      "upload-a",
+    );
+    expect(checkpointMocks.delete).toHaveBeenCalledWith("checkpoint-a");
+    expect(multipartTransport.listParts).not.toHaveBeenCalled();
+    expect(multipartTransport.initiate).not.toHaveBeenCalled();
+  });
+
+  it("preserves an existing upload when navigation pauses fingerprinting", async () => {
+    const existing = checkpoint();
+    checkpointMocks.get.mockResolvedValue(existing);
+    const fingerprinting = Promise.withResolvers<string>();
+    checkpointMocks.fingerprint.mockReturnValue(fingerprinting.promise);
+    const controller = new AbortController();
+    const multipartTransport = transport();
+    const uploading = uploadResumableS3Multipart(
+      uploadInput(multipartTransport, controller.signal),
+    );
+
+    pauseS3Upload(controller);
+    fingerprinting.resolve("fingerprint-a");
+
+    await expect(uploading).rejects.toMatchObject({ name: "AbortError" });
+    expect(multipartTransport.abort).not.toHaveBeenCalled();
+    expect(checkpointMocks.delete).not.toHaveBeenCalled();
   });
 
   it("cleans up an existing upload when cancelled during reconciliation", async () => {
@@ -300,6 +341,103 @@ describe("uploadResumableS3Multipart", () => {
     await expect(uploading).rejects.toThrow("paused");
     expect(multipartTransport.abort).not.toHaveBeenCalled();
     expect(checkpointMocks.delete).not.toHaveBeenCalled();
+  });
+
+  it("cleans up an upload cancelled while initiation is in progress", async () => {
+    const initiated = Promise.withResolvers<string>();
+    const controller = new AbortController();
+    const multipartTransport = transport({
+      initiate: vi.fn(() => initiated.promise),
+    });
+    const uploading = uploadResumableS3Multipart(
+      uploadInput(multipartTransport, controller.signal),
+    );
+    await vi.waitFor(() => {
+      expect(multipartTransport.initiate).toHaveBeenCalledTimes(1);
+    });
+
+    controller.abort();
+    initiated.resolve("upload-new");
+
+    await expect(uploading).rejects.toMatchObject({ name: "AbortError" });
+    expect(checkpointMocks.save).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId: "upload-new" }),
+    );
+    expect(multipartTransport.abort).toHaveBeenCalledWith(
+      "images/disk.raw",
+      "upload-new",
+    );
+    expect(checkpointMocks.delete).toHaveBeenCalledWith("checkpoint-a");
+  });
+
+  it("preserves an upload paused while initiation is in progress", async () => {
+    const initiated = Promise.withResolvers<string>();
+    const controller = new AbortController();
+    const multipartTransport = transport({
+      initiate: vi.fn(() => initiated.promise),
+    });
+    const uploading = uploadResumableS3Multipart(
+      uploadInput(multipartTransport, controller.signal),
+    );
+    await vi.waitFor(() => {
+      expect(multipartTransport.initiate).toHaveBeenCalledTimes(1);
+    });
+
+    pauseS3Upload(controller);
+    initiated.resolve("upload-new");
+
+    await expect(uploading).rejects.toMatchObject({ name: "AbortError" });
+    expect(checkpointMocks.save).toHaveBeenCalledWith(
+      expect.objectContaining({ uploadId: "upload-new" }),
+    );
+    expect(multipartTransport.abort).not.toHaveBeenCalled();
+    expect(checkpointMocks.delete).not.toHaveBeenCalled();
+  });
+
+  it("aborts an unpersisted upload paused while initiation is in progress", async () => {
+    checkpointMocks.save.mockResolvedValue(false);
+    const initiated = Promise.withResolvers<string>();
+    const controller = new AbortController();
+    const multipartTransport = transport({
+      initiate: vi.fn(() => initiated.promise),
+    });
+    const uploading = uploadResumableS3Multipart(
+      uploadInput(multipartTransport, controller.signal),
+    );
+    await vi.waitFor(() => {
+      expect(multipartTransport.initiate).toHaveBeenCalledTimes(1);
+    });
+
+    pauseS3Upload(controller);
+    initiated.resolve("upload-new");
+
+    await expect(uploading).rejects.toMatchObject({ name: "AbortError" });
+    expect(multipartTransport.abort).toHaveBeenCalledWith(
+      "images/disk.raw",
+      "upload-new",
+    );
+    expect(checkpointMocks.delete).not.toHaveBeenCalled();
+  });
+
+  it("finishes completion after cancellation reaches the commit boundary", async () => {
+    const completing = Promise.withResolvers<void>();
+    const controller = new AbortController();
+    const multipartTransport = transport({
+      complete: vi.fn(() => completing.promise),
+    });
+    const input = uploadInput(multipartTransport, controller.signal);
+    const uploading = uploadResumableS3Multipart(input);
+    await vi.waitFor(() => {
+      expect(multipartTransport.complete).toHaveBeenCalledTimes(1);
+    });
+
+    controller.abort();
+    completing.resolve();
+
+    await expect(uploading).resolves.toBeUndefined();
+    expect(multipartTransport.abort).not.toHaveBeenCalled();
+    expect(checkpointMocks.delete).toHaveBeenCalledWith("checkpoint-a");
+    expect(input.onProgress).toHaveBeenLastCalledWith(12);
   });
 
   it("aborts an upload on navigation when its checkpoint could not persist", async () => {

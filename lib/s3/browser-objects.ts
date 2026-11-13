@@ -461,14 +461,13 @@ function browserMultipartTransport(
   bucket: string,
 ): S3MultipartTransport {
   return {
-    initiate: async (item, signal) => {
+    initiate: async (item) => {
       const response = await client.send(
         new CreateMultipartUploadCommand({
           Bucket: bucket,
           Key: item.key,
           ContentType: item.file.type || undefined,
         }),
-        { abortSignal: signal },
       );
       if (!response.UploadId) {
         throw new DirectMultipartRequestError(
@@ -520,7 +519,7 @@ function browserMultipartTransport(
         onProgress,
         signal,
       ),
-    complete: async (key, uploadId, parts, signal) => {
+    complete: async (key, uploadId, parts) => {
       await client.send(
         new CompleteMultipartUploadCommand({
           Bucket: bucket,
@@ -533,7 +532,6 @@ function browserMultipartTransport(
             })),
           },
         }),
-        { abortSignal: signal },
       );
     },
     abort: async (key, uploadId) => {

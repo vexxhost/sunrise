@@ -371,17 +371,12 @@ function proxyMultipartTransport(
   bucket: string,
 ): S3MultipartTransport {
   return {
-    initiate: async (item, signal) => {
-      const initiated = await multipartRequest(
-        projectId,
-        bucket,
-        {
-          action: "initiate",
-          key: item.key,
-          contentType: item.file.type || undefined,
-        },
-        signal,
-      );
+    initiate: async (item) => {
+      const initiated = await multipartRequest(projectId, bucket, {
+        action: "initiate",
+        key: item.key,
+        contentType: item.file.type || undefined,
+      });
       if (typeof initiated.uploadId !== "string") {
         throw new ProxyUploadRequestError(
           "RGW did not return a multipart upload ID",
@@ -423,21 +418,16 @@ function proxyMultipartTransport(
         onProgress,
         signal,
       ),
-    complete: async (key, uploadId, parts, signal) => {
-      await multipartRequest(
-        projectId,
-        bucket,
-        {
-          action: "complete",
-          key,
-          uploadId,
-          parts: parts.map((part) => ({
-            partNumber: part.partNumber,
-            etag: part.etag,
-          })),
-        },
-        signal,
-      );
+    complete: async (key, uploadId, parts) => {
+      await multipartRequest(projectId, bucket, {
+        action: "complete",
+        key,
+        uploadId,
+        parts: parts.map((part) => ({
+          partNumber: part.partNumber,
+          etag: part.etag,
+        })),
+      });
     },
     abort: (key, uploadId) => abortMultipart(projectId, bucket, key, uploadId),
     isMissingUpload: (error) =>
