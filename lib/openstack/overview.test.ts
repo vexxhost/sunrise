@@ -309,7 +309,7 @@ describe("project overview loading", () => {
             (init?.headers as Record<string, string>)[
               "X-OpenStack-Manila-API-Version"
             ],
-          ).toBe("2.25");
+          ).toBe("2.51");
         }
         return jsonResponse(payload);
       });

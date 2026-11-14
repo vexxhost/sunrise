@@ -20,6 +20,8 @@ import {
   discoverBlockStorageCapabilities,
   discoverComputeCapabilities,
   discoverNetworkCapabilities,
+  discoverSharedFileSystemCapabilities,
+  manilaDetailApiVersion,
 } from "@/lib/openstack/capabilities-server";
 
 describe("OpenStack capability discovery", () => {
@@ -143,6 +145,62 @@ describe("OpenStack capability discovery", () => {
     await expect(cinderDetailApiVersion("RegionOne")).resolves.toBe(
       "volume 3.0",
     );
+  });
+
+  it("discovers the Manila microversion range and regional ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_SHARE", "2.70");
+    vi.stubEnv("SUNRISE_API_MICROVERSION_SHARE_REGIONONE", "2.69");
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://share.example.test/v2/project-a",
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        min_version: "2.0",
+        status: "CURRENT",
+        version: "2.89",
+      },
+    });
+
+    await expect(
+      discoverSharedFileSystemCapabilities("RegionOne"),
+    ).resolves.toMatchObject({
+      configuredMicroversionMaximum: "2.69",
+      discoveryStatus: "available",
+      microversions: { minimum: "2.0", maximum: "2.89" },
+      serviceType: "share",
+    });
+    expect(mocks.getServiceEndpoint).toHaveBeenCalledWith(
+      "RegionOne",
+      "sharev2",
+      "manila",
+      "project-token",
+    );
+    expect(mocks.openstackRequest).toHaveBeenCalledWith({
+      acceptedStatuses: [300],
+      endpointOverride: "https://share.example.test/v2",
+      path: "/",
+      regionId: "RegionOne",
+      serviceName: "manila",
+      serviceType: "sharev2",
+    });
+  });
+
+  it("negotiates Manila detail reads and falls back safely", async () => {
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://share.example.test/v2/project-a",
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        min_version: "2.0",
+        status: "CURRENT",
+        version: "2.65",
+      },
+    });
+
+    await expect(manilaDetailApiVersion("RegionOne")).resolves.toBe("2.65");
+
+    mocks.getServiceEndpoint.mockResolvedValue(null);
+    await expect(manilaDetailApiVersion("RegionOne")).resolves.toBe("2.51");
   });
 
   it("discovers Neutron extension aliases, including a confirmed empty set", async () => {

@@ -50,8 +50,8 @@ export interface ManilaShareNetwork {
   neutron_subnet_id?: string | null;
   share_network_subnets?: ManilaShareNetworkSubnet[];
   status?: string;
-  security_service_update_support?: boolean;
-  network_allocation_update_support?: boolean;
+  security_service_update_support?: boolean | null;
+  network_allocation_update_support?: boolean | null;
   created_at?: string;
   updated_at?: string | null;
 }

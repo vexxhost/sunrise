@@ -1,7 +1,11 @@
 import { compareMicroversions } from "@/lib/openstack/capabilities";
 import { regionEnvironmentSuffix } from "@/lib/service-policy";
 
-export const configurableMicroversionServices = ["compute", "volume"] as const;
+export const configurableMicroversionServices = [
+  "compute",
+  "share",
+  "volume",
+] as const;
 
 export type ConfigurableMicroversionService =
   (typeof configurableMicroversionServices)[number];
@@ -18,18 +22,26 @@ type MicroversionEnvironment = Record<string, string | undefined>;
 const ENVIRONMENT_PREFIX = "SUNRISE_API_MICROVERSION_";
 const minimumSupportedVersions = {
   compute: "2.79",
+  share: "2.51",
   volume: "3.0",
 } as const satisfies Record<ConfigurableMicroversionService, string>;
 const microversionPattern = /^\d+\.\d+$/;
 const requestServiceIdentities = {
-  compute: { headerService: "compute", serviceTypes: ["compute"] },
+  compute: {
+    headerService: "compute",
+    serviceTypes: ["compute"],
+  },
+  share: {
+    headerService: null,
+    serviceTypes: ["share", "sharev2"],
+  },
   volume: {
     headerService: "volume",
     serviceTypes: ["volume", "volumev2", "volumev3"],
   },
 } as const satisfies Record<
   ConfigurableMicroversionService,
-  { headerService: string; serviceTypes: readonly string[] }
+  { headerService: string | null; serviceTypes: readonly string[] }
 >;
 
 function serviceEnvironmentSuffix(service: ConfigurableMicroversionService) {
@@ -143,14 +155,16 @@ export function apiMicroversionPolicyViolation(
   const maximum = configuredApiMicroversion(policy, service, regionId);
   if (!maximum) return undefined;
 
-  const [headerService, requested, ...extra] = apiVersion.trim().split(/\s+/);
   const expectedHeaderService = requestServiceIdentities[service].headerService;
-  if (
-    extra.length > 0 ||
-    headerService !== expectedHeaderService ||
-    !requested ||
-    !microversionPattern.test(requested)
-  ) {
+  const parts = apiVersion.trim().split(/\s+/);
+  const requested = expectedHeaderService
+    ? parts.length === 2 && parts[0] === expectedHeaderService
+      ? parts[1]
+      : undefined
+    : parts.length === 1
+      ? parts[0]
+      : undefined;
+  if (!requested || !microversionPattern.test(requested)) {
     return `${serviceType} API requests must use an explicit numeric microversion when a maximum is configured.`;
   }
   if (compareMicroversions(requested, maximum) > 0) {

@@ -20,6 +20,10 @@ import {
 import type { ResourceKind } from "@/lib/resource-preferences";
 import { barbicanIdFromRef } from "@/lib/openstack/barbican-schema";
 import { getServicePolicy } from "@/lib/deployment-config";
+import {
+  MANILA_API_VERSION_HEADER,
+  MANILA_BASELINE_MICROVERSION,
+} from "@/lib/openstack/manila-microversions";
 import { resolveObjectStorageBackend } from "@/lib/object-storage/backend";
 import {
   isServiceEnabled,
@@ -90,8 +94,8 @@ const openStackSources: OpenStackSearchSource[] = [
     path: (projectId) =>
       `/${encodeURIComponent(projectId)}/shares/detail?all_tenants=0&limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
     responseKey: "shares",
-    apiVersion: "2.51",
-    apiVersionHeader: "X-OpenStack-Manila-API-Version",
+    apiVersion: MANILA_BASELINE_MICROVERSION,
+    apiVersionHeader: MANILA_API_VERSION_HEADER,
     projectIdField: "project_id",
   },
   {
@@ -103,8 +107,8 @@ const openStackSources: OpenStackSearchSource[] = [
     path: (projectId) =>
       `/${encodeURIComponent(projectId)}/snapshots/detail?all_tenants=0&limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
     responseKey: "snapshots",
-    apiVersion: "2.51",
-    apiVersionHeader: "X-OpenStack-Manila-API-Version",
+    apiVersion: MANILA_BASELINE_MICROVERSION,
+    apiVersionHeader: MANILA_API_VERSION_HEADER,
     projectIdField: "project_id",
   },
   {

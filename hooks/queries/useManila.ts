@@ -16,6 +16,7 @@ import {
   listShareTypesAction,
   listSecurityServicesAction,
 } from "@/lib/openstack/manila";
+import { MANILA_BASELINE_MICROVERSION } from "@/lib/openstack/manila-microversions";
 
 export function sharesQueryOptions(
   regionId: string | undefined,
@@ -55,10 +56,18 @@ export function shareNetworkQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
   networkId: string,
+  apiVersion = MANILA_BASELINE_MICROVERSION,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "manila", "share-network", networkId],
-    queryFn: () => getShareNetworkAction(networkId),
+    queryKey: [
+      regionId,
+      projectId,
+      "manila",
+      "share-network",
+      networkId,
+      apiVersion,
+    ],
+    queryFn: () => getShareNetworkAction(networkId, apiVersion),
     enabled: !!regionId && !!projectId && !!networkId,
   });
 }

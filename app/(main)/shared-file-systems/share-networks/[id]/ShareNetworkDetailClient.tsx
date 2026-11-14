@@ -37,6 +37,7 @@ import {
   shareNetworkSubnetsQueryOptions,
 } from "@/hooks/queries/useManila";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
+import { compareMicroversions } from "@/lib/openstack/capabilities";
 import type {
   ManilaSecurityService,
   ManilaShareNetworkSubnet,
@@ -56,11 +57,18 @@ function securityServiceType(type: ManilaSecurityService["type"]) {
       : "LDAP";
 }
 
+function formatOptionalBoolean(value: boolean | null | undefined) {
+  if (value === undefined || value === null) return "-";
+  return value ? "Supported" : "Not supported";
+}
+
 export function ShareNetworkDetailClient({
+  apiVersion,
   networkId,
   projectId,
   regionId,
 }: {
+  apiVersion: string;
   networkId: string;
   projectId?: string;
   regionId?: string;
@@ -68,8 +76,8 @@ export function ShareNetworkDetailClient({
   const router = useRouter();
   const queryClient = useQueryClient();
   const query = useMemo(
-    () => shareNetworkQueryOptions(regionId, projectId, networkId),
-    [networkId, projectId, regionId],
+    () => shareNetworkQueryOptions(regionId, projectId, networkId, apiVersion),
+    [apiVersion, networkId, projectId, regionId],
   );
   const { data: network } = useSuspenseQuery(query);
   const subnetsQuery = useQuery({
@@ -96,6 +104,24 @@ export function ShareNetworkDetailClient({
   );
   const subnets = subnetsQuery.data ?? [];
   const attachedServices = attachedServicesQuery.data ?? [];
+  const networkStatus = network.status?.toLowerCase();
+  const networkChangeInProgress = networkStatus === "network_change";
+  const networkInError = networkStatus === "error";
+  const networkInUse = networkStatus === "active" || networkChangeInProgress;
+  const inUseSubnetUpdatesAvailable =
+    compareMicroversions(apiVersion, "2.70") >= 0 &&
+    network.network_allocation_update_support === true;
+  const addSubnetUnavailable =
+    networkInError ||
+    networkChangeInProgress ||
+    (networkInUse && !inUseSubnetUpdatesAvailable);
+  const addSubnetMessage = networkInError
+    ? "This share network is in an error state. Resolve it before adding network allocations."
+    : networkChangeInProgress
+      ? "A network allocation change is already in progress."
+      : networkInUse && !inUseSubnetUpdatesAvailable
+        ? "This share network is in use and its backend does not support adding network allocations."
+        : undefined;
 
   const refreshNetwork = useCallback(async () => {
     await Promise.all([
@@ -189,6 +215,12 @@ export function ShareNetworkDetailClient({
           <DetailField label="Security services">
             {attachedServices.length}
           </DetailField>
+          <DetailField label="Security service updates while in use">
+            {formatOptionalBoolean(network.security_service_update_support)}
+          </DetailField>
+          <DetailField label="Network allocation updates while in use">
+            {formatOptionalBoolean(network.network_allocation_update_support)}
+          </DetailField>
         </DetailSection>
       </div>
 
@@ -204,13 +236,16 @@ export function ShareNetworkDetailClient({
           <Button
             size="sm"
             variant="outline"
-            disabled={!scope}
+            disabled={!scope || addSubnetUnavailable}
             onClick={() => setAddingSubnet(true)}
           >
             <Plus className="size-4" />
             Add subnet
           </Button>
         </div>
+        {addSubnetMessage ? (
+          <p className="text-sm text-muted-foreground">{addSubnetMessage}</p>
+        ) : null}
         <div className="overflow-hidden rounded-md border">
           <Table>
             <TableHeader>

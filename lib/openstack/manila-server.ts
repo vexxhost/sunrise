@@ -3,6 +3,10 @@ import "server-only";
 import { getSession } from "@/lib/session";
 import { OpenStackRequestError } from "@/lib/openstack/request";
 import { openstackRequest } from "@/lib/openstack/request-server";
+import {
+  MANILA_BASELINE_MICROVERSION,
+  manilaMicroversion,
+} from "@/lib/openstack/manila-microversions";
 import type {
   ManilaAvailabilityZone,
   ManilaExportLocation,
@@ -17,8 +21,6 @@ import type {
   Network,
   Subnet,
 } from "@/types/openstack";
-
-export const MANILA_API_VERSION = "2.51";
 
 export const MANILA_SERVICE = {
   serviceType: "sharev2",
@@ -46,13 +48,16 @@ async function activeManilaContext() {
   };
 }
 
-async function manilaRequest<T>(path: string) {
+async function manilaRequest<T>(
+  path: string,
+  apiVersion = MANILA_BASELINE_MICROVERSION,
+) {
   const { regionId } = await activeManilaContext();
   return openstackRequest<T>({
     ...MANILA_SERVICE,
+    ...manilaMicroversion(apiVersion),
     regionId,
     path,
-    headers: { "X-OpenStack-Manila-API-Version": MANILA_API_VERSION },
     errorMode: "throw",
   });
 }
@@ -108,10 +113,14 @@ export async function listShareNetworks() {
   );
 }
 
-export async function getShareNetwork(id: string) {
+export async function getShareNetwork(
+  id: string,
+  apiVersion = MANILA_BASELINE_MICROVERSION,
+) {
   const { projectId, projectPathId } = await activeManilaContext();
   const payload = await manilaRequest<{ share_network?: ManilaShareNetwork }>(
     `/${projectPathId}/share-networks/${resourceId(id, "share network ID")}`,
+    apiVersion,
   );
   if (!payload?.share_network) {
     throw new Error("Manila did not return the share network");
