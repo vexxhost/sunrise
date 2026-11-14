@@ -34,6 +34,7 @@ const logger = createLogger("openstack.mutation");
 type OpenStackMutationOptions<T> = {
   actionLabel: string;
   apiVersion?: string;
+  apiVersionHeader?: string;
   body?: unknown;
   headers?: Record<string, string>;
   invalidates?: string[];
@@ -89,6 +90,7 @@ function validationMessage(payload: unknown) {
 export async function executeOpenStackMutation<T = null>({
   actionLabel,
   apiVersion,
+  apiVersionHeader = "OpenStack-API-Version",
   body,
   headers: customHeaders,
   invalidates = [],
@@ -165,7 +167,7 @@ export async function executeOpenStackMutation<T = null>({
     "X-Auth-Token": projectToken!,
     ...customHeaders,
   };
-  if (apiVersion) headers["OpenStack-API-Version"] = apiVersion;
+  if (apiVersion) headers[apiVersionHeader] = apiVersion;
   if (body !== undefined && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }

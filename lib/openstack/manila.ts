@@ -29,8 +29,8 @@ export async function listShareNetworksAction() {
   return listShareNetworks();
 }
 
-export async function getShareNetworkAction(id: string) {
-  return getShareNetwork(id);
+export async function getShareNetworkAction(id: string, apiVersion?: string) {
+  return getShareNetwork(id, apiVersion);
 }
 
 export async function listShareNetworkSubnetsAction(shareNetworkId: string) {

@@ -12,6 +12,8 @@ describe("OpenStack API microversion policy", () => {
     const policy = parseApiMicroversionPolicy({
       SUNRISE_API_MICROVERSION_COMPUTE: "2.95",
       SUNRISE_API_MICROVERSION_COMPUTE_REGION_ONE: "2.90",
+      SUNRISE_API_MICROVERSION_SHARE: "2.70",
+      SUNRISE_API_MICROVERSION_SHARE_REGION_ONE: "2.63",
       SUNRISE_API_MICROVERSION_VOLUME: "3.71",
       SUNRISE_API_MICROVERSION_VOLUME_REGION_ONE: "3.66",
     });
@@ -28,7 +30,13 @@ describe("OpenStack API microversion policy", () => {
     expect(configuredApiMicroversion(policy, "volume", "RegionTwo")).toBe(
       "3.71",
     );
-    expect(apiMicroversionOverrideCount(policy)).toBe(4);
+    expect(configuredApiMicroversion(policy, "share", "Region-One")).toBe(
+      "2.63",
+    );
+    expect(configuredApiMicroversion(policy, "share", "RegionTwo")).toBe(
+      "2.70",
+    );
+    expect(apiMicroversionOverrideCount(policy)).toBe(6);
   });
 
   it("treats blank values as unconfigured", () => {
@@ -54,6 +62,11 @@ describe("OpenStack API microversion policy", () => {
         SUNRISE_API_MICROVERSION_COMPUTE: "2.78",
       }),
     ).toThrow("must be 2.79 or newer");
+    expect(() =>
+      parseApiMicroversionPolicy({
+        SUNRISE_API_MICROVERSION_SHARE: "2.50",
+      }),
+    ).toThrow("must be 2.51 or newer");
     expect(() =>
       parseApiMicroversionPolicy({
         SUNRISE_API_MICROVERSION_VOLUME: "2.99",
@@ -128,6 +141,27 @@ describe("OpenStack API microversion policy", () => {
         "volumev3",
         "RegionOne",
         "volumev3 3.65",
+      ),
+    ).toContain("explicit numeric microversion");
+  });
+
+  it("enforces bare Manila microversions for share service type aliases", () => {
+    const policy = parseApiMicroversionPolicy({
+      SUNRISE_API_MICROVERSION_SHARE_REGIONONE: "2.69",
+    });
+
+    expect(
+      apiMicroversionPolicyViolation(policy, "sharev2", "RegionOne", "2.70"),
+    ).toContain("exceeds the configured maximum 2.69");
+    expect(
+      apiMicroversionPolicyViolation(policy, "sharev2", "RegionOne", "2.69"),
+    ).toBeUndefined();
+    expect(
+      apiMicroversionPolicyViolation(
+        policy,
+        "sharev2",
+        "RegionOne",
+        "share 2.69",
       ),
     ).toContain("explicit numeric microversion");
   });

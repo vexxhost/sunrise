@@ -3,6 +3,8 @@
 import { z } from "zod";
 
 import { guardMutationContext } from "@/lib/mutation-context";
+import { compareMicroversions } from "@/lib/openstack/capabilities";
+import { manilaDetailApiVersion } from "@/lib/openstack/capabilities-server";
 import {
   mutationErrorForStatus,
   mutationFailure,
@@ -17,10 +19,13 @@ import {
   getShareNetwork,
   getShareNetworkSubnet,
   getShareSnapshot,
-  MANILA_API_VERSION,
   MANILA_SERVICE,
   normalizeSecurityService,
 } from "@/lib/openstack/manila-server";
+import {
+  MANILA_BASELINE_MICROVERSION,
+  manilaMicroversion,
+} from "@/lib/openstack/manila-microversions";
 import type {
   ManilaShare,
   ManilaShareAccessRule,
@@ -30,9 +35,7 @@ import type {
   ManilaSecurityService,
 } from "@/types/openstack";
 
-const MANILA_HEADERS = {
-  "X-OpenStack-Manila-API-Version": MANILA_API_VERSION,
-} as const;
+const MANILA_REQUEST_VERSION = manilaMicroversion(MANILA_BASELINE_MICROVERSION);
 
 const resourceIdSchema = z.string().trim().min(1).max(255);
 const optionalText = z.string().trim().max(255).optional();
@@ -297,7 +300,7 @@ export async function createShareAction(
     ...MANILA_SERVICE,
     path: projectPath(guarded.context.scope.projectId, "shares"),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       share: {
         name: value.name,
@@ -350,7 +353,7 @@ export async function createShareNetworkAction(
     ...MANILA_SERVICE,
     path: projectPath(guarded.context.scope.projectId, "share-networks"),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       share_network: {
         name: value.name,
@@ -404,7 +407,7 @@ export async function updateShareNetworkAction(
       `share-networks/${encodeURIComponent(parsedId.value)}`,
     ),
     method: "PUT",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       share_network: {
         name: parsed.value.name,
@@ -449,7 +452,7 @@ export async function deleteShareNetworkAction(
       `share-networks/${encodeURIComponent(parsedId.value)}`,
     ),
     method: "DELETE",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     invalidates: [
       "/shared-file-systems",
       "/shared-file-systems/share-networks",
@@ -479,11 +482,42 @@ export async function createShareNetworkSubnetAction(
   );
   if (!parsed.ok) return parsed.result;
   const parent = await readMutationResource(
-    () => getShareNetwork(parsedId.value),
+    async () => {
+      const apiVersion = await manilaDetailApiVersion(
+        guarded.context.scope.regionId,
+      );
+      return {
+        apiVersion,
+        network: await getShareNetwork(parsedId.value, apiVersion),
+      };
+    },
     guarded.context.scope,
     "share network",
   );
   if (!parent.ok) return parent.result;
+  const networkStatus = parent.value.network.status?.toLowerCase();
+  if (networkStatus === "network_change") {
+    return validationFailure(
+      guarded.context.scope,
+      "A network allocation change is already in progress.",
+    );
+  }
+  if (networkStatus === "error") {
+    return validationFailure(
+      guarded.context.scope,
+      "This share network is in an error state. Resolve it before adding network allocations.",
+    );
+  }
+  if (
+    networkStatus === "active" &&
+    (compareMicroversions(parent.value.apiVersion, "2.70") < 0 ||
+      parent.value.network.network_allocation_update_support !== true)
+  ) {
+    return validationFailure(
+      guarded.context.scope,
+      "This share network is in use and its backend does not support adding network allocations.",
+    );
+  }
   const placement = await readMutationResource(
     () =>
       assertShareNetworkPlacement(
@@ -504,7 +538,7 @@ export async function createShareNetworkSubnetAction(
       `share-networks/${encodeURIComponent(parsedId.value)}/subnets`,
     ),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...manilaMicroversion(parent.value.apiVersion),
     body: {
       "share-network-subnet": {
         neutron_net_id: parsed.value.neutronNetworkId,
@@ -556,7 +590,7 @@ export async function deleteShareNetworkSubnetAction(
       `share-networks/${encodeURIComponent(parsedNetworkId.value)}/subnets/${encodeURIComponent(parsedSubnetId.value)}`,
     ),
     method: "DELETE",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     invalidates: [
       "/shared-file-systems/share-networks",
       `/shared-file-systems/share-networks/${parsedNetworkId.value}`,
@@ -585,7 +619,7 @@ export async function createSecurityServiceAction(
     ...MANILA_SERVICE,
     path: projectPath(guarded.context.scope.projectId, "security-services"),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       security_service: {
         type: value.type,
@@ -645,7 +679,7 @@ export async function updateSecurityServiceAction(
       `security-services/${encodeURIComponent(parsedId.value)}`,
     ),
     method: "PUT",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       security_service: {
         name: value.name,
@@ -699,7 +733,7 @@ export async function deleteSecurityServiceAction(
       `security-services/${encodeURIComponent(parsedId.value)}`,
     ),
     method: "DELETE",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     invalidates: [
       "/shared-file-systems",
       "/shared-file-systems/security-services",
@@ -756,7 +790,7 @@ async function changeShareNetworkSecurityService(
       `share-networks/${encodeURIComponent(parsedNetworkId.value)}/action`,
     ),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       [operation]: { security_service_id: parsedServiceId.value },
     },
@@ -824,7 +858,7 @@ export async function updateShareAction(
       `shares/${encodeURIComponent(parsedId.value)}`,
     ),
     method: "PUT",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       share: {
         display_name: parsed.value.name,
@@ -878,7 +912,7 @@ export async function resizeShareAction(
       `shares/${encodeURIComponent(parsedId.value)}/action`,
     ),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: { [operation]: { new_size: parsed.value.newSize } },
     invalidates: [
       "/shared-file-systems",
@@ -913,7 +947,7 @@ export async function deleteShareAction(
       `shares/${encodeURIComponent(parsedId.value)}`,
     ),
     method: "DELETE",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     removedResource: { kind: "share", id: parsedId.value },
     invalidates: [
       "/shared-file-systems",
@@ -951,7 +985,7 @@ export async function grantShareAccessAction(
       `shares/${encodeURIComponent(parsedId.value)}/action`,
     ),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       allow_access: {
         access_type: parsed.value.accessType,
@@ -1005,7 +1039,7 @@ export async function revokeShareAccessAction(
       `shares/${encodeURIComponent(parsedShareId.value)}/action`,
     ),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: { deny_access: { access_id: parsedAccessId.value } },
     invalidates: [`/shared-file-systems/shares/${parsedShareId.value}`],
     successMessage: "Share access is being revoked.",
@@ -1049,7 +1083,7 @@ export async function createShareSnapshotAction(
     ...MANILA_SERVICE,
     path: projectPath(guarded.context.scope.projectId, "snapshots"),
     method: "POST",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       snapshot: {
         share_id: parsed.value.shareId,
@@ -1103,7 +1137,7 @@ export async function updateShareSnapshotAction(
       `snapshots/${encodeURIComponent(parsedId.value)}`,
     ),
     method: "PUT",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     body: {
       snapshot: {
         display_name: parsed.value.name,
@@ -1148,7 +1182,7 @@ export async function deleteShareSnapshotAction(
       `snapshots/${encodeURIComponent(parsedId.value)}`,
     ),
     method: "DELETE",
-    headers: MANILA_HEADERS,
+    ...MANILA_REQUEST_VERSION,
     removedResource: { kind: "share-snapshot", id: parsedId.value },
     invalidates: [
       "/shared-file-systems",

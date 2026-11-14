@@ -12,6 +12,10 @@ import { openstackRequest } from "@/lib/openstack/request-server";
 import { getServiceEndpoint } from "@/lib/openstack/catalog";
 import { getSession } from "@/lib/session";
 import { configuredApiMicroversion } from "@/lib/openstack/microversion-policy";
+import {
+  MANILA_BASELINE_MICROVERSION,
+  MANILA_DETAIL_MICROVERSION,
+} from "@/lib/openstack/manila-microversions";
 
 const logger = createLogger("openstack.capabilities");
 
@@ -128,6 +132,62 @@ export async function discoverNetworkCapabilities(
   };
 }
 
+export async function discoverSharedFileSystemCapabilities(
+  regionId: string,
+): Promise<OpenStackServiceCapabilities> {
+  const configuredMicroversionMaximum = configuredApiMicroversion(
+    getApiMicroversionPolicy(),
+    "share",
+    regionId,
+  );
+  const session = await getSession();
+  const token = session.keystoneProjectToken;
+  const endpoint = token
+    ? await getServiceEndpoint(regionId, "sharev2", "manila", token)
+    : null;
+  if (!endpoint) {
+    const capabilities = unavailable(
+      "share",
+      "Shared File Systems API microversion discovery was unavailable.",
+    );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
+  }
+
+  const payload = await openstackRequest<unknown>({
+    acceptedStatuses: [300],
+    endpointOverride: versionRoot(endpoint, /^v2$/i),
+    regionId,
+    serviceType: "sharev2",
+    serviceName: "manila",
+    path: "/",
+  });
+  const discovery = parseMicroversionDiscovery(payload);
+
+  if (!discovery) {
+    logger.warn("shared-file-system-microversions-unavailable", { regionId });
+    const capabilities = unavailable(
+      "share",
+      "Shared File Systems API microversion discovery was unavailable.",
+    );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
+  }
+  const { microversions } = discovery;
+
+  return {
+    ...(configuredMicroversionMaximum ? { configuredMicroversionMaximum } : {}),
+    discoveryStatus: "available",
+    message: microversions
+      ? `Shared File Systems API microversions ${microversions.minimum} through ${microversions.maximum} are available.${configuredMicroversionMaximum ? ` Sunrise will not request newer than ${configuredMicroversionMaximum}.` : ""}`
+      : "The Shared File Systems API does not advertise microversion support.",
+    microversions,
+    serviceType: "share",
+  };
+}
+
 export async function discoverBlockStorageCapabilities(
   regionId: string,
 ): Promise<OpenStackServiceCapabilities> {
@@ -201,11 +261,29 @@ export async function cinderDetailApiVersion(regionId?: string) {
   return `volume ${support.requestedMicroversion ?? CINDER_BASELINE_MICROVERSION}`;
 }
 
+export async function manilaDetailApiVersion(regionId?: string) {
+  if (!regionId) return MANILA_BASELINE_MICROVERSION;
+
+  const capabilities = await discoverSharedFileSystemCapabilities(regionId);
+  const support = preferredMicroversionSupport(
+    capabilities,
+    MANILA_BASELINE_MICROVERSION,
+    MANILA_DETAIL_MICROVERSION,
+    "Extended Shared File Systems details",
+  );
+  if (support.status === "unsupported") {
+    throw new Error(support.message);
+  }
+
+  return support.requestedMicroversion ?? MANILA_BASELINE_MICROVERSION;
+}
+
 export async function discoverDeploymentCapabilities(regionId: string) {
-  const [compute, network, volume] = await Promise.all([
+  const [compute, network, share, volume] = await Promise.all([
     discoverComputeCapabilities(regionId),
     discoverNetworkCapabilities(regionId),
+    discoverSharedFileSystemCapabilities(regionId),
     discoverBlockStorageCapabilities(regionId),
   ]);
-  return { compute, network, volume };
+  return { compute, network, share, volume };
 }

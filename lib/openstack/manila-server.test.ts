@@ -60,7 +60,27 @@ describe("Manila project scoping", () => {
     ]);
     expect(mocks.openstackRequest).toHaveBeenCalledWith(
       expect.objectContaining({
+        apiVersion: "2.51",
+        apiVersionHeader: "X-OpenStack-Manila-API-Version",
         path: "/project-a/shares/detail?all_tenants=0",
+      }),
+    );
+  });
+
+  it("uses the requested Manila microversion for share-network detail reads", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      share_network: {
+        id: "share-network-a",
+        project_id: "project-a",
+      },
+    });
+
+    await getShareNetwork("share-network-a", "2.70");
+
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "2.70",
+        apiVersionHeader: "X-OpenStack-Manila-API-Version",
       }),
     );
   });

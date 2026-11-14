@@ -28,6 +28,7 @@ export interface OpenStackRequestOptions {
   serviceName: string;
   path: string;
   apiVersion?: string;
+  apiVersionHeader?: string;
   headers?: Record<string, string>;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
@@ -49,6 +50,7 @@ export async function openstackRequest<T = unknown>({
   serviceName,
   path,
   apiVersion,
+  apiVersionHeader = "OpenStack-API-Version",
   headers: customHeaders = {},
   method = "GET",
   body,
@@ -94,7 +96,7 @@ export async function openstackRequest<T = unknown>({
     ...customHeaders,
     "X-Auth-Token": token,
   };
-  if (apiVersion) headers["OpenStack-API-Version"] = apiVersion;
+  if (apiVersion) headers[apiVersionHeader] = apiVersion;
   if (body !== undefined && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }

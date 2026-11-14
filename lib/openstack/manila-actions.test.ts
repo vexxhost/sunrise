@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getShareNetworkSubnet: vi.fn(),
   getShareSnapshot: vi.fn(),
   guardMutationContext: vi.fn(),
+  manilaDetailApiVersion: vi.fn(),
 }));
 
 vi.mock("@/lib/openstack/mutations", () => ({
@@ -17,6 +18,9 @@ vi.mock("@/lib/openstack/mutations", () => ({
 vi.mock("@/lib/mutation-context", () => ({
   guardMutationContext: mocks.guardMutationContext,
 }));
+vi.mock("@/lib/openstack/capabilities-server", () => ({
+  manilaDetailApiVersion: mocks.manilaDetailApiVersion,
+}));
 vi.mock("@/lib/openstack/manila-server", () => ({
   assertShareNetworkPlacement: mocks.assertShareNetworkPlacement,
   getSecurityService: mocks.getSecurityService,
@@ -24,7 +28,6 @@ vi.mock("@/lib/openstack/manila-server", () => ({
   getShareNetwork: mocks.getShareNetwork,
   getShareNetworkSubnet: mocks.getShareNetworkSubnet,
   getShareSnapshot: mocks.getShareSnapshot,
-  MANILA_API_VERSION: "2.51",
   MANILA_SERVICE: { serviceType: "sharev2", serviceName: "manila" },
 }));
 
@@ -90,6 +93,7 @@ describe("Manila mutation actions", () => {
       type: "ldap",
     });
     mocks.assertShareNetworkPlacement.mockResolvedValue(undefined);
+    mocks.manilaDetailApiVersion.mockResolvedValue("2.70");
   });
 
   it("narrows share creation to supported Manila fields", async () => {
@@ -110,7 +114,8 @@ describe("Manila mutation actions", () => {
       expect.objectContaining({
         method: "POST",
         path: "/project-a/shares",
-        headers: { "X-OpenStack-Manila-API-Version": "2.51" },
+        apiVersion: "2.51",
+        apiVersionHeader: "X-OpenStack-Manila-API-Version",
         body: {
           share: {
             name: "team-data",
@@ -322,14 +327,17 @@ describe("Manila mutation actions", () => {
     );
   });
 
-  it("creates an additional share-network subnet with the v2.51 body key", async () => {
+  it("creates an additional share-network subnet with the negotiated API version", async () => {
     await createShareNetworkSubnetAction(scope, "share-network-a", {
       neutronNetworkId: "network-a",
       neutronSubnetId: "subnet-a",
       availabilityZone: "manila-zone-a",
     });
 
-    expect(mocks.getShareNetwork).toHaveBeenCalledWith("share-network-a");
+    expect(mocks.getShareNetwork).toHaveBeenCalledWith(
+      "share-network-a",
+      "2.70",
+    );
     expect(mocks.assertShareNetworkPlacement).toHaveBeenCalledWith(
       "network-a",
       "subnet-a",
@@ -338,6 +346,8 @@ describe("Manila mutation actions", () => {
       expect.objectContaining({
         method: "POST",
         path: "/project-a/share-networks/share-network-a/subnets",
+        apiVersion: "2.70",
+        apiVersionHeader: "X-OpenStack-Manila-API-Version",
         body: {
           "share-network-subnet": {
             neutron_net_id: "network-a",
@@ -346,6 +356,72 @@ describe("Manila mutation actions", () => {
           },
         },
       }),
+    );
+  });
+
+  it("rejects subnet changes while another network allocation change is running", async () => {
+    mocks.getShareNetwork.mockResolvedValueOnce({
+      id: "share-network-a",
+      project_id: "project-a",
+      status: "network_change",
+    });
+
+    const result = await createShareNetworkSubnetAction(
+      scope,
+      "share-network-a",
+      {
+        neutronNetworkId: "network-a",
+        neutronSubnetId: "subnet-a",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.assertShareNetworkPlacement).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects subnet additions to an in-use network without backend support", async () => {
+    mocks.getShareNetwork.mockResolvedValueOnce({
+      id: "share-network-a",
+      project_id: "project-a",
+      status: "active",
+      network_allocation_update_support: false,
+    });
+
+    const result = await createShareNetworkSubnetAction(
+      scope,
+      "share-network-a",
+      {
+        neutronNetworkId: "network-a",
+        neutronSubnetId: "subnet-a",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("allows subnet additions to an in-use network when Manila confirms support", async () => {
+    mocks.getShareNetwork.mockResolvedValueOnce({
+      id: "share-network-a",
+      project_id: "project-a",
+      status: "active",
+      network_allocation_update_support: true,
+    });
+
+    await createShareNetworkSubnetAction(scope, "share-network-a", {
+      neutronNetworkId: "network-a",
+      neutronSubnetId: "subnet-a",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({ apiVersion: "2.70" }),
     );
   });
 

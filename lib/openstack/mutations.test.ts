@@ -201,6 +201,33 @@ describe("OpenStack mutation executor", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects Manila mutations above the configured share ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_SHARE_REGIONONE", "2.69");
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const result = await executeOpenStackMutation({
+      actionLabel: "add a share network subnet",
+      apiVersion: "2.70",
+      apiVersionHeader: "X-OpenStack-Manila-API-Version",
+      method: "POST",
+      path: "/project-a/share-networks/network-a/subnets",
+      scope,
+      serviceName: "manila",
+      serviceType: "sharev2",
+      successMessage: "Share network subnet creation requested.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("configured maximum 2.69"),
+        retryable: false,
+      },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("records response body stream failures", async () => {
     vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
     resetMetricsForTests();

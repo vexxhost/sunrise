@@ -27,6 +27,10 @@ import {
   requestJson,
   serviceUrl,
 } from "@/lib/openstack/request";
+import {
+  MANILA_API_VERSION_HEADER,
+  MANILA_BASELINE_MICROVERSION,
+} from "@/lib/openstack/manila-microversions";
 import { getServicePolicy } from "@/lib/deployment-config";
 import {
   isServiceEnabled,
@@ -111,8 +115,8 @@ const serviceDefinitions: ServiceDefinition[] = [
     serviceType: "sharev2",
     serviceName: "manilav2",
     path: (projectId) => `/${projectId}/quota-sets/${projectId}/detail`,
-    apiVersion: "2.25",
-    apiVersionHeader: "X-OpenStack-Manila-API-Version",
+    apiVersion: MANILA_BASELINE_MICROVERSION,
+    apiVersionHeader: MANILA_API_VERSION_HEADER,
     parse: parseManilaQuotaDetails,
   },
   {

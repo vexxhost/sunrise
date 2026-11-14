@@ -138,6 +138,48 @@ describe("server-only OpenStack requests", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("enforces Manila ceilings and sends its custom microversion header", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_SHARE_REGIONONE", "2.69");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ shares: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      openstackRequest({
+        apiVersion: "2.70",
+        apiVersionHeader: "X-OpenStack-Manila-API-Version",
+        errorMode: "throw",
+        regionId: "RegionOne",
+        serviceType: "sharev2",
+        serviceName: "manila",
+        path: "/project-a/shares/detail",
+      }),
+    ).rejects.toThrow("exceeds the configured maximum 2.69");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await openstackRequest({
+      apiVersion: "2.69",
+      apiVersionHeader: "X-OpenStack-Manila-API-Version",
+      errorMode: "throw",
+      regionId: "RegionOne",
+      serviceType: "sharev2",
+      serviceName: "manila",
+      path: "/project-a/shares/detail",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://compute.example.test/v2.1/project-a/shares/detail",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-OpenStack-Manila-API-Version": "2.69",
+        }),
+      }),
+    );
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(request.headers).not.toHaveProperty("OpenStack-API-Version");
+  });
+
   it("records response body stream failures without counting success", async () => {
     vi.stubEnv("SUNRISE_METRICS_ENABLED", "true");
     resetMetricsForTests();
