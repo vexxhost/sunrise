@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getShareNetworkSubnet: vi.fn(),
   getShareSnapshot: vi.fn(),
   guardMutationContext: vi.fn(),
+  listShares: vi.fn(),
   manilaDetailApiVersion: vi.fn(),
 }));
 
@@ -28,11 +29,13 @@ vi.mock("@/lib/openstack/manila-server", () => ({
   getShareNetwork: mocks.getShareNetwork,
   getShareNetworkSubnet: mocks.getShareNetworkSubnet,
   getShareSnapshot: mocks.getShareSnapshot,
+  listShares: mocks.listShares,
   MANILA_SERVICE: { serviceType: "sharev2", serviceName: "manila" },
 }));
 
 import {
   attachShareNetworkSecurityServiceAction,
+  checkShareNetworkSecurityServiceAttachAction,
   createSecurityServiceAction,
   createShareAction,
   createShareNetworkAction,
@@ -42,6 +45,7 @@ import {
   deleteShareAction,
   deleteShareNetworkAction,
   deleteShareNetworkSubnetAction,
+  detachShareNetworkSecurityServiceAction,
   grantShareAccessAction,
   resizeShareAction,
   updateShareNetworkAction,
@@ -57,13 +61,29 @@ describe("Manila mutation actions", () => {
       ok: true,
       context: { scope },
     });
-    mocks.executeOpenStackMutation.mockImplementation(async (options) => ({
-      ok: true,
-      status: "success",
-      data: null,
-      message: options.successMessage,
-      scope,
-    }));
+    mocks.executeOpenStackMutation.mockImplementation(async (options) => {
+      const body = options.body as Record<string, unknown> | undefined;
+      const compatibilityPayload = body?.add_security_service_check
+        ? {
+            compatible: true,
+            requested_operation: {
+              operation: "add_security_service",
+              current_security_service: null,
+              new_security_service: "security-service-a",
+            },
+          }
+        : null;
+      return {
+        ok: true,
+        status: "success",
+        data:
+          compatibilityPayload && options.transform
+            ? options.transform(compatibilityPayload)
+            : compatibilityPayload,
+        message: options.successMessage,
+        scope,
+      };
+    });
     mocks.getShare.mockResolvedValue({
       id: "share-a",
       size: 20,
@@ -80,6 +100,7 @@ describe("Manila mutation actions", () => {
       id: "share-network-a",
       name: "team-network",
       project_id: "project-a",
+      security_service_update_support: true,
     });
     mocks.getShareNetworkSubnet.mockResolvedValue({
       id: "network-subnet-a",
@@ -93,6 +114,7 @@ describe("Manila mutation actions", () => {
       type: "ldap",
     });
     mocks.assertShareNetworkPlacement.mockResolvedValue(undefined);
+    mocks.listShares.mockResolvedValue([]);
     mocks.manilaDetailApiVersion.mockResolvedValue("2.70");
   });
 
@@ -519,21 +541,160 @@ describe("Manila mutation actions", () => {
     );
   });
 
-  it("preflights both resources before attaching a security service", async () => {
+  it("checks compatibility before attaching a security service", async () => {
     await attachShareNetworkSecurityServiceAction(
       scope,
       "share-network-a",
       "security-service-a",
     );
 
-    expect(mocks.getShareNetwork).toHaveBeenCalledWith("share-network-a");
+    expect(mocks.getShareNetwork).toHaveBeenCalledWith(
+      "share-network-a",
+      "2.70",
+    );
     expect(mocks.getSecurityService).toHaveBeenCalledWith("security-service-a");
-    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        apiVersion: "2.70",
+        body: {
+          add_security_service_check: {
+            reset_operation: false,
+            security_service_id: "security-service-a",
+          },
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
       expect.objectContaining({
         method: "POST",
         path: "/project-a/share-networks/share-network-a/action",
+        apiVersion: "2.70",
         body: {
           add_security_service: {
+            security_service_id: "security-service-a",
+          },
+        },
+      }),
+    );
+  });
+
+  it("returns a retryable result while the compatibility check is pending", async () => {
+    mocks.executeOpenStackMutation.mockResolvedValueOnce({
+      ok: true,
+      status: "success",
+      data: { compatible: null },
+      message: "Security-service compatibility checked.",
+      scope,
+    });
+
+    const result = await attachShareNetworkSecurityServiceAction(
+      scope,
+      "share-network-a",
+      "security-service-a",
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "conflict", retryable: true },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call Manila when the share servers cannot update security services", async () => {
+    mocks.getShareNetwork.mockResolvedValueOnce({
+      id: "share-network-a",
+      status: "active",
+      security_service_update_support: false,
+    });
+
+    const result = await attachShareNetworkSecurityServiceAction(
+      scope,
+      "share-network-a",
+      "security-service-a",
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("uses the legacy attach action when Manila 2.63 is unavailable", async () => {
+    mocks.manilaDetailApiVersion.mockResolvedValueOnce("2.51");
+
+    await attachShareNetworkSecurityServiceAction(
+      scope,
+      "share-network-a",
+      "security-service-a",
+    );
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "2.51",
+        body: {
+          add_security_service: {
+            security_service_id: "security-service-a",
+          },
+        },
+      }),
+    );
+  });
+
+  it("can restart an attach compatibility check", async () => {
+    await checkShareNetworkSecurityServiceAttachAction(
+      scope,
+      "share-network-a",
+      "security-service-a",
+      true,
+    );
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "2.70",
+        body: {
+          add_security_service_check: {
+            reset_operation: true,
+            security_service_id: "security-service-a",
+          },
+        },
+      }),
+    );
+  });
+
+  it("blocks detach while a project share uses the network", async () => {
+    mocks.listShares.mockResolvedValueOnce([
+      { id: "share-a", share_network_id: "share-network-a" },
+    ]);
+
+    const result = await detachShareNetworkSecurityServiceAction(
+      scope,
+      "share-network-a",
+      "security-service-a",
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("detaches a security service from an unused network", async () => {
+    await detachShareNetworkSecurityServiceAction(
+      scope,
+      "share-network-a",
+      "security-service-a",
+    );
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "2.70",
+        body: {
+          remove_security_service: {
             security_service_id: "security-service-a",
           },
         },

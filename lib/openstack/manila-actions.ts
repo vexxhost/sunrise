@@ -19,14 +19,17 @@ import {
   getShareNetwork,
   getShareNetworkSubnet,
   getShareSnapshot,
+  listShares,
   MANILA_SERVICE,
   normalizeSecurityService,
 } from "@/lib/openstack/manila-server";
 import {
   MANILA_BASELINE_MICROVERSION,
+  MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION,
   manilaMicroversion,
 } from "@/lib/openstack/manila-microversions";
 import type {
+  ManilaSecurityServiceCompatibilityCheck,
   ManilaShare,
   ManilaShareAccessRule,
   ManilaShareNetwork,
@@ -229,6 +232,50 @@ function securityServiceFromPayload(payload: unknown) {
       }
     ).security_service,
   );
+}
+
+function securityServiceCompatibilityFromPayload(
+  payload: unknown,
+): ManilaSecurityServiceCompatibilityCheck {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Manila did not return a compatibility result");
+  }
+  const record = payload as Record<string, unknown>;
+  if (record.compatible !== null && typeof record.compatible !== "boolean") {
+    throw new Error("Manila returned an invalid compatibility result");
+  }
+
+  const requestedOperation =
+    record.requested_operation && typeof record.requested_operation === "object"
+      ? (record.requested_operation as Record<string, unknown>)
+      : undefined;
+  const operation = requestedOperation?.operation;
+  if (
+    operation !== undefined &&
+    operation !== "add_security_service" &&
+    operation !== "update_security_service"
+  ) {
+    throw new Error("Manila returned an invalid compatibility operation");
+  }
+
+  return {
+    compatible: record.compatible as boolean | null,
+    ...(requestedOperation
+      ? {
+          requested_operation: {
+            ...(operation ? { operation } : {}),
+            current_security_service:
+              typeof requestedOperation.current_security_service === "string"
+                ? requestedOperation.current_security_service
+                : null,
+            new_security_service:
+              typeof requestedOperation.new_security_service === "string"
+                ? requestedOperation.new_security_service
+                : null,
+          },
+        }
+      : {}),
+  };
 }
 
 function resourcePreflightFailure(
@@ -743,60 +790,162 @@ export async function deleteSecurityServiceAction(
   });
 }
 
-async function changeShareNetworkSecurityService(
+async function shareNetworkSecurityServiceResources(
   scope: MutationScope,
   shareNetworkId: string,
   securityServiceId: string,
-  operation: "add_security_service" | "remove_security_service",
 ) {
-  const guarded = await activeMutationScope(scope);
-  if (!guarded.ok) return guarded.result;
-  const parsedNetworkId = parseInput(
-    resourceIdSchema,
-    shareNetworkId,
-    guarded.context.scope,
-  );
-  if (!parsedNetworkId.ok) return parsedNetworkId.result;
+  const parsedNetworkId = parseInput(resourceIdSchema, shareNetworkId, scope);
+  if (!parsedNetworkId.ok) {
+    return { ok: false, result: parsedNetworkId.result } as const;
+  }
   const parsedServiceId = parseInput(
     resourceIdSchema,
     securityServiceId,
-    guarded.context.scope,
+    scope,
   );
-  if (!parsedServiceId.ok) return parsedServiceId.result;
-  const [network, service] = await Promise.all([
-    readMutationResource(
-      () => getShareNetwork(parsedNetworkId.value),
-      guarded.context.scope,
-      "share network",
-    ),
-    readMutationResource(
-      () => getSecurityService(parsedServiceId.value),
-      guarded.context.scope,
-      "security service",
-    ),
-  ]);
-  if (!network.ok) return network.result;
-  if (!service.ok) return service.result;
+  if (!parsedServiceId.ok) {
+    return { ok: false, result: parsedServiceId.result } as const;
+  }
+  const resources = await readMutationResource(
+    async () => {
+      const apiVersion = await manilaDetailApiVersion(scope.regionId);
+      const [network, service] = await Promise.all([
+        getShareNetwork(parsedNetworkId.value, apiVersion),
+        getSecurityService(parsedServiceId.value),
+      ]);
+      return { apiVersion, network, service };
+    },
+    scope,
+    "share network and security service",
+  );
+  if (!resources.ok) return resources;
 
+  const status = resources.value.network.status?.toLowerCase();
+  if (status === "network_change") {
+    return {
+      ok: false,
+      result: validationFailure(
+        scope,
+        "A share network security-service change is already in progress.",
+      ),
+    } as const;
+  }
+  if (status === "error") {
+    return {
+      ok: false,
+      result: validationFailure(
+        scope,
+        "This share network is in an error state. Resolve it before changing security services.",
+      ),
+    } as const;
+  }
+
+  return {
+    ok: true,
+    value: {
+      ...resources.value,
+      networkId: parsedNetworkId.value,
+      serviceId: parsedServiceId.value,
+    },
+  } as const;
+}
+
+async function checkShareNetworkSecurityServiceCompatibility(
+  scope: MutationScope,
+  networkId: string,
+  serviceId: string,
+  apiVersion: string,
+  resetOperation: boolean,
+) {
+  return executeOpenStackMutation<ManilaSecurityServiceCompatibilityCheck>({
+    actionLabel: "check security-service compatibility",
+    scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      scope.projectId,
+      `share-networks/${encodeURIComponent(networkId)}/action`,
+    ),
+    method: "POST",
+    ...manilaMicroversion(apiVersion),
+    body: {
+      add_security_service_check: {
+        security_service_id: serviceId,
+        reset_operation: resetOperation,
+      },
+    },
+    successMessage: "Security-service compatibility checked.",
+    transform: securityServiceCompatibilityFromPayload,
+  });
+}
+
+export async function checkShareNetworkSecurityServiceAttachAction(
+  scope: MutationScope,
+  shareNetworkId: string,
+  securityServiceId: string,
+  resetOperation = false,
+): Promise<MutationResult<ManilaSecurityServiceCompatibilityCheck>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const resources = await shareNetworkSecurityServiceResources(
+    guarded.context.scope,
+    shareNetworkId,
+    securityServiceId,
+  );
+  if (!resources.ok) return resources.result;
+  if (
+    compareMicroversions(
+      resources.value.apiVersion,
+      MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION,
+    ) < 0
+  ) {
+    return validationFailure(
+      guarded.context.scope,
+      `Compatibility checks require Shared File Systems API ${MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION} or newer.`,
+    );
+  }
+  if (resources.value.network.security_service_update_support === false) {
+    return validationFailure(
+      guarded.context.scope,
+      "This share network is in use and at least one share server does not support security-service updates.",
+    );
+  }
+
+  return checkShareNetworkSecurityServiceCompatibility(
+    guarded.context.scope,
+    resources.value.networkId,
+    resources.value.serviceId,
+    resources.value.apiVersion,
+    resetOperation,
+  );
+}
+
+async function applyShareNetworkSecurityServiceChange(
+  scope: MutationScope,
+  networkId: string,
+  serviceId: string,
+  apiVersion: string,
+  operation: "add_security_service" | "remove_security_service",
+) {
   return executeOpenStackMutation<null>({
     actionLabel:
       operation === "add_security_service"
         ? "attach this security service"
         : "detach this security service",
-    scope: guarded.context.scope,
+    scope,
     ...MANILA_SERVICE,
     path: projectPath(
-      guarded.context.scope.projectId,
-      `share-networks/${encodeURIComponent(parsedNetworkId.value)}/action`,
+      scope.projectId,
+      `share-networks/${encodeURIComponent(networkId)}/action`,
     ),
     method: "POST",
-    ...MANILA_REQUEST_VERSION,
+    ...manilaMicroversion(apiVersion),
     body: {
-      [operation]: { security_service_id: parsedServiceId.value },
+      [operation]: { security_service_id: serviceId },
     },
     invalidates: [
       "/shared-file-systems/security-services",
-      `/shared-file-systems/share-networks/${parsedNetworkId.value}`,
+      `/shared-file-systems/share-networks/${networkId}`,
     ],
     successMessage:
       operation === "add_security_service"
@@ -810,10 +959,59 @@ export async function attachShareNetworkSecurityServiceAction(
   shareNetworkId: string,
   securityServiceId: string,
 ) {
-  return changeShareNetworkSecurityService(
-    scope,
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const resources = await shareNetworkSecurityServiceResources(
+    guarded.context.scope,
     shareNetworkId,
     securityServiceId,
+  );
+  if (!resources.ok) return resources.result;
+
+  if (
+    compareMicroversions(
+      resources.value.apiVersion,
+      MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION,
+    ) >= 0
+  ) {
+    if (resources.value.network.security_service_update_support === false) {
+      return validationFailure(
+        guarded.context.scope,
+        "This share network is in use and at least one share server does not support security-service updates.",
+      );
+    }
+    const compatibility = await checkShareNetworkSecurityServiceCompatibility(
+      guarded.context.scope,
+      resources.value.networkId,
+      resources.value.serviceId,
+      resources.value.apiVersion,
+      false,
+    );
+    if (!compatibility.ok) return compatibility;
+    if (compatibility.data.compatible === null) {
+      return mutationFailure(
+        {
+          code: "conflict",
+          message:
+            "Manila is still checking this security service. Try again shortly.",
+          retryable: true,
+        },
+        guarded.context.scope,
+      );
+    }
+    if (!compatibility.data.compatible) {
+      return validationFailure(
+        guarded.context.scope,
+        "This security service is not compatible with every share server on the network.",
+      );
+    }
+  }
+
+  return applyShareNetworkSecurityServiceChange(
+    guarded.context.scope,
+    resources.value.networkId,
+    resources.value.serviceId,
+    resources.value.apiVersion,
     "add_security_service",
   );
 }
@@ -823,10 +1021,36 @@ export async function detachShareNetworkSecurityServiceAction(
   shareNetworkId: string,
   securityServiceId: string,
 ) {
-  return changeShareNetworkSecurityService(
-    scope,
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const resources = await shareNetworkSecurityServiceResources(
+    guarded.context.scope,
     shareNetworkId,
     securityServiceId,
+  );
+  if (!resources.ok) return resources.result;
+  const shares = await readMutationResource(
+    () => listShares(),
+    guarded.context.scope,
+    "shares",
+  );
+  if (!shares.ok) return shares.result;
+  if (
+    shares.value.some(
+      (share) => share.share_network_id === resources.value.networkId,
+    )
+  ) {
+    return validationFailure(
+      guarded.context.scope,
+      "Security services can be detached only after every share using this network has been deleted.",
+    );
+  }
+
+  return applyShareNetworkSecurityServiceChange(
+    guarded.context.scope,
+    resources.value.networkId,
+    resources.value.serviceId,
+    resources.value.apiVersion,
     "remove_security_service",
   );
 }

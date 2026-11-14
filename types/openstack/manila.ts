@@ -41,6 +41,15 @@ export interface ManilaSecurityService {
   updated_at?: string | null;
 }
 
+export interface ManilaSecurityServiceCompatibilityCheck {
+  compatible: boolean | null;
+  requested_operation?: {
+    operation?: "add_security_service" | "update_security_service";
+    current_security_service?: string | null;
+    new_security_service?: string | null;
+  };
+}
+
 export interface ManilaShareNetwork {
   id: string;
   name?: string | null;
