@@ -5,7 +5,7 @@ allowBuilds:
 overrides:
   # ESLint's current dependency graph still requests vulnerable minimatch 10.
   # Remove this once its supported ranges include a patched 11.x release.
-  "minimatch@>=7.0.0 <11.0.1": "11.0.5"
+  "minimatch@>=7.0.0 <11.0.1": "11.0.8"
 
   # CodeMirror extensions exchange class instances at runtime. Pin the core
   # packages exactly so pnpm cannot install incompatible duplicate copies.
