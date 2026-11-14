@@ -1,4 +1,5 @@
 export const MANILA_BASELINE_MICROVERSION = "2.51";
+export const MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION = "2.63";
 export const MANILA_DETAIL_MICROVERSION = "2.70";
 export const MANILA_API_VERSION_HEADER = "X-OpenStack-Manila-API-Version";
 

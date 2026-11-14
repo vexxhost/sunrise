@@ -38,6 +38,7 @@ import {
 } from "@/hooks/queries/useManila";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 import { compareMicroversions } from "@/lib/openstack/capabilities";
+import { MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION } from "@/lib/openstack/manila-microversions";
 import type {
   ManilaSecurityService,
   ManilaShareNetworkSubnet,
@@ -121,6 +122,24 @@ export function ShareNetworkDetailClient({
       ? "A network allocation change is already in progress."
       : networkInUse && !inUseSubnetUpdatesAvailable
         ? "This share network is in use and its backend does not support adding network allocations."
+        : undefined;
+  const securityServiceChecksAvailable =
+    compareMicroversions(
+      apiVersion,
+      MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION,
+    ) >= 0;
+  const attachSecurityServiceUnavailable =
+    networkInError ||
+    networkChangeInProgress ||
+    (securityServiceChecksAvailable &&
+      network.security_service_update_support === false);
+  const attachSecurityServiceMessage = networkInError
+    ? "This share network is in an error state. Resolve it before changing security services."
+    : networkChangeInProgress
+      ? "A share network security-service change is already in progress."
+      : securityServiceChecksAvailable &&
+          network.security_service_update_support === false
+        ? "At least one share server on this network does not support security-service updates."
         : undefined;
 
   const refreshNetwork = useCallback(async () => {
@@ -329,13 +348,22 @@ export function ShareNetworkDetailClient({
           <Button
             size="sm"
             variant="outline"
-            disabled={!scope || securityServicesQuery.isLoading}
+            disabled={
+              !scope ||
+              securityServicesQuery.isLoading ||
+              attachSecurityServiceUnavailable
+            }
             onClick={() => setAttachingService(true)}
           >
             <Link2 className="size-4" />
             Attach service
           </Button>
         </div>
+        {attachSecurityServiceMessage ? (
+          <p className="text-sm text-muted-foreground">
+            {attachSecurityServiceMessage}
+          </p>
+        ) : null}
         <div className="overflow-hidden rounded-md border">
           <Table>
             <TableHeader>
@@ -429,6 +457,7 @@ export function ShareNetworkDetailClient({
       ) : null}
       {attachingService && scope ? (
         <ShareNetworkSecurityServiceAttachDialog
+          apiVersion={apiVersion}
           attachedServices={attachedServices}
           availableServices={securityServicesQuery.data ?? []}
           network={network}

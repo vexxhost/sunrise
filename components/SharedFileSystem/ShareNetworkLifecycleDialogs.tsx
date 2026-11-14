@@ -31,11 +31,14 @@ import {
 import { manilaAvailabilityZonesQueryOptions } from "@/hooks/queries/useManila";
 import {
   attachShareNetworkSecurityServiceAction,
+  checkShareNetworkSecurityServiceAttachAction,
   createShareNetworkSubnetAction,
   deleteShareNetworkAction,
   deleteShareNetworkSubnetAction,
   detachShareNetworkSecurityServiceAction,
 } from "@/lib/openstack/manila-actions";
+import { compareMicroversions } from "@/lib/openstack/capabilities";
+import { MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION } from "@/lib/openstack/manila-microversions";
 import type { MutationScope } from "@/lib/mutations";
 import type {
   ManilaSecurityService,
@@ -44,6 +47,15 @@ import type {
 } from "@/types/openstack";
 
 type Complete = () => Promise<void> | void;
+
+const COMPATIBILITY_CHECK_ATTEMPTS = 15;
+const COMPATIBILITY_CHECK_INTERVAL_MS = 2_000;
+
+function waitForCompatibilityCheck() {
+  return new Promise((resolve) =>
+    setTimeout(resolve, COMPATIBILITY_CHECK_INTERVAL_MS),
+  );
+}
 
 export function ShareNetworkSubnetCreateDialog({
   existingSubnets,
@@ -273,6 +285,7 @@ export function ShareNetworkSubnetDeleteDialog({
 }
 
 export function ShareNetworkSecurityServiceAttachDialog({
+  apiVersion,
   attachedServices,
   availableServices,
   network,
@@ -280,6 +293,7 @@ export function ShareNetworkSecurityServiceAttachDialog({
   onOpenChange,
   scope,
 }: {
+  apiVersion: string;
   attachedServices: ManilaSecurityService[];
   availableServices: ManilaSecurityService[];
   network: ManilaShareNetwork;
@@ -292,11 +306,52 @@ export function ShareNetworkSecurityServiceAttachDialog({
   const [serviceId, setServiceId] = useState(choices[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const compatibilityChecksAvailable =
+    compareMicroversions(
+      apiVersion,
+      MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION,
+    ) >= 0;
+
+  const waitUntilCompatible = async () => {
+    if (!compatibilityChecksAvailable) return true;
+
+    for (
+      let attempt = 0;
+      attempt < COMPATIBILITY_CHECK_ATTEMPTS;
+      attempt += 1
+    ) {
+      const result = await checkShareNetworkSecurityServiceAttachAction(
+        scope,
+        network.id,
+        serviceId,
+      );
+      if (!result.ok) {
+        setError(result.error.message);
+        return false;
+      }
+      if (result.data.compatible === true) return true;
+      if (result.data.compatible === false) {
+        setError(
+          "This security service is not compatible with every share server on the network.",
+        );
+        return false;
+      }
+      if (attempt + 1 < COMPATIBILITY_CHECK_ATTEMPTS) {
+        await waitForCompatibilityCheck();
+      }
+    }
+
+    setError(
+      "Manila is still checking this security service. Try attaching it again to continue waiting.",
+    );
+    return false;
+  };
 
   const attach = () => {
     if (!serviceId || pending) return;
     startTransition(async () => {
       setError(null);
+      if (!(await waitUntilCompatible())) return;
       const result = await attachShareNetworkSecurityServiceAction(
         scope,
         network.id,
@@ -320,16 +375,19 @@ export function ShareNetworkSecurityServiceAttachDialog({
             Attach security service
           </DialogTitle>
           <DialogDescription>
-            Connect a project security service to this share network. Under the
-            current Manila 2.51 contract, an in-use network may reject this
-            operation because the 2.63 compatibility check is unavailable.
+            {compatibilityChecksAvailable
+              ? "Connect a project security service to this share network. Sunrise checks every existing share server for compatibility before attaching it."
+              : "Connect a project security service to this share network. This cloud cannot preflight in-use compatibility, so Manila will reject the change when share servers prevent it."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-1.5">
           <Label htmlFor="attach-security-service">Security service</Label>
           <Select
             value={serviceId}
-            onValueChange={setServiceId}
+            onValueChange={(value) => {
+              setServiceId(value);
+              setError(null);
+            }}
             disabled={pending}
           >
             <SelectTrigger id="attach-security-service">
@@ -356,8 +414,8 @@ export function ShareNetworkSecurityServiceAttachDialog({
           <Button variant="outline" onClick={onOpenChange} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={attach} disabled={pending || !serviceId}>
-            {pending ? "Attaching" : "Attach service"}
+          <Button onClick={attach} disabled={!serviceId} loading={pending}>
+            Attach service
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -404,7 +462,7 @@ export function ShareNetworkSecurityServiceDetachDialog({
       onConfirm={detach}
       pending={pending}
       title="Detach security service?"
-      description="Share servers using this authentication service can block the operation or lose directory access."
+      description="Manila permits detaching only when this share network has no share servers. Sunrise verifies visible shares first, and Manila performs the final safety check."
       confirmLabel="Detach service"
       pendingLabel="Detaching service"
       error={error}
