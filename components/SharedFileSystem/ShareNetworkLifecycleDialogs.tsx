@@ -305,8 +305,6 @@ export function ShareNetworkSecurityServiceAttachDialog({
   const choices = availableServices.filter(({ id }) => !attachedIds.has(id));
   const [serviceId, setServiceId] = useState(choices[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
-  const [restartCompatibilityCheck, setRestartCompatibilityCheck] =
-    useState(false);
   const [pending, startTransition] = useTransition();
   const compatibilityChecksAvailable =
     compareMicroversions(
@@ -316,8 +314,6 @@ export function ShareNetworkSecurityServiceAttachDialog({
 
   const waitUntilCompatible = async () => {
     if (!compatibilityChecksAvailable) return true;
-    const resetOperation = restartCompatibilityCheck;
-    setRestartCompatibilityCheck(false);
 
     for (
       let attempt = 0;
@@ -328,7 +324,6 @@ export function ShareNetworkSecurityServiceAttachDialog({
         scope,
         network.id,
         serviceId,
-        resetOperation && attempt === 0,
       );
       if (!result.ok) {
         setError(result.error.message);
@@ -347,9 +342,8 @@ export function ShareNetworkSecurityServiceAttachDialog({
     }
 
     setError(
-      "Manila is still checking this security service. Try attaching it again to restart the check.",
+      "Manila is still checking this security service. Try attaching it again to continue waiting.",
     );
-    setRestartCompatibilityCheck(true);
     return false;
   };
 
@@ -393,7 +387,6 @@ export function ShareNetworkSecurityServiceAttachDialog({
             onValueChange={(value) => {
               setServiceId(value);
               setError(null);
-              setRestartCompatibilityCheck(false);
             }}
             disabled={pending}
           >
