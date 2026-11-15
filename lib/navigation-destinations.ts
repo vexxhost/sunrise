@@ -28,6 +28,7 @@ export type NavigationDestinationId =
   | "networking.routers"
   | "networking.ports"
   | "networking.floating-ips"
+  | "networking.load-balancers"
   | "networking.security-groups"
   | "kubernetes.clusters"
   | "kubernetes.templates"
@@ -55,6 +56,7 @@ export type NavigationDestinationIcon =
   | "image"
   | "instance"
   | "key-pair"
+  | "load-balancer"
   | "network"
   | "order"
   | "port"
@@ -108,6 +110,7 @@ const cinder = [
   { serviceType: "volumev3", serviceName: "cinder" },
 ];
 const neutron = [{ serviceType: "network", serviceName: "neutron" }];
+const octavia = [{ serviceType: "load-balancer", serviceName: "octavia" }];
 const magnum = [
   { serviceType: "container-infra", serviceName: "magnum" },
   { serviceType: "container-infrastructure", serviceName: "magnum" },
@@ -256,6 +259,18 @@ const definitions: NavigationDestinationDefinition[] = [
     icon: "floating-ip",
     keywords: ["neutron", "public ip", "elastic ip", "eip"],
     catalogIdentities: neutron,
+  },
+  {
+    id: "networking.load-balancers",
+    label: "Load balancers",
+    description: "Octavia virtual IPs, listeners, pools, and members.",
+    href: "/networking/load-balancers",
+    service: "networking",
+    policyService: "load-balancer",
+    group: "Networking",
+    icon: "load-balancer",
+    keywords: ["octavia", "lb", "vip", "listeners", "pools"],
+    catalogIdentities: octavia,
   },
   {
     id: "networking.security-groups",

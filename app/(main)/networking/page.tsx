@@ -4,6 +4,7 @@ import {
   Network,
   Router,
   Shield,
+  Waypoints,
   Workflow,
 } from "lucide-react";
 
@@ -65,23 +66,41 @@ function currentMeta(summary: ReturnType<typeof metricSummary>) {
 export default async function NetworkingPage() {
   const cloud = await loadCloudContext();
   const { snapshot } = cloud;
-  const [network] = await loadProjectOverview({
+  const services = await loadProjectOverview({
     token: cloud.keystoneToken,
     regionId: snapshot.region.id ?? undefined,
     projectId: snapshot.project.id ?? undefined,
     catalog: cloud.catalog,
-    serviceIds: ["network"],
+    serviceIds: ["network", "load-balancing"],
   });
+  const network = services.find(({ id }) => id === "network");
+  const loadBalancing = services.find(({ id }) => id === "load-balancing");
   const networks = metricSummary(network, "network");
   const ports = metricSummary(network, "port");
   const routers = metricSummary(network, "router");
   const floatingIps = metricSummary(network, "floatingip");
   const securityGroups = metricSummary(network, "security_group");
+  const loadBalancers = metricSummary(loadBalancing, "loadbalancer");
+  const loadBalancersAvailable = snapshot.destinations.some(
+    ({ id, status }) =>
+      id === "networking.load-balancers" && status !== "unavailable",
+  );
+  const neutronAvailable = snapshot.destinations.some(
+    ({ id, status }) =>
+      id === "networking.networks" && status !== "unavailable",
+  );
   const metrics: ServiceLandingMetric[] = [
-    { label: "Networks", icon: Network, ...networks },
-    { label: "Ports", icon: Cable, ...ports },
-    { label: "Routers", icon: Router, ...routers },
-    { label: "Floating IPs", icon: Globe2, ...floatingIps },
+    ...(neutronAvailable
+      ? [
+          { label: "Networks", icon: Network, ...networks },
+          { label: "Ports", icon: Cable, ...ports },
+          { label: "Routers", icon: Router, ...routers },
+          { label: "Floating IPs", icon: Globe2, ...floatingIps },
+        ]
+      : []),
+    ...(loadBalancersAvailable
+      ? [{ label: "Load balancers", icon: Waypoints, ...loadBalancers }]
+      : []),
   ];
   const createActions = createActionsForService(
     snapshot.createActions,
@@ -100,78 +119,102 @@ export default async function NetworkingPage() {
       actions={<CreateResourceMenu actions={createActions} />}
       metrics={metrics}
     >
-      <ServiceLandingSection
-        title="Connectivity"
-        description="Build and inspect the virtual network paths used by cloud resources."
-      >
-        <ServiceResourceGrid
-          resources={[
-            {
-              name: "Networks",
-              href: "/networking/networks",
-              icon: Network,
-              description:
-                "Manage project networks, subnets, address pools, and DHCP settings.",
-              meta: currentMeta(networks),
-              createAction: createById.get("network"),
-            },
-            {
-              name: "Routers",
-              href: "/networking/routers",
-              icon: Router,
-              description:
-                "Connect subnets, external gateways, and custom static routes.",
-              meta: currentMeta(routers),
-              createAction: createById.get("router"),
-            },
-            {
-              name: "Ports",
-              href: "/networking/ports",
-              icon: Cable,
-              description:
-                "Inspect virtual interfaces, fixed addresses, and device ownership.",
-              meta: currentMeta(ports),
-              createAction: createById.get("port"),
-            },
-          ]}
-        />
-      </ServiceLandingSection>
+      {neutronAvailable ? (
+        <ServiceLandingSection
+          title="Connectivity"
+          description="Build and inspect the virtual network paths used by cloud resources."
+        >
+          <ServiceResourceGrid
+            resources={[
+              {
+                name: "Networks",
+                href: "/networking/networks",
+                icon: Network,
+                description:
+                  "Manage project networks, subnets, address pools, and DHCP settings.",
+                meta: currentMeta(networks),
+                createAction: createById.get("network"),
+              },
+              {
+                name: "Routers",
+                href: "/networking/routers",
+                icon: Router,
+                description:
+                  "Connect subnets, external gateways, and custom static routes.",
+                meta: currentMeta(routers),
+                createAction: createById.get("router"),
+              },
+              {
+                name: "Ports",
+                href: "/networking/ports",
+                icon: Cable,
+                description:
+                  "Inspect virtual interfaces, fixed addresses, and device ownership.",
+                meta: currentMeta(ports),
+                createAction: createById.get("port"),
+              },
+            ]}
+          />
+        </ServiceLandingSection>
+      ) : null}
 
-      <ServiceLandingSection
-        title="Addressing and security"
-        description="Control public reachability and stateful traffic policy."
-      >
-        <ServiceResourceGrid
-          resources={[
-            {
-              name: "Floating IPs",
-              href: "/networking/floating-ips",
-              icon: Globe2,
-              description:
-                "Allocate public addresses and associate them with eligible ports.",
-              meta: currentMeta(floatingIps),
-              createAction: createById.get("floating-ip"),
-            },
-            {
-              name: "Security groups",
-              href: "/networking/security-groups",
-              icon: Shield,
-              description:
-                "Manage reusable ingress and egress rules applied to ports.",
-              meta: currentMeta(securityGroups),
-              createAction: createById.get("security-group"),
-            },
-            {
-              name: "Network topology",
-              href: "/networking/topology",
-              icon: Workflow,
-              description:
-                "Explore relationships between networks, routers, ports, and instances.",
-              meta: "Interactive project map",
-            },
-          ]}
-        />
-      </ServiceLandingSection>
+      {neutronAvailable ? (
+        <ServiceLandingSection
+          title="Addressing and security"
+          description="Control public reachability and stateful traffic policy."
+        >
+          <ServiceResourceGrid
+            resources={[
+              {
+                name: "Floating IPs",
+                href: "/networking/floating-ips",
+                icon: Globe2,
+                description:
+                  "Allocate public addresses and associate them with eligible ports.",
+                meta: currentMeta(floatingIps),
+                createAction: createById.get("floating-ip"),
+              },
+              {
+                name: "Security groups",
+                href: "/networking/security-groups",
+                icon: Shield,
+                description:
+                  "Manage reusable ingress and egress rules applied to ports.",
+                meta: currentMeta(securityGroups),
+                createAction: createById.get("security-group"),
+              },
+              {
+                name: "Network topology",
+                href: "/networking/topology",
+                icon: Workflow,
+                description:
+                  "Explore relationships between networks, routers, ports, and instances.",
+                meta: "Interactive project map",
+              },
+            ]}
+          />
+        </ServiceLandingSection>
+      ) : null}
+
+      {loadBalancersAvailable ? (
+        <ServiceLandingSection
+          title="Traffic delivery"
+          description="Inspect virtual IPs and the listener, pool, and member topology serving application traffic."
+        >
+          <ServiceResourceGrid
+            resources={[
+              {
+                name: "Load balancers",
+                href: "/networking/load-balancers",
+                icon: Waypoints,
+                description:
+                  "Inspect Octavia virtual IPs, listeners, pools, members, and health.",
+                meta: currentMeta(loadBalancers),
+              },
+            ]}
+          />
+        </ServiceLandingSection>
+      ) : null}
     </ServiceLandingPage>
   );
 }

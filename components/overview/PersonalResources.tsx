@@ -15,6 +15,7 @@ import {
   Vault,
   Package,
   ScrollText,
+  Waypoints,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +38,7 @@ const resourceIcons: Record<
   volume: HardDrive,
   image: ImageIcon,
   cluster: Container,
+  "load-balancer": Waypoints,
   bucket: Database,
   share: FolderTree,
   "share-snapshot": Camera,

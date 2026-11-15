@@ -1,46 +1,113 @@
 import { ServiceLayout } from "@/components/ServiceLayout";
-import { ConfiguredService } from "@/components/services/ServiceGuards";
+import { ConfiguredServiceGroup } from "@/components/services/ServiceGuards";
+import { loadCloudContext } from "@/lib/cloud-context";
+import type { NavigationDestinationId } from "@/lib/navigation-destinations";
 
-const networkingSidebarSections = [
-  {
-    items: [{ name: "Overview", href: "/networking", icon: "Gauge" }],
-  },
-  {
-    title: "Network",
-    items: [
-      { name: "Topology", href: "/networking/topology", icon: "Workflow" },
-      { name: "Networks", href: "/networking/networks", icon: "Network" },
-      { name: "Routers", href: "/networking/routers", icon: "Router" },
-      { name: "Ports", href: "/networking/ports", icon: "Cable" },
-      {
-        name: "Floating IPs",
-        href: "/networking/floating-ips",
-        icon: "Globe2",
-      },
-    ],
-  },
-  {
-    title: "Security",
-    items: [
-      {
-        name: "Security Groups",
-        href: "/networking/security-groups",
-        icon: "Shield",
-      },
-    ],
-  },
-];
+function networkingSidebarSections(
+  visibleDestinations: ReadonlySet<NavigationDestinationId>,
+) {
+  return [
+    {
+      items: [{ name: "Overview", href: "/networking", icon: "Gauge" }],
+    },
+    {
+      title: "Network",
+      items: [
+        ...(visibleDestinations.has("networking.topology")
+          ? [
+              {
+                name: "Topology",
+                href: "/networking/topology",
+                icon: "Workflow",
+              },
+            ]
+          : []),
+        ...(visibleDestinations.has("networking.networks")
+          ? [
+              {
+                name: "Networks",
+                href: "/networking/networks",
+                icon: "Network",
+              },
+            ]
+          : []),
+        ...(visibleDestinations.has("networking.routers")
+          ? [
+              {
+                name: "Routers",
+                href: "/networking/routers",
+                icon: "Router",
+              },
+            ]
+          : []),
+        ...(visibleDestinations.has("networking.ports")
+          ? [
+              {
+                name: "Ports",
+                href: "/networking/ports",
+                icon: "Cable",
+              },
+            ]
+          : []),
+        ...(visibleDestinations.has("networking.floating-ips")
+          ? [
+              {
+                name: "Floating IPs",
+                href: "/networking/floating-ips",
+                icon: "Globe2",
+              },
+            ]
+          : []),
+        ...(visibleDestinations.has("networking.load-balancers")
+          ? [
+              {
+                name: "Load Balancers",
+                href: "/networking/load-balancers",
+                icon: "Waypoints",
+              },
+            ]
+          : []),
+      ],
+    },
+    {
+      title: "Security",
+      items: [
+        ...(visibleDestinations.has("networking.security-groups")
+          ? [
+              {
+                name: "Security Groups",
+                href: "/networking/security-groups",
+                icon: "Shield",
+              },
+            ]
+          : []),
+      ],
+    },
+  ];
+}
 
-export default function NetworkingLayout({
+export default async function NetworkingLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { snapshot } = await loadCloudContext();
+  const visibleDestinations = new Set(
+    snapshot.destinations
+      .filter(
+        ({ service, status }) =>
+          service === "networking" && status !== "unavailable",
+      )
+      .map(({ id }) => id),
+  );
+
   return (
-    <ConfiguredService id="network">
-      <ServiceLayout sidebarSections={networkingSidebarSections}>
+    <ConfiguredServiceGroup id="networking">
+      <ServiceLayout
+        sidebarSections={networkingSidebarSections(visibleDestinations)}
+      >
         {children}
       </ServiceLayout>
-    </ConfiguredService>
+    </ConfiguredServiceGroup>
   );
 }

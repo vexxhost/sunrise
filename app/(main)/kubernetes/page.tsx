@@ -3,8 +3,8 @@ import {
   Boxes,
   Gauge,
   GitCommit,
-  Network,
   Settings,
+  Waypoints,
 } from "lucide-react";
 import {
   ServiceLandingPage,
@@ -16,10 +16,16 @@ import {
 import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import { createActionsForService } from "@/lib/create-actions";
 import { loadCloudContext } from "@/lib/cloud-context";
+import { openstack } from "@/lib/openstack/actions";
 import {
   listClustersAction,
   listClusterTemplatesAction,
 } from "@/lib/openstack/magnum";
+import { listLoadBalancersAction } from "@/lib/openstack/octavia-actions";
+import {
+  isClusterApiLoadBalancer,
+  octaviaEndpointHost,
+} from "@/lib/openstack/octavia";
 import { loadProjectOverview } from "@/lib/openstack/overview";
 import { quotaPercentage } from "@/lib/openstack/quota";
 import { filterResourcePreferencesByLiveIds } from "@/lib/resource-preferences";
@@ -27,21 +33,52 @@ import { filterResourcePreferencesByLiveIds } from "@/lib/resource-preferences";
 export default async function KubernetesPage() {
   const cloud = await loadCloudContext();
   const { snapshot } = cloud;
-  const [services, templates, clusters] = await Promise.all([
-    loadProjectOverview({
-      token: cloud.keystoneToken,
-      regionId: snapshot.region.id ?? undefined,
-      projectId: snapshot.project.id ?? undefined,
-      catalog: cloud.catalog,
-      serviceIds: ["container-infra"],
-    }),
-    listClusterTemplatesAction({}, snapshot.region.id ?? undefined),
-    listClustersAction(
-      {},
-      snapshot.region.id ?? undefined,
-      snapshot.project.id ?? undefined,
-    ),
-  ]);
+  const loadBalancersAvailable = snapshot.destinations.some(
+    ({ id, status }) =>
+      id === "networking.load-balancers" && status !== "unavailable",
+  );
+  const neutronAvailable = snapshot.destinations.some(
+    ({ id, status }) =>
+      id === "networking.networks" && status !== "unavailable",
+  );
+  const [services, templates, clusters, loadBalancers, floatingIpPayload] =
+    await Promise.all([
+      loadProjectOverview({
+        token: cloud.keystoneToken,
+        regionId: snapshot.region.id ?? undefined,
+        projectId: snapshot.project.id ?? undefined,
+        catalog: cloud.catalog,
+        serviceIds: ["container-infra", "load-balancing"],
+      }),
+      listClusterTemplatesAction({}, snapshot.region.id ?? undefined),
+      listClustersAction(
+        {},
+        snapshot.region.id ?? undefined,
+        snapshot.project.id ?? undefined,
+      ),
+      loadBalancersAvailable
+        ? listLoadBalancersAction(
+            snapshot.region.id ?? undefined,
+            snapshot.project.id ?? undefined,
+          )
+        : Promise.resolve([]),
+      loadBalancersAvailable &&
+      neutronAvailable &&
+      snapshot.region.id &&
+      snapshot.project.id
+        ? openstack<{
+            floatingips: Array<{
+              floating_ip_address: string;
+              port_id?: string | null;
+            }>;
+          }>({
+            regionId: snapshot.region.id,
+            serviceType: "network",
+            serviceName: "neutron",
+            path: `/v2.0/floatingips?project_id=${encodeURIComponent(snapshot.project.id)}`,
+          })
+        : Promise.resolve(null),
+    ]);
   const liveClusterIds = clusters.map(({ uuid }) => uuid);
   const resources = filterResourcePreferencesByLiveIds(
     [
@@ -51,7 +88,10 @@ export default async function KubernetesPage() {
     "cluster",
     liveClusterIds,
   );
-  const clusterService = services[0];
+  const clusterService = services.find(({ id }) => id === "container-infra");
+  const loadBalancingService = services.find(
+    ({ id }) => id === "load-balancing",
+  );
   const clusterMetric = clusterService?.metrics.find(
     ({ id }) => id === "clusters",
   );
@@ -110,6 +150,36 @@ export default async function KubernetesPage() {
         ]
           .filter(Boolean)
           .join(" · ");
+  const clusterApiHosts = new Set(
+    clusters
+      .map(({ api_address: apiAddress }) => octaviaEndpointHost(apiAddress))
+      .filter((host): host is string => Boolean(host)),
+  );
+  const floatingIpByPort = new Map(
+    (floatingIpPayload?.floatingips ?? [])
+      .filter(
+        (
+          floatingIp,
+        ): floatingIp is {
+          floating_ip_address: string;
+          port_id: string;
+        } => Boolean(floatingIp.port_id),
+      )
+      .map((floatingIp) => [
+        floatingIp.port_id,
+        floatingIp.floating_ip_address,
+      ]),
+  );
+  const clusterApiLoadBalancers = loadBalancers.filter((loadBalancer) =>
+    isClusterApiLoadBalancer(loadBalancer, clusterApiHosts, floatingIpByPort),
+  );
+  const loadBalancerMetric = loadBalancingService?.metrics.find(
+    ({ id }) => id === "loadbalancer",
+  );
+  const projectLoadBalancerCount =
+    loadBalancingService?.status === "available" && loadBalancerMetric
+      ? String(loadBalancerMetric.used)
+      : "-";
   const metrics: ServiceLandingMetric[] = [
     {
       icon: Boxes,
@@ -147,6 +217,19 @@ export default async function KubernetesPage() {
       value: healthValue,
       detail: healthDetail,
     },
+    ...(loadBalancersAvailable
+      ? [
+          {
+            icon: Waypoints,
+            label: "Cluster API load balancers",
+            value: String(clusterApiLoadBalancers.length),
+            detail:
+              projectLoadBalancerCount === "-"
+                ? (loadBalancingService?.message ?? "Usage is unavailable")
+                : `${projectLoadBalancerCount} total Octavia load balancers in this project`,
+          },
+        ]
+      : []),
   ];
   const createActions = createActionsForService(
     snapshot.createActions,
@@ -192,13 +275,22 @@ export default async function KubernetesPage() {
               meta: `${templates.length} available`,
               createAction: createById.get("cluster-template"),
             },
-            {
-              name: "Load balancers",
-              icon: Network,
-              description:
-                "Inspect load balancers associated with Kubernetes workloads.",
-              badge: "Page planned",
-            },
+            ...(loadBalancersAvailable
+              ? [
+                  {
+                    name: "Load balancers",
+                    href: "/networking/load-balancers",
+                    icon: Waypoints,
+                    description:
+                      "Inspect Octavia load balancers used by cluster APIs and Kubernetes services.",
+                    meta:
+                      projectLoadBalancerCount === "-"
+                        ? (loadBalancingService?.message ??
+                          "Usage is unavailable")
+                        : `${clusterApiLoadBalancers.length} cluster API · ${projectLoadBalancerCount} in project`,
+                  },
+                ]
+              : []),
           ]}
         />
       </ServiceLandingSection>

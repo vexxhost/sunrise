@@ -206,6 +206,7 @@ const resourceServices: Partial<
   volume: "volume",
   image: "image",
   cluster: "container-infra",
+  "load-balancer": "load-balancer",
   share: "share",
   "share-snapshot": "share",
   secret: "key-manager",
