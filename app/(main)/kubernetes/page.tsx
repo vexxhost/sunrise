@@ -25,6 +25,7 @@ import {
 } from "@/lib/openstack/magnum";
 import { listLoadBalancersAction } from "@/lib/openstack/octavia-actions";
 import {
+  clusterApiAssociationNeedsFloatingIps,
   isClusterApiLoadBalancer,
   octaviaEndpointHost,
 } from "@/lib/openstack/octavia";
@@ -109,7 +110,7 @@ export default async function KubernetesPage() {
               });
               return { ok: false as const, payload: null };
             })
-        : Promise.resolve({ ok: true as const, payload: null }),
+        : Promise.resolve({ ok: false as const, payload: null }),
     ]);
   const loadBalancers = loadBalancerResult.loadBalancers;
   const floatingIpPayload = floatingIpResult.payload;
@@ -207,11 +208,16 @@ export default async function KubernetesPage() {
   const clusterApiLoadBalancers = loadBalancers.filter((loadBalancer) =>
     isClusterApiLoadBalancer(loadBalancer, clusterApiHosts, floatingIpByPort),
   );
+  const floatingIpAssociationNeeded = clusterApiAssociationNeedsFloatingIps(
+    loadBalancers,
+    clusterApiHosts,
+  );
   const loadBalancerEnrichmentAvailable =
-    loadBalancerResult.ok && floatingIpResult.ok;
+    loadBalancerResult.ok &&
+    (!floatingIpAssociationNeeded || floatingIpResult.ok);
   const loadBalancerEnrichmentMessage = !loadBalancerResult.ok
     ? "Octavia list access is unavailable"
-    : !floatingIpResult.ok
+    : floatingIpAssociationNeeded && !floatingIpResult.ok
       ? "Floating IP association is unavailable"
       : null;
   const loadBalancerMetric = loadBalancingService?.metrics.find(

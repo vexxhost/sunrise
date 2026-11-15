@@ -53,3 +53,15 @@ export function isClusterApiLoadBalancer(
     (floatingIp && clusterApiHosts.has(floatingIp)),
   );
 }
+
+export function clusterApiAssociationNeedsFloatingIps(
+  loadBalancers: ReadonlyArray<Pick<OctaviaLoadBalancer, "vip_address">>,
+  clusterApiHosts: ReadonlySet<string>,
+) {
+  const vipAddresses = new Set(
+    loadBalancers
+      .map(({ vip_address: vipAddress }) => vipAddress?.replace(/^\[|\]$/g, ""))
+      .filter((vipAddress): vipAddress is string => Boolean(vipAddress)),
+  );
+  return [...clusterApiHosts].some((host) => !vipAddresses.has(host));
+}

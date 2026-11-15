@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clusterApiAssociationNeedsFloatingIps,
   formatOctaviaStatus,
   isClusterApiLoadBalancer,
   octaviaEndpointHost,
@@ -47,5 +48,25 @@ describe("Octavia presentation helpers", () => {
         floatingIps,
       ),
     ).toBe(false);
+  });
+
+  it("requires floating IP data only for API endpoints that do not match VIPs", () => {
+    const loadBalancers = [
+      { vip_address: "10.10.230.118" },
+      { vip_address: "2001:db8::10" },
+    ];
+
+    expect(
+      clusterApiAssociationNeedsFloatingIps(
+        loadBalancers,
+        new Set(["10.10.230.118", "2001:db8::10"]),
+      ),
+    ).toBe(false);
+    expect(
+      clusterApiAssociationNeedsFloatingIps(
+        loadBalancers,
+        new Set(["10.13.55.237"]),
+      ),
+    ).toBe(true);
   });
 });
