@@ -1,5 +1,40 @@
 import type { OctaviaLoadBalancer } from "@/types/openstack";
 
+export interface OctaviaFloatingIpAttachment {
+  floating_ip_address: string;
+  port_id?: string | null;
+}
+
+export function parseOctaviaFloatingIpAttachments(
+  payload: unknown,
+): OctaviaFloatingIpAttachment[] | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const floatingIps = Reflect.get(payload, "floatingips");
+  if (!Array.isArray(floatingIps)) return null;
+
+  const attachments: OctaviaFloatingIpAttachment[] = [];
+  for (const floatingIp of floatingIps) {
+    if (!floatingIp || typeof floatingIp !== "object") return null;
+
+    const address = Reflect.get(floatingIp, "floating_ip_address");
+    const portId = Reflect.get(floatingIp, "port_id");
+    if (
+      typeof address !== "string" ||
+      (portId !== undefined && portId !== null && typeof portId !== "string")
+    ) {
+      return null;
+    }
+
+    attachments.push({
+      floating_ip_address: address,
+      ...(portId !== undefined ? { port_id: portId } : {}),
+    });
+  }
+
+  return attachments;
+}
+
 export function formatOctaviaStatus(status: string | null | undefined) {
   if (!status) return "Unknown";
   return status

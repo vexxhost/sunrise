@@ -5,6 +5,7 @@ import {
   formatOctaviaStatus,
   isClusterApiLoadBalancer,
   octaviaEndpointHost,
+  parseOctaviaFloatingIpAttachments,
 } from "@/lib/openstack/octavia";
 
 describe("Octavia presentation helpers", () => {
@@ -68,5 +69,35 @@ describe("Octavia presentation helpers", () => {
         new Set(["10.13.55.237"]),
       ),
     ).toBe(true);
+  });
+
+  it("accepts only complete Neutron floating IP list payloads", () => {
+    expect(
+      parseOctaviaFloatingIpAttachments({
+        floatingips: [
+          {
+            floating_ip_address: "10.13.55.237",
+            port_id: "vip-port",
+          },
+          {
+            floating_ip_address: "10.13.55.238",
+            port_id: null,
+          },
+        ],
+      }),
+    ).toEqual([
+      { floating_ip_address: "10.13.55.237", port_id: "vip-port" },
+      { floating_ip_address: "10.13.55.238", port_id: null },
+    ]);
+    expect(parseOctaviaFloatingIpAttachments(null)).toBeNull();
+    expect(parseOctaviaFloatingIpAttachments({})).toBeNull();
+    expect(
+      parseOctaviaFloatingIpAttachments({ floatingips: [null] }),
+    ).toBeNull();
+    expect(
+      parseOctaviaFloatingIpAttachments({
+        floatingips: [{ floating_ip_address: 123 }],
+      }),
+    ).toBeNull();
   });
 });

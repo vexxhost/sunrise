@@ -159,17 +159,68 @@ async function listCollection<T>(
   return items;
 }
 
-function referencesResource(
-  references: Array<{ id: string }> | undefined,
-  id: string,
-) {
-  return references?.some((reference) => reference.id === id) ?? false;
-}
-
-function belongsToProject(resourceProjectId: string, projectId: string) {
+function belongsToProject(resourceProjectId: unknown, projectId: string) {
   return (
+    typeof resourceProjectId === "string" &&
     normalizeProjectId(resourceProjectId) === normalizeProjectId(projectId)
   );
+}
+
+function relatedResourceIds(
+  values: Array<string | null | undefined>,
+  label: string,
+) {
+  const ids = new Set<string>();
+  for (const value of values) {
+    if (!value) continue;
+    if (!UUID_PATTERN.test(value)) {
+      throw new Error(`Invalid Octavia ${label} reference`);
+    }
+    ids.add(value);
+  }
+  return [...ids];
+}
+
+function referenceIds(
+  references: Array<{ id: string }> | undefined,
+  label: string,
+) {
+  if (!references) return [];
+  if (
+    references.some(
+      (reference) =>
+        !reference ||
+        typeof reference.id !== "string" ||
+        !UUID_PATTERN.test(reference.id),
+    )
+  ) {
+    throw new Error(`Invalid Octavia ${label} reference`);
+  }
+  return relatedResourceIds(
+    references.map(({ id }) => id),
+    label,
+  );
+}
+
+async function getProjectResource<T extends { project_id: string }>(
+  scope: OctaviaScope,
+  collection: string,
+  responseKey: string,
+  id: string,
+): Promise<T> {
+  if (!UUID_PATTERN.test(id)) {
+    throw new Error(`Invalid Octavia ${collection} reference`);
+  }
+  const payload = await octaviaGet<Record<string, T>>(
+    scope,
+    `/v2/lbaas/${collection}/${encodeURIComponent(id)}`,
+    "throw",
+  );
+  const resource = payload?.[responseKey];
+  if (!resource || !belongsToProject(resource.project_id, scope.projectId)) {
+    throw new OpenStackRequestError(404, `${responseKey} not found`);
+  }
+  return resource;
 }
 
 export async function listLoadBalancers(
@@ -214,92 +265,89 @@ export async function getLoadBalancerDetails(
     throw new OpenStackRequestError(404, "Load balancer not found");
   }
 
-  const [listeners, pools, healthMonitors, l7Policies, stats, status] =
-    await Promise.all([
-      listCollection<OctaviaListener>(
-        scope,
-        "listeners",
-        collectionPath("listeners", scope.projectId),
+  const listenerIds = referenceIds(loadBalancer.listeners, "listener");
+  const loadBalancerPoolIds = referenceIds(loadBalancer.pools, "pool");
+  const [listeners, stats, status] = await Promise.all([
+    Promise.all(
+      listenerIds.map((listenerId) =>
+        getProjectResource<OctaviaListener>(
+          scope,
+          "listeners",
+          "listener",
+          listenerId,
+        ),
       ),
-      listCollection<OctaviaPool>(
-        scope,
-        "pools",
-        collectionPath("pools", scope.projectId),
-      ),
-      listCollection<OctaviaHealthMonitor>(
-        scope,
-        "healthmonitors",
-        collectionPath("healthmonitors", scope.projectId),
-      ),
-      listCollection<OctaviaL7Policy>(
-        scope,
-        "l7policies",
-        collectionPath("l7policies", scope.projectId),
-      ),
-      octaviaGet<{ stats: OctaviaLoadBalancerStats }>(
-        scope,
-        `/v2/lbaas/loadbalancers/${encodeURIComponent(loadBalancerId)}/stats`,
-        "return-null",
-      ),
-      octaviaGet<{ statuses: { loadbalancer: OctaviaStatusNode } }>(
-        scope,
-        `/v2/lbaas/loadbalancers/${encodeURIComponent(loadBalancerId)}/status`,
-        "return-null",
-      ),
-    ]);
+    ),
+    octaviaGet<{ stats: OctaviaLoadBalancerStats }>(
+      scope,
+      `/v2/lbaas/loadbalancers/${encodeURIComponent(loadBalancerId)}/stats`,
+      "return-null",
+    ),
+    octaviaGet<{ statuses: { loadbalancer: OctaviaStatusNode } }>(
+      scope,
+      `/v2/lbaas/loadbalancers/${encodeURIComponent(loadBalancerId)}/status`,
+      "return-null",
+    ),
+  ]);
 
-  const loadBalancerListenerIds = new Set(
-    loadBalancer.listeners?.map(({ id: listenerId }) => listenerId) ?? [],
+  const poolIds = relatedResourceIds(
+    [
+      ...loadBalancerPoolIds,
+      ...listeners.map(({ default_pool_id: poolId }) => poolId),
+    ],
+    "pool",
   );
-  const relatedListeners = listeners.filter(
-    (listener) =>
-      loadBalancerListenerIds.has(listener.id) ||
-      referencesResource(listener.loadbalancers, loadBalancerId),
+  const l7PolicyIds = referenceIds(
+    listeners.flatMap(({ l7policies = [] }) => l7policies),
+    "L7 policy",
   );
-  const listenerIds = new Set(
-    relatedListeners.map(({ id: listenerId }) => listenerId),
-  );
-  const loadBalancerPoolIds = new Set(
-    loadBalancer.pools?.map(({ id: poolId }) => poolId) ?? [],
-  );
-  const defaultPoolIds = new Set(
-    relatedListeners
-      .map(({ default_pool_id: poolId }) => poolId)
-      .filter((poolId): poolId is string => Boolean(poolId)),
-  );
-  const relatedPools = pools.filter(
-    (pool) =>
-      loadBalancerPoolIds.has(pool.id) ||
-      defaultPoolIds.has(pool.id) ||
-      referencesResource(pool.loadbalancers, loadBalancerId) ||
-      pool.listeners?.some(({ id: listenerId }) => listenerIds.has(listenerId)),
-  );
-  const poolIds = new Set(relatedPools.map(({ id: poolId }) => poolId));
-  const healthMonitorIds = new Set(
-    relatedPools
-      .map(({ healthmonitor_id: healthMonitorId }) => healthMonitorId)
-      .filter((healthMonitorId): healthMonitorId is string =>
-        Boolean(healthMonitorId),
+  const [initialPools, l7Policies] = await Promise.all([
+    Promise.all(
+      poolIds.map((poolId) =>
+        getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
       ),
-  );
-  const relatedHealthMonitors = healthMonitors.filter(
-    (monitor) =>
-      healthMonitorIds.has(monitor.id) ||
-      monitor.pools?.some(({ id: poolId }) => poolIds.has(poolId)),
-  );
-  const listenerPolicyIds = new Set(
-    relatedListeners.flatMap(({ l7policies: policies = [] }) =>
-      policies.map(({ id: policyId }) => policyId),
+    ),
+    Promise.all(
+      l7PolicyIds.map((policyId) =>
+        getProjectResource<OctaviaL7Policy>(
+          scope,
+          "l7policies",
+          "l7policy",
+          policyId,
+        ),
+      ),
+    ),
+  ]);
+  const initialPoolIds = new Set(initialPools.map(({ id: poolId }) => poolId));
+  const redirectPoolIds = relatedResourceIds(
+    l7Policies.map(({ redirect_pool_id: poolId }) => poolId),
+    "pool",
+  ).filter((poolId) => !initialPoolIds.has(poolId));
+  const redirectPools = await Promise.all(
+    redirectPoolIds.map((poolId) =>
+      getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
     ),
   );
-  const relatedL7Policies = l7Policies.filter(
-    (policy) =>
-      listenerIds.has(policy.listener_id) || listenerPolicyIds.has(policy.id),
+  const pools = [...initialPools, ...redirectPools];
+  const healthMonitorIds = relatedResourceIds(
+    pools.map(({ healthmonitor_id: healthMonitorId }) => healthMonitorId),
+    "health monitor",
+  );
+  const healthMonitorsPromise = Promise.all(
+    healthMonitorIds.map((healthMonitorId) =>
+      getProjectResource<OctaviaHealthMonitor>(
+        scope,
+        "healthmonitors",
+        "healthmonitor",
+        healthMonitorId,
+      ),
+    ),
   );
 
-  const [memberLists, ruleLists] = await Promise.all([
+  const [healthMonitors, memberLists, ruleLists] = await Promise.all([
+    healthMonitorsPromise,
     Promise.all(
-      relatedPools.map(async (pool) => {
+      pools.map(async (pool) => {
         const members = await listCollection<OctaviaMember>(
           scope,
           "members",
@@ -311,7 +359,7 @@ export async function getLoadBalancerDetails(
       }),
     ),
     Promise.all(
-      relatedL7Policies.map(async (policy) => {
+      l7Policies.map(async (policy) => {
         const rules = await listCollection<OctaviaL7Rule>(
           scope,
           "rules",
@@ -328,11 +376,11 @@ export async function getLoadBalancerDetails(
     loadBalancer,
     stats: stats?.stats ?? null,
     statusTree: status?.statuses?.loadbalancer ?? null,
-    listeners: relatedListeners,
-    pools: relatedPools,
+    listeners,
+    pools,
     members: memberLists.flat(),
-    healthMonitors: relatedHealthMonitors,
-    l7Policies: relatedL7Policies,
+    healthMonitors,
+    l7Policies,
     l7Rules: ruleLists.flat(),
   };
 }

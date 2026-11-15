@@ -28,6 +28,7 @@ import {
   clusterApiAssociationNeedsFloatingIps,
   isClusterApiLoadBalancer,
   octaviaEndpointHost,
+  parseOctaviaFloatingIpAttachments,
 } from "@/lib/openstack/octavia";
 import { loadProjectOverview } from "@/lib/openstack/overview";
 import { quotaPercentage } from "@/lib/openstack/quota";
@@ -101,19 +102,24 @@ export default async function KubernetesPage() {
             serviceName: "neutron",
             path: `/v2.0/floatingips?project_id=${encodeURIComponent(snapshot.project.id)}`,
           })
-            .then((payload) => ({ ok: true as const, payload }))
+            .then((payload) => {
+              const floatingIps = parseOctaviaFloatingIpAttachments(payload);
+              if (!floatingIps) {
+                throw new Error("Invalid Neutron floating IP response");
+              }
+              return { ok: true as const, floatingIps };
+            })
             .catch((error) => {
               unstable_rethrow(error);
               logger.warn("floating-ip-enrichment-unavailable", {
                 error,
                 regionId: snapshot.region.id,
               });
-              return { ok: false as const, payload: null };
+              return { ok: false as const, floatingIps: [] };
             })
-        : Promise.resolve({ ok: false as const, payload: null }),
+        : Promise.resolve({ ok: false as const, floatingIps: [] }),
     ]);
   const loadBalancers = loadBalancerResult.loadBalancers;
-  const floatingIpPayload = floatingIpResult.payload;
   const liveClusterIds = clusters.map(({ uuid }) => uuid);
   const resources = filterResourcePreferencesByLiveIds(
     [
@@ -190,20 +196,11 @@ export default async function KubernetesPage() {
       .map(({ api_address: apiAddress }) => octaviaEndpointHost(apiAddress))
       .filter((host): host is string => Boolean(host)),
   );
-  const floatingIpByPort = new Map(
-    (floatingIpPayload?.floatingips ?? [])
-      .filter(
-        (
-          floatingIp,
-        ): floatingIp is {
-          floating_ip_address: string;
-          port_id: string;
-        } => Boolean(floatingIp.port_id),
-      )
-      .map((floatingIp) => [
-        floatingIp.port_id,
-        floatingIp.floating_ip_address,
-      ]),
+  const floatingIpByPort = new Map<string, string>(
+    floatingIpResult.floatingIps.flatMap(
+      ({ floating_ip_address: address, port_id: portId }) =>
+        portId ? [[portId, address] as const] : [],
+    ),
   );
   const clusterApiLoadBalancers = loadBalancers.filter((loadBalancer) =>
     isClusterApiLoadBalancer(loadBalancer, clusterApiHosts, floatingIpByPort),

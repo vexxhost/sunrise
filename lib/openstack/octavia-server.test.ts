@@ -136,4 +136,169 @@ describe("Octavia project scoping", () => {
     );
     expect(mocks.openstackRequest).not.toHaveBeenCalled();
   });
+
+  it("loads details through the selected load balancer relationships", async () => {
+    const loadBalancerId = "11111111-1111-1111-1111-111111111111";
+    const listenerId = "22222222-2222-2222-2222-222222222222";
+    const poolId = "33333333-3333-3333-3333-333333333333";
+    const healthMonitorId = "44444444-4444-4444-4444-444444444444";
+    const policyId = "55555555-5555-5555-5555-555555555555";
+    const memberId = "66666666-6666-6666-6666-666666666666";
+    const ruleId = "77777777-7777-7777-7777-777777777777";
+    const responses = new Map<string, unknown>([
+      [
+        `/v2/lbaas/loadbalancers/${loadBalancerId}`,
+        {
+          loadbalancer: {
+            ...loadBalancer(loadBalancerId, "project-a", "selected"),
+            listeners: [{ id: listenerId }],
+            pools: [{ id: poolId }],
+          },
+        },
+      ],
+      [
+        `/v2/lbaas/listeners/${listenerId}`,
+        {
+          listener: {
+            id: listenerId,
+            name: "https",
+            project_id: "project-a",
+            provisioning_status: "ACTIVE",
+            operating_status: "ONLINE",
+            admin_state_up: true,
+            protocol: "HTTPS",
+            protocol_port: 443,
+            default_pool_id: poolId,
+            l7policies: [{ id: policyId }],
+          },
+        },
+      ],
+      [
+        `/v2/lbaas/pools/${poolId}`,
+        {
+          pool: {
+            id: poolId,
+            name: "api",
+            project_id: "project-a",
+            provisioning_status: "ACTIVE",
+            operating_status: "ONLINE",
+            admin_state_up: true,
+            protocol: "HTTPS",
+            lb_algorithm: "ROUND_ROBIN",
+            healthmonitor_id: healthMonitorId,
+          },
+        },
+      ],
+      [
+        `/v2/lbaas/healthmonitors/${healthMonitorId}`,
+        {
+          healthmonitor: {
+            id: healthMonitorId,
+            name: "api",
+            project_id: "project-a",
+            provisioning_status: "ACTIVE",
+            operating_status: "ONLINE",
+            admin_state_up: true,
+            type: "HTTPS",
+            delay: 5,
+            timeout: 3,
+            max_retries: 3,
+          },
+        },
+      ],
+      [
+        `/v2/lbaas/l7policies/${policyId}`,
+        {
+          l7policy: {
+            id: policyId,
+            name: "api",
+            project_id: "project-a",
+            provisioning_status: "ACTIVE",
+            operating_status: "ONLINE",
+            admin_state_up: true,
+            action: "REJECT",
+            position: 1,
+            listener_id: listenerId,
+          },
+        },
+      ],
+      [
+        `/v2/lbaas/loadbalancers/${loadBalancerId}/stats`,
+        {
+          stats: {
+            active_connections: 1,
+            bytes_in: 2,
+            bytes_out: 3,
+            request_errors: 0,
+            total_connections: 4,
+          },
+        },
+      ],
+      [
+        `/v2/lbaas/loadbalancers/${loadBalancerId}/status`,
+        { statuses: { loadbalancer: { id: loadBalancerId } } },
+      ],
+      [
+        `/v2/lbaas/pools/${poolId}/members?limit=100`,
+        {
+          members: [
+            {
+              id: memberId,
+              name: "control-plane",
+              project_id: "project-a",
+              provisioning_status: "ACTIVE",
+              operating_status: "ONLINE",
+              admin_state_up: true,
+              address: "10.10.230.10",
+              protocol_port: 6443,
+            },
+          ],
+        },
+      ],
+      [
+        `/v2/lbaas/l7policies/${policyId}/rules?limit=100`,
+        {
+          rules: [
+            {
+              id: ruleId,
+              project_id: "project-a",
+              provisioning_status: "ACTIVE",
+              operating_status: "ONLINE",
+              admin_state_up: true,
+              type: "PATH",
+              compare_type: "STARTS_WITH",
+              value: "/api",
+              invert: false,
+            },
+          ],
+        },
+      ],
+    ]);
+    mocks.openstackRequest.mockImplementation(
+      async ({ path }: { path: string }) => responses.get(path) ?? null,
+    );
+
+    const details = await getLoadBalancerDetails(loadBalancerId);
+
+    expect(details.listeners.map(({ id }) => id)).toEqual([listenerId]);
+    expect(details.pools.map(({ id }) => id)).toEqual([poolId]);
+    expect(details.healthMonitors.map(({ id }) => id)).toEqual([
+      healthMonitorId,
+    ]);
+    expect(details.l7Policies.map(({ id }) => id)).toEqual([policyId]);
+    expect(details.members).toEqual([
+      expect.objectContaining({ id: memberId, pool_id: poolId }),
+    ]);
+    expect(details.l7Rules).toEqual([
+      expect.objectContaining({ id: ruleId, l7policy_id: policyId }),
+    ]);
+    const requestedPaths = mocks.openstackRequest.mock.calls.map(
+      ([options]) => options.path,
+    );
+    expect(requestedPaths).not.toContainEqual(
+      expect.stringMatching(
+        /^\/v2\/lbaas\/(listeners|pools|healthmonitors|l7policies)\?/,
+      ),
+    );
+  });
 });
