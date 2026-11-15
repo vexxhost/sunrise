@@ -82,6 +82,9 @@ export function LoadBalancerDetailClient({
     refetchOnWindowFocus: false,
   });
   const { loadBalancer } = data;
+  const neutronLookupAvailable = Boolean(
+    neutronAvailable && regionId && projectId,
+  );
   const networkQuery = useQuery({
     ...networkQueryOptions(
       neutronAvailable ? regionId : undefined,
@@ -108,9 +111,11 @@ export function LoadBalancerDetailClient({
   });
   const floatingIpsQuery = useQuery({
     ...loadBalancerFloatingIpsQueryOptions(
-      neutronAvailable ? regionId : undefined,
-      neutronAvailable ? projectId : undefined,
-      neutronAvailable ? (loadBalancer.vip_port_id ?? undefined) : undefined,
+      neutronLookupAvailable ? regionId : undefined,
+      neutronLookupAvailable ? projectId : undefined,
+      neutronLookupAvailable
+        ? (loadBalancer.vip_port_id ?? undefined)
+        : undefined,
     ),
     retry: false,
   });
@@ -246,7 +251,13 @@ export function LoadBalancerDetailClient({
             </span>
           </DetailField>
           <DetailField label="Floating IPs">
-            {floatingIps.length > 0 ? (
+            {!loadBalancer.vip_port_id ? (
+              "-"
+            ) : !neutronLookupAvailable || floatingIpsQuery.isError ? (
+              <span className="text-muted-foreground">Lookup unavailable.</span>
+            ) : floatingIpsQuery.isLoading ? (
+              <span className="text-muted-foreground">Loading</span>
+            ) : floatingIps.length > 0 ? (
               <span className="flex flex-col items-start gap-1">
                 {floatingIps.map((floatingIp) => (
                   <ResourceLink
