@@ -1,40 +1,5 @@
 import type { OctaviaLoadBalancer } from "@/types/openstack";
 
-export interface OctaviaFloatingIpAttachment {
-  floating_ip_address: string;
-  port_id?: string | null;
-}
-
-export function parseOctaviaFloatingIpAttachments(
-  payload: unknown,
-): OctaviaFloatingIpAttachment[] | null {
-  if (!payload || typeof payload !== "object") return null;
-
-  const floatingIps = Reflect.get(payload, "floatingips");
-  if (!Array.isArray(floatingIps)) return null;
-
-  const attachments: OctaviaFloatingIpAttachment[] = [];
-  for (const floatingIp of floatingIps) {
-    if (!floatingIp || typeof floatingIp !== "object") return null;
-
-    const address = Reflect.get(floatingIp, "floating_ip_address");
-    const portId = Reflect.get(floatingIp, "port_id");
-    if (
-      typeof address !== "string" ||
-      (portId !== undefined && portId !== null && typeof portId !== "string")
-    ) {
-      return null;
-    }
-
-    attachments.push({
-      floating_ip_address: address,
-      ...(portId !== undefined ? { port_id: portId } : {}),
-    });
-  }
-
-  return attachments;
-}
-
 export function formatOctaviaStatus(status: string | null | undefined) {
   if (!status) return "Unknown";
   return status
@@ -75,28 +40,69 @@ export function octaviaEndpointHost(endpoint: string | null | undefined) {
 }
 
 export function isClusterApiLoadBalancer(
-  loadBalancer: Pick<OctaviaLoadBalancer, "vip_address" | "vip_port_id">,
+  loadBalancer: Pick<
+    OctaviaLoadBalancer,
+    "additional_vips" | "vip_address" | "vip_port_id"
+  >,
   clusterApiHosts: ReadonlySet<string>,
-  floatingIpByPort: ReadonlyMap<string, string>,
+  floatingIpsByPort: ReadonlyMap<string, ReadonlySet<string>>,
 ) {
-  const vipAddress = loadBalancer.vip_address?.replace(/^\[|\]$/g, "");
-  const floatingIp = loadBalancer.vip_port_id
-    ? floatingIpByPort.get(loadBalancer.vip_port_id)
+  const floatingIps = loadBalancer.vip_port_id
+    ? floatingIpsByPort.get(loadBalancer.vip_port_id)
     : undefined;
   return Boolean(
-    (vipAddress && clusterApiHosts.has(vipAddress)) ||
-    (floatingIp && clusterApiHosts.has(floatingIp)),
+    loadBalancerVipAddresses(loadBalancer).some((vipAddress) =>
+      clusterApiHosts.has(vipAddress),
+    ) ||
+    (floatingIps &&
+      [...floatingIps].some((floatingIp) => clusterApiHosts.has(floatingIp))),
   );
 }
 
-export function clusterApiAssociationNeedsFloatingIps(
-  loadBalancers: ReadonlyArray<Pick<OctaviaLoadBalancer, "vip_address">>,
+export function clusterApiHostsNeedingFloatingIps(
+  loadBalancers: ReadonlyArray<
+    Pick<OctaviaLoadBalancer, "additional_vips" | "vip_address">
+  >,
   clusterApiHosts: ReadonlySet<string>,
 ) {
   const vipAddresses = new Set(
-    loadBalancers
-      .map(({ vip_address: vipAddress }) => vipAddress?.replace(/^\[|\]$/g, ""))
-      .filter((vipAddress): vipAddress is string => Boolean(vipAddress)),
+    loadBalancers.flatMap((loadBalancer) =>
+      loadBalancerVipAddresses(loadBalancer),
+    ),
   );
-  return [...clusterApiHosts].some((host) => !vipAddresses.has(host));
+  return [...clusterApiHosts].filter((host) => !vipAddresses.has(host));
+}
+
+export function indexFloatingIpAddressesByPort(
+  floatingIps: ReadonlyArray<{
+    floating_ip_address: string;
+    port_id?: string | null;
+  }>,
+) {
+  const addressesByPort = new Map<string, Set<string>>();
+  for (const { floating_ip_address: address, port_id: portId } of floatingIps) {
+    if (!portId) continue;
+    const addresses = addressesByPort.get(portId) ?? new Set<string>();
+    addresses.add(address);
+    addressesByPort.set(portId, addresses);
+  }
+  return addressesByPort;
+}
+
+function loadBalancerVipAddresses(
+  loadBalancer: Pick<OctaviaLoadBalancer, "additional_vips" | "vip_address">,
+) {
+  const additionalVips = Array.isArray(loadBalancer.additional_vips)
+    ? loadBalancer.additional_vips
+    : [];
+  return [
+    loadBalancer.vip_address,
+    ...additionalVips.map((vip) =>
+      vip && typeof vip === "object" ? vip.ip_address : undefined,
+    ),
+  ]
+    .map((address) =>
+      typeof address === "string" ? address.replace(/^\[|\]$/g, "") : null,
+    )
+    .filter((address): address is string => Boolean(address));
 }

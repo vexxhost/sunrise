@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import {
   Activity,
   Boxes,
@@ -18,17 +19,17 @@ import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import { createActionsForService } from "@/lib/create-actions";
 import { loadCloudContext } from "@/lib/cloud-context";
 import { createLogger } from "@/lib/logging";
-import { openstack } from "@/lib/openstack/actions";
 import {
   listClustersAction,
   listClusterTemplatesAction,
 } from "@/lib/openstack/magnum";
+import { listFloatingIpsForAddresses } from "@/lib/openstack/neutron-floating-ip-server";
 import { listLoadBalancersAction } from "@/lib/openstack/octavia-actions";
 import {
-  clusterApiAssociationNeedsFloatingIps,
+  clusterApiHostsNeedingFloatingIps,
+  indexFloatingIpAddressesByPort,
   isClusterApiLoadBalancer,
   octaviaEndpointHost,
-  parseOctaviaFloatingIpAttachments,
 } from "@/lib/openstack/octavia";
 import { loadProjectOverview } from "@/lib/openstack/overview";
 import { quotaPercentage } from "@/lib/openstack/quota";
@@ -47,8 +48,8 @@ export default async function KubernetesPage() {
     ({ id, status }) =>
       id === "networking.networks" && status !== "unavailable",
   );
-  const [services, templates, clusters, loadBalancerResult, floatingIpResult] =
-    await Promise.all([
+  const [services, templates, clusters, loadBalancerResult] = await Promise.all(
+    [
       loadProjectOverview({
         token: cloud.keystoneToken,
         regionId: snapshot.region.id ?? undefined,
@@ -86,40 +87,48 @@ export default async function KubernetesPage() {
             ok: false as const,
             loadBalancers: [],
           }),
-      loadBalancersAvailable &&
-      neutronAvailable &&
-      snapshot.region.id &&
-      snapshot.project.id
-        ? openstack<{
-            floatingips: Array<{
-              floating_ip_address: string;
-              port_id?: string | null;
-            }>;
-          }>({
-            errorMode: "throw",
-            regionId: snapshot.region.id,
-            serviceType: "network",
-            serviceName: "neutron",
-            path: `/v2.0/floatingips?project_id=${encodeURIComponent(snapshot.project.id)}`,
-          })
-            .then((payload) => {
-              const floatingIps = parseOctaviaFloatingIpAttachments(payload);
-              if (!floatingIps) {
-                throw new Error("Invalid Neutron floating IP response");
-              }
-              return { ok: true as const, floatingIps };
-            })
-            .catch((error) => {
-              unstable_rethrow(error);
-              logger.warn("floating-ip-enrichment-unavailable", {
-                error,
-                regionId: snapshot.region.id,
-              });
-              return { ok: false as const, floatingIps: [] };
-            })
-        : Promise.resolve({ ok: false as const, floatingIps: [] }),
-    ]);
+    ],
+  );
   const loadBalancers = loadBalancerResult.loadBalancers;
+  const clusterApiHosts = new Set(
+    clusters
+      .map(({ api_address: apiAddress }) => octaviaEndpointHost(apiAddress))
+      .filter((host): host is string => Boolean(host)),
+  );
+  const clusterApiHostsWithoutDirectVip = clusterApiHostsNeedingFloatingIps(
+    loadBalancers,
+    clusterApiHosts,
+  );
+  const floatingIpAddresses = clusterApiHostsWithoutDirectVip.filter(
+    (host) => isIP(host) !== 0,
+  );
+  const hasUnresolvedClusterApiHostname =
+    floatingIpAddresses.length !== clusterApiHostsWithoutDirectVip.length;
+  const floatingIpLookupNeeded = floatingIpAddresses.length > 0;
+  const floatingIpResult =
+    loadBalancerResult.ok &&
+    floatingIpLookupNeeded &&
+    neutronAvailable &&
+    snapshot.region.id &&
+    snapshot.project.id
+      ? await listFloatingIpsForAddresses(
+          floatingIpAddresses,
+          snapshot.region.id,
+          snapshot.project.id,
+        )
+          .then((floatingIps) => ({ ok: true as const, floatingIps }))
+          .catch((error) => {
+            unstable_rethrow(error);
+            logger.warn("floating-ip-enrichment-unavailable", {
+              error,
+              regionId: snapshot.region.id,
+            });
+            return { ok: false as const, floatingIps: [] };
+          })
+      : {
+          ok: !floatingIpLookupNeeded,
+          floatingIps: [],
+        };
   const liveClusterIds = clusters.map(({ uuid }) => uuid);
   const resources = filterResourcePreferencesByLiveIds(
     [
@@ -188,32 +197,23 @@ export default async function KubernetesPage() {
         ]
           .filter(Boolean)
           .join(" · ");
-  const clusterApiHosts = new Set(
-    clusters
-      .map(({ api_address: apiAddress }) => octaviaEndpointHost(apiAddress))
-      .filter((host): host is string => Boolean(host)),
-  );
-  const floatingIpByPort = new Map<string, string>(
-    floatingIpResult.floatingIps.flatMap(
-      ({ floating_ip_address: address, port_id: portId }) =>
-        portId ? [[portId, address] as const] : [],
-    ),
+  const floatingIpsByPort = indexFloatingIpAddressesByPort(
+    floatingIpResult.floatingIps,
   );
   const clusterApiLoadBalancers = loadBalancers.filter((loadBalancer) =>
-    isClusterApiLoadBalancer(loadBalancer, clusterApiHosts, floatingIpByPort),
-  );
-  const floatingIpAssociationNeeded = clusterApiAssociationNeedsFloatingIps(
-    loadBalancers,
-    clusterApiHosts,
+    isClusterApiLoadBalancer(loadBalancer, clusterApiHosts, floatingIpsByPort),
   );
   const loadBalancerEnrichmentAvailable =
     loadBalancerResult.ok &&
-    (!floatingIpAssociationNeeded || floatingIpResult.ok);
+    !hasUnresolvedClusterApiHostname &&
+    (!floatingIpLookupNeeded || floatingIpResult.ok);
   const loadBalancerEnrichmentMessage = !loadBalancerResult.ok
     ? "Octavia list access is unavailable"
-    : floatingIpAssociationNeeded && !floatingIpResult.ok
-      ? "Floating IP association is unavailable"
-      : null;
+    : hasUnresolvedClusterApiHostname
+      ? "Cluster API hostname association is unavailable"
+      : floatingIpLookupNeeded && !floatingIpResult.ok
+        ? "Floating IP association is unavailable"
+        : null;
   const projectLoadBalancerCount = loadBalancerResult.ok
     ? String(loadBalancers.length)
     : "-";

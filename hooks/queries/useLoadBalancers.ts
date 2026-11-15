@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { openstack } from "@/lib/openstack/actions";
 import {
   getLoadBalancerDetailsAction,
+  listLoadBalancerFloatingIpsAction,
   listLoadBalancersAction,
 } from "@/lib/openstack/octavia-actions";
 
@@ -56,5 +57,18 @@ export function loadBalancerDetailsQueryOptions(
     queryKey: [regionId, projectId, "octavia", "load-balancer", id],
     queryFn: () => getLoadBalancerDetailsAction(id, regionId, projectId),
     enabled: Boolean(regionId && projectId && id),
+  });
+}
+
+export function loadBalancerFloatingIpsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  portId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "octavia", "floating-ips", portId],
+    queryFn: () =>
+      listLoadBalancerFloatingIpsAction(portId!, regionId, projectId),
+    enabled: Boolean(regionId && projectId && portId),
   });
 }

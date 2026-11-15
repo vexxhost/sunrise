@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  clusterApiAssociationNeedsFloatingIps,
+  clusterApiHostsNeedingFloatingIps,
   formatOctaviaStatus,
+  indexFloatingIpAddressesByPort,
   isClusterApiLoadBalancer,
   octaviaEndpointHost,
-  parseOctaviaFloatingIpAttachments,
 } from "@/lib/openstack/octavia";
 
 describe("Octavia presentation helpers", () => {
@@ -25,8 +25,10 @@ describe("Octavia presentation helpers", () => {
   });
 
   it("matches a cluster API through its private VIP or public floating IP", () => {
-    const hosts = new Set(["10.10.230.118", "10.13.55.237"]);
-    const floatingIps = new Map([["vip-port", "10.13.55.237"]]);
+    const hosts = new Set(["10.10.230.118", "10.13.55.237", "2001:db8::10"]);
+    const floatingIps = new Map([
+      ["vip-port", new Set(["10.13.55.236", "10.13.55.237"])],
+    ]);
 
     expect(
       isClusterApiLoadBalancer(
@@ -44,6 +46,19 @@ describe("Octavia presentation helpers", () => {
     ).toBe(true);
     expect(
       isClusterApiLoadBalancer(
+        {
+          additional_vips: [
+            { ip_address: "2001:db8::10", subnet_id: "subnet-id" },
+          ],
+          vip_address: "10.10.230.99",
+          vip_port_id: "other-port",
+        },
+        hosts,
+        floatingIps,
+      ),
+    ).toBe(true);
+    expect(
+      isClusterApiLoadBalancer(
         { vip_address: "10.10.230.99", vip_port_id: "other-port" },
         hosts,
         floatingIps,
@@ -54,50 +69,51 @@ describe("Octavia presentation helpers", () => {
   it("requires floating IP data only for API endpoints that do not match VIPs", () => {
     const loadBalancers = [
       { vip_address: "10.10.230.118" },
-      { vip_address: "2001:db8::10" },
+      {
+        additional_vips: [
+          { ip_address: "2001:db8::10", subnet_id: "subnet-id" },
+        ],
+        vip_address: "10.10.230.119",
+      },
     ];
 
     expect(
-      clusterApiAssociationNeedsFloatingIps(
+      clusterApiHostsNeedingFloatingIps(
+        loadBalancers,
+        new Set(["10.10.230.118", "10.13.55.237"]),
+      ),
+    ).toEqual(["10.13.55.237"]);
+    expect(
+      clusterApiHostsNeedingFloatingIps(
         loadBalancers,
         new Set(["10.10.230.118", "2001:db8::10"]),
       ),
-    ).toBe(false);
-    expect(
-      clusterApiAssociationNeedsFloatingIps(
-        loadBalancers,
-        new Set(["10.13.55.237"]),
-      ),
-    ).toBe(true);
+    ).toEqual([]);
   });
 
-  it("accepts only complete Neutron floating IP list payloads", () => {
+  it("retains every unique floating IP attached to a VIP port", () => {
     expect(
-      parseOctaviaFloatingIpAttachments({
-        floatingips: [
-          {
-            floating_ip_address: "10.13.55.237",
-            port_id: "vip-port",
-          },
-          {
-            floating_ip_address: "10.13.55.238",
-            port_id: null,
-          },
-        ],
-      }),
-    ).toEqual([
-      { floating_ip_address: "10.13.55.237", port_id: "vip-port" },
-      { floating_ip_address: "10.13.55.238", port_id: null },
-    ]);
-    expect(parseOctaviaFloatingIpAttachments(null)).toBeNull();
-    expect(parseOctaviaFloatingIpAttachments({})).toBeNull();
+      indexFloatingIpAddressesByPort([
+        { floating_ip_address: "203.0.113.10", port_id: "vip-port" },
+        { floating_ip_address: "203.0.113.11", port_id: "vip-port" },
+        { floating_ip_address: "203.0.113.10", port_id: "vip-port" },
+        { floating_ip_address: "203.0.113.12", port_id: null },
+      ]),
+    ).toEqual(
+      new Map([["vip-port", new Set(["203.0.113.10", "203.0.113.11"])]]),
+    );
+  });
+
+  it("ignores malformed optional additional VIP data", () => {
     expect(
-      parseOctaviaFloatingIpAttachments({ floatingips: [null] }),
-    ).toBeNull();
-    expect(
-      parseOctaviaFloatingIpAttachments({
-        floatingips: [{ floating_ip_address: 123 }],
-      }),
-    ).toBeNull();
+      isClusterApiLoadBalancer(
+        {
+          additional_vips: {} as never,
+          vip_address: "10.10.230.99",
+        },
+        new Set(["10.10.230.118"]),
+        new Map(),
+      ),
+    ).toBe(false);
   });
 });

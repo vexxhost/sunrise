@@ -18,9 +18,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { loadBalancerDetailsQueryOptions } from "@/hooks/queries/useLoadBalancers";
 import {
-  floatingIpsQueryOptions,
+  loadBalancerDetailsQueryOptions,
+  loadBalancerFloatingIpsQueryOptions,
+} from "@/hooks/queries/useLoadBalancers";
+import {
   networkQueryOptions,
   portQueryOptions,
   subnetQueryOptions,
@@ -105,15 +107,14 @@ export function LoadBalancerDetailClient({
     retry: false,
   });
   const floatingIpsQuery = useQuery({
-    ...floatingIpsQueryOptions(
+    ...loadBalancerFloatingIpsQueryOptions(
       neutronAvailable ? regionId : undefined,
       neutronAvailable ? projectId : undefined,
+      neutronAvailable ? (loadBalancer.vip_port_id ?? undefined) : undefined,
     ),
     retry: false,
   });
-  const floatingIp = floatingIpsQuery.data?.find(
-    ({ port_id: portId }) => portId === loadBalancer.vip_port_id,
-  );
+  const floatingIps = floatingIpsQuery.data ?? [];
   const poolById = useMemo(
     () => new Map(data.pools.map((pool) => [pool.id, pool])),
     [data.pools],
@@ -244,13 +245,18 @@ export function LoadBalancerDetailClient({
               ) : null}
             </span>
           </DetailField>
-          <DetailField label="Floating IP">
-            {floatingIp ? (
-              <ResourceLink
-                href={`/networking/floating-ips/${encodeURIComponent(floatingIp.id)}`}
-              >
-                {floatingIp.floating_ip_address}
-              </ResourceLink>
+          <DetailField label="Floating IPs">
+            {floatingIps.length > 0 ? (
+              <span className="flex flex-col items-start gap-1">
+                {floatingIps.map((floatingIp) => (
+                  <ResourceLink
+                    href={`/networking/floating-ips/${encodeURIComponent(floatingIp.id)}`}
+                    key={floatingIp.id}
+                  >
+                    {floatingIp.floating_ip_address}
+                  </ResourceLink>
+                ))}
+              </span>
             ) : (
               "-"
             )}
