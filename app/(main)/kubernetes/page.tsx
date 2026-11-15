@@ -54,7 +54,7 @@ export default async function KubernetesPage() {
         regionId: snapshot.region.id ?? undefined,
         projectId: snapshot.project.id ?? undefined,
         catalog: cloud.catalog,
-        serviceIds: ["container-infra", "load-balancing"],
+        serviceIds: ["container-infra"],
       }),
       listClusterTemplatesAction({}, snapshot.region.id ?? undefined),
       listClustersAction(
@@ -130,9 +130,6 @@ export default async function KubernetesPage() {
     liveClusterIds,
   );
   const clusterService = services.find(({ id }) => id === "container-infra");
-  const loadBalancingService = services.find(
-    ({ id }) => id === "load-balancing",
-  );
   const clusterMetric = clusterService?.metrics.find(
     ({ id }) => id === "clusters",
   );
@@ -217,13 +214,9 @@ export default async function KubernetesPage() {
     : floatingIpAssociationNeeded && !floatingIpResult.ok
       ? "Floating IP association is unavailable"
       : null;
-  const loadBalancerMetric = loadBalancingService?.metrics.find(
-    ({ id }) => id === "loadbalancer",
-  );
-  const projectLoadBalancerCount =
-    loadBalancingService?.status === "available" && loadBalancerMetric
-      ? String(loadBalancerMetric.used)
-      : "-";
+  const projectLoadBalancerCount = loadBalancerResult.ok
+    ? String(loadBalancers.length)
+    : "-";
   const metrics: ServiceLandingMetric[] = [
     {
       icon: Boxes,
@@ -272,7 +265,7 @@ export default async function KubernetesPage() {
             detail:
               loadBalancerEnrichmentMessage ??
               (projectLoadBalancerCount === "-"
-                ? (loadBalancingService?.message ?? "Usage is unavailable")
+                ? "Usage is unavailable"
                 : `${projectLoadBalancerCount} total Octavia load balancers in this project`),
           },
         ]
@@ -333,8 +326,7 @@ export default async function KubernetesPage() {
                     meta:
                       loadBalancerEnrichmentMessage ??
                       (projectLoadBalancerCount === "-"
-                        ? (loadBalancingService?.message ??
-                          "Usage is unavailable")
+                        ? "Usage is unavailable"
                         : `${clusterApiLoadBalancers.length} cluster API · ${projectLoadBalancerCount} in project`),
                   },
                 ]
