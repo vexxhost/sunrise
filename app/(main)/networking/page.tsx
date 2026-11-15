@@ -7,6 +7,7 @@ import {
   Waypoints,
   Workflow,
 } from "lucide-react";
+import { unstable_rethrow } from "next/navigation";
 
 import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import {
@@ -17,6 +18,8 @@ import {
 } from "@/components/service-landing/ServiceLanding";
 import { createActionsForService } from "@/lib/create-actions";
 import { loadCloudContext } from "@/lib/cloud-context";
+import { createLogger } from "@/lib/logging";
+import { listLoadBalancersAction } from "@/lib/openstack/octavia-actions";
 import {
   loadProjectOverview,
   type OverviewService,
@@ -26,6 +29,7 @@ import { quotaPercentage, type QuotaMetric } from "@/lib/openstack/quota";
 const numberFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
+const logger = createLogger("networking.overview");
 
 function formatQuotaValue(value: number, unit?: QuotaMetric["unit"]) {
   return `${numberFormatter.format(value)}${unit ? ` ${unit}` : ""}`;
@@ -66,25 +70,49 @@ function currentMeta(summary: ReturnType<typeof metricSummary>) {
 export default async function NetworkingPage() {
   const cloud = await loadCloudContext();
   const { snapshot } = cloud;
-  const services = await loadProjectOverview({
-    token: cloud.keystoneToken,
-    regionId: snapshot.region.id ?? undefined,
-    projectId: snapshot.project.id ?? undefined,
-    catalog: cloud.catalog,
-    serviceIds: ["network", "load-balancing"],
-  });
+  const loadBalancersAvailable = snapshot.destinations.some(
+    ({ id, status }) =>
+      id === "networking.load-balancers" && status !== "unavailable",
+  );
+  const [services, loadBalancerResult] = await Promise.all([
+    loadProjectOverview({
+      token: cloud.keystoneToken,
+      regionId: snapshot.region.id ?? undefined,
+      projectId: snapshot.project.id ?? undefined,
+      catalog: cloud.catalog,
+      serviceIds: ["network"],
+    }),
+    loadBalancersAvailable
+      ? listLoadBalancersAction(
+          snapshot.region.id ?? undefined,
+          snapshot.project.id ?? undefined,
+        )
+          .then((loadBalancers) => ({
+            ok: true as const,
+            loadBalancers,
+          }))
+          .catch((error) => {
+            unstable_rethrow(error);
+            logger.warn("load-balancer-count-unavailable", {
+              error,
+              regionId: snapshot.region.id,
+            });
+            return { ok: false as const, loadBalancers: [] };
+          })
+      : Promise.resolve({ ok: false as const, loadBalancers: [] }),
+  ]);
   const network = services.find(({ id }) => id === "network");
-  const loadBalancing = services.find(({ id }) => id === "load-balancing");
   const networks = metricSummary(network, "network");
   const ports = metricSummary(network, "port");
   const routers = metricSummary(network, "router");
   const floatingIps = metricSummary(network, "floatingip");
   const securityGroups = metricSummary(network, "security_group");
-  const loadBalancers = metricSummary(loadBalancing, "loadbalancer");
-  const loadBalancersAvailable = snapshot.destinations.some(
-    ({ id, status }) =>
-      id === "networking.load-balancers" && status !== "unavailable",
-  );
+  const loadBalancers = loadBalancerResult.ok
+    ? {
+        value: String(loadBalancerResult.loadBalancers.length),
+        detail: "Current project inventory",
+      }
+    : { value: "-", detail: "Usage is unavailable" };
   const neutronAvailable = snapshot.destinations.some(
     ({ id, status }) =>
       id === "networking.networks" && status !== "unavailable",
