@@ -9,6 +9,7 @@ import {
   canManageShareAccess,
   canResizeShare,
   formatManilaStatus,
+  isShareAccessRulesSyncing,
   isShareAccessRuleTransitioning,
   isShareTransitioning,
   isShareSnapshotTransitioning,
@@ -54,6 +55,18 @@ describe("Manila share lifecycle", () => {
     expect(isShareAccessRuleTransitioning({ state: "denying" })).toBe(true);
     expect(isShareAccessRuleTransitioning({ state: "active" })).toBe(false);
     expect(isShareAccessRuleTransitioning({ state: "error" })).toBe(false);
+  });
+
+  it("polls the parent share while Manila synchronizes access rules", () => {
+    expect(isShareAccessRulesSyncing({ access_rules_status: "syncing" })).toBe(
+      true,
+    );
+    expect(isShareAccessRulesSyncing({ access_rules_status: "active" })).toBe(
+      false,
+    );
+    expect(isShareAccessRulesSyncing({ access_rules_status: "error" })).toBe(
+      false,
+    );
   });
 
   it("allows deletion only for Manila's deletable stable states", () => {

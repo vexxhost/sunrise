@@ -47,6 +47,7 @@ import {
   canManageShareAccess,
   canResizeShare,
   formatManilaStatus,
+  isShareAccessRulesSyncing,
   isShareAccessRuleTransitioning,
   isShareTransitioning,
   shareStatusVariant,
@@ -82,7 +83,11 @@ export function ShareDetailClient({
   const { data: share } = useSuspenseQuery({
     ...shareQuery,
     refetchInterval: ({ state }) =>
-      state.data && isShareTransitioning(state.data) ? 5_000 : false,
+      state.data &&
+      (isShareTransitioning(state.data) ||
+        isShareAccessRulesSyncing(state.data))
+        ? 5_000
+        : false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
@@ -144,10 +149,13 @@ export function ShareDetailClient({
     [projectId, queryClient, regionId, router, shareQuery.queryKey],
   );
   const refreshAccess = useCallback(async () => {
-    await queryClient.invalidateQueries({
-      queryKey: accessRulesQuery.queryKey,
-    });
-  }, [accessRulesQuery.queryKey, queryClient]);
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: accessRulesQuery.queryKey,
+      }),
+      queryClient.invalidateQueries({ queryKey: shareQuery.queryKey }),
+    ]);
+  }, [accessRulesQuery.queryKey, queryClient, shareQuery.queryKey]);
 
   return (
     <div className="max-w-screen-xl space-y-4">

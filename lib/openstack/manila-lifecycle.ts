@@ -58,6 +58,12 @@ export function isShareAccessRuleTransitioning(
   return TRANSITIONAL_ACCESS_RULE_STATES.has(normalizeManilaStatus(rule.state));
 }
 
+export function isShareAccessRulesSyncing(
+  share: Pick<ManilaShare, "access_rules_status">,
+) {
+  return normalizeManilaStatus(share.access_rules_status) === "syncing";
+}
+
 export function canDeleteShare(share: Pick<ManilaShare, "status">) {
   return DELETABLE_SHARE_STATUSES.has(normalizeManilaStatus(share.status));
 }
