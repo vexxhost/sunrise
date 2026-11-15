@@ -47,6 +47,7 @@ import {
   canManageShareAccess,
   canResizeShare,
   formatManilaStatus,
+  isShareAccessRuleTransitioning,
   isShareTransitioning,
   shareStatusVariant,
 } from "@/lib/openstack/manila-lifecycle";
@@ -99,17 +100,7 @@ export function ShareDetailClient({
   const accessQuery = useQuery({
     ...accessRulesQuery,
     refetchInterval: ({ state }) =>
-      state.data?.some(({ state: ruleState }) =>
-        [
-          "new",
-          "queued_to_apply",
-          "applying",
-          "queued_to_deny",
-          "denying",
-        ].includes(ruleState.toLowerCase()),
-      )
-        ? 5_000
-        : false,
+      state.data?.some(isShareAccessRuleTransitioning) ? 5_000 : false,
   });
   const snapshotsQuery = useQuery({
     ...shareSnapshotsQueryOptions(regionId, projectId),
@@ -152,20 +143,11 @@ export function ShareDetailClient({
     },
     [projectId, queryClient, regionId, router, shareQuery.queryKey],
   );
-  const refreshAccess = useCallback(
-    async (revokedRuleId?: string) => {
-      await queryClient.invalidateQueries({
-        queryKey: accessRulesQuery.queryKey,
-      });
-      if (revokedRuleId) {
-        queryClient.setQueryData<ManilaShareAccessRule[]>(
-          accessRulesQuery.queryKey,
-          (rules) => rules?.filter(({ id }) => id !== revokedRuleId),
-        );
-      }
-    },
-    [accessRulesQuery.queryKey, queryClient],
-  );
+  const refreshAccess = useCallback(async () => {
+    await queryClient.invalidateQueries({
+      queryKey: accessRulesQuery.queryKey,
+    });
+  }, [accessRulesQuery.queryKey, queryClient]);
 
   return (
     <div className="max-w-screen-xl space-y-4">

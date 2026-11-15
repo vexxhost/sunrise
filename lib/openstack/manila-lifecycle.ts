@@ -1,8 +1,19 @@
-import type { ManilaShare, ManilaShareSnapshot } from "@/types/openstack";
+import type {
+  ManilaShare,
+  ManilaShareAccessRule,
+  ManilaShareSnapshot,
+} from "@/types/openstack";
 
 const STABLE_SHARE_STATUSES = new Set(["available", "error", "inactive"]);
 const DELETABLE_SHARE_STATUSES = new Set(["available", "error", "inactive"]);
 const STABLE_SNAPSHOT_STATUSES = new Set(["available", "error"]);
+const TRANSITIONAL_ACCESS_RULE_STATES = new Set([
+  "new",
+  "queued_to_apply",
+  "applying",
+  "queued_to_deny",
+  "denying",
+]);
 
 export function normalizeManilaStatus(status: string | null | undefined) {
   return (status ?? "unknown").trim().toLowerCase();
@@ -39,6 +50,12 @@ export function canResizeShare(share: Pick<ManilaShare, "status">) {
 
 export function canManageShareAccess(share: Pick<ManilaShare, "status">) {
   return normalizeManilaStatus(share.status) === "available";
+}
+
+export function isShareAccessRuleTransitioning(
+  rule: Pick<ManilaShareAccessRule, "state">,
+) {
+  return TRANSITIONAL_ACCESS_RULE_STATES.has(normalizeManilaStatus(rule.state));
 }
 
 export function canDeleteShare(share: Pick<ManilaShare, "status">) {

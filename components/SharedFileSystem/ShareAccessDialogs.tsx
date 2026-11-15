@@ -170,7 +170,7 @@ export function RevokeShareAccessDialog({
   scope,
   shareId,
 }: {
-  onComplete: (ruleId: string) => Promise<void> | void;
+  onComplete: () => Promise<void> | void;
   onOpenChange: () => void;
   rule: ManilaShareAccessRule;
   scope: MutationScope;
@@ -187,7 +187,7 @@ export function RevokeShareAccessDialog({
         setError(result.error.message);
         return;
       }
-      await onComplete(rule.id);
+      await onComplete();
       onOpenChange();
     });
   };

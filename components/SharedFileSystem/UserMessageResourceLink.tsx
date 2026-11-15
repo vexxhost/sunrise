@@ -5,6 +5,7 @@ const resourceTypeLabels: Record<string, string> = {
   SECURITY_SERVICE: "Security service",
   SHARE: "Share",
   SHARE_GROUP: "Share group",
+  SHARE_NETWORK: "Share network",
   SHARE_NETWORK_SUBNET: "Share network subnet",
   SHARE_REPLICA: "Share replica",
   SHARE_SNAPSHOT: "Share snapshot",
@@ -13,6 +14,7 @@ const resourceTypeLabels: Record<string, string> = {
 const resourceTypePaths: Partial<Record<string, string>> = {
   SECURITY_SERVICE: "/shared-file-systems/security-services",
   SHARE: "/shared-file-systems/shares",
+  SHARE_NETWORK: "/shared-file-systems/share-networks",
   SHARE_SNAPSHOT: "/shared-file-systems/snapshots",
 };
 
