@@ -36,6 +36,10 @@ import {
   shareNetworkSecurityServicesQueryOptions,
   shareNetworkSubnetsQueryOptions,
 } from "@/hooks/queries/useManila";
+import {
+  networksQueryOptions,
+  visibleSubnetsQueryOptions,
+} from "@/hooks/queries/useNetworks";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 import { compareMicroversions } from "@/lib/openstack/capabilities";
 import { MANILA_SECURITY_SERVICE_UPDATE_MICROVERSION } from "@/lib/openstack/manila-microversions";
@@ -91,6 +95,12 @@ export function ShareNetworkDetailClient({
   const attachedServicesQuery = useQuery(
     shareNetworkSecurityServicesQueryOptions(regionId, projectId, networkId),
   );
+  const neutronNetworksQuery = useQuery(
+    networksQueryOptions(regionId, projectId),
+  );
+  const neutronSubnetsQuery = useQuery(
+    visibleSubnetsQueryOptions(regionId, projectId),
+  );
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [addingSubnet, setAddingSubnet] = useState(false);
@@ -105,6 +115,26 @@ export function ShareNetworkDetailClient({
   );
   const subnets = subnetsQuery.data ?? [];
   const attachedServices = attachedServicesQuery.data ?? [];
+  const neutronNetworksById = useMemo(
+    () =>
+      new Map(
+        (neutronNetworksQuery.data ?? []).map((candidate) => [
+          candidate.id,
+          candidate,
+        ]),
+      ),
+    [neutronNetworksQuery.data],
+  );
+  const neutronSubnetsById = useMemo(
+    () =>
+      new Map(
+        (neutronSubnetsQuery.data ?? []).map((candidate) => [
+          candidate.id,
+          candidate,
+        ]),
+      ),
+    [neutronSubnetsQuery.data],
+  );
   const networkStatus = network.status?.toLowerCase();
   const networkChangeInProgress = networkStatus === "network_change";
   const networkInError = networkStatus === "error";
@@ -287,43 +317,86 @@ export function ShareNetworkDetailClient({
                   </TableCell>
                 </TableRow>
               ) : subnets.length ? (
-                subnets.map((subnet) => (
-                  <TableRow key={subnet.id}>
-                    <TableCell>
-                      {subnet.availability_zone || "All storage zones"}
-                    </TableCell>
-                    <TableCell>
-                      {subnet.neutron_net_id ? (
-                        <ResourceLink
-                          href={`/networking/networks/${encodeURIComponent(subnet.neutron_net_id)}`}
-                          className="font-mono text-xs"
+                subnets.map((subnet) => {
+                  const neutronNetwork = subnet.neutron_net_id
+                    ? neutronNetworksById.get(subnet.neutron_net_id)
+                    : undefined;
+                  const neutronSubnet = subnet.neutron_subnet_id
+                    ? neutronSubnetsById.get(subnet.neutron_subnet_id)
+                    : undefined;
+                  const networkName = neutronNetwork?.name?.trim();
+                  const subnetName = neutronSubnet?.name?.trim();
+
+                  return (
+                    <TableRow key={subnet.id}>
+                      <TableCell>
+                        {subnet.availability_zone || "All storage zones"}
+                      </TableCell>
+                      <TableCell>
+                        {subnet.neutron_net_id ? (
+                          <div className="min-w-0 space-y-0.5">
+                            <ResourceLink
+                              href={`/networking/networks/${encodeURIComponent(subnet.neutron_net_id)}`}
+                              className={
+                                networkName ? undefined : "font-mono text-xs"
+                              }
+                            >
+                              {networkName || subnet.neutron_net_id}
+                            </ResourceLink>
+                            {networkName ? (
+                              <div className="truncate font-mono text-xs text-muted-foreground">
+                                {subnet.neutron_net_id}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          "Service managed"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {subnet.neutron_subnet_id ? (
+                          <div className="min-w-0 space-y-0.5">
+                            <div
+                              className={
+                                subnetName ? undefined : "font-mono text-xs"
+                              }
+                            >
+                              {subnetName || subnet.neutron_subnet_id}
+                            </div>
+                            {subnetName ? (
+                              <div className="truncate font-mono text-xs text-muted-foreground">
+                                {subnet.neutron_subnet_id}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : (
+                          "Service managed"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {emptyToDash(subnet.cidr || neutronSubnet?.cidr)}
+                      </TableCell>
+                      <TableCell>
+                        {emptyToDash(
+                          subnet.ip_version ?? neutronSubnet?.ip_version,
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          title="Delete network subnet"
+                          disabled={!scope}
+                          onClick={() => setDeletingSubnet(subnet)}
+                          tone="danger"
                         >
-                          {subnet.neutron_net_id}
-                        </ResourceLink>
-                      ) : (
-                        "Service managed"
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {emptyToDash(subnet.neutron_subnet_id)}
-                    </TableCell>
-                    <TableCell>{emptyToDash(subnet.cidr)}</TableCell>
-                    <TableCell>{emptyToDash(subnet.ip_version)}</TableCell>
-                    <TableCell>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        title="Delete network subnet"
-                        disabled={!scope}
-                        onClick={() => setDeletingSubnet(subnet)}
-                        tone="danger"
-                      >
-                        <Trash2 className="size-4" />
-                        <span className="sr-only">Delete network subnet</span>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+                          <Trash2 className="size-4" />
+                          <span className="sr-only">Delete network subnet</span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               ) : (
                 <TableRow>
                   <TableCell colSpan={6} className="text-muted-foreground">
@@ -435,6 +508,24 @@ export function ShareNetworkDetailClient({
           onComplete={refreshNetwork}
           onOpenChange={() => setEditing(false)}
           scope={scope}
+          securityServices={{
+            attachedServices,
+            attachDisabled: attachSecurityServiceUnavailable,
+            attachDisabledMessage: attachSecurityServiceMessage,
+            isError:
+              securityServicesQuery.isError || attachedServicesQuery.isError,
+            isLoading:
+              securityServicesQuery.isLoading ||
+              attachedServicesQuery.isLoading,
+            onAttach: () => {
+              setEditing(false);
+              setAttachingService(true);
+            },
+            onDetach: (service) => {
+              setEditing(false);
+              setDetachingService(service);
+            },
+          }}
         />
       ) : null}
       {addingSubnet && scope ? (

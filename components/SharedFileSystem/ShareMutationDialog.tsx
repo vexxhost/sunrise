@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { AlertTriangle, Pencil, Scaling, Trash2 } from "lucide-react";
 
+import { JsonEditor } from "@/components/JsonEditor";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +23,10 @@ import {
   resizeShareAction,
   updateShareAction,
 } from "@/lib/openstack/manila-actions";
+import {
+  formatManilaMetadata,
+  parseManilaMetadata,
+} from "@/lib/openstack/manila-metadata";
 import type { MutationScope } from "@/lib/mutations";
 import type { ManilaShare } from "@/types/openstack";
 
@@ -33,7 +38,7 @@ const actionCopy: Record<
 > = {
   edit: {
     title: "Edit share",
-    description: "Update the display details and project visibility.",
+    description: "Update display details, project visibility, and metadata.",
   },
   resize: {
     title: "Resize share",
@@ -63,14 +68,21 @@ export function ShareMutationDialog({
   const [name, setName] = useState(share.name ?? "");
   const [description, setDescription] = useState(share.description ?? "");
   const [isPublic, setIsPublic] = useState(Boolean(share.is_public));
+  const [metadataText, setMetadataText] = useState(() =>
+    formatManilaMetadata(share.metadata),
+  );
   const [size, setSize] = useState(String(share.size));
   const [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const copy = actionCopy[action];
   const confirmationName = share.name || share.id;
+  const metadata = useMemo(
+    () => parseManilaMetadata(metadataText),
+    [metadataText],
+  );
   const invalid =
-    (action === "edit" && !name.trim()) ||
+    (action === "edit" && (!name.trim() || !metadata.value)) ||
     (action === "resize" &&
       (!Number.isInteger(Number(size)) ||
         Number(size) < 1 ||
@@ -87,6 +99,7 @@ export function ShareMutationDialog({
               name,
               description,
               isPublic,
+              metadata: metadata.value ?? {},
             })
           : action === "resize"
             ? await resizeShareAction(scope, share.id, { newSize: size })
@@ -96,6 +109,14 @@ export function ShareMutationDialog({
         setError(result.error.message);
         return;
       }
+      if (result.status === "partial") {
+        await onComplete(false);
+        setError(
+          result.issues?.map(({ message }) => message).join(" ") ??
+            result.message,
+        );
+        return;
+      }
       await onComplete(action === "delete");
       onOpenChange();
     });
@@ -103,7 +124,7 @@ export function ShareMutationDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && !pending && onOpenChange()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {action === "edit" ? <Pencil className="size-5" /> : null}
@@ -154,6 +175,22 @@ export function ShareMutationDialog({
                 </span>
               </span>
             </label>
+            <div className="space-y-2">
+              <div>
+                <Label>Metadata</Label>
+                <p className="text-xs text-muted-foreground">
+                  String key-value pairs stored with this share. Saving replaces
+                  the existing metadata set.
+                </p>
+              </div>
+              <JsonEditor
+                label="Share metadata JSON"
+                value={metadataText}
+                onChange={setMetadataText}
+                errors={metadata.errors}
+                height="220px"
+              />
+            </div>
           </div>
         ) : null}
 
@@ -212,13 +249,10 @@ export function ShareMutationDialog({
             type="button"
             variant={action === "delete" ? "destructive" : "default"}
             onClick={submit}
-            disabled={pending || invalid}
+            disabled={invalid}
+            loading={pending}
           >
-            {pending
-              ? action === "delete"
-                ? "Deleting"
-                : "Saving"
-              : copy.title}
+            {copy.title}
           </Button>
         </DialogFooter>
       </DialogContent>

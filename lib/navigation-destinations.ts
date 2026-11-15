@@ -38,6 +38,7 @@ export type NavigationDestinationId =
   | "shared-file-system.snapshots"
   | "shared-file-system.share-networks"
   | "shared-file-system.security-services"
+  | "shared-file-system.user-messages"
   | "key-manager.secrets"
   | "key-manager.containers"
   | "key-manager.orders"
@@ -63,6 +64,7 @@ export type NavigationDestinationIcon =
   | "secret-store"
   | "security-group"
   | "security-service"
+  | "message"
   | "share"
   | "share-network"
   | "snapshot"
@@ -375,6 +377,18 @@ const definitions: NavigationDestinationDefinition[] = [
     group: "Shared File System",
     icon: "security-service",
     keywords: ["manila", "ldap", "kerberos", "active directory"],
+    catalogIdentities: manila,
+  },
+  {
+    id: "shared-file-system.user-messages",
+    label: "User messages",
+    description: "Diagnostics for failed asynchronous Manila operations.",
+    href: "/shared-file-systems/user-messages",
+    service: "shared-file-system",
+    policyService: "share",
+    group: "Shared File System",
+    icon: "message",
+    keywords: ["manila", "errors", "diagnostics", "failures", "messages"],
     catalogIdentities: manila,
   },
   {

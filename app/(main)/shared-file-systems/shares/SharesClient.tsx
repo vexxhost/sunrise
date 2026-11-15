@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { FolderTree, Pencil, Scaling, Trash2 } from "lucide-react";
 
@@ -13,7 +17,10 @@ import {
   type ShareMutationKind,
 } from "@/components/SharedFileSystem/ShareMutationDialog";
 import { Badge } from "@/components/ui/badge";
-import { sharesQueryOptions } from "@/hooks/queries/useManila";
+import {
+  shareNetworksQueryOptions,
+  sharesQueryOptions,
+} from "@/hooks/queries/useManila";
 import {
   canDeleteShare,
   canEditShare,
@@ -79,15 +86,17 @@ const columns: ColumnDef<ManilaShare>[] = [
     meta: { fieldType: "string", visible: true },
   },
   {
-    accessorKey: "share_network_id",
+    id: "share_network",
+    accessorFn: (share) =>
+      share.share_network_name || share.share_network_id || "",
     header: "Share Network",
     cell: ({ row }) =>
       row.original.share_network_id ? (
         <ResourceLink
           href={`/shared-file-systems/share-networks/${encodeURIComponent(row.original.share_network_id)}`}
-          className="font-mono text-xs"
+          title={row.original.share_network_id}
         >
-          {row.original.share_network_id}
+          {row.original.share_network_name || row.original.share_network_id}
         </ResourceLink>
       ) : (
         "-"
@@ -132,6 +141,26 @@ export function SharesClient({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+  const networksQuery = useQuery({
+    ...shareNetworksQueryOptions(regionId, projectId),
+    retry: false,
+  });
+  const tableData = useMemo(() => {
+    const networkNames = new Map(
+      (networksQuery.data ?? []).map((network) => [
+        network.id,
+        network.name || network.id,
+      ]),
+    );
+    return data.map((share) => ({
+      ...share,
+      share_network_name:
+        share.share_network_name ||
+        (share.share_network_id
+          ? networkNames.get(share.share_network_id)
+          : undefined),
+    }));
+  }, [data, networksQuery.data]);
   const [action, setAction] = useState<ShareMutationKind | null>(null);
   const [target, setTarget] = useState<ManilaShare | null>(null);
   const scope = useMemo(
@@ -189,7 +218,7 @@ export function SharesClient({
     <>
       <DataTable
         columns={columns}
-        data={data}
+        data={tableData}
         emptyIcon={FolderTree}
         getRowId={(share) => share.id}
         isRefetching={isRefetching}

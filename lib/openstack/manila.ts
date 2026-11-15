@@ -5,6 +5,7 @@ import {
   getShareNetwork,
   getSecurityService,
   getShareSnapshot,
+  getUserMessage,
   listManilaAvailabilityZones,
   listShareAccessRules,
   listShareExportLocations,
@@ -15,6 +16,7 @@ import {
   listShares,
   listShareTypes,
   listSecurityServices,
+  listUserMessages,
 } from "@/lib/openstack/manila-server";
 
 export async function listSharesAction() {
@@ -23,6 +25,14 @@ export async function listSharesAction() {
 
 export async function getShareAction(id: string) {
   return getShare(id);
+}
+
+export async function listUserMessagesAction() {
+  return listUserMessages();
+}
+
+export async function getUserMessageAction(id: string) {
+  return getUserMessage(id);
 }
 
 export async function listShareNetworksAction() {

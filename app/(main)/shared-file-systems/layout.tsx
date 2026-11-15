@@ -28,6 +28,11 @@ const sharedFileSystemSidebarSections = [
         href: "/shared-file-systems/security-services",
         icon: "ShieldCheck",
       },
+      {
+        name: "User Messages",
+        href: "/shared-file-systems/user-messages",
+        icon: "MessageSquareWarning",
+      },
     ],
   },
 ];

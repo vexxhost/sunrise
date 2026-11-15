@@ -3,6 +3,7 @@ import {
   FolderTree,
   Gauge,
   Network,
+  MessageSquareWarning,
   Share2,
   ShieldCheck,
 } from "lucide-react";
@@ -135,6 +136,15 @@ export default async function SharedFileSystemPage() {
               meta: `${securityServices.length} visible`,
               badge: "Project scoped",
               createAction: createSecurityService,
+            },
+            {
+              name: "User messages",
+              href: "/shared-file-systems/user-messages",
+              icon: MessageSquareWarning,
+              description:
+                "Review diagnostics emitted when asynchronous Manila operations fail.",
+              meta: "Automatically retained by Manila",
+              badge: "Project scoped",
             },
           ]}
         />

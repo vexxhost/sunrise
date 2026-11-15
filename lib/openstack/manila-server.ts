@@ -18,6 +18,7 @@ import type {
   ManilaSecurityServiceNetworkRef,
   ManilaShareSnapshot,
   ManilaShareType,
+  ManilaUserMessage,
   Network,
   Subnet,
 } from "@/types/openstack";
@@ -99,6 +100,30 @@ export async function getShare(id: string) {
   if (!payload?.share) throw new Error("Manila did not return the share");
   assertActiveProject(payload.share.project_id, projectId);
   return payload.share;
+}
+
+export async function listUserMessages() {
+  const { projectId, projectPathId } = await activeManilaContext();
+  const payload = await manilaRequest<{ messages?: ManilaUserMessage[] }>(
+    `/${projectPathId}/messages?sort_key=created_at&sort_dir=desc`,
+  );
+  return (payload?.messages ?? []).filter(
+    (message) =>
+      !message.project_id ||
+      normalizeProjectId(message.project_id) === normalizeProjectId(projectId),
+  );
+}
+
+export async function getUserMessage(id: string) {
+  const { projectId, projectPathId } = await activeManilaContext();
+  const payload = await manilaRequest<{ message?: ManilaUserMessage }>(
+    `/${projectPathId}/messages/${resourceId(id, "user message ID")}`,
+  );
+  if (!payload?.message) {
+    throw new Error("Manila did not return the user message");
+  }
+  assertActiveProject(payload.message.project_id, projectId);
+  return payload.message;
 }
 
 export async function listShareNetworks() {

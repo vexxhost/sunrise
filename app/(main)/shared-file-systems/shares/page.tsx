@@ -1,6 +1,9 @@
 import { DataTableHydrationBoundary } from "@/components/DataTable/HydrationBoundary";
 import { ShareActions } from "@/components/SharedFileSystem/ShareActions";
-import { sharesQueryOptions } from "@/hooks/queries/useManila";
+import {
+  shareNetworksQueryOptions,
+  sharesQueryOptions,
+} from "@/hooks/queries/useManila";
 import { isCreateActionRequested } from "@/lib/create-actions";
 import { getSession } from "@/lib/session";
 import { SharesClient } from "./SharesClient";
@@ -27,7 +30,10 @@ export default async function SharesPage({
           regionId={session.regionId}
         />
       }
-      queries={[sharesQueryOptions(session.regionId, session.projectId)]}
+      queries={[
+        sharesQueryOptions(session.regionId, session.projectId),
+        shareNetworksQueryOptions(session.regionId, session.projectId),
+      ]}
     >
       <SharesClient projectId={session.projectId} regionId={session.regionId} />
     </DataTableHydrationBoundary>

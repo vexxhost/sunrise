@@ -19,6 +19,9 @@ describe("resource recovery", () => {
     expect(recoveryDestination({ kind: "share-snapshot" })).toBe(
       "/shared-file-systems/snapshots",
     );
+    expect(recoveryDestination({ kind: "user-message" })).toBe(
+      "/shared-file-systems/user-messages",
+    );
     expect(
       recoveryDestination({ kind: "node-group", parentId: "cluster/id" }),
     ).toBe("/kubernetes/clusters/cluster%2Fid/node-groups");

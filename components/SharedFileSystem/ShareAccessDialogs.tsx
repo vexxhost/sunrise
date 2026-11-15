@@ -40,7 +40,9 @@ export function GrantShareAccessDialog({
   scope: MutationScope;
   shareId: string;
 }) {
-  const [accessType, setAccessType] = useState<"ip" | "cert" | "user">("ip");
+  const [accessType, setAccessType] = useState<
+    "ip" | "cert" | "user" | "cephx"
+  >("ip");
   const [accessTo, setAccessTo] = useState("");
   const [accessLevel, setAccessLevel] = useState<"rw" | "ro">("rw");
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,9 @@ export function GrantShareAccessDialog({
       ? "10.0.0.0/24"
       : accessType === "cert"
         ? "client.example.com"
-        : "client-user";
+        : accessType === "cephx"
+          ? "alice"
+          : "client-user";
 
   const submit = () => {
     if (!accessTo.trim() || pending) return;
@@ -89,7 +93,7 @@ export function GrantShareAccessDialog({
             <Select
               value={accessType}
               onValueChange={(value) =>
-                setAccessType(value as "ip" | "cert" | "user")
+                setAccessType(value as "ip" | "cert" | "user" | "cephx")
               }
               disabled={pending}
             >
@@ -100,6 +104,7 @@ export function GrantShareAccessDialog({
                 <SelectItem value="ip">IP network</SelectItem>
                 <SelectItem value="cert">Certificate</SelectItem>
                 <SelectItem value="user">User</SelectItem>
+                <SelectItem value="cephx">Ceph auth ID</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -120,7 +125,9 @@ export function GrantShareAccessDialog({
             </Select>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="share-access-to">Client</Label>
+            <Label htmlFor="share-access-to">
+              {accessType === "cephx" ? "Ceph auth ID" : "Client"}
+            </Label>
             <Input
               id="share-access-to"
               value={accessTo}
@@ -143,8 +150,12 @@ export function GrantShareAccessDialog({
           <Button variant="outline" onClick={onOpenChange} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={pending || !accessTo.trim()}>
-            {pending ? "Granting" : "Grant access"}
+          <Button
+            onClick={submit}
+            disabled={!accessTo.trim()}
+            loading={pending}
+          >
+            Grant access
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -199,8 +210,8 @@ export function RevokeShareAccessDialog({
           <Button variant="outline" onClick={onOpenChange} disabled={pending}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={revoke} disabled={pending}>
-            {pending ? "Revoking" : "Revoke access"}
+          <Button variant="destructive" onClick={revoke} loading={pending}>
+            Revoke access
           </Button>
         </DialogFooter>
       </DialogContent>

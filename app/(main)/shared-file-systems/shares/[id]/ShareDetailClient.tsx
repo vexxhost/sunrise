@@ -25,6 +25,7 @@ import {
 import { ShareSnapshotActions } from "@/components/SharedFileSystem/ShareSnapshotActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Table,
   TableBody,
@@ -36,6 +37,7 @@ import {
 import {
   shareAccessRulesQueryOptions,
   shareExportLocationsQueryOptions,
+  shareNetworksQueryOptions,
   shareQueryOptions,
   shareSnapshotsQueryOptions,
 } from "@/hooks/queries/useManila";
@@ -45,6 +47,7 @@ import {
   canManageShareAccess,
   canResizeShare,
   formatManilaStatus,
+  isShareAccessRuleTransitioning,
   isShareTransitioning,
   shareStatusVariant,
 } from "@/lib/openstack/manila-lifecycle";
@@ -55,6 +58,10 @@ function emptyToDash(value: unknown) {
   return value === null || value === undefined || value === ""
     ? "-"
     : String(value);
+}
+
+function booleanToText(value: boolean | null | undefined) {
+  return value === null || value === undefined ? "-" : value ? "Yes" : "No";
 }
 
 export function ShareDetailClient({
@@ -82,14 +89,18 @@ export function ShareDetailClient({
   const exportsQuery = useQuery(
     shareExportLocationsQueryOptions(regionId, projectId, shareId),
   );
+  const networksQuery = useQuery({
+    ...shareNetworksQueryOptions(regionId, projectId),
+    retry: false,
+  });
+  const accessRulesQuery = useMemo(
+    () => shareAccessRulesQueryOptions(regionId, projectId, shareId),
+    [projectId, regionId, shareId],
+  );
   const accessQuery = useQuery({
-    ...shareAccessRulesQueryOptions(regionId, projectId, shareId),
+    ...accessRulesQuery,
     refetchInterval: ({ state }) =>
-      state.data?.some(({ state: ruleState }) =>
-        ["new", "applying", "denying"].includes(ruleState.toLowerCase()),
-      )
-        ? 5_000
-        : false,
+      state.data?.some(isShareAccessRuleTransitioning) ? 5_000 : false,
   });
   const snapshotsQuery = useQuery({
     ...shareSnapshotsQueryOptions(regionId, projectId),
@@ -112,6 +123,14 @@ export function ShareDetailClient({
       ),
     [share.metadata],
   );
+  const shareNetworkName = useMemo(
+    () =>
+      share.share_network_name ||
+      networksQuery.data?.find(({ id }) => id === share.share_network_id)
+        ?.name ||
+      share.share_network_id,
+    [networksQuery.data, share.share_network_id, share.share_network_name],
+  );
   const refreshShare = useCallback(
     async (deleted = false) => {
       if (!deleted) {
@@ -126,9 +145,9 @@ export function ShareDetailClient({
   );
   const refreshAccess = useCallback(async () => {
     await queryClient.invalidateQueries({
-      queryKey: [regionId, projectId, "manila", "share", shareId, "access"],
+      queryKey: accessRulesQuery.queryKey,
     });
-  }, [projectId, queryClient, regionId, shareId]);
+  }, [accessRulesQuery.queryKey, queryClient]);
 
   return (
     <div className="max-w-screen-xl space-y-4">
@@ -213,7 +232,10 @@ export function ShareDetailClient({
           <DetailField label="Capacity">{share.size} GiB</DetailField>
           <DetailField label="Protocol">{share.share_proto}</DetailField>
           <DetailField label="Share Type">
-            {share.share_type_name || share.share_type || "-"}
+            {share.share_type_name || "-"}
+          </DetailField>
+          <DetailField label="Share Type ID" className="font-mono text-xs">
+            {share.share_type || "-"}
           </DetailField>
           <DetailField label="Availability Zone">
             {emptyToDash(share.availability_zone)}
@@ -224,6 +246,12 @@ export function ShareDetailClient({
           <DetailField label="Created">
             {formatUtcTimestamp(share.created_at)}
           </DetailField>
+          <DetailField label="Access Rules Status">
+            {emptyToDash(share.access_rules_status)}
+          </DetailField>
+          <DetailField label="Task State">
+            {emptyToDash(share.task_state)}
+          </DetailField>
         </DetailSection>
 
         <DetailSection title="Placement">
@@ -231,9 +259,9 @@ export function ShareDetailClient({
             {share.share_network_id ? (
               <ResourceLink
                 href={`/shared-file-systems/share-networks/${encodeURIComponent(share.share_network_id)}`}
-                className="font-mono text-xs"
+                title={share.share_network_id}
               >
-                {share.share_network_id}
+                {shareNetworkName}
               </ResourceLink>
             ) : (
               "-"
@@ -261,6 +289,27 @@ export function ShareDetailClient({
           </DetailField>
         </DetailSection>
 
+        <DetailSection title="Capabilities">
+          <DetailField label="Snapshot Support">
+            {booleanToText(share.snapshot_support)}
+          </DetailField>
+          <DetailField label="Create From Snapshot">
+            {booleanToText(share.create_share_from_snapshot_support)}
+          </DetailField>
+          <DetailField label="Revert To Snapshot">
+            {booleanToText(share.revert_to_snapshot_support)}
+          </DetailField>
+          <DetailField label="Mount Snapshot Support">
+            {booleanToText(share.mount_snapshot_support)}
+          </DetailField>
+          <DetailField label="Has Replicas">
+            {booleanToText(share.has_replicas)}
+          </DetailField>
+          <DetailField label="Replication Type">
+            {emptyToDash(share.replication_type)}
+          </DetailField>
+        </DetailSection>
+
         <DetailSection title="Export Locations">
           {exportsQuery.isError ? (
             <DetailField label="Export locations">
@@ -275,9 +324,31 @@ export function ShareDetailClient({
                 label={
                   location.preferred ? "Preferred" : `Location ${index + 1}`
                 }
-                className="font-mono text-xs"
               >
-                <span className="break-all">{location.path}</span>
+                <div className="space-y-1.5">
+                  <div className="flex min-w-0 items-start gap-1">
+                    <span className="min-w-0 flex-1 break-all font-mono text-xs">
+                      {location.path}
+                    </span>
+                    <CopyButton
+                      value={location.path}
+                      label="Copy export location"
+                      copiedLabel="Export location copied"
+                      className="shrink-0"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>Preferred: {booleanToText(location.preferred)}</span>
+                    <span>
+                      Admin only: {booleanToText(location.is_admin_only)}
+                    </span>
+                    {location.share_instance_id ? (
+                      <span className="font-mono">
+                        Share instance: {location.share_instance_id}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               </DetailField>
             ))
           ) : (

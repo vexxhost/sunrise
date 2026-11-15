@@ -31,6 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
+import { parseManilaMetadata } from "@/lib/openstack/manila-metadata";
 import {
   manilaAvailabilityZonesQueryOptions,
   shareNetworksQueryOptions,
@@ -54,31 +55,6 @@ const initialForm = {
   isPublic: false,
   metadata: "{}",
 };
-
-function parseMetadata(value: string) {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
-      return { value: null, errors: ["Metadata must be a JSON object."] };
-    }
-    const entries = Object.entries(parsed);
-    if (entries.some(([key, item]) => !key || typeof item !== "string")) {
-      return {
-        value: null,
-        errors: ["Metadata keys must be non-empty and values must be strings."],
-      };
-    }
-    return {
-      value: Object.fromEntries(entries) as Record<string, string>,
-      errors: [] as string[],
-    };
-  } catch (error) {
-    return {
-      value: null,
-      errors: [error instanceof Error ? error.message : "Invalid JSON."],
-    };
-  }
-}
 
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
@@ -121,7 +97,10 @@ export function ShareActions({
       },
     ],
   });
-  const metadata = useMemo(() => parseMetadata(form.metadata), [form.metadata]);
+  const metadata = useMemo(
+    () => parseManilaMetadata(form.metadata),
+    [form.metadata],
+  );
   const selectedType = types.data?.find(({ id }) => id === form.shareType);
   const selectedNetwork = networks.data?.find(
     ({ id }) => id === form.shareNetworkId,
@@ -187,7 +166,7 @@ export function ShareActions({
               ? undefined
               : form.availabilityZone,
           isPublic: form.isPublic,
-          metadata: metadata.value,
+          metadata: metadata.value ?? {},
         },
       );
       if (!result.ok) {
