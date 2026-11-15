@@ -6,6 +6,7 @@ import {
   Settings,
   Waypoints,
 } from "lucide-react";
+import { unstable_rethrow } from "next/navigation";
 import {
   ServiceLandingPage,
   ServiceLandingSection,
@@ -16,6 +17,7 @@ import {
 import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import { createActionsForService } from "@/lib/create-actions";
 import { loadCloudContext } from "@/lib/cloud-context";
+import { createLogger } from "@/lib/logging";
 import { openstack } from "@/lib/openstack/actions";
 import {
   listClustersAction,
@@ -30,6 +32,8 @@ import { loadProjectOverview } from "@/lib/openstack/overview";
 import { quotaPercentage } from "@/lib/openstack/quota";
 import { filterResourcePreferencesByLiveIds } from "@/lib/resource-preferences";
 
+const logger = createLogger("kubernetes.overview");
+
 export default async function KubernetesPage() {
   const cloud = await loadCloudContext();
   const { snapshot } = cloud;
@@ -41,7 +45,7 @@ export default async function KubernetesPage() {
     ({ id, status }) =>
       id === "networking.networks" && status !== "unavailable",
   );
-  const [services, templates, clusters, loadBalancers, floatingIpPayload] =
+  const [services, templates, clusters, loadBalancerResult, floatingIpResult] =
     await Promise.all([
       loadProjectOverview({
         token: cloud.keystoneToken,
@@ -61,7 +65,25 @@ export default async function KubernetesPage() {
             snapshot.region.id ?? undefined,
             snapshot.project.id ?? undefined,
           )
-        : Promise.resolve([]),
+            .then((loadBalancers) => ({
+              ok: true as const,
+              loadBalancers,
+            }))
+            .catch((error) => {
+              unstable_rethrow(error);
+              logger.warn("load-balancer-enrichment-unavailable", {
+                error,
+                regionId: snapshot.region.id,
+              });
+              return {
+                ok: false as const,
+                loadBalancers: [],
+              };
+            })
+        : Promise.resolve({
+            ok: false as const,
+            loadBalancers: [],
+          }),
       loadBalancersAvailable &&
       neutronAvailable &&
       snapshot.region.id &&
@@ -72,13 +94,25 @@ export default async function KubernetesPage() {
               port_id?: string | null;
             }>;
           }>({
+            errorMode: "throw",
             regionId: snapshot.region.id,
             serviceType: "network",
             serviceName: "neutron",
             path: `/v2.0/floatingips?project_id=${encodeURIComponent(snapshot.project.id)}`,
           })
-        : Promise.resolve(null),
+            .then((payload) => ({ ok: true as const, payload }))
+            .catch((error) => {
+              unstable_rethrow(error);
+              logger.warn("floating-ip-enrichment-unavailable", {
+                error,
+                regionId: snapshot.region.id,
+              });
+              return { ok: false as const, payload: null };
+            })
+        : Promise.resolve({ ok: true as const, payload: null }),
     ]);
+  const loadBalancers = loadBalancerResult.loadBalancers;
+  const floatingIpPayload = floatingIpResult.payload;
   const liveClusterIds = clusters.map(({ uuid }) => uuid);
   const resources = filterResourcePreferencesByLiveIds(
     [
@@ -173,6 +207,13 @@ export default async function KubernetesPage() {
   const clusterApiLoadBalancers = loadBalancers.filter((loadBalancer) =>
     isClusterApiLoadBalancer(loadBalancer, clusterApiHosts, floatingIpByPort),
   );
+  const loadBalancerEnrichmentAvailable =
+    loadBalancerResult.ok && floatingIpResult.ok;
+  const loadBalancerEnrichmentMessage = !loadBalancerResult.ok
+    ? "Octavia list access is unavailable"
+    : !floatingIpResult.ok
+      ? "Floating IP association is unavailable"
+      : null;
   const loadBalancerMetric = loadBalancingService?.metrics.find(
     ({ id }) => id === "loadbalancer",
   );
@@ -222,11 +263,14 @@ export default async function KubernetesPage() {
           {
             icon: Waypoints,
             label: "Cluster API load balancers",
-            value: String(clusterApiLoadBalancers.length),
+            value: loadBalancerEnrichmentAvailable
+              ? String(clusterApiLoadBalancers.length)
+              : "-",
             detail:
-              projectLoadBalancerCount === "-"
+              loadBalancerEnrichmentMessage ??
+              (projectLoadBalancerCount === "-"
                 ? (loadBalancingService?.message ?? "Usage is unavailable")
-                : `${projectLoadBalancerCount} total Octavia load balancers in this project`,
+                : `${projectLoadBalancerCount} total Octavia load balancers in this project`),
           },
         ]
       : []),
@@ -284,10 +328,11 @@ export default async function KubernetesPage() {
                     description:
                       "Inspect Octavia load balancers used by cluster APIs and Kubernetes services.",
                     meta:
-                      projectLoadBalancerCount === "-"
+                      loadBalancerEnrichmentMessage ??
+                      (projectLoadBalancerCount === "-"
                         ? (loadBalancingService?.message ??
                           "Usage is unavailable")
-                        : `${clusterApiLoadBalancers.length} cluster API · ${projectLoadBalancerCount} in project`,
+                        : `${clusterApiLoadBalancers.length} cluster API · ${projectLoadBalancerCount} in project`),
                   },
                 ]
               : []),
