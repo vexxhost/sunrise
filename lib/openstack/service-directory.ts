@@ -73,6 +73,11 @@ const serviceDirectoryDefinitions: ServiceDirectoryDefinition[] = [
         serviceType: "network",
         serviceName: "neutron",
       },
+      {
+        policyService: "load-balancer",
+        serviceType: "load-balancer",
+        serviceName: "octavia",
+      },
     ],
   },
   {

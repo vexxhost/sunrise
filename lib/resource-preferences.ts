@@ -5,6 +5,7 @@ export const resourceKinds = [
   "volume",
   "image",
   "cluster",
+  "load-balancer",
   "bucket",
   "share",
   "share-snapshot",
@@ -284,6 +285,8 @@ export function resourcePreferenceHref(
       return `/compute/images/${id}`;
     case "cluster":
       return `/kubernetes/clusters/${id}/overview`;
+    case "load-balancer":
+      return `/networking/load-balancers/${id}`;
     case "bucket":
       return `/object-storage/buckets/${id}`;
     case "share":
@@ -305,6 +308,7 @@ export function resourceKindLabel(kind: ResourceKind) {
     volume: "Volume",
     image: "Image",
     cluster: "Kubernetes cluster",
+    "load-balancer": "Load balancer",
     bucket: "Bucket",
     share: "Share",
     "share-snapshot": "Share snapshot",

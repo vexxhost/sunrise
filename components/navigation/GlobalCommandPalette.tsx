@@ -37,6 +37,7 @@ import {
   Warehouse,
   Package,
   ScrollText,
+  Waypoints,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCloudContext } from "@/components/cloud/CloudContext";
@@ -85,6 +86,7 @@ const resourceIcons: Record<
   volume: HardDrive,
   image: ImageIcon,
   cluster: Container,
+  "load-balancer": Waypoints,
   bucket: Database,
   share: FolderTree,
   "share-snapshot": Camera,
@@ -122,6 +124,7 @@ const destinationIcons: Record<
   image: ImageIcon,
   instance: Server,
   "key-pair": KeyRound,
+  "load-balancer": Waypoints,
   network: GitBranch,
   message: MessageSquareWarning,
   order: ScrollText,

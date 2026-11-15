@@ -36,5 +36,8 @@ export * from "./manila";
 // Neutron (Network)
 export * from "./neutron";
 
+// Octavia (Load Balancing)
+export * from "./octavia";
+
 // Nova (Compute)
 export * from "./nova";

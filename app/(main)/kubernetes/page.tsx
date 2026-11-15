@@ -1,11 +1,13 @@
+import { isIP } from "node:net";
 import {
   Activity,
   Boxes,
   Gauge,
   GitCommit,
-  Network,
   Settings,
+  Waypoints,
 } from "lucide-react";
+import { unstable_rethrow } from "next/navigation";
 import {
   ServiceLandingPage,
   ServiceLandingSection,
@@ -16,32 +18,117 @@ import {
 import { CreateResourceMenu } from "@/components/resources/CreateResourceMenu";
 import { createActionsForService } from "@/lib/create-actions";
 import { loadCloudContext } from "@/lib/cloud-context";
+import { createLogger } from "@/lib/logging";
 import {
   listClustersAction,
   listClusterTemplatesAction,
 } from "@/lib/openstack/magnum";
+import { listFloatingIpsForAddresses } from "@/lib/openstack/neutron-floating-ip-server";
+import { listLoadBalancersAction } from "@/lib/openstack/octavia-actions";
+import {
+  clusterApiHostsNeedingFloatingIps,
+  indexFloatingIpAddressesByPort,
+  isClusterApiLoadBalancer,
+  octaviaEndpointHost,
+} from "@/lib/openstack/octavia";
 import { loadProjectOverview } from "@/lib/openstack/overview";
 import { quotaPercentage } from "@/lib/openstack/quota";
 import { filterResourcePreferencesByLiveIds } from "@/lib/resource-preferences";
 
+const logger = createLogger("kubernetes.overview");
+
 export default async function KubernetesPage() {
   const cloud = await loadCloudContext();
   const { snapshot } = cloud;
-  const [services, templates, clusters] = await Promise.all([
-    loadProjectOverview({
-      token: cloud.keystoneToken,
-      regionId: snapshot.region.id ?? undefined,
-      projectId: snapshot.project.id ?? undefined,
-      catalog: cloud.catalog,
-      serviceIds: ["container-infra"],
-    }),
-    listClusterTemplatesAction({}, snapshot.region.id ?? undefined),
-    listClustersAction(
-      {},
-      snapshot.region.id ?? undefined,
-      snapshot.project.id ?? undefined,
-    ),
-  ]);
+  const loadBalancersAvailable = snapshot.destinations.some(
+    ({ id, status }) =>
+      id === "networking.load-balancers" && status !== "unavailable",
+  );
+  const neutronAvailable = snapshot.destinations.some(
+    ({ id, status }) =>
+      id === "networking.networks" && status !== "unavailable",
+  );
+  const [services, templates, clusters, loadBalancerResult] = await Promise.all(
+    [
+      loadProjectOverview({
+        token: cloud.keystoneToken,
+        regionId: snapshot.region.id ?? undefined,
+        projectId: snapshot.project.id ?? undefined,
+        catalog: cloud.catalog,
+        serviceIds: ["container-infra"],
+      }),
+      listClusterTemplatesAction({}, snapshot.region.id ?? undefined),
+      listClustersAction(
+        {},
+        snapshot.region.id ?? undefined,
+        snapshot.project.id ?? undefined,
+      ),
+      loadBalancersAvailable
+        ? listLoadBalancersAction(
+            snapshot.region.id ?? undefined,
+            snapshot.project.id ?? undefined,
+          )
+            .then((loadBalancers) => ({
+              ok: true as const,
+              loadBalancers,
+            }))
+            .catch((error) => {
+              unstable_rethrow(error);
+              logger.warn("load-balancer-enrichment-unavailable", {
+                error,
+                regionId: snapshot.region.id,
+              });
+              return {
+                ok: false as const,
+                loadBalancers: [],
+              };
+            })
+        : Promise.resolve({
+            ok: false as const,
+            loadBalancers: [],
+          }),
+    ],
+  );
+  const loadBalancers = loadBalancerResult.loadBalancers;
+  const clusterApiHosts = new Set(
+    clusters
+      .map(({ api_address: apiAddress }) => octaviaEndpointHost(apiAddress))
+      .filter((host): host is string => Boolean(host)),
+  );
+  const clusterApiHostsWithoutDirectVip = clusterApiHostsNeedingFloatingIps(
+    loadBalancers,
+    clusterApiHosts,
+  );
+  const floatingIpAddresses = clusterApiHostsWithoutDirectVip.filter(
+    (host) => isIP(host) !== 0,
+  );
+  const hasUnresolvedClusterApiHostname =
+    floatingIpAddresses.length !== clusterApiHostsWithoutDirectVip.length;
+  const floatingIpLookupNeeded = floatingIpAddresses.length > 0;
+  const floatingIpResult =
+    loadBalancerResult.ok &&
+    floatingIpLookupNeeded &&
+    neutronAvailable &&
+    snapshot.region.id &&
+    snapshot.project.id
+      ? await listFloatingIpsForAddresses(
+          floatingIpAddresses,
+          snapshot.region.id,
+          snapshot.project.id,
+        )
+          .then((floatingIps) => ({ ok: true as const, floatingIps }))
+          .catch((error) => {
+            unstable_rethrow(error);
+            logger.warn("floating-ip-enrichment-unavailable", {
+              error,
+              regionId: snapshot.region.id,
+            });
+            return { ok: false as const, floatingIps: [] };
+          })
+      : {
+          ok: !floatingIpLookupNeeded,
+          floatingIps: [],
+        };
   const liveClusterIds = clusters.map(({ uuid }) => uuid);
   const resources = filterResourcePreferencesByLiveIds(
     [
@@ -51,7 +138,7 @@ export default async function KubernetesPage() {
     "cluster",
     liveClusterIds,
   );
-  const clusterService = services[0];
+  const clusterService = services.find(({ id }) => id === "container-infra");
   const clusterMetric = clusterService?.metrics.find(
     ({ id }) => id === "clusters",
   );
@@ -110,6 +197,26 @@ export default async function KubernetesPage() {
         ]
           .filter(Boolean)
           .join(" · ");
+  const floatingIpsByPort = indexFloatingIpAddressesByPort(
+    floatingIpResult.floatingIps,
+  );
+  const clusterApiLoadBalancers = loadBalancers.filter((loadBalancer) =>
+    isClusterApiLoadBalancer(loadBalancer, clusterApiHosts, floatingIpsByPort),
+  );
+  const loadBalancerEnrichmentAvailable =
+    loadBalancerResult.ok &&
+    !hasUnresolvedClusterApiHostname &&
+    (!floatingIpLookupNeeded || floatingIpResult.ok);
+  const loadBalancerEnrichmentMessage = !loadBalancerResult.ok
+    ? "Octavia list access is unavailable"
+    : hasUnresolvedClusterApiHostname
+      ? "Cluster API hostname association is unavailable"
+      : floatingIpLookupNeeded && !floatingIpResult.ok
+        ? "Floating IP association is unavailable"
+        : null;
+  const projectLoadBalancerCount = loadBalancerResult.ok
+    ? String(loadBalancers.length)
+    : "-";
   const metrics: ServiceLandingMetric[] = [
     {
       icon: Boxes,
@@ -147,6 +254,22 @@ export default async function KubernetesPage() {
       value: healthValue,
       detail: healthDetail,
     },
+    ...(loadBalancersAvailable
+      ? [
+          {
+            icon: Waypoints,
+            label: "Cluster API load balancers",
+            value: loadBalancerEnrichmentAvailable
+              ? String(clusterApiLoadBalancers.length)
+              : "-",
+            detail:
+              loadBalancerEnrichmentMessage ??
+              (projectLoadBalancerCount === "-"
+                ? "Usage is unavailable"
+                : `${projectLoadBalancerCount} total Octavia load balancers in this project`),
+          },
+        ]
+      : []),
   ];
   const createActions = createActionsForService(
     snapshot.createActions,
@@ -192,13 +315,22 @@ export default async function KubernetesPage() {
               meta: `${templates.length} available`,
               createAction: createById.get("cluster-template"),
             },
-            {
-              name: "Load balancers",
-              icon: Network,
-              description:
-                "Inspect load balancers associated with Kubernetes workloads.",
-              badge: "Page planned",
-            },
+            ...(loadBalancersAvailable
+              ? [
+                  {
+                    name: "Load balancers",
+                    href: "/networking/load-balancers",
+                    icon: Waypoints,
+                    description:
+                      "Inspect Octavia load balancers used by cluster APIs and Kubernetes services.",
+                    meta:
+                      loadBalancerEnrichmentMessage ??
+                      (projectLoadBalancerCount === "-"
+                        ? "Usage is unavailable"
+                        : `${clusterApiLoadBalancers.length} cluster API · ${projectLoadBalancerCount} in project`),
+                  },
+                ]
+              : []),
           ]}
         />
       </ServiceLandingSection>

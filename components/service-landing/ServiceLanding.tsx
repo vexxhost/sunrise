@@ -15,6 +15,7 @@ import {
   Vault,
   Package,
   ScrollText,
+  Waypoints,
 } from "lucide-react";
 import { ProjectContextHeader } from "@/components/overview/ProjectContextHeader";
 import { Badge } from "@/components/ui/badge";
@@ -53,11 +54,27 @@ export type ServiceLandingResource = {
   createAction?: CreateAction;
 };
 
+function metricGridColumns(count: number) {
+  if (count === 2) return "sm:grid-cols-2";
+  if (count === 3) return "md:grid-cols-3";
+  if (count === 4) return "sm:grid-cols-2 xl:grid-cols-4";
+  if (count === 5) return "sm:grid-cols-2 lg:grid-cols-6 xl:grid-cols-5";
+  return count > 5 ? "sm:grid-cols-2 xl:grid-cols-4" : undefined;
+}
+
+function metricCellColumns(count: number, index: number) {
+  if (count !== 5) return undefined;
+  if (index < 3) return "lg:col-span-2 xl:col-span-1";
+  if (index === 3) return "lg:col-span-3 xl:col-span-1";
+  return "sm:col-span-2 lg:col-span-3 xl:col-span-1";
+}
+
 const recentResourceIcons: Record<ResourceKind, LandingIcon> = {
   instance: Server,
   volume: HardDrive,
   image: ImageIcon,
   cluster: Container,
+  "load-balancer": Waypoints,
   bucket: Database,
   share: Database,
   "share-snapshot": Camera,
@@ -97,18 +114,22 @@ export function ServiceLandingPage({
         aria-label={`${title} summary`}
         className={cn(
           "grid gap-px overflow-hidden rounded-md border bg-border",
-          metrics.length === 3
-            ? "md:grid-cols-3"
-            : "sm:grid-cols-2 xl:grid-cols-4",
+          metricGridColumns(metrics.length),
         )}
       >
-        {metrics.map((metric) => {
+        {metrics.map((metric, index) => {
           const Icon = metric.icon;
           const utilizationColor = metric.utilization
             ? quotaToneBarClasses[metric.utilization.level]
             : null;
           return (
-            <div key={metric.label} className="min-w-0 bg-surface p-4">
+            <div
+              key={metric.label}
+              className={cn(
+                "min-w-0 bg-surface p-4",
+                metricCellColumns(metrics.length, index),
+              )}
+            >
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Icon className="size-4 shrink-0" aria-hidden="true" />
                 <span className="truncate">{metric.label}</span>
@@ -117,7 +138,7 @@ export function ServiceLandingPage({
                 {metric.value}
               </div>
               <p
-                className="mt-1 truncate text-xs text-muted-foreground"
+                className="mt-1 break-words text-xs leading-5 text-muted-foreground"
                 title={metric.detail}
               >
                 {metric.detail}

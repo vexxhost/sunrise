@@ -86,6 +86,17 @@ const openStackSources: OpenStackSearchSource[] = [
     responseKey: "images",
   },
   {
+    kind: "load-balancer",
+    service: "load-balancer",
+    label: "Load balancers",
+    serviceType: "load-balancer",
+    serviceName: "octavia",
+    path: (projectId) =>
+      `/v2/lbaas/loadbalancers?project_id=${encodeURIComponent(projectId)}&limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
+    responseKey: "loadbalancers",
+    projectIdField: "project_id",
+  },
+  {
     kind: "share",
     service: "share",
     label: "Shares",

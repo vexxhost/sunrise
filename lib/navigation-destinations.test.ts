@@ -87,9 +87,12 @@ describe("navigation destinations", () => {
       }),
     );
 
-    expect(destinations.some(({ service }) => service === "networking")).toBe(
+    expect(destinations.some(({ id }) => id === "networking.networks")).toBe(
       false,
     );
+    expect(
+      destinations.some(({ id }) => id === "networking.load-balancers"),
+    ).toBe(true);
     expect(
       destinations.some(({ service }) => service === "object-storage"),
     ).toBe(false);

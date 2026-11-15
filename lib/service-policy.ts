@@ -190,7 +190,7 @@ const sunriseServiceDependencies: Record<
   OpenStackServiceId[]
 > = {
   compute: ["compute", "image", "volume"],
-  networking: ["network"],
+  networking: ["network", "load-balancer"],
   kubernetes: ["container-infra"],
   identity: ["identity"],
   orchestration: ["orchestration"],

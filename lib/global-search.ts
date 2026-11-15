@@ -22,6 +22,7 @@ const resourceSearchTerms: Record<ResourceKind, string[]> = {
   volume: ["disk", "block storage", "cinder", "ebs"],
   image: ["glance", "boot image", "machine image", "ami"],
   cluster: ["kubernetes", "k8s", "magnum", "capi", "eks", "gke"],
+  "load-balancer": ["octavia", "lb", "vip", "listener", "pool"],
   bucket: ["s3", "rgw", "object storage", "blob storage"],
   share: ["manila", "nfs", "shared file system"],
   "share-snapshot": ["manila", "share snapshot", "shared file system backup"],

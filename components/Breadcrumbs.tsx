@@ -41,6 +41,7 @@ const serviceNames: Record<string, string> = {
   routers: "Routers",
   ports: "Ports",
   "floating-ips": "Floating IPs",
+  "load-balancers": "Load Balancers",
   volumes: "Volumes",
   snapshots: "Snapshots",
   images: "Images",
