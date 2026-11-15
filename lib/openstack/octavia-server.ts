@@ -20,6 +20,7 @@ const SERVICE_TYPE = "load-balancer";
 const SERVICE_NAME = "octavia";
 const COLLECTION_PAGE_SIZE = 100;
 const MAX_COLLECTION_PAGES = 100;
+const OCTAVIA_API_PATH = "/v2/lbaas/";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -106,10 +107,11 @@ function nextCollectionPath(links: unknown, collection: string): string | null {
   if (!next) return null;
 
   const url = new URL(next.href, "https://octavia.invalid");
-  if (!url.pathname.startsWith("/v2/lbaas/")) {
+  const apiPathIndex = url.pathname.indexOf(OCTAVIA_API_PATH);
+  if (apiPathIndex < 0) {
     throw new Error(`Invalid Octavia ${collection} pagination target`);
   }
-  return `${url.pathname}${url.search}`;
+  return `${url.pathname.slice(apiPathIndex)}${url.search}`;
 }
 
 async function octaviaGet<T>(

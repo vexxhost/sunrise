@@ -55,7 +55,7 @@ describe("Octavia project scoping", () => {
         loadbalancers_links: [
           {
             rel: "next",
-            href: "https://octavia.example/v2/lbaas/loadbalancers?project_id=project-a&marker=next",
+            href: "https://octavia.example/octavia/v2/lbaas/loadbalancers?project_id=project-a&marker=next",
           },
         ],
       })
@@ -85,6 +85,23 @@ describe("Octavia project scoping", () => {
         path: "/v2/lbaas/loadbalancers?project_id=project-a&marker=next",
       }),
     );
+  });
+
+  it("rejects pagination targets outside the Octavia API", async () => {
+    mocks.openstackRequest.mockResolvedValueOnce({
+      loadbalancers: [],
+      loadbalancers_links: [
+        {
+          rel: "next",
+          href: "https://octavia.example/octavia/v2/other-resources?marker=next",
+        },
+      ],
+    });
+
+    await expect(listLoadBalancers()).rejects.toThrow(
+      "Invalid Octavia loadbalancers pagination target",
+    );
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a scope supplied from a stale client session", async () => {
