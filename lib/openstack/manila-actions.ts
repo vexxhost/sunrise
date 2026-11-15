@@ -8,6 +8,7 @@ import { manilaDetailApiVersion } from "@/lib/openstack/capabilities-server";
 import {
   mutationErrorForStatus,
   mutationFailure,
+  mutationSuccess,
   type MutationResult,
   type MutationScope,
 } from "@/lib/mutations";
@@ -19,6 +20,7 @@ import {
   getShareNetwork,
   getShareNetworkSubnet,
   getShareSnapshot,
+  getUserMessage,
   listShares,
   MANILA_SERVICE,
   normalizeSecurityService,
@@ -63,12 +65,13 @@ const updateShareSchema = z.object({
   name: z.string().trim().min(1).max(255),
   description: z.string().trim().max(255).default(""),
   isPublic: z.boolean().default(false),
+  metadata: metadataSchema,
 });
 const resizeShareSchema = z.object({
   newSize: z.coerce.number().int().min(1).max(1_048_576),
 });
 const grantAccessSchema = z.object({
-  accessType: z.enum(["ip", "cert", "user"]),
+  accessType: z.enum(["ip", "cert", "user", "cephx"]),
   accessTo: z.string().trim().min(1).max(255),
   accessLevel: z.enum(["rw", "ro"]),
 });
@@ -185,6 +188,37 @@ function shareFromPayload(payload: unknown) {
     throw new Error("Manila did not return the share");
   }
   return (payload as { share: ManilaShare }).share;
+}
+
+function metadataFromPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object" || !("metadata" in payload)) {
+    throw new Error("Manila did not return share metadata");
+  }
+  const metadata = (payload as { metadata: unknown }).metadata;
+  if (
+    !metadata ||
+    Array.isArray(metadata) ||
+    typeof metadata !== "object" ||
+    Object.entries(metadata).some(
+      ([key, value]) => !key || typeof value !== "string",
+    )
+  ) {
+    throw new Error("Manila returned invalid share metadata");
+  }
+  return metadata as Record<string, string>;
+}
+
+function metadataMatches(
+  left: Record<string, string> | undefined,
+  right: Record<string, string>,
+) {
+  const leftEntries = Object.entries(left ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  const rightEntries = Object.entries(right).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
 }
 
 function shareSnapshotFromPayload(payload: unknown) {
@@ -506,6 +540,43 @@ export async function deleteShareNetworkAction(
       `/shared-file-systems/share-networks/${parsedId.value}`,
     ],
     successMessage: "Share network deletion requested.",
+  });
+}
+
+export async function deleteUserMessageAction(
+  scope: MutationScope,
+  messageId: string,
+): Promise<MutationResult<null>> {
+  const guarded = await activeMutationScope(scope);
+  if (!guarded.ok) return guarded.result;
+  const parsedId = parseInput(
+    resourceIdSchema,
+    messageId,
+    guarded.context.scope,
+  );
+  if (!parsedId.ok) return parsedId.result;
+  const existing = await readMutationResource(
+    () => getUserMessage(parsedId.value),
+    guarded.context.scope,
+    "user message",
+  );
+  if (!existing.ok) return existing.result;
+
+  return executeOpenStackMutation<null>({
+    actionLabel: "delete this user message",
+    scope: guarded.context.scope,
+    ...MANILA_SERVICE,
+    path: projectPath(
+      guarded.context.scope.projectId,
+      `messages/${encodeURIComponent(parsedId.value)}`,
+    ),
+    method: "DELETE",
+    ...MANILA_REQUEST_VERSION,
+    invalidates: [
+      "/shared-file-systems/user-messages",
+      `/shared-file-systems/user-messages/${parsedId.value}`,
+    ],
+    successMessage: "User message deleted.",
   });
 }
 
@@ -1073,7 +1144,7 @@ export async function updateShareAction(
   );
   if (!existing.ok) return existing.result;
 
-  return executeOpenStackMutation<ManilaShare>({
+  const detailsResult = await executeOpenStackMutation<ManilaShare>({
     actionLabel: "edit this share",
     scope: guarded.context.scope,
     ...MANILA_SERVICE,
@@ -1097,6 +1168,47 @@ export async function updateShareAction(
     ],
     successMessage: "Share details updated.",
     transform: shareFromPayload,
+  });
+  if (
+    !detailsResult.ok ||
+    metadataMatches(existing.value.metadata, parsed.value.metadata)
+  ) {
+    return detailsResult;
+  }
+
+  const metadataResult = await executeOpenStackMutation<Record<string, string>>(
+    {
+      actionLabel: "replace this share's metadata",
+      scope: guarded.context.scope,
+      ...MANILA_SERVICE,
+      path: projectPath(
+        guarded.context.scope.projectId,
+        `shares/${encodeURIComponent(parsedId.value)}/metadata`,
+      ),
+      method: "PUT",
+      ...MANILA_REQUEST_VERSION,
+      body: { metadata: parsed.value.metadata },
+      invalidates: [
+        "/shared-file-systems/shares",
+        `/shared-file-systems/shares/${parsedId.value}`,
+      ],
+      successMessage: "Share metadata updated.",
+      transform: metadataFromPayload,
+    },
+  );
+  if (!metadataResult.ok) {
+    return mutationSuccess({
+      data: detailsResult.data,
+      message: "Share details updated, but metadata could not be updated.",
+      scope: guarded.context.scope,
+      issues: [{ message: metadataResult.error.message, resource: "metadata" }],
+    });
+  }
+
+  return mutationSuccess({
+    data: { ...detailsResult.data, metadata: metadataResult.data },
+    message: "Share details and metadata updated.",
+    scope: guarded.context.scope,
   });
 }
 

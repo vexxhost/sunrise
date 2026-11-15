@@ -18,11 +18,13 @@ import {
   getShareNetwork,
   getShareNetworkSubnet,
   getShareSnapshot,
+  getUserMessage,
   listShareAccessRules,
   listSecurityServices,
   listShareNetworkSecurityServices,
   listShareNetworkSubnets,
   listShares,
+  listUserMessages,
 } from "@/lib/openstack/manila-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
 
@@ -64,6 +66,67 @@ describe("Manila project scoping", () => {
         apiVersionHeader: "X-OpenStack-Manila-API-Version",
         path: "/project-a/shares/detail?all_tenants=0",
       }),
+    );
+  });
+
+  it("lists project user messages newest first with the baseline microversion", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      messages: [
+        {
+          id: "message-owned",
+          action_id: "002",
+          detail_id: "004",
+          message_level: "ERROR",
+          project_id: "project-a",
+          request_id: "req-owned",
+          resource_id: "share-a",
+          resource_type: "SHARE",
+          user_message: "create: Share server allocation failed.",
+        },
+        {
+          id: "message-other",
+          action_id: "002",
+          detail_id: "004",
+          message_level: "ERROR",
+          project_id: "project-b",
+          request_id: "req-other",
+          resource_id: "share-b",
+          resource_type: "SHARE",
+          user_message: "create: Another project failure.",
+        },
+      ],
+    });
+
+    await expect(listUserMessages()).resolves.toEqual([
+      expect.objectContaining({ id: "message-owned" }),
+    ]);
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "2.51",
+        apiVersionHeader: "X-OpenStack-Manila-API-Version",
+        path: "/project-a/messages?sort_key=created_at&sort_dir=desc",
+      }),
+    );
+  });
+
+  it("treats a cross-project user message as missing", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      message: {
+        id: "message-a",
+        action_id: "002",
+        detail_id: "004",
+        message_level: "ERROR",
+        project_id: "project-b",
+        request_id: "req-a",
+        resource_id: "share-a",
+        resource_type: "SHARE",
+        user_message: "create: Share server allocation failed.",
+      },
+    });
+
+    await expect(getUserMessage("message-a")).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof OpenStackRequestError && error.status === 404,
     );
   });
 

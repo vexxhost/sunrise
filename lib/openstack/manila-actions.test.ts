@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getShareNetwork: vi.fn(),
   getShareNetworkSubnet: vi.fn(),
   getShareSnapshot: vi.fn(),
+  getUserMessage: vi.fn(),
   guardMutationContext: vi.fn(),
   listShares: vi.fn(),
   manilaDetailApiVersion: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("@/lib/openstack/manila-server", () => ({
   getShareNetwork: mocks.getShareNetwork,
   getShareNetworkSubnet: mocks.getShareNetworkSubnet,
   getShareSnapshot: mocks.getShareSnapshot,
+  getUserMessage: mocks.getUserMessage,
   listShares: mocks.listShares,
   MANILA_SERVICE: { serviceType: "sharev2", serviceName: "manila" },
 }));
@@ -45,9 +47,11 @@ import {
   deleteShareAction,
   deleteShareNetworkAction,
   deleteShareNetworkSubnetAction,
+  deleteUserMessageAction,
   detachShareNetworkSecurityServiceAction,
   grantShareAccessAction,
   resizeShareAction,
+  updateShareAction,
   updateShareNetworkAction,
   updateSecurityServiceAction,
 } from "@/lib/openstack/manila-actions";
@@ -89,6 +93,7 @@ describe("Manila mutation actions", () => {
       size: 20,
       status: "available",
       share_proto: "NFS",
+      metadata: { environment: "old" },
     });
     mocks.getShareSnapshot.mockResolvedValue({
       id: "snapshot-a",
@@ -113,9 +118,34 @@ describe("Manila mutation actions", () => {
       status: "new",
       type: "ldap",
     });
+    mocks.getUserMessage.mockResolvedValue({
+      id: "message-a",
+      action_id: "002",
+      detail_id: "004",
+      message_level: "ERROR",
+      project_id: "project-a",
+      request_id: "req-a",
+      resource_id: "share-a",
+      resource_type: "SHARE",
+      user_message: "create: Share server allocation failed.",
+    });
     mocks.assertShareNetworkPlacement.mockResolvedValue(undefined);
     mocks.listShares.mockResolvedValue([]);
     mocks.manilaDetailApiVersion.mockResolvedValue("2.70");
+  });
+
+  it("preflights and deletes a project user message", async () => {
+    await deleteUserMessageAction(scope, "message-a");
+
+    expect(mocks.getUserMessage).toHaveBeenCalledWith("message-a");
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/project-a/messages/message-a",
+        apiVersion: "2.51",
+        apiVersionHeader: "X-OpenStack-Manila-API-Version",
+      }),
+    );
   });
 
   it("narrows share creation to supported Manila fields", async () => {
@@ -186,8 +216,8 @@ describe("Manila mutation actions", () => {
 
   it("maps access grants to Manila's share action API", async () => {
     await grantShareAccessAction(scope, "share-a", {
-      accessType: "ip",
-      accessTo: "10.0.0.0/24",
+      accessType: "cephx",
+      accessTo: "alice",
       accessLevel: "ro",
     });
 
@@ -196,11 +226,49 @@ describe("Manila mutation actions", () => {
         path: "/project-a/shares/share-a/action",
         body: {
           allow_access: {
-            access_type: "ip",
-            access_to: "10.0.0.0/24",
+            access_type: "cephx",
+            access_to: "alice",
             access_level: "ro",
           },
         },
+      }),
+    );
+  });
+
+  it("updates share details and replaces metadata", async () => {
+    mocks.executeOpenStackMutation
+      .mockResolvedValueOnce({
+        ok: true,
+        status: "success",
+        data: { id: "share-a", metadata: { environment: "old" } },
+        message: "Share details updated.",
+        scope,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: "success",
+        data: { environment: "new" },
+        message: "Share metadata updated.",
+        scope,
+      });
+
+    const result = await updateShareAction(scope, "share-a", {
+      name: "team-data",
+      description: "Shared files",
+      isPublic: false,
+      metadata: { environment: "new" },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { metadata: { environment: "new" } },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        method: "PUT",
+        path: "/project-a/shares/share-a/metadata",
+        body: { metadata: { environment: "new" } },
       }),
     );
   });

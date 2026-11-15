@@ -29,6 +29,7 @@ const serviceNames: Record<string, string> = {
   shares: "Shares",
   "share-networks": "Share Networks",
   "security-services": "Security Services",
+  "user-messages": "User Messages",
   clusters: "Clusters",
   templates: "Templates",
   topology: "Topology",

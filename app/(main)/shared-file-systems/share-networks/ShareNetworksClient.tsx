@@ -3,13 +3,16 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Share2 } from "lucide-react";
+import { Pencil, Share2, Trash2 } from "lucide-react";
 
 import { DataTable } from "@/components/DataTable";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ShareNetworkDeleteDialog } from "@/components/SharedFileSystem/ShareNetworkLifecycleDialogs";
 import { ShareNetworkMutationDialog } from "@/components/SharedFileSystem/ShareNetworkMutationDialog";
 import { shareNetworksQueryOptions } from "@/hooks/queries/useManila";
 import type { ManilaShareNetwork } from "@/types/openstack";
+
+type ShareNetworkAction = "edit" | "delete";
 
 const columns: ColumnDef<ManilaShareNetwork>[] = [
   {
@@ -66,11 +69,12 @@ export function ShareNetworksClient({
   );
   const { data, isRefetching, refetch } = useSuspenseQuery(query);
   const [target, setTarget] = useState<ManilaShareNetwork | null>(null);
+  const [action, setAction] = useState<ShareNetworkAction | null>(null);
   const scope = useMemo(
     () => (projectId ? { projectId, regionId } : null),
     [projectId, regionId],
   );
-  const refreshAfterEdit = useCallback(async () => {
+  const refreshAfterMutation = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: query.queryKey });
     if (target) {
       await queryClient.invalidateQueries({
@@ -83,12 +87,29 @@ export function ShareNetworksClient({
       {
         label: "Edit",
         icon: Pencil,
-        onClick: (rows: ManilaShareNetwork[]) => setTarget(rows[0] ?? null),
+        onClick: (rows: ManilaShareNetwork[]) => {
+          setTarget(rows[0] ?? null);
+          setAction("edit");
+        },
+        isDisabled: (rows: ManilaShareNetwork[]) => rows.length !== 1,
+      },
+      {
+        label: "Delete",
+        icon: Trash2,
+        variant: "destructive" as const,
+        onClick: (rows: ManilaShareNetwork[]) => {
+          setTarget(rows[0] ?? null);
+          setAction("delete");
+        },
         isDisabled: (rows: ManilaShareNetwork[]) => rows.length !== 1,
       },
     ],
     [],
   );
+  const closeDialog = () => {
+    setTarget(null);
+    setAction(null);
+  };
 
   return (
     <>
@@ -102,12 +123,21 @@ export function ShareNetworksClient({
         resourceName="share network"
         rowActions={rowActions}
       />
-      {target && scope ? (
+      {target && action === "edit" && scope ? (
         <ShareNetworkMutationDialog
-          key={target.id}
+          key={`${target.id}:edit`}
           network={target}
-          onComplete={refreshAfterEdit}
-          onOpenChange={() => setTarget(null)}
+          onComplete={refreshAfterMutation}
+          onOpenChange={closeDialog}
+          scope={scope}
+        />
+      ) : null}
+      {target && action === "delete" && scope ? (
+        <ShareNetworkDeleteDialog
+          key={`${target.id}:delete`}
+          network={target}
+          onComplete={refreshAfterMutation}
+          onOpenChange={closeDialog}
           scope={scope}
         />
       ) : null}

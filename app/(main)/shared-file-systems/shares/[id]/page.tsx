@@ -1,5 +1,8 @@
 import { PrefetchHydrationBoundary } from "@/components/PrefetchHydrationBoundary";
-import { shareQueryOptions } from "@/hooks/queries/useManila";
+import {
+  shareNetworksQueryOptions,
+  shareQueryOptions,
+} from "@/hooks/queries/useManila";
 import { makeQueryClient } from "@/lib/query-client";
 import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
 import { getSession } from "@/lib/session";
@@ -14,6 +17,10 @@ export default async function SharePage({
   const session = await getSession();
   const queryClient = makeQueryClient();
   const shareQuery = shareQueryOptions(session.regionId, session.projectId, id);
+  const networksQuery = shareNetworksQueryOptions(
+    session.regionId,
+    session.projectId,
+  );
 
   await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(shareQuery), {
     kind: "share",
@@ -21,7 +28,10 @@ export default async function SharePage({
   });
 
   return (
-    <PrefetchHydrationBoundary queries={[shareQuery]} queryClient={queryClient}>
+    <PrefetchHydrationBoundary
+      queries={[shareQuery, networksQuery]}
+      queryClient={queryClient}
+    >
       <ShareDetailClient
         shareId={id}
         projectId={session.projectId}

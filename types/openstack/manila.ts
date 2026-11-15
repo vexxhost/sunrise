@@ -76,6 +76,7 @@ export interface ManilaShare {
   share_type?: string | null;
   share_type_name?: string | null;
   share_network_id?: string | null;
+  share_network_name?: string | null;
   availability_zone?: string | null;
   project_id?: string;
   user_id?: string | null;
@@ -135,12 +136,16 @@ export interface ManilaExportLocation {
   id: string;
   path: string;
   preferred?: boolean;
+  is_admin_only?: boolean;
+  share_instance_id?: string | null;
+  created_at?: string;
+  updated_at?: string | null;
 }
 
 export interface ManilaShareAccessRule {
   id: string;
   share_id?: string;
-  access_type: "ip" | "cert" | "user" | string;
+  access_type: "ip" | "cert" | "user" | "cephx" | string;
   access_to: string;
   access_level: "rw" | "ro" | string;
   access_key?: string | null;
@@ -148,4 +153,22 @@ export interface ManilaShareAccessRule {
   created_at?: string;
   updated_at?: string | null;
   metadata?: Record<string, string>;
+}
+
+export interface ManilaUserMessage {
+  id: string;
+  action_id: string;
+  detail_id: string;
+  message_level: string;
+  project_id?: string;
+  request_id: string;
+  resource_id?: string | null;
+  resource_type?: string | null;
+  user_message: string;
+  created_at?: string;
+  expires_at?: string;
+  links?: Array<{
+    href: string;
+    rel: string;
+  }>;
 }

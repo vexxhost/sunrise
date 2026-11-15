@@ -5,6 +5,7 @@ import {
   getShareNetworkAction,
   getSecurityServiceAction,
   getShareSnapshotAction,
+  getUserMessageAction,
   listManilaAvailabilityZonesAction,
   listShareAccessRulesAction,
   listShareExportLocationsAction,
@@ -15,6 +16,7 @@ import {
   listSharesAction,
   listShareTypesAction,
   listSecurityServicesAction,
+  listUserMessagesAction,
 } from "@/lib/openstack/manila";
 import { MANILA_BASELINE_MICROVERSION } from "@/lib/openstack/manila-microversions";
 
@@ -38,6 +40,29 @@ export function shareQueryOptions(
     queryKey: [regionId, projectId, "manila", "share", shareId],
     queryFn: () => getShareAction(shareId),
     enabled: !!regionId && !!projectId && !!shareId,
+  });
+}
+
+export function userMessagesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "manila", "user-messages"],
+    queryFn: () => listUserMessagesAction(),
+    enabled: !!regionId && !!projectId,
+  });
+}
+
+export function userMessageQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  messageId: string,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "manila", "user-message", messageId],
+    queryFn: () => getUserMessageAction(messageId),
+    enabled: !!regionId && !!projectId && !!messageId,
   });
 }
 
