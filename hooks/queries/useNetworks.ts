@@ -4,9 +4,11 @@
 
 import { queryOptions } from "@tanstack/react-query";
 import { openstack } from "@/lib/openstack/actions";
+import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availability-zones";
 import type {
   FloatingIp,
   Network,
+  NeutronAvailabilityZone,
   Port,
   Router,
   SecurityGroup,
@@ -19,6 +21,21 @@ type DefaultSecurityGroupRule = {
   used_in_non_default_sg: boolean;
 };
 
+export function availableNetworkZoneNames(
+  zones: NeutronAvailabilityZone[],
+  resource: "network" | "router",
+) {
+  return [
+    ...new Set(
+      zones
+        .filter(
+          (zone) => zone.resource === resource && zone.state === "available",
+        )
+        .map((zone) => zone.name),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
 function withQuery(path: string, values: Record<string, string | undefined>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
@@ -26,6 +43,26 @@ function withQuery(path: string, values: Record<string, string | undefined>) {
   }
   const query = params.toString();
   return query ? `${path}?${query}` : path;
+}
+
+export function networkAvailabilityZonesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "network-availability-zones"],
+    queryFn: async () => {
+      const data = await openstack<unknown>({
+        regionId: regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: "/v2.0/availability_zones",
+      });
+
+      return parseNeutronAvailabilityZones(data);
+    },
+    enabled: !!regionId && !!projectId,
+  });
 }
 
 /**

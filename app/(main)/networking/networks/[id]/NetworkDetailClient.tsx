@@ -18,6 +18,7 @@ import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface NetworkDetailClientProps {
+  availabilityZoneSupport: OpenStackFeatureSupport;
   id: string;
   portSecuritySupport: OpenStackFeatureSupport;
   projectId: string;
@@ -41,6 +42,7 @@ function DetailGrid({ rows }: { rows: Array<[string, React.ReactNode]> }) {
 }
 
 export function NetworkDetailClient({
+  availabilityZoneSupport,
   id,
   portSecuritySupport,
   projectId,
@@ -90,12 +92,25 @@ export function NetworkDetailClient({
           ] as Array<[string, React.ReactNode]>)),
       ["Shared", network.data.shared ? "Yes" : "No"],
       ["External", network.data["router:external"] ? "Yes" : "No"],
-      [
-        "Availability zones",
-        network.data.availability_zones.join(", ") || "None reported",
-      ],
+      ...(availabilityZoneSupport.status === "unsupported"
+        ? []
+        : ([
+            [
+              "Availability zone hints",
+              network.data.availability_zone_hints?.join(", ") ||
+                "Cloud scheduler",
+            ],
+            [
+              "Availability zones",
+              network.data.availability_zones?.join(", ") || "None reported",
+            ],
+          ] as Array<[string, React.ReactNode]>)),
     ],
-    [network.data, portSecuritySupport.status],
+    [
+      availabilityZoneSupport.status,
+      network.data,
+      portSecuritySupport.status,
+    ],
   );
 
   return (

@@ -109,6 +109,7 @@ describe("public OpenStack read action", () => {
     ["volumev3", "cinder", "/snapshots/detail"],
     ["network", "neutron", "/v2.0/subnets?network_id=network-a"],
     ["network", "neutron", "/v2.0/default-security-group-rules"],
+    ["network", "neutron", "/v2.0/availability_zones"],
     ["sharev2", "manilav2", "/project-a/share-networks/detail?all_tenants=0"],
   ])(
     "allows the supported %s/%s read route %s",

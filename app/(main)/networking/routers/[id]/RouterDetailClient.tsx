@@ -25,6 +25,7 @@ import { MutationAlert } from "@/components/mutations/MutationAlert";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface Props {
+  availabilityZoneSupport: OpenStackFeatureSupport;
   id: string;
   projectId: string;
   regionId: string;
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export function RouterDetailClient({
+  availabilityZoneSupport,
   id,
   projectId,
   regionId,
@@ -124,6 +126,28 @@ export function RouterDetailClient({
             <p className="text-xs text-muted-foreground">Interfaces</p>
             <p className="mt-2 text-sm font-medium">{interfacePorts.length}</p>
           </div>
+          {availabilityZoneSupport.status === "unsupported" ? null : (
+            <>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">
+                  Availability zone hints
+                </p>
+                <p className="mt-2 break-words text-sm font-medium">
+                  {router.data.availability_zone_hints?.join(", ") ||
+                    "Cloud scheduler"}
+                </p>
+              </div>
+              <div className="rounded-md border p-3">
+                <p className="text-xs text-muted-foreground">
+                  Availability zones
+                </p>
+                <p className="mt-2 break-words text-sm font-medium">
+                  {router.data.availability_zones?.join(", ") ||
+                    "None reported"}
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </section>
       <section className="space-y-3">

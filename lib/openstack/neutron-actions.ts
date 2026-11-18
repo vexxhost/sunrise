@@ -13,7 +13,9 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+  NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
+  NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import {
@@ -166,9 +168,18 @@ const networkCreateSchema = z.object({
   name,
   description,
   adminStateUp: z.boolean().default(true),
+  availabilityZoneHints: z
+    .array(resourceId)
+    .transform((values) => [...new Set(values)])
+    .optional(),
   portSecurityEnabled: z.boolean().optional(),
 });
-const networkUpdateSchema = networkCreateSchema;
+const networkUpdateSchema = z.object({
+  name,
+  description,
+  adminStateUp: z.boolean().default(true),
+  portSecurityEnabled: z.boolean().optional(),
+});
 const subnetCreateSchema = z
   .object({
     networkId: resourceId,
@@ -231,6 +242,15 @@ const routerCreateSchema = z.object({
   name,
   description,
   adminStateUp: z.boolean().default(true),
+  availabilityZoneHints: z
+    .array(resourceId)
+    .transform((values) => [...new Set(values)])
+    .optional(),
+});
+const routerUpdateSchema = z.object({
+  name,
+  description,
+  adminStateUp: z.boolean().default(true),
 });
 const routerRouteSchema = routeSchema;
 const routerGatewaySchema = z.object({
@@ -282,7 +302,7 @@ export type UpdateNetworkInput = z.input<typeof networkUpdateSchema>;
 export type CreateSubnetInput = z.input<typeof subnetCreateSchema>;
 export type UpdateSubnetInput = z.input<typeof subnetUpdateSchema>;
 export type CreateRouterInput = z.input<typeof routerCreateSchema>;
-export type UpdateRouterInput = z.input<typeof routerCreateSchema>;
+export type UpdateRouterInput = z.input<typeof routerUpdateSchema>;
 export type SetRouterGatewayInput = z.input<typeof routerGatewaySchema>;
 export type RouterRouteInput = z.input<typeof routerRouteSchema>;
 export type CreatePortInput = z.input<typeof portCreateSchema>;
@@ -374,10 +394,25 @@ export async function createNetworkAction(
   const parsed = parse(networkCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
-  if (value.portSecurityEnabled !== undefined) {
-    const unsupported = await unsupportedPortSecurityFailure(scope);
-    if (unsupported) return unsupported;
-  }
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.portSecurityEnabled === undefined
+      ? []
+      : [
+          {
+            feature: "Port security",
+            required: NEUTRON_PORT_SECURITY_EXTENSION,
+          },
+        ]),
+    ...(value.availabilityZoneHints?.length
+      ? [
+          {
+            feature: "Network availability-zone scheduling",
+            required: NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
+          },
+        ]
+      : []),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "create a network",
     scope,
@@ -389,6 +424,9 @@ export async function createNetworkAction(
         name: value.name,
         description: value.description,
         admin_state_up: value.adminStateUp,
+        ...(value.availabilityZoneHints?.length
+          ? { availability_zone_hints: value.availabilityZoneHints }
+          : {}),
         ...(value.portSecurityEnabled === undefined
           ? {}
           : { port_security_enabled: value.portSecurityEnabled }),
@@ -548,6 +586,15 @@ export async function createRouterAction(
   const parsed = parse(routerCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  if (value.availabilityZoneHints?.length) {
+    const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+      {
+        feature: "Router availability-zone scheduling",
+        required: NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
+      },
+    ]);
+    if (unsupported) return unsupported;
+  }
   return executeOpenStackMutation({
     actionLabel: "create a router",
     scope,
@@ -559,6 +606,9 @@ export async function createRouterAction(
         name: value.name,
         description: value.description,
         admin_state_up: value.adminStateUp,
+        ...(value.availabilityZoneHints?.length
+          ? { availability_zone_hints: value.availabilityZoneHints }
+          : {}),
       },
     },
     invalidates: networkingInvalidates,
@@ -574,7 +624,7 @@ export async function updateRouterAction(
 ): Promise<MutationResult<Router>> {
   const parsedId = parseId(scope, id);
   if (!parsedId.ok) return parsedId.result;
-  const parsed = parse(routerCreateSchema, input, scope);
+  const parsed = parse(routerUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
   return executeOpenStackMutation({

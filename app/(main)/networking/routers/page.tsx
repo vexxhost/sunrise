@@ -8,6 +8,11 @@ import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { RoutersTableClient } from "../NetworkingTablesClient";
 import { isCreateActionRequested } from "@/lib/create-actions";
+import { extensionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverNetworkCapabilities,
+  NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
+} from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
   searchParams,
@@ -20,6 +25,7 @@ export default async function Page({
     (await searchParams).create,
     "router",
   );
+  const capabilitiesPromise = discoverNetworkCapabilities(session.regionId);
   const queryClient = makeQueryClient();
   await Promise.all([
     queryClient.prefetchQuery(
@@ -29,6 +35,11 @@ export default async function Page({
       externalNetworksQueryOptions(session.regionId, session.projectId),
     ),
   ]);
+  const availabilityZoneSupport = extensionSupport(
+    await capabilitiesPromise,
+    NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
+    "Router availability-zone scheduling",
+  );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
@@ -37,6 +48,7 @@ export default async function Page({
         regionId={session.regionId}
         projectId={session.projectId}
         initiallyOpen={createRequested}
+        availabilityZoneSupport={availabilityZoneSupport}
       />
     </QueryHydrationBoundary>
   );

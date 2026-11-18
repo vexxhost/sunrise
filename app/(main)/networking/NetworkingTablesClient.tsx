@@ -79,11 +79,13 @@ function TableIntro({
 }
 
 export function NetworksTableClient({
+  availabilityZoneSupport,
   projectId,
   regionId,
   initiallyOpen = false,
   portSecuritySupport,
 }: NetworkingTableProps & {
+  availabilityZoneSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
 }) {
   const networks = useSuspenseQuery(
@@ -191,6 +193,7 @@ export function NetworksTableClient({
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
+            availabilityZoneSupport={availabilityZoneSupport}
             portSecuritySupport={portSecuritySupport}
           />
         }
@@ -212,10 +215,13 @@ export function NetworksTableClient({
 }
 
 export function RoutersTableClient({
+  availabilityZoneSupport,
   projectId,
   regionId,
   initiallyOpen = false,
-}: NetworkingTableProps) {
+}: NetworkingTableProps & {
+  availabilityZoneSupport: OpenStackFeatureSupport;
+}) {
   const routers = useSuspenseQuery(routersQueryOptions(regionId, projectId));
   const externalNetworks = useSuspenseQuery(
     externalNetworksQueryOptions(regionId, projectId),
@@ -310,6 +316,7 @@ export function RoutersTableClient({
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
+            availabilityZoneSupport={availabilityZoneSupport}
           />
         }
       >

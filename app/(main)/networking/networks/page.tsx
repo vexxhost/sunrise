@@ -11,6 +11,7 @@ import { isCreateActionRequested } from "@/lib/create-actions";
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
@@ -35,8 +36,14 @@ export default async function Page({
       subnetsQueryOptions(session.regionId, session.projectId),
     ),
   ]);
+  const capabilities = await capabilitiesPromise;
+  const availabilityZoneSupport = extensionSupport(
+    capabilities,
+    NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
+    "Network availability-zone scheduling",
+  );
   const portSecuritySupport = extensionSupport(
-    await capabilitiesPromise,
+    capabilities,
     NEUTRON_PORT_SECURITY_EXTENSION,
     "Port security",
   );
@@ -48,6 +55,7 @@ export default async function Page({
         regionId={session.regionId}
         projectId={session.projectId}
         initiallyOpen={createRequested}
+        availabilityZoneSupport={availabilityZoneSupport}
         portSecuritySupport={portSecuritySupport}
       />
     </QueryHydrationBoundary>
