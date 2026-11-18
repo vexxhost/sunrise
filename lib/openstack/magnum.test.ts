@@ -16,7 +16,11 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
 }));
 
 import { listClustersAction } from "@/lib/openstack/magnum";
-import { listClusters } from "@/lib/openstack/magnum-server";
+import {
+  getClusterTemplate,
+  listClusterNodeGroups,
+  listClusters,
+} from "@/lib/openstack/magnum-server";
 
 describe("Magnum cluster queries", () => {
   beforeEach(() => {
@@ -87,5 +91,151 @@ describe("Magnum cluster queries", () => {
       }),
     );
     expect(mocks.magnumDetailApiVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the Magnum 1.13 and 1.14 response contract", async () => {
+    mocks.magnumDetailApiVersion.mockResolvedValue("container-infra 1.14");
+    mocks.openstackRequest.mockImplementation(
+      async ({ path }: { path: string }) => {
+        if (path === "/clusters/detail") {
+          return {
+            clusters: [
+              {
+                uuid: "cluster-a",
+                name: "ours",
+                project_id: "project-a",
+                cluster_id: "driver-neutral-infrastructure-a",
+                status: "CREATE_COMPLETE",
+              },
+            ],
+          };
+        }
+        if (path === "/clusters/cluster-a/nodegroups") {
+          return {
+            nodegroups: [
+              {
+                uuid: "nodegroup-a",
+                name: "workers",
+                node_count: 2,
+                node_labels: { workload: "general" },
+                node_taints: [
+                  {
+                    key: "workload",
+                    value: "general",
+                    effect: "NoSchedule",
+                  },
+                ],
+              },
+            ],
+          };
+        }
+        throw new Error(`Unexpected Magnum path: ${path}`);
+      },
+    );
+
+    const [cluster] = await listClusters({}, "RegionOne", "project-a");
+
+    expect(cluster).toMatchObject({
+      cluster_id: "driver-neutral-infrastructure-a",
+      nodegroups: [
+        {
+          node_labels: { workload: "general" },
+          node_taints: [
+            {
+              key: "workload",
+              value: "general",
+              effect: "NoSchedule",
+            },
+          ],
+        },
+      ],
+    });
+    expect(cluster).not.toHaveProperty("stack_id");
+    expect(
+      mocks.openstackRequest.mock.calls.every(
+        ([options]) => options.apiVersion === "container-infra 1.14",
+      ),
+    ).toBe(true);
+    expect(mocks.magnumDetailApiVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps trusted endpoint affinity for detailed node-group reads", async () => {
+    mocks.magnumDetailApiVersion.mockResolvedValue("container-infra 1.14");
+    mocks.openstackRequest.mockImplementation(
+      async ({ path }: { path: string }) => {
+        if (path === "/clusters/cluster-a/nodegroups") {
+          return {
+            nodegroups: [
+              {
+                uuid: "nodegroup-a",
+                name: "workers",
+                node_count: 2,
+              },
+            ],
+          };
+        }
+        if (path === "/clusters/cluster-a/nodegroups/nodegroup-a") {
+          return {
+            nodegroup: {
+              uuid: "nodegroup-a",
+              name: "workers",
+              node_count: 2,
+              node_labels: { workload: "general" },
+              node_taints: [],
+            },
+          };
+        }
+        throw new Error(`Unexpected Magnum path: ${path}`);
+      },
+    );
+
+    const result = await listClusterNodeGroups(
+      "cluster-a",
+      "RegionOne",
+      true,
+      "https://magnum.example.test/v1",
+    );
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        uuid: "nodegroup-a",
+        node_labels: { workload: "general" },
+      }),
+    ]);
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(2);
+    expect(
+      mocks.openstackRequest.mock.calls.every(
+        ([options]) =>
+          options.apiVersion === "container-infra 1.14" &&
+          options.endpointOverride === "https://magnum.example.test/v1",
+      ),
+    ).toBe(true);
+    expect(mocks.magnumDetailApiVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves deployment-resolved cluster-template driver metadata", async () => {
+    mocks.magnumDetailApiVersion.mockResolvedValue("container-infra 1.14");
+    mocks.openstackRequest.mockResolvedValue({
+      clustertemplate: {
+        uuid: "template-a",
+        name: "capi-template",
+        coe: "kubernetes",
+        driver: "k8s_capi_helm_v1",
+        hidden: true,
+      },
+    });
+
+    await expect(
+      getClusterTemplate("template-a", "RegionOne"),
+    ).resolves.toMatchObject({
+      driver: "k8s_capi_helm_v1",
+      hidden: true,
+    });
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/clustertemplates/template-a",
+        apiVersion: "container-infra 1.14",
+      }),
+    );
   });
 });

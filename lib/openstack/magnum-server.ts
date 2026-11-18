@@ -224,6 +224,7 @@ export async function listClusterNodeGroups(
           nodeGroup.uuid,
           activeRegionId,
           selectedApiVersion,
+          endpointOverride,
         );
       } catch {
         return nodeGroup;
@@ -237,12 +238,13 @@ export async function getClusterNodeGroup(
   nodeGroupId: string,
   regionId?: string,
   apiVersion?: string,
+  endpointOverride?: string,
 ): Promise<MagnumClusterNodeGroup> {
   const data = await magnumGet<MagnumClusterNodeGroupResponse>(
     `/clusters/${clusterId}/nodegroups/${nodeGroupId}`,
     regionId,
     "throw",
-    undefined,
+    endpointOverride,
     apiVersion,
   );
   const nodeGroup = unwrapNodeGroup(data);
