@@ -12,6 +12,10 @@ import {
 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import {
+  AllowedAddressPairsFields,
+  type AllowedAddressPairInput,
+} from "@/components/Network/AllowedAddressPairsFields";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { AvailabilityZoneMultiSelect } from "@/components/OpenStack/AvailabilityZoneSelect";
 import { Button } from "@/components/ui/button";
@@ -515,12 +519,14 @@ export function CreateRouterAction({
 }
 
 export function CreatePortAction({
+  allowedAddressPairsSupport,
   initiallyOpen = false,
   projectId,
   regionId,
   portSecuritySupport,
   securityGroupSupport,
 }: ScopeProps & {
+  allowedAddressPairsSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
 }) {
@@ -533,10 +539,15 @@ export function CreatePortAction({
   const [adminStateUp, setAdminStateUp] = useState(true);
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
   const [securityGroupIds, setSecurityGroupIds] = useState<string[]>([]);
+  const [allowedAddressPairs, setAllowedAddressPairs] = useState<
+    AllowedAddressPairInput[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
+  const allowedAddressPairsAvailable =
+    allowedAddressPairsSupport.status !== "unsupported";
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -563,6 +574,7 @@ export function CreatePortAction({
       setAdminStateUp(true);
       setPortSecurityEnabled(true);
       setSecurityGroupIds([]);
+      setAllowedAddressPairs([]);
     }
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -583,6 +595,10 @@ export function CreatePortAction({
               ? []
               : securityGroupIds
             : undefined,
+          allowedAddressPairs:
+            allowedAddressPairsAvailable && allowedAddressPairs.length
+              ? allowedAddressPairs
+              : undefined,
         },
       );
       if (!result.ok) {
@@ -670,7 +686,10 @@ export function CreatePortAction({
                   disabled={pending}
                   onCheckedChange={(checked) => {
                     setPortSecurityEnabled(checked);
-                    if (!checked) setSecurityGroupIds([]);
+                    if (!checked) {
+                      setSecurityGroupIds([]);
+                      setAllowedAddressPairs([]);
+                    }
                   }}
                 />
               ) : null}
@@ -708,17 +727,34 @@ export function CreatePortAction({
                   </div>
                 </div>
               ) : null}
+              {allowedAddressPairsAvailable ? (
+                <AllowedAddressPairsFields
+                  disabled={pending}
+                  idPrefix="create-port"
+                  onValueChange={setAllowedAddressPairs}
+                  portSecurityEnabled={
+                    !portSecurityAvailable || portSecurityEnabled
+                  }
+                  value={allowedAddressPairs}
+                />
+              ) : null}
             </div>
-            {!portSecurityAvailable || !securityGroupsAvailable ? (
+            {!portSecurityAvailable ||
+            !securityGroupsAvailable ||
+            !allowedAddressPairsAvailable ? (
               <MutationAlert
                 variant="info"
-                title="Some security controls are unavailable"
+                title="Some port controls are unavailable"
               >
-                {!portSecurityAvailable ? portSecuritySupport.message : null}
-                {!portSecurityAvailable && !securityGroupsAvailable
-                  ? " "
-                  : null}
-                {!securityGroupsAvailable ? securityGroupSupport.message : null}
+                {!portSecurityAvailable ? (
+                  <p>{portSecuritySupport.message}</p>
+                ) : null}
+                {!securityGroupsAvailable ? (
+                  <p>{securityGroupSupport.message}</p>
+                ) : null}
+                {!allowedAddressPairsAvailable ? (
+                  <p>{allowedAddressPairsSupport.message}</p>
+                ) : null}
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview

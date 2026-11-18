@@ -11,6 +11,7 @@ import { isCreateActionRequested } from "@/lib/create-actions";
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -42,6 +43,11 @@ export default async function Page({
     NEUTRON_PORT_SECURITY_EXTENSION,
     "Port security",
   );
+  const allowedAddressPairsSupport = extensionSupport(
+    capabilities,
+    NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
+    "Allowed address pairs",
+  );
   const securityGroupSupport = extensionSupport(
     capabilities,
     NEUTRON_SECURITY_GROUP_EXTENSION,
@@ -51,6 +57,7 @@ export default async function Page({
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <PortsTableClient
+        allowedAddressPairsSupport={allowedAddressPairsSupport}
         key={createRequested ? "create" : "idle"}
         regionId={session.regionId}
         projectId={session.projectId}

@@ -13,6 +13,7 @@ import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server"
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -36,6 +37,11 @@ export default async function Page({
     capabilities,
     NEUTRON_SECURITY_GROUP_EXTENSION,
     "Security group assignment",
+  );
+  const allowedAddressPairsSupport = extensionSupport(
+    capabilities,
+    NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
+    "Allowed address pairs",
   );
   await Promise.all([
     queryClient.prefetchQuery(
@@ -61,6 +67,7 @@ export default async function Page({
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <PortDetailClient
+        allowedAddressPairsSupport={allowedAddressPairsSupport}
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}

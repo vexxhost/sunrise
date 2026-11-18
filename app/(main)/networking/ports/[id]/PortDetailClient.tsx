@@ -16,6 +16,7 @@ import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface PortDetailClientProps {
+  allowedAddressPairsSupport: OpenStackFeatureSupport;
   id: string;
   portSecuritySupport: OpenStackFeatureSupport;
   projectId: string;
@@ -39,6 +40,7 @@ function DetailRow({
 }
 
 export function PortDetailClient({
+  allowedAddressPairsSupport,
   id,
   portSecuritySupport,
   projectId,
@@ -93,6 +95,7 @@ export function PortDetailClient({
         </div>
         {owned ? (
           <PortDetailActions
+            allowedAddressPairsSupport={allowedAddressPairsSupport}
             port={port.data}
             portSecuritySupport={portSecuritySupport}
             groups={groups.data ?? []}
@@ -167,7 +170,8 @@ export function PortDetailClient({
 
       <div
         className={
-          securityGroupSupport.status === "unsupported"
+          securityGroupSupport.status === "unsupported" &&
+          allowedAddressPairsSupport.status === "unsupported"
             ? "grid gap-6"
             : "grid gap-6 lg:grid-cols-2"
         }
@@ -211,6 +215,31 @@ export function PortDetailClient({
               ) : (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">
                   No security groups applied.
+                </p>
+              )}
+            </div>
+          </section>
+        ) : null}
+        {allowedAddressPairsSupport.status !== "unsupported" ||
+        port.data.allowed_address_pairs?.length ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Allowed address pairs</h3>
+            <div className="divide-y rounded-md border">
+              {port.data.allowed_address_pairs?.length ? (
+                port.data.allowed_address_pairs.map((pair) => (
+                  <div
+                    key={`${pair.ip_address}-${pair.mac_address}`}
+                    className="grid gap-1 px-3 py-2.5 text-sm sm:grid-cols-2"
+                  >
+                    <span className="font-mono">{pair.ip_address}</span>
+                    <span className="font-mono text-muted-foreground">
+                      {pair.mac_address || port.data.mac_address}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No additional address pairs allowed.
                 </p>
               )}
             </div>
