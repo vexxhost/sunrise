@@ -26,6 +26,7 @@ export type OpenStackFeatureSupport = {
 
 type VersionDescription = {
   id?: unknown;
+  max_version?: unknown;
   min_version?: unknown;
   status?: unknown;
   version?: unknown;
@@ -96,7 +97,9 @@ export function parseMicroversionDiscovery(
   const preferred = supported.filter((entry) => entry.priority === priority);
   const ranges = preferred.flatMap(({ candidate }) => {
     const minimum = usableVersion(candidate?.min_version);
-    const maximum = usableVersion(candidate?.version);
+    const maximum =
+      usableVersion(candidate?.version) ??
+      usableVersion(candidate?.max_version);
     if (minimum && maximum && compareMicroversions(minimum, maximum) <= 0) {
       return [{ maximum, minimum }];
     }
@@ -111,7 +114,8 @@ export function parseMicroversionDiscovery(
 
   const explicitlyUnsupported = preferred.every(
     ({ candidate }) =>
-      candidate?.min_version === "" && candidate?.version === "",
+      candidate?.min_version === "" &&
+      (candidate?.version === "" || candidate?.max_version === ""),
   );
   return explicitlyUnsupported ? { microversions: null } : null;
 }

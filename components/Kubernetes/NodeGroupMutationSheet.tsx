@@ -395,9 +395,10 @@ export function NodeGroupMutationSheet({
                     Kubernetes labels and taints unavailable
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    The deployed Magnum API and pinned CAPI driver do not apply
-                    per-group kubelet labels or taints. Sunrise will expose
-                    these controls when both services support them.
+                    Magnum 1.14 can store per-group labels and taints, but
+                    magnum-cluster-api 0.39.0 does not apply them to worker
+                    nodes. Sunrise will expose these controls when the driver
+                    supports them.
                   </p>
                 </div>
               </TabsContent>

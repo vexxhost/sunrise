@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
+  magnumDetailApiVersion: vi.fn(),
   openstackRequest: vi.fn(),
 }));
 
@@ -10,6 +11,9 @@ vi.mock("@/lib/openstack/request-server", () => ({
   openstackRequest: mocks.openstackRequest,
 }));
 vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
+vi.mock("@/lib/openstack/capabilities-server", () => ({
+  magnumDetailApiVersion: mocks.magnumDetailApiVersion,
+}));
 
 import { listClustersAction } from "@/lib/openstack/magnum";
 import { listClusters } from "@/lib/openstack/magnum-server";
@@ -18,6 +22,7 @@ describe("Magnum cluster queries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSession.mockResolvedValue({ regionId: "RegionOne" });
+    mocks.magnumDetailApiVersion.mockResolvedValue("container-infra 1.12");
     mocks.openstackRequest.mockImplementation(
       async ({ path }: { path: string }) => {
         if (path === "/clusters/detail?limit=20") {
@@ -71,7 +76,7 @@ describe("Magnum cluster queries", () => {
     expect(mocks.openstackRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         path: "/clusters/detail?limit=20",
-        apiVersion: "container-infra latest",
+        apiVersion: "container-infra 1.12",
         endpointOverride: "https://magnum.example.test/v1",
       }),
     );
@@ -81,5 +86,6 @@ describe("Magnum cluster queries", () => {
         endpointOverride: "https://magnum.example.test/v1",
       }),
     );
+    expect(mocks.magnumDetailApiVersion).toHaveBeenCalledTimes(1);
   });
 });

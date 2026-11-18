@@ -109,7 +109,7 @@ describe("Magnum cluster template mutations", () => {
       expect.objectContaining({
         method: "POST",
         path: "/clustertemplates",
-        apiVersion: "container-infra latest",
+        apiVersion: "container-infra 1.12",
         body: expect.objectContaining({
           coe: "kubernetes",
           server_type: "vm",
@@ -266,7 +266,7 @@ describe("Magnum cluster template mutations", () => {
       expect.objectContaining({
         method: "DELETE",
         path: "/clustertemplates/template-a",
-        apiVersion: "container-infra latest",
+        apiVersion: "container-infra 1.12",
       }),
     );
   });

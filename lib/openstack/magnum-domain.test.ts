@@ -7,6 +7,7 @@ import {
   isMagnumCompatibleImage,
   kubernetesHealthSummary,
   kubernetesVersionTag,
+  magnumClusterInfrastructureId,
   magnumImageDistribution,
   normalizeKubernetesVersion,
   serversForNodeGroup,
@@ -161,5 +162,33 @@ describe("Magnum Kubernetes domain helpers", () => {
         groups,
       ).map(({ id }) => id),
     ).toEqual(["control"]);
+  });
+
+  it("normalizes pre-1.13 and driver-neutral infrastructure IDs", () => {
+    expect(magnumClusterInfrastructureId({ stack_id: "legacy-id" })).toBe(
+      "legacy-id",
+    );
+    expect(
+      magnumClusterInfrastructureId({
+        cluster_id: "driver-neutral-id",
+        stack_id: "legacy-id",
+      }),
+    ).toBe("driver-neutral-id");
+  });
+
+  it("matches CAPI instance names using the 1.13 cluster ID", () => {
+    const servers = [
+      {
+        id: "worker",
+        name: "kube-neutral-workers-a-r7k2m",
+        addresses: {},
+      },
+    ] as unknown as Server[];
+
+    expect(
+      serversForNodeGroup({ name: "workers-a", role: "worker" }, servers, {
+        cluster_id: "kube-neutral",
+      }).map(({ id }) => id),
+    ).toEqual(["worker"]);
   });
 });

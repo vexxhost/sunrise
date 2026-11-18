@@ -19,9 +19,11 @@ import {
   cinderDetailApiVersion,
   discoverBlockStorageCapabilities,
   discoverComputeCapabilities,
+  discoverContainerInfrastructureCapabilities,
   discoverLoadBalancerCapabilities,
   discoverNetworkCapabilities,
   discoverSharedFileSystemCapabilities,
+  magnumDetailApiVersion,
   manilaDetailApiVersion,
 } from "@/lib/openstack/capabilities-server";
 
@@ -63,6 +65,77 @@ describe("OpenStack capability discovery", () => {
       serviceName: "nova",
       serviceType: "compute",
     });
+  });
+
+  it("discovers the Magnum range from the unversioned service root", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_CONTAINER_INFRA", "1.14");
+    vi.stubEnv("SUNRISE_API_MICROVERSION_CONTAINER_INFRA_REGIONONE", "1.12");
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://container-infra.example.test/v1",
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        min_version: "1.1",
+        status: "CURRENT",
+        max_version: "1.12",
+      },
+    });
+
+    await expect(
+      discoverContainerInfrastructureCapabilities("RegionOne"),
+    ).resolves.toMatchObject({
+      configuredMicroversionMaximum: "1.12",
+      discoveryStatus: "available",
+      microversions: { minimum: "1.1", maximum: "1.12" },
+      serviceType: "container-infra",
+    });
+    expect(mocks.getServiceEndpoint).toHaveBeenCalledWith(
+      "RegionOne",
+      "container-infra",
+      "magnum",
+      "project-token",
+    );
+    expect(mocks.openstackRequest).toHaveBeenCalledWith({
+      acceptedStatuses: [300],
+      endpointOverride: "https://container-infra.example.test/",
+      path: "/",
+      regionId: "RegionOne",
+      serviceName: "magnum",
+      serviceType: "container-infra",
+    });
+  });
+
+  it("negotiates Magnum detail reads across 1.12 through 1.14", async () => {
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://container-infra.example.test/v1",
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        min_version: "1.1",
+        status: "CURRENT",
+        version: "1.12",
+      },
+    });
+    await expect(magnumDetailApiVersion("RegionOne")).resolves.toBe(
+      "container-infra 1.12",
+    );
+
+    vi.stubEnv("SUNRISE_API_MICROVERSION_CONTAINER_INFRA_REGIONONE", "1.13");
+    mocks.openstackRequest.mockResolvedValue({
+      version: {
+        min_version: "1.1",
+        status: "CURRENT",
+        version: "1.14",
+      },
+    });
+    await expect(magnumDetailApiVersion("RegionOne")).resolves.toBe(
+      "container-infra 1.13",
+    );
+
+    mocks.getServiceEndpoint.mockResolvedValue(null);
+    await expect(magnumDetailApiVersion("RegionOne")).resolves.toBe(
+      "container-infra 1.12",
+    );
   });
 
   it("discovers the Octavia additive API range and regional ceiling", async () => {

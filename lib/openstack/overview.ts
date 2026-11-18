@@ -31,6 +31,7 @@ import {
   MANILA_API_VERSION_HEADER,
   MANILA_BASELINE_MICROVERSION,
 } from "@/lib/openstack/manila-microversions";
+import { MAGNUM_BASELINE_API_VERSION } from "@/lib/openstack/magnum-microversions";
 import { getServicePolicy } from "@/lib/deployment-config";
 import {
   isServiceEnabled,
@@ -127,7 +128,7 @@ const serviceDefinitions: ServiceDefinition[] = [
     serviceType: "container-infra",
     serviceName: "magnum",
     path: (projectId) => `/quotas/${projectId}/Cluster`,
-    apiVersion: "container-infra latest",
+    apiVersion: MAGNUM_BASELINE_API_VERSION,
     kind: "magnum",
   },
   {

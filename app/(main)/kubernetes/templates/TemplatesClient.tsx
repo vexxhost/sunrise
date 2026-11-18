@@ -250,6 +250,20 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
         meta: { fieldType: "string", visible: true },
       },
       {
+        accessorKey: "driver",
+        header: "Magnum Driver",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
+          row.original.driver || "Cloud selected",
+        meta: { fieldType: "string", visible: false },
+      },
+      {
+        accessorKey: "hidden",
+        header: "Listed",
+        cell: ({ row }: { row: { original: MagnumClusterTemplate } }) =>
+          row.original.hidden ? "Hidden" : "Visible",
+        meta: { fieldType: "boolean", visible: false },
+      },
+      {
         accessorKey: "public",
         header: "Visibility",
         cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (

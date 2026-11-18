@@ -37,6 +37,12 @@ export function clusterKubernetesVersion(cluster: MagnumCluster) {
   );
 }
 
+export function magnumClusterInfrastructureId(
+  cluster: Pick<MagnumCluster, "cluster_id" | "stack_id"> | null | undefined,
+) {
+  return cluster?.cluster_id ?? cluster?.stack_id;
+}
+
 export type KubernetesHealthIssue = {
   id: string;
   resource: string;
@@ -164,7 +170,7 @@ function normalizedAddress(value: string) {
 export function serversForNodeGroup(
   nodeGroup: Pick<MagnumClusterNodeGroup, "name" | "node_addresses" | "role">,
   servers: Server[],
-  cluster?: Pick<MagnumCluster, "stack_id">,
+  cluster?: Pick<MagnumCluster, "cluster_id" | "stack_id">,
   siblingGroups: Array<Pick<MagnumClusterNodeGroup, "name" | "role">> = [],
 ) {
   const nodeAddresses = new Set(
@@ -175,11 +181,12 @@ export function serversForNodeGroup(
       addresses.some(({ addr }) => nodeAddresses.has(normalizedAddress(addr))),
     ),
   );
-  if (addressMatches.length > 0 || !cluster?.stack_id) {
+  const infrastructureId = magnumClusterInfrastructureId(cluster);
+  if (addressMatches.length > 0 || !infrastructureId) {
     return addressMatches;
   }
 
-  const stackPrefix = `${cluster.stack_id}-`;
+  const stackPrefix = `${infrastructureId}-`;
   const clusterServers = servers.filter((server) =>
     server.name.startsWith(stackPrefix),
   );

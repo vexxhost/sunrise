@@ -316,6 +316,12 @@ export function ClusterTemplateDetailClient({
             <DetailField label="Owner project" className="font-mono text-xs">
               {template.project_id || "-"}
             </DetailField>
+            <DetailField label="Driver">
+              {template.driver || "Cloud selected"}
+            </DetailField>
+            <DetailField label="Template listing">
+              {template.hidden ? "Hidden" : "Visible"}
+            </DetailField>
             <DetailField label="Created">
               {template.created_at || "-"}
             </DetailField>

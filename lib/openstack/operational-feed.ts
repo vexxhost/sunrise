@@ -2,6 +2,7 @@ import "server-only";
 
 import { redirect } from "next/navigation";
 import { createLogger } from "@/lib/logging";
+import { MAGNUM_BASELINE_API_VERSION } from "@/lib/openstack/magnum-microversions";
 import {
   getServiceCatalog,
   resolveServiceEndpoint,
@@ -399,7 +400,7 @@ const sourceDefinitions: SourceDefinition[] = [
     href: "/kubernetes/clusters",
     serviceType: "container-infra",
     serviceName: "magnum",
-    apiVersion: "container-infra latest",
+    apiVersion: MAGNUM_BASELINE_API_VERSION,
     unsupportedStatuses: [400],
     load: loadMagnumSignals,
   },

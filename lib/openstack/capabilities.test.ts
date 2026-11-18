@@ -57,6 +57,18 @@ describe("OpenStack capability evaluation", () => {
         },
       }),
     ).toEqual({ microversions: null });
+    expect(
+      parseMicroversionDiscovery({
+        versions: [
+          {
+            id: "v1",
+            max_version: "",
+            min_version: "",
+            status: "CURRENT",
+          },
+        ],
+      }),
+    ).toEqual({ microversions: null });
     expect(parseMicroversionDiscovery({ version: {} })).toBeNull();
     expect(
       parseMicroversionDiscovery({
