@@ -17,12 +17,14 @@ import {
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
+  NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_FLOATING_IP_EXTENSION,
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
+  NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import {
   getIpv6ConfigurationAttributes,
@@ -165,6 +167,7 @@ const ipv6ConfigurationMode = z
     "dhcpv6-stateless",
   ])
   .default("none");
+const networkMtu = z.number().int().min(0).optional();
 
 type SubnetAddressingValue = {
   allocationPools?: Array<{ start: string; end: string }>;
@@ -261,6 +264,8 @@ const networkCreateSchema = z.object({
     .optional(),
   portSecurityEnabled: z.boolean().optional(),
   qosPolicyId: resourceId.optional(),
+  mtu: networkMtu,
+  vlanTransparent: z.boolean().optional(),
 });
 const networkUpdateSchema = z.object({
   name,
@@ -269,6 +274,7 @@ const networkUpdateSchema = z.object({
   adminStateUp: z.boolean().default(true),
   portSecurityEnabled: z.boolean().optional(),
   qosPolicyId: resourceId.nullable().optional(),
+  mtu: networkMtu,
 });
 const subnetCreateSchema = z
   .object({
@@ -553,6 +559,22 @@ export async function createNetworkAction(
           },
         ]
       : []),
+    ...(value.mtu === undefined
+      ? []
+      : [
+          {
+            feature: "Network MTU configuration",
+            required: NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
+          },
+        ]),
+    ...(value.vlanTransparent
+      ? [
+          {
+            feature: "VLAN transparency",
+            required: NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
+          },
+        ]
+      : []),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -578,6 +600,8 @@ export async function createNetworkAction(
         ...(value.qosPolicyId === undefined
           ? {}
           : { qos_policy_id: value.qosPolicyId }),
+        ...(value.mtu === undefined ? {} : { mtu: value.mtu }),
+        ...(value.vlanTransparent ? { vlan_transparent: true } : {}),
       },
     },
     invalidates: networkingInvalidates,
@@ -621,6 +645,14 @@ export async function updateNetworkAction(
             required: NEUTRON_QOS_EXTENSION,
           },
         ]),
+    ...(value.mtu === undefined
+      ? []
+      : [
+          {
+            feature: "Network MTU configuration",
+            required: NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -643,6 +675,7 @@ export async function updateNetworkAction(
         ...(value.qosPolicyId === undefined
           ? {}
           : { qos_policy_id: value.qosPolicyId }),
+        ...(value.mtu === undefined ? {} : { mtu: value.mtu }),
       },
     },
     invalidates: [

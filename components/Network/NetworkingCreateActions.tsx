@@ -161,15 +161,19 @@ export function CreateNetworkAction({
   availabilityZoneSupport,
   dnsIntegrationSupport,
   initiallyOpen = false,
+  mtuSupport,
   projectId,
   regionId,
   portSecuritySupport,
   qosSupport,
+  vlanTransparencySupport,
 }: ScopeProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
+  mtuSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
+  vlanTransparencySupport: OpenStackFeatureSupport;
 }) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
@@ -177,10 +181,12 @@ export function CreateNetworkAction({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [dnsDomain, setDnsDomain] = useState("");
+  const [mtu, setMtu] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
   const [selectedAvailabilityZones, setSelectedAvailabilityZones] =
     useState("");
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
+  const [vlanTransparent, setVlanTransparent] = useState(false);
   const [qosPolicySelection, setQosPolicySelection] = useState(
     QOS_POLICY_CLOUD_DEFAULT,
   );
@@ -192,6 +198,9 @@ export function CreateNetworkAction({
   const availabilityZonesAvailable =
     availabilityZoneSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
+  const mtuWritable = mtuSupport.status !== "unsupported";
+  const vlanTransparencyAvailable =
+    vlanTransparencySupport.status !== "unsupported";
   const availabilityZones = useQuery({
     ...networkAvailabilityZonesQueryOptions(regionId, projectId),
     enabled: open && availabilityZonesAvailable,
@@ -220,9 +229,11 @@ export function CreateNetworkAction({
       setName("");
       setDescription("");
       setDnsDomain("");
+      setMtu("");
       setAdminStateUp(true);
       setSelectedAvailabilityZones("");
       setPortSecurityEnabled(true);
+      setVlanTransparent(false);
       setQosPolicySelection(QOS_POLICY_CLOUD_DEFAULT);
     }
   };
@@ -247,6 +258,9 @@ export function CreateNetworkAction({
           qosPolicyId: qosAvailable
             ? optionalQosPolicyIdFromSelection(qosPolicySelection)
             : undefined,
+          mtu: mtuWritable && mtu.trim() ? Number(mtu) : undefined,
+          vlanTransparent:
+            vlanTransparencyAvailable && vlanTransparent ? true : undefined,
         },
       );
       if (!result.ok) {
@@ -324,6 +338,25 @@ export function CreateNetworkAction({
                   zones={networkZones}
                 />
               ) : null}
+              {mtuWritable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="network-mtu">MTU</Label>
+                  <Input
+                    id="network-mtu"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    placeholder="Cloud default"
+                    value={mtu}
+                    disabled={pending}
+                    onChange={(event) => setMtu(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to use the MTU selected by the cloud.
+                  </p>
+                </div>
+              ) : null}
               {qosAvailable ? (
                 <QosPolicySelect
                   description="Use the project's cloud default or attach a visible policy."
@@ -342,7 +375,9 @@ export function CreateNetworkAction({
                 <ToggleField
                   id="network-admin-state"
                   className={
-                    portSecurityAvailable ? undefined : "sm:col-span-2"
+                    portSecurityAvailable || vlanTransparencyAvailable
+                      ? undefined
+                      : "sm:col-span-2"
                   }
                   label="Admin state up"
                   description="Allow the network to forward traffic."
@@ -358,6 +393,16 @@ export function CreateNetworkAction({
                     checked={portSecurityEnabled}
                     disabled={pending}
                     onCheckedChange={setPortSecurityEnabled}
+                  />
+                ) : null}
+                {vlanTransparencyAvailable ? (
+                  <ToggleField
+                    id="network-vlan-transparent"
+                    label="VLAN transparent"
+                    description="Allow VLAN-tagged traffic to pass through this network."
+                    checked={vlanTransparent}
+                    disabled={pending}
+                    onCheckedChange={setVlanTransparent}
                   />
                 ) : null}
               </div>
@@ -386,6 +431,22 @@ export function CreateNetworkAction({
             {!qosAvailable ? (
               <MutationAlert variant="info" title="QoS policies unavailable">
                 {qosSupport.message}
+              </MutationAlert>
+            ) : null}
+            {!mtuWritable ? (
+              <MutationAlert
+                variant="info"
+                title="MTU configuration unavailable"
+              >
+                {mtuSupport.message}
+              </MutationAlert>
+            ) : null}
+            {!vlanTransparencyAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="VLAN transparency unavailable"
+              >
+                {vlanTransparencySupport.message}
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview

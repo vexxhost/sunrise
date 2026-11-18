@@ -221,6 +221,7 @@ export interface Network {
   tenant_id: string;
   admin_state_up: boolean;
   mtu: number;
+  vlan_transparent?: boolean | null;
   status: string;
   subnets: string[];
   shared: boolean;

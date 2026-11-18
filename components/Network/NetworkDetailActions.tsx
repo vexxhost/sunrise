@@ -56,6 +56,7 @@ import { qosPoliciesQueryOptions } from "@/hooks/queries/useNetworks";
 interface NetworkDetailActionsProps {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   network: Network;
+  mtuSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
@@ -65,6 +66,7 @@ interface NetworkDetailActionsProps {
 export function NetworkDetailActions({
   dnsIntegrationSupport,
   network,
+  mtuSupport,
   portSecuritySupport,
   qosSupport,
   projectId,
@@ -81,9 +83,11 @@ export function NetworkDetailActions({
   const dnsIntegrationAvailable =
     dnsIntegrationSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
+  const mtuWritable = mtuSupport.status !== "unsupported";
   const [name, setName] = useState(network.name);
   const [description, setDescription] = useState(network.description);
   const [dnsDomain, setDnsDomain] = useState(network.dns_domain ?? "");
+  const [mtu, setMtu] = useState(String(network.mtu ?? ""));
   const [adminStateUp, setAdminStateUp] = useState(network.admin_state_up);
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(
     network.port_security_enabled,
@@ -119,6 +123,7 @@ export function NetworkDetailActions({
       setName(network.name);
       setDescription(network.description);
       setDnsDomain(network.dns_domain ?? "");
+      setMtu(String(network.mtu ?? ""));
       setAdminStateUp(network.admin_state_up);
       setPortSecurityEnabled(network.port_security_enabled);
       setQosPolicySelectionValue(qosPolicySelection(network.qos_policy_id));
@@ -165,6 +170,10 @@ export function NetworkDetailActions({
                 network.qos_policy_id,
               )
             : undefined,
+          mtu:
+            mtuWritable && mtu.trim() && Number(mtu) !== network.mtu
+              ? Number(mtu)
+              : undefined,
         },
       );
       if (!result.ok) {
@@ -251,8 +260,7 @@ export function NetworkDetailActions({
             <DialogHeader>
               <DialogTitle>Edit network</DialogTitle>
               <DialogDescription>
-                Update the network label, DNS domain, and administrative
-                controls.
+                Update the network identity and traffic controls.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -289,6 +297,27 @@ export function NetworkDetailActions({
                   <p className="text-xs text-muted-foreground">
                     Fully qualified domain including the trailing dot. Clear it
                     to remove the network domain.
+                  </p>
+                </div>
+              ) : null}
+              {mtuWritable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-network-mtu">MTU</Label>
+                  <Input
+                    id="edit-network-mtu"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    placeholder="Not reported"
+                    value={mtu}
+                    disabled={pending}
+                    onChange={(event) => setMtu(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave empty to preserve the current value. Attached
+                    instances may require a hard reboot or port reattachment
+                    after an MTU change.
                   </p>
                 </div>
               ) : null}
@@ -356,6 +385,14 @@ export function NetworkDetailActions({
             {!qosAvailable ? (
               <MutationAlert variant="info" title="QoS policies unavailable">
                 {qosSupport.message}
+              </MutationAlert>
+            ) : null}
+            {!mtuWritable ? (
+              <MutationAlert
+                variant="info"
+                title="MTU configuration unavailable"
+              >
+                {mtuSupport.message}
               </MutationAlert>
             ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
