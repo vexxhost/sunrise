@@ -336,6 +336,7 @@ describe("OpenStack capability discovery", () => {
       extensions: [
         { alias: "extraroute" },
         { alias: "extraroute-atomic" },
+        { alias: "port-security" },
         { alias: "security-group" },
       ],
     });
@@ -343,7 +344,12 @@ describe("OpenStack capability discovery", () => {
       discoverNetworkCapabilities("RegionOne"),
     ).resolves.toMatchObject({
       discoveryStatus: "available",
-      extensions: ["extraroute", "extraroute-atomic", "security-group"],
+      extensions: [
+        "extraroute",
+        "extraroute-atomic",
+        "port-security",
+        "security-group",
+      ],
     });
 
     mocks.openstackRequest.mockResolvedValueOnce({ extensions: [] });

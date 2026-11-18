@@ -8,6 +8,12 @@ import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { PortsTableClient } from "../NetworkingTablesClient";
 import { isCreateActionRequested } from "@/lib/create-actions";
+import { extensionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverNetworkCapabilities,
+  NEUTRON_PORT_SECURITY_EXTENSION,
+  NEUTRON_SECURITY_GROUP_EXTENSION,
+} from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
   searchParams,
@@ -20,6 +26,7 @@ export default async function Page({
     (await searchParams).create,
     "port",
   );
+  const capabilitiesPromise = discoverNetworkCapabilities(session.regionId);
   const queryClient = makeQueryClient();
   await Promise.all([
     queryClient.prefetchQuery(
@@ -29,6 +36,17 @@ export default async function Page({
       networksQueryOptions(session.regionId, session.projectId),
     ),
   ]);
+  const capabilities = await capabilitiesPromise;
+  const portSecuritySupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_SECURITY_EXTENSION,
+    "Port security",
+  );
+  const securityGroupSupport = extensionSupport(
+    capabilities,
+    NEUTRON_SECURITY_GROUP_EXTENSION,
+    "Security group assignment",
+  );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
@@ -37,6 +55,8 @@ export default async function Page({
         regionId={session.regionId}
         projectId={session.projectId}
         initiallyOpen={createRequested}
+        portSecuritySupport={portSecuritySupport}
+        securityGroupSupport={securityGroupSupport}
       />
     </QueryHydrationBoundary>
   );

@@ -15,9 +15,11 @@ import {
 } from "@/hooks/queries/useNetworks";
 import { isRouterInterfacePort } from "@/lib/openstack/neutron-topology";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface NetworkDetailClientProps {
   id: string;
+  portSecuritySupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
 }
@@ -40,6 +42,7 @@ function DetailGrid({ rows }: { rows: Array<[string, React.ReactNode]> }) {
 
 export function NetworkDetailClient({
   id,
+  portSecuritySupport,
   projectId,
   regionId,
 }: NetworkDetailClientProps) {
@@ -77,10 +80,14 @@ export function NetworkDetailClient({
       ["Description", network.data.description || "None"],
       ["Admin state", network.data.admin_state_up ? "Up" : "Down"],
       ["MTU", network.data.mtu],
-      [
-        "Port security",
-        network.data.port_security_enabled ? "Enabled" : "Disabled",
-      ],
+      ...(portSecuritySupport.status === "unsupported"
+        ? []
+        : ([
+            [
+              "Port security",
+              network.data.port_security_enabled ? "Enabled" : "Disabled",
+            ],
+          ] as Array<[string, React.ReactNode]>)),
       ["Shared", network.data.shared ? "Yes" : "No"],
       ["External", network.data["router:external"] ? "Yes" : "No"],
       [
@@ -88,7 +95,7 @@ export function NetworkDetailClient({
         network.data.availability_zones.join(", ") || "None reported",
       ],
     ],
-    [network.data],
+    [network.data, portSecuritySupport.status],
   );
 
   return (
@@ -108,6 +115,7 @@ export function NetworkDetailClient({
         {owned ? (
           <NetworkDetailActions
             network={network.data}
+            portSecuritySupport={portSecuritySupport}
             projectId={projectId}
             regionId={regionId}
           />

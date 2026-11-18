@@ -45,15 +45,18 @@ import type {
   Network,
 } from "@/types/openstack";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface NetworkDetailActionsProps {
   network: Network;
+  portSecuritySupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
 }
 
 export function NetworkDetailActions({
   network,
+  portSecuritySupport,
   projectId,
   regionId,
 }: NetworkDetailActionsProps) {
@@ -64,6 +67,7 @@ export function NetworkDetailActions({
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
   const [name, setName] = useState(network.name);
   const [description, setDescription] = useState(network.description);
   const [adminStateUp, setAdminStateUp] = useState(network.admin_state_up);
@@ -121,7 +125,14 @@ export function NetworkDetailActions({
       const result = await updateNetworkAction(
         { projectId, regionId },
         network.id,
-        { name, description, adminStateUp, portSecurityEnabled },
+        {
+          name,
+          description,
+          adminStateUp,
+          portSecurityEnabled: portSecurityAvailable
+            ? portSecurityEnabled
+            : undefined,
+        },
       );
       if (!result.ok) {
         setError(result.error.message);
@@ -245,24 +256,34 @@ export function NetworkDetailActions({
                   </span>
                 </span>
               </label>
-              <label className="flex items-start gap-3 rounded-md border p-3">
-                <Checkbox
-                  checked={portSecurityEnabled}
-                  disabled={pending}
-                  onCheckedChange={(value) =>
-                    setPortSecurityEnabled(value === true)
-                  }
-                />
-                <span>
-                  <span className="block text-sm font-medium">
-                    Port security
+              {portSecurityAvailable ? (
+                <label className="flex items-start gap-3 rounded-md border p-3">
+                  <Checkbox
+                    checked={portSecurityEnabled}
+                    disabled={pending}
+                    onCheckedChange={(value) =>
+                      setPortSecurityEnabled(value === true)
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">
+                      Port security
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Apply anti-spoofing and security groups.
+                    </span>
                   </span>
-                  <span className="block text-xs text-muted-foreground">
-                    Apply anti-spoofing and security groups.
-                  </span>
-                </span>
-              </label>
+                </label>
+              ) : null}
             </div>
+            {!portSecurityAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="Port security controls unavailable"
+              >
+                {portSecuritySupport.message}
+              </MutationAlert>
+            ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             <DialogFooter>
               <Button
