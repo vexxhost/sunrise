@@ -337,12 +337,14 @@ export function RoutersTableClient({
 }
 
 export function PortsTableClient({
+  allowedAddressPairsSupport,
   projectId,
   regionId,
   initiallyOpen = false,
   portSecuritySupport,
   securityGroupSupport,
 }: NetworkingTableProps & {
+  allowedAddressPairsSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
 }) {
@@ -432,6 +434,7 @@ export function PortsTableClient({
       <TableIntro
         action={
           <CreatePortAction
+            allowedAddressPairsSupport={allowedAddressPairsSupport}
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}

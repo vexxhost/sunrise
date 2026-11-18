@@ -7,6 +7,10 @@ import { Link2, Link2Off, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
+import {
+  AllowedAddressPairsFields,
+  type AllowedAddressPairInput,
+} from "@/components/Network/AllowedAddressPairsFields";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,7 +46,15 @@ import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
 
+function sameStringSet(left: string[], right: string[]) {
+  return (
+    left.length === right.length &&
+    left.every((value) => right.includes(value))
+  );
+}
+
 interface PortDetailActionsProps {
+  allowedAddressPairsSupport: OpenStackFeatureSupport;
   groups: SecurityGroup[];
   port: Port;
   portSecuritySupport: OpenStackFeatureSupport;
@@ -53,6 +65,7 @@ interface PortDetailActionsProps {
 }
 
 export function PortDetailActions({
+  allowedAddressPairsSupport,
   groups,
   port,
   portSecuritySupport,
@@ -73,11 +86,21 @@ export function PortDetailActions({
   const [securityGroupIds, setSecurityGroupIds] = useState(
     port.security_groups,
   );
+  const [allowedAddressPairs, setAllowedAddressPairs] = useState<
+    AllowedAddressPairInput[]
+  >(
+    (port.allowed_address_pairs ?? []).map((pair) => ({
+      ipAddress: pair.ip_address,
+      macAddress: pair.mac_address ?? "",
+    })),
+  );
   const [serverId, setServerId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
+  const allowedAddressPairsAvailable =
+    allowedAddressPairsSupport.status !== "unsupported";
 
   const computeAttached =
     port.device_owner.startsWith("compute:") && Boolean(port.device_id);
@@ -95,6 +118,12 @@ export function PortDetailActions({
       setAdminStateUp(port.admin_state_up);
       setPortSecurityEnabled(port.port_security_enabled);
       setSecurityGroupIds(port.security_groups);
+      setAllowedAddressPairs(
+        (port.allowed_address_pairs ?? []).map((pair) => ({
+          ipAddress: pair.ip_address,
+          macAddress: pair.mac_address ?? "",
+        })),
+      );
     }
     if (next === "attach") setServerId("");
     setDialog(next);
@@ -108,18 +137,37 @@ export function PortDetailActions({
   const submitEdit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     startTransition(async () => {
+      const originalAllowedAddressPairs = (port.allowed_address_pairs ?? []).map(
+        (pair) => ({
+          ipAddress: pair.ip_address,
+          macAddress: pair.mac_address ?? "",
+        }),
+      );
+      const allowedAddressPairsChanged =
+        JSON.stringify(allowedAddressPairs) !==
+        JSON.stringify(originalAllowedAddressPairs);
+      const portSecurityChanged =
+        portSecurityAvailable &&
+        portSecurityEnabled !== port.port_security_enabled;
+      const securityGroupsChanged =
+        securityGroupsAvailable &&
+        !sameStringSet(securityGroupIds, port.security_groups);
       const result = await updatePortAction({ projectId, regionId }, port.id, {
         name,
         description,
         adminStateUp,
-        portSecurityEnabled: portSecurityAvailable
+        portSecurityEnabled: portSecurityChanged
           ? portSecurityEnabled
           : undefined,
-        securityGroupIds: securityGroupsAvailable
+        securityGroupIds: securityGroupsChanged
           ? portSecurityAvailable && !portSecurityEnabled
             ? []
             : securityGroupIds
           : undefined,
+        allowedAddressPairs:
+          allowedAddressPairsAvailable && allowedAddressPairsChanged
+            ? allowedAddressPairs
+            : undefined,
       });
       if (!result.ok) {
         setError(result.error.message);
@@ -255,7 +303,7 @@ export function PortDetailActions({
         open={dialog === "edit"}
         onOpenChange={(isOpen) => !isOpen && setDialog(null)}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submitEdit}>
             <DialogHeader>
               <DialogTitle>Edit port</DialogTitle>
@@ -308,7 +356,10 @@ export function PortDetailActions({
                     onCheckedChange={(value) => {
                       const checked = value === true;
                       setPortSecurityEnabled(checked);
-                      if (!checked) setSecurityGroupIds([]);
+                      if (!checked) {
+                        setSecurityGroupIds([]);
+                        setAllowedAddressPairs([]);
+                      }
                     }}
                   />
                   <span>
@@ -350,17 +401,34 @@ export function PortDetailActions({
                   </div>
                 </div>
               ) : null}
+              {allowedAddressPairsAvailable ? (
+                <AllowedAddressPairsFields
+                  disabled={pending}
+                  idPrefix="edit-port"
+                  onValueChange={setAllowedAddressPairs}
+                  portSecurityEnabled={
+                    !portSecurityAvailable || portSecurityEnabled
+                  }
+                  value={allowedAddressPairs}
+                />
+              ) : null}
             </div>
-            {!portSecurityAvailable || !securityGroupsAvailable ? (
+            {!portSecurityAvailable ||
+            !securityGroupsAvailable ||
+            !allowedAddressPairsAvailable ? (
               <MutationAlert
                 variant="info"
-                title="Some security controls are unavailable"
+                title="Some port controls are unavailable"
               >
-                {!portSecurityAvailable ? portSecuritySupport.message : null}
-                {!portSecurityAvailable && !securityGroupsAvailable
-                  ? " "
-                  : null}
-                {!securityGroupsAvailable ? securityGroupSupport.message : null}
+                {!portSecurityAvailable ? (
+                  <p>{portSecuritySupport.message}</p>
+                ) : null}
+                {!securityGroupsAvailable ? (
+                  <p>{securityGroupSupport.message}</p>
+                ) : null}
+                {!allowedAddressPairsAvailable ? (
+                  <p>{allowedAddressPairsSupport.message}</p>
+                ) : null}
               </MutationAlert>
             ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}

@@ -26,6 +26,7 @@ import {
 const logger = createLogger("openstack.capabilities");
 
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
+export const NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION = "allowed-address-pairs";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
 export const NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION =
   "network_availability_zone";

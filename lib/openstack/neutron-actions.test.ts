@@ -10,6 +10,7 @@ vi.mock("@/lib/openstack/mutations", () => ({
 }));
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
+  NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION: "allowed-address-pairs",
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
   NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
@@ -48,6 +49,7 @@ describe("Neutron mutation actions", () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",
       extensions: [
+        "allowed-address-pairs",
         "extraroute",
         "extraroute-atomic",
         "network_availability_zone",
@@ -292,7 +294,7 @@ describe("Neutron mutation actions", () => {
     );
   });
 
-  it("checks port and security-group extensions in one discovery request", async () => {
+  it("checks optional port extensions in one discovery request", async () => {
     await createPortAction(scope, {
       name: "application-port",
       description: "Application interface",
@@ -300,9 +302,177 @@ describe("Neutron mutation actions", () => {
       adminStateUp: true,
       portSecurityEnabled: true,
       securityGroupIds: ["security-group-a"],
+      allowedAddressPairs: [
+        { ipAddress: "192.0.2.10", macAddress: "FA:16:3E:00:00:01" },
+      ],
     });
 
     expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps allowed address pairs and omits an empty optional MAC", async () => {
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "Application interface",
+      networkId: "network-a",
+      adminStateUp: true,
+      portSecurityEnabled: true,
+      allowedAddressPairs: [
+        { ipAddress: "192.0.2.10", macAddress: "FA:16:3E:00:00:01" },
+        { ipAddress: "2001:db8::/64", macAddress: "" },
+      ],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            allowed_address_pairs: [
+              {
+                ip_address: "192.0.2.10",
+                mac_address: "fa:16:3e:00:00:01",
+              },
+              { ip_address: "2001:db8::/64" },
+            ],
+          }),
+        },
+      }),
+    );
+  });
+
+  it("clears allowed address pairs with an explicit empty update", async () => {
+    await updatePortAction(scope, "port-a", {
+      name: "application-port",
+      description: "Application interface",
+      adminStateUp: true,
+      allowedAddressPairs: [],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({ allowed_address_pairs: [] }),
+        },
+      }),
+    );
+  });
+
+  it("omits unchanged allowed address pairs from an update", async () => {
+    await updatePortAction(scope, "port-a", {
+      name: "application-port",
+      description: "Application interface",
+      adminStateUp: true,
+    });
+
+    const request = mocks.executeOpenStackMutation.mock.calls[0]?.[0];
+    expect(request?.body.port).not.toHaveProperty("allowed_address_pairs");
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed and duplicate allowed address pairs", async () => {
+    const malformed = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      allowedAddressPairs: [
+        { ipAddress: "not-an-address", macAddress: "not-a-mac" },
+      ],
+    });
+    const duplicate = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      allowedAddressPairs: [
+        { ipAddress: "192.0.2.10", macAddress: "fa:16:3e:00:00:01" },
+        { ipAddress: "192.0.2.10", macAddress: "FA:16:3E:00:00:01" },
+      ],
+    });
+
+    expect(malformed).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(duplicate).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("duplicate"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("requires port security for non-empty allowed address pairs", async () => {
+    const result = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      portSecurityEnabled: false,
+      allowedAddressPairs: [
+        { ipAddress: "192.0.2.10", macAddress: "" },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("port security"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects allowed address pairs when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-security"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      portSecurityEnabled: true,
+      allowedAddressPairs: [
+        { ipAddress: "192.0.2.10", macAddress: "" },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("allowed-address-pairs"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("lets Neutron validate address pairs when discovery is unavailable", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "",
+      serviceType: "network",
+    });
+
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      allowedAddressPairs: [
+        { ipAddress: "192.0.2.10", macAddress: "" },
+      ],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
   });
 
   it("omits unsupported optional security attributes from a port request", async () => {

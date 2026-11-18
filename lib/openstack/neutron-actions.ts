@@ -12,6 +12,7 @@ import { getCidrPrefixLength } from "@/lib/network-address";
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
@@ -60,6 +61,46 @@ const ipAddress = z
   .max(64)
   .refine((value) => isIP(value) !== 0, "Enter a valid IP address.");
 const optionalIpAddress = ipAddress.optional();
+const ipAddressOrCidr = z
+  .string()
+  .trim()
+  .max(64)
+  .refine(
+    (value) => isIP(value) !== 0 || isCidr(value),
+    "Enter a valid IP address or CIDR.",
+  );
+const optionalMacAddress = z
+  .string()
+  .trim()
+  .max(17)
+  .refine(
+    (value) =>
+      value === "" || /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(value),
+    "Enter a valid MAC address, such as fa:16:3e:00:00:01.",
+  )
+  .transform((value) => value.toLowerCase());
+const allowedAddressPairs = z
+  .array(
+    z.object({
+      ipAddress: ipAddressOrCidr,
+      macAddress: optionalMacAddress.default(""),
+    }),
+  )
+  .superRefine((pairs, context) => {
+    const seen = new Set<string>();
+    for (const [index, pair] of pairs.entries()) {
+      const key = `${pair.ipAddress.toLowerCase()}|${pair.macAddress}`;
+      if (seen.has(key)) {
+        context.addIssue({
+          code: "custom",
+          message: "Remove the duplicate allowed address pair.",
+          path: [index],
+        });
+      }
+      seen.add(key);
+    }
+  })
+  .optional();
 const allocationPools = z
   .array(z.object({ start: ipAddress, end: ipAddress }))
   .max(32)
@@ -258,21 +299,43 @@ const routerGatewaySchema = z.object({
   enableSnat: z.boolean().default(true),
 });
 const routerInterfaceSchema = z.object({ subnetId: resourceId });
-const portCreateSchema = z.object({
-  name,
-  description,
-  networkId: resourceId,
-  adminStateUp: z.boolean().default(true),
+const portSecurityFields = {
+  allowedAddressPairs,
   portSecurityEnabled: z.boolean().optional(),
   securityGroupIds: z.array(resourceId).optional(),
-});
-const portUpdateSchema = z.object({
-  name,
-  description,
-  adminStateUp: z.boolean(),
-  portSecurityEnabled: z.boolean().optional(),
-  securityGroupIds: z.array(resourceId).optional(),
-});
+};
+function requirePortSecurityForAddressPairs(
+  value: {
+    allowedAddressPairs?: unknown[];
+    portSecurityEnabled?: boolean;
+  },
+  context: z.RefinementCtx,
+) {
+  if (value.portSecurityEnabled === false && value.allowedAddressPairs?.length) {
+    context.addIssue({
+      code: "custom",
+      message: "Enable port security before adding allowed address pairs.",
+      path: ["allowedAddressPairs"],
+    });
+  }
+}
+const portCreateSchema = z
+  .object({
+    name,
+    description,
+    networkId: resourceId,
+    adminStateUp: z.boolean().default(true),
+    ...portSecurityFields,
+  })
+  .superRefine(requirePortSecurityForAddressPairs);
+const portUpdateSchema = z
+  .object({
+    name,
+    description,
+    adminStateUp: z.boolean(),
+    ...portSecurityFields,
+  })
+  .superRefine(requirePortSecurityForAddressPairs);
 const floatingIpCreateSchema = z.object({
   floatingNetworkId: resourceId,
   description,
@@ -942,6 +1005,14 @@ export async function createPortAction(
             required: NEUTRON_SECURITY_GROUP_EXTENSION,
           },
         ]),
+    ...(value.allowedAddressPairs === undefined
+      ? []
+      : [
+          {
+            feature: "Allowed address pairs",
+            required: NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -966,6 +1037,14 @@ export async function createPortAction(
                 value.portSecurityEnabled === false
                   ? []
                   : value.securityGroupIds,
+            }),
+        ...(value.allowedAddressPairs === undefined
+          ? {}
+          : {
+              allowed_address_pairs: value.allowedAddressPairs.map((pair) => ({
+                ip_address: pair.ipAddress,
+                ...(pair.macAddress ? { mac_address: pair.macAddress } : {}),
+              })),
             }),
       },
     },
@@ -1002,6 +1081,14 @@ export async function updatePortAction(
             required: NEUTRON_SECURITY_GROUP_EXTENSION,
           },
         ]),
+    ...(value.allowedAddressPairs === undefined
+      ? []
+      : [
+          {
+            feature: "Allowed address pairs",
+            required: NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1025,6 +1112,14 @@ export async function updatePortAction(
                 value.portSecurityEnabled === false
                   ? []
                   : value.securityGroupIds,
+            }),
+        ...(value.allowedAddressPairs === undefined
+          ? {}
+          : {
+              allowed_address_pairs: value.allowedAddressPairs.map((pair) => ({
+                ip_address: pair.ipAddress,
+                ...(pair.macAddress ? { mac_address: pair.macAddress } : {}),
+              })),
             }),
       },
     },
