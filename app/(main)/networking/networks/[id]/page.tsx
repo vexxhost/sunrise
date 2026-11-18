@@ -17,6 +17,7 @@ import {
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
+  NEUTRON_QOS_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
@@ -64,6 +65,11 @@ export default async function Page({
     NEUTRON_PORT_SECURITY_EXTENSION,
     "Port security",
   );
+  const qosSupport = extensionSupport(
+    capabilities,
+    NEUTRON_QOS_EXTENSION,
+    "Network QoS policies",
+  );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
@@ -74,6 +80,7 @@ export default async function Page({
         projectId={session.projectId}
         regionId={session.regionId}
         portSecuritySupport={portSecuritySupport}
+        qosSupport={qosSupport}
       />
     </QueryHydrationBoundary>
   );

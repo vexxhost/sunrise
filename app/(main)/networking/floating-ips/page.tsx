@@ -9,6 +9,8 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
+  NEUTRON_QOS_FLOATING_IP_EXTENSION,
+  NEUTRON_QOS_FLOATING_IP_NETWORK_POLICY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
@@ -27,10 +29,21 @@ export default async function Page({
   await queryClient.prefetchQuery(
     floatingIpsQueryOptions(session.regionId, session.projectId),
   );
+  const capabilities = await capabilitiesPromise;
   const dnsIntegrationSupport = extensionSupport(
-    await capabilitiesPromise,
+    capabilities,
     NEUTRON_DNS_INTEGRATION_EXTENSION,
     "Floating IP DNS records",
+  );
+  const qosSupport = extensionSupport(
+    capabilities,
+    NEUTRON_QOS_FLOATING_IP_EXTENSION,
+    "Floating IP QoS policies",
+  );
+  const qosNetworkPolicySupport = extensionSupport(
+    capabilities,
+    NEUTRON_QOS_FLOATING_IP_NETWORK_POLICY_EXTENSION,
+    "Inherited floating IP QoS policies",
   );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
@@ -41,6 +54,8 @@ export default async function Page({
         regionId={session.regionId}
         projectId={session.projectId}
         initiallyOpen={createRequested}
+        qosNetworkPolicySupport={qosNetworkPolicySupport}
+        qosSupport={qosSupport}
       />
     </QueryHydrationBoundary>
   );

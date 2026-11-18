@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { GitBranch, Plus, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
@@ -10,6 +10,11 @@ import { MutationConfirmationDialog } from "@/components/mutations/MutationConfi
 import { IPv6ConfigurationField } from "@/components/Network/IPv6ConfigurationField";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { SubnetAddressFields } from "@/components/Network/SubnetAddressFields";
+import {
+  changedQosPolicyIdFromSelection,
+  QosPolicySelect,
+  qosPolicySelection,
+} from "@/components/Network/QosPolicySelect";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,11 +51,13 @@ import type {
 } from "@/types/openstack";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { qosPoliciesQueryOptions } from "@/hooks/queries/useNetworks";
 
 interface NetworkDetailActionsProps {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   network: Network;
   portSecuritySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
 }
@@ -59,6 +66,7 @@ export function NetworkDetailActions({
   dnsIntegrationSupport,
   network,
   portSecuritySupport,
+  qosSupport,
   projectId,
   regionId,
 }: NetworkDetailActionsProps) {
@@ -72,12 +80,16 @@ export function NetworkDetailActions({
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
   const dnsIntegrationAvailable =
     dnsIntegrationSupport.status !== "unsupported";
+  const qosAvailable = qosSupport.status !== "unsupported";
   const [name, setName] = useState(network.name);
   const [description, setDescription] = useState(network.description);
   const [dnsDomain, setDnsDomain] = useState(network.dns_domain ?? "");
   const [adminStateUp, setAdminStateUp] = useState(network.admin_state_up);
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(
     network.port_security_enabled,
+  );
+  const [qosPolicySelectionValue, setQosPolicySelectionValue] = useState(
+    qosPolicySelection(network.qos_policy_id),
   );
   const [subnetName, setSubnetName] = useState("");
   const [cidr, setCidr] = useState("");
@@ -89,6 +101,10 @@ export function NetworkDetailActions({
   const [allocationPools, setAllocationPools] = useState<AllocationPool[]>([]);
   const [dnsNameservers, setDnsNameservers] = useState<string[]>([]);
   const [hostRoutes, setHostRoutes] = useState<HostRoute[]>([]);
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled: dialog === "edit" && qosAvailable,
+  });
   const subnetQuota = useProjectQuotaImpact({
     enabled: dialog === "subnet",
     projectId,
@@ -105,6 +121,7 @@ export function NetworkDetailActions({
       setDnsDomain(network.dns_domain ?? "");
       setAdminStateUp(network.admin_state_up);
       setPortSecurityEnabled(network.port_security_enabled);
+      setQosPolicySelectionValue(qosPolicySelection(network.qos_policy_id));
     }
     if (next === "subnet") {
       setSubnetName("");
@@ -141,6 +158,12 @@ export function NetworkDetailActions({
           adminStateUp,
           portSecurityEnabled: portSecurityAvailable
             ? portSecurityEnabled
+            : undefined,
+          qosPolicyId: qosAvailable
+            ? changedQosPolicyIdFromSelection(
+                qosPolicySelectionValue,
+                network.qos_policy_id,
+              )
             : undefined,
         },
       );
@@ -269,6 +292,19 @@ export function NetworkDetailActions({
                   </p>
                 </div>
               ) : null}
+              {qosAvailable ? (
+                <QosPolicySelect
+                  description="Ports without a direct override inherit this network policy."
+                  disabled={pending}
+                  emptyLabel="No QoS policy"
+                  error={qosPolicies.isError}
+                  id="edit-network-qos-policy"
+                  loading={qosPolicies.isLoading}
+                  onValueChange={setQosPolicySelectionValue}
+                  policies={qosPolicies.data ?? []}
+                  value={qosPolicySelectionValue}
+                />
+              ) : null}
               <label className="flex items-start gap-3 rounded-md border p-3">
                 <Checkbox
                   checked={adminStateUp}
@@ -315,6 +351,11 @@ export function NetworkDetailActions({
             {!dnsIntegrationAvailable ? (
               <MutationAlert variant="info" title="DNS integration unavailable">
                 {dnsIntegrationSupport.message}
+              </MutationAlert>
+            ) : null}
+            {!qosAvailable ? (
+              <MutationAlert variant="info" title="QoS policies unavailable">
+                {qosSupport.message}
               </MutationAlert>
             ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}

@@ -15,6 +15,7 @@ import {
   discoverNetworkCapabilities,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
+  NEUTRON_QOS_GATEWAY_IP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
@@ -40,6 +41,13 @@ export default async function Page({
         "Router availability zones",
       ),
   );
+  const qosGatewaySupportPromise = capabilitiesPromise.then((capabilities) =>
+    extensionSupport(
+      capabilities,
+      NEUTRON_QOS_GATEWAY_IP_EXTENSION,
+      "Router gateway QoS policies",
+    ),
+  );
   const queryClient = makeQueryClient();
   const routerQuery = routerQueryOptions(
     session.regionId,
@@ -62,10 +70,12 @@ export default async function Page({
     ),
   ]);
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
-  const [availabilityZoneSupport, routeSupport] = await Promise.all([
-    availabilityZoneSupportPromise,
-    routeSupportPromise,
-  ]);
+  const [availabilityZoneSupport, qosGatewaySupport, routeSupport] =
+    await Promise.all([
+      availabilityZoneSupportPromise,
+      qosGatewaySupportPromise,
+      routeSupportPromise,
+    ]);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <RouterDetailClient
@@ -74,6 +84,7 @@ export default async function Page({
         projectId={session.projectId}
         regionId={session.regionId}
         routeSupport={routeSupport}
+        qosGatewaySupport={qosGatewaySupport}
       />
     </QueryHydrationBoundary>
   );

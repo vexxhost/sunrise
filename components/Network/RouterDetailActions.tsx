@@ -2,12 +2,17 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cable, Plug, Trash2, Unplug } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { EditActionButton } from "@/components/resources/EditActionButton";
+import {
+  changedQosPolicyIdFromSelection,
+  QosPolicySelect,
+  qosPolicySelection,
+} from "@/components/Network/QosPolicySelect";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -37,11 +42,14 @@ import {
   updateRouterAction,
 } from "@/lib/openstack/neutron-actions";
 import type { Network, Port, Router, Subnet } from "@/types/openstack";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { qosPoliciesQueryOptions } from "@/hooks/queries/useNetworks";
 
 interface RouterDetailActionsProps {
   externalNetworks: Network[];
   interfacePorts: Port[];
   projectId: string;
+  qosGatewaySupport: OpenStackFeatureSupport;
   regionId: string;
   routerResource: Router;
   subnets: Subnet[];
@@ -51,6 +59,7 @@ export function RouterDetailActions({
   externalNetworks,
   interfacePorts,
   projectId,
+  qosGatewaySupport,
   regionId,
   routerResource,
   subnets,
@@ -73,7 +82,15 @@ export function RouterDetailActions({
   const [enableSnat, setEnableSnat] = useState(
     routerResource.external_gateway_info?.enable_snat ?? true,
   );
+  const [qosPolicySelectionValue, setQosPolicySelectionValue] = useState(
+    qosPolicySelection(routerResource.external_gateway_info?.qos_policy_id),
+  );
   const [subnetId, setSubnetId] = useState("");
+  const qosGatewayAvailable = qosGatewaySupport.status !== "unsupported";
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled: dialog === "gateway" && qosGatewayAvailable,
+  });
   const connectedSubnetIds = useMemo(
     () =>
       new Set(
@@ -102,6 +119,9 @@ export function RouterDetailActions({
         routerResource.external_gateway_info?.network_id ?? "none",
       );
       setEnableSnat(routerResource.external_gateway_info?.enable_snat ?? true);
+      setQosPolicySelectionValue(
+        qosPolicySelection(routerResource.external_gateway_info?.qos_policy_id),
+      );
     }
     if (next === "connect") setSubnetId(availableSubnets[0]?.id ?? "");
     setDialog(next);
@@ -134,7 +154,16 @@ export function RouterDetailActions({
           : await setRouterGatewayAction(
               { projectId, regionId },
               routerResource.id,
-              { networkId: gatewayNetworkId, enableSnat },
+              {
+                networkId: gatewayNetworkId,
+                enableSnat,
+                qosPolicyId: qosGatewayAvailable
+                  ? changedQosPolicyIdFromSelection(
+                      qosPolicySelectionValue,
+                      routerResource.external_gateway_info?.qos_policy_id,
+                    )
+                  : undefined,
+              },
             );
       if (!result.ok) {
         setError(result.error.message);
@@ -185,10 +214,7 @@ export function RouterDetailActions({
           <Plug className="size-4" />
           Connect subnet
         </Button>
-        <Button
-          variant="outline"
-          onClick={() => openDialog("gateway")}
-        >
+        <Button variant="outline" onClick={() => openDialog("gateway")}>
           <Cable className="size-4" />
           Gateway
         </Button>
@@ -307,22 +333,44 @@ export function RouterDetailActions({
                 </Select>
               </div>
               {gatewayNetworkId !== "none" ? (
-                <label className="flex items-start gap-3 rounded-md border p-3">
-                  <Checkbox
-                    checked={enableSnat}
-                    disabled={pending}
-                    onCheckedChange={(value) => setEnableSnat(value === true)}
-                  />
-                  <span>
-                    <span className="block text-sm font-medium">
-                      Enable SNAT
+                <>
+                  <label className="flex items-start gap-3 rounded-md border p-3">
+                    <Checkbox
+                      checked={enableSnat}
+                      disabled={pending}
+                      onCheckedChange={(value) => setEnableSnat(value === true)}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium">
+                        Enable SNAT
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        Allow instances to reach external networks through the
+                        router.
+                      </span>
                     </span>
-                    <span className="block text-xs text-muted-foreground">
-                      Allow instances to reach external networks through the
-                      router.
-                    </span>
-                  </span>
-                </label>
+                  </label>
+                  {qosGatewayAvailable ? (
+                    <QosPolicySelect
+                      description="Apply this policy to the router's external gateway IP traffic."
+                      disabled={pending}
+                      emptyLabel="No QoS policy"
+                      error={qosPolicies.isError}
+                      id="router-gateway-qos-policy"
+                      loading={qosPolicies.isLoading}
+                      onValueChange={setQosPolicySelectionValue}
+                      policies={qosPolicies.data ?? []}
+                      value={qosPolicySelectionValue}
+                    />
+                  ) : (
+                    <MutationAlert
+                      variant="info"
+                      title="Gateway QoS policies unavailable"
+                    >
+                      {qosGatewaySupport.message}
+                    </MutationAlert>
+                  )}
+                </>
               ) : null}
             </div>
             {error ? <MutationAlert>{error}</MutationAlert> : null}

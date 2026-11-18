@@ -17,6 +17,8 @@ import {
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
+  NEUTRON_QOS_EXTENSION,
+  NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
@@ -55,6 +57,16 @@ export default async function Page({
     NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
     "Per-port DNS domains",
   );
+  const qosSupport = extensionSupport(
+    capabilities,
+    NEUTRON_QOS_EXTENSION,
+    "Port QoS policies",
+  );
+  const qosNetworkPolicySupport = extensionSupport(
+    capabilities,
+    NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
+    "Inherited port QoS policies",
+  );
   await Promise.all([
     queryClient.prefetchQuery(
       networkQueryOptions(session.regionId, session.projectId, port.network_id),
@@ -86,6 +98,8 @@ export default async function Page({
         projectId={session.projectId}
         regionId={session.regionId}
         portSecuritySupport={portSecuritySupport}
+        qosNetworkPolicySupport={qosNetworkPolicySupport}
+        qosSupport={qosSupport}
         securityGroupSupport={securityGroupSupport}
       />
     </QueryHydrationBoundary>

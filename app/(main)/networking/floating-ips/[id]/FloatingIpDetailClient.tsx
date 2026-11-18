@@ -1,12 +1,14 @@
 "use client";
 import type { ReactNode } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Globe2 } from "lucide-react";
 import { FloatingIpDetailActions } from "@/components/Network/FloatingIpDetailActions";
+import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { Badge } from "@/components/ui/badge";
 import {
   floatingIpQueryOptions,
   portsQueryOptions,
+  qosPoliciesQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
@@ -15,17 +17,29 @@ export function FloatingIpDetailClient({
   dnsIntegrationSupport,
   id,
   projectId,
+  qosNetworkPolicySupport,
+  qosSupport,
   regionId,
 }: {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   id: string;
   projectId: string;
+  qosNetworkPolicySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
   regionId: string;
 }) {
   const floatingIp = useSuspenseQuery(
     floatingIpQueryOptions(regionId, projectId, id),
   );
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled:
+      qosSupport.status !== "unsupported" ||
+      qosNetworkPolicySupport.status !== "unsupported" ||
+      Boolean(floatingIp.data.qos_policy_id) ||
+      Boolean(floatingIp.data.qos_network_policy_id),
+  });
   const associatedPort = ports.data.find(
     (port) => port.id === floatingIp.data.port_id,
   );
@@ -36,6 +50,29 @@ export function FloatingIpDetailClient({
     ["ID", floatingIp.data.id],
     ["Status", floatingIp.data.status],
     ["Description", floatingIp.data.description || "None"],
+    ...(qosSupport.status !== "unsupported" || floatingIp.data.qos_policy_id
+      ? ([
+          [
+            "Direct QoS policy",
+            qosPolicyLabel(
+              qosPolicies.data ?? [],
+              floatingIp.data.qos_policy_id,
+            ),
+          ],
+        ] as Array<[string, ReactNode]>)
+      : []),
+    ...(qosNetworkPolicySupport.status !== "unsupported" ||
+    floatingIp.data.qos_network_policy_id
+      ? ([
+          [
+            "Network QoS policy",
+            qosPolicyLabel(
+              qosPolicies.data ?? [],
+              floatingIp.data.qos_network_policy_id,
+            ),
+          ],
+        ] as Array<[string, ReactNode]>)
+      : []),
     ...(dnsIntegrationSupport.status !== "unsupported" ||
     floatingIp.data.dns_name ||
     floatingIp.data.dns_domain
@@ -111,6 +148,7 @@ export function FloatingIpDetailClient({
             floatingIp={floatingIp.data}
             ports={ports.data}
             projectId={projectId}
+            qosSupport={qosSupport}
             regionId={regionId}
           />
         ) : (

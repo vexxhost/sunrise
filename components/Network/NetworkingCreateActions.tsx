@@ -17,6 +17,12 @@ import {
   type AllowedAddressPairInput,
 } from "@/components/Network/AllowedAddressPairsFields";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
+import {
+  QOS_POLICY_CLOUD_DEFAULT,
+  QOS_POLICY_NONE,
+  QosPolicySelect,
+  optionalQosPolicyIdFromSelection,
+} from "@/components/Network/QosPolicySelect";
 import { AvailabilityZoneMultiSelect } from "@/components/OpenStack/AvailabilityZoneSelect";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,6 +51,7 @@ import {
   networkAvailabilityZonesQueryOptions,
   networksQueryOptions,
   portsQueryOptions,
+  qosPoliciesQueryOptions,
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
@@ -157,10 +164,12 @@ export function CreateNetworkAction({
   projectId,
   regionId,
   portSecuritySupport,
+  qosSupport,
 }: ScopeProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
 }) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
@@ -172,6 +181,9 @@ export function CreateNetworkAction({
   const [selectedAvailabilityZones, setSelectedAvailabilityZones] =
     useState("");
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
+  const [qosPolicySelection, setQosPolicySelection] = useState(
+    QOS_POLICY_CLOUD_DEFAULT,
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
@@ -179,6 +191,7 @@ export function CreateNetworkAction({
     dnsIntegrationSupport.status !== "unsupported";
   const availabilityZonesAvailable =
     availabilityZoneSupport.status !== "unsupported";
+  const qosAvailable = qosSupport.status !== "unsupported";
   const availabilityZones = useQuery({
     ...networkAvailabilityZonesQueryOptions(regionId, projectId),
     enabled: open && availabilityZonesAvailable,
@@ -187,6 +200,10 @@ export function CreateNetworkAction({
     () => availableNetworkZoneNames(availabilityZones.data ?? [], "network"),
     [availabilityZones.data],
   );
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled: open && qosAvailable,
+  });
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -206,6 +223,7 @@ export function CreateNetworkAction({
       setAdminStateUp(true);
       setSelectedAvailabilityZones("");
       setPortSecurityEnabled(true);
+      setQosPolicySelection(QOS_POLICY_CLOUD_DEFAULT);
     }
   };
 
@@ -225,6 +243,9 @@ export function CreateNetworkAction({
           ),
           portSecurityEnabled: portSecurityAvailable
             ? portSecurityEnabled
+            : undefined,
+          qosPolicyId: qosAvailable
+            ? optionalQosPolicyIdFromSelection(qosPolicySelection)
             : undefined,
         },
       );
@@ -303,6 +324,20 @@ export function CreateNetworkAction({
                   zones={networkZones}
                 />
               ) : null}
+              {qosAvailable ? (
+                <QosPolicySelect
+                  description="Use the project's cloud default or attach a visible policy."
+                  disabled={pending}
+                  emptyLabel="Cloud default"
+                  emptyValue={QOS_POLICY_CLOUD_DEFAULT}
+                  error={qosPolicies.isError}
+                  id="network-qos-policy"
+                  loading={qosPolicies.isLoading}
+                  onValueChange={setQosPolicySelection}
+                  policies={qosPolicies.data ?? []}
+                  value={qosPolicySelection}
+                />
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <ToggleField
                   id="network-admin-state"
@@ -346,6 +381,11 @@ export function CreateNetworkAction({
             {!dnsIntegrationAvailable ? (
               <MutationAlert variant="info" title="DNS integration unavailable">
                 {dnsIntegrationSupport.message}
+              </MutationAlert>
+            ) : null}
+            {!qosAvailable ? (
+              <MutationAlert variant="info" title="QoS policies unavailable">
+                {qosSupport.message}
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview
@@ -555,12 +595,14 @@ export function CreatePortAction({
   projectId,
   regionId,
   portSecuritySupport,
+  qosSupport,
   securityGroupSupport,
 }: ScopeProps & {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
 }) {
   const queryClient = useQueryClient();
@@ -577,6 +619,7 @@ export function CreatePortAction({
   const [allowedAddressPairs, setAllowedAddressPairs] = useState<
     AllowedAddressPairInput[]
   >([]);
+  const [qosPolicySelection, setQosPolicySelection] = useState(QOS_POLICY_NONE);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
@@ -587,6 +630,7 @@ export function CreatePortAction({
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const allowedAddressPairsAvailable =
     allowedAddressPairsSupport.status !== "unsupported";
+  const qosAvailable = qosSupport.status !== "unsupported";
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -602,6 +646,10 @@ export function CreatePortAction({
     ...securityGroupsQueryOptions(regionId, projectId),
     enabled: open && securityGroupsAvailable,
   });
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled: open && qosAvailable,
+  });
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
     if (!next) clearCreateActionIntent();
@@ -616,6 +664,7 @@ export function CreatePortAction({
       setPortSecurityEnabled(true);
       setSecurityGroupIds([]);
       setAllowedAddressPairs([]);
+      setQosPolicySelection(QOS_POLICY_NONE);
     }
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -644,6 +693,9 @@ export function CreatePortAction({
             allowedAddressPairsAvailable && allowedAddressPairs.length
               ? allowedAddressPairs
               : undefined,
+          qosPolicyId: qosAvailable
+            ? optionalQosPolicyIdFromSelection(qosPolicySelection)
+            : undefined,
         },
       );
       if (!result.ok) {
@@ -745,6 +797,21 @@ export function CreatePortAction({
                   </p>
                 </div>
               ) : null}
+              {qosAvailable ? (
+                <div className="sm:col-span-2">
+                  <QosPolicySelect
+                    description="A direct policy overrides the network policy for this port."
+                    disabled={pending}
+                    emptyLabel="Use network policy"
+                    error={qosPolicies.isError}
+                    id="port-qos-policy"
+                    loading={qosPolicies.isLoading}
+                    onValueChange={setQosPolicySelection}
+                    policies={qosPolicies.data ?? []}
+                    value={qosPolicySelection}
+                  />
+                </div>
+              ) : null}
               <ToggleField
                 id="port-admin-state"
                 className={portSecurityAvailable ? undefined : "sm:col-span-2"}
@@ -820,7 +887,8 @@ export function CreatePortAction({
             !securityGroupsAvailable ||
             !allowedAddressPairsAvailable ||
             !dnsIntegrationAvailable ||
-            !dnsDomainPortsAvailable ? (
+            !dnsDomainPortsAvailable ||
+            !qosAvailable ? (
               <MutationAlert
                 variant="info"
                 title="Some port controls are unavailable"
@@ -840,6 +908,7 @@ export function CreatePortAction({
                 {dnsIntegrationAvailable && !dnsDomainPortsAvailable ? (
                   <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
+                {!qosAvailable ? <p>{qosSupport.message}</p> : null}
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview
@@ -884,7 +953,11 @@ export function AllocateFloatingIpAction({
   initiallyOpen = false,
   projectId,
   regionId,
-}: ScopeProps & { dnsIntegrationSupport: OpenStackFeatureSupport }) {
+  qosSupport,
+}: ScopeProps & {
+  dnsIntegrationSupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
+}) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
@@ -893,10 +966,12 @@ export function AllocateFloatingIpAction({
   const [description, setDescription] = useState("");
   const [dnsDomain, setDnsDomain] = useState("");
   const [dnsName, setDnsName] = useState("");
+  const [qosPolicySelection, setQosPolicySelection] = useState(QOS_POLICY_NONE);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const dnsIntegrationAvailable =
     dnsIntegrationSupport.status !== "unsupported";
+  const qosAvailable = qosSupport.status !== "unsupported";
   const incompleteDnsRecord =
     Boolean(dnsName.trim()) !== Boolean(dnsDomain.trim());
   const quota = useProjectQuotaImpact({
@@ -917,6 +992,10 @@ export function AllocateFloatingIpAction({
   const servers = useQuery({
     ...serversQueryOptions(regionId, projectId),
     enabled: open,
+  });
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled: open && qosAvailable,
   });
   const portOptions = useMemo(
     () =>
@@ -939,6 +1018,7 @@ export function AllocateFloatingIpAction({
       setDescription("");
       setDnsDomain("");
       setDnsName("");
+      setQosPolicySelection(QOS_POLICY_NONE);
     }
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -956,6 +1036,9 @@ export function AllocateFloatingIpAction({
             dnsIntegrationAvailable && dnsName.trim() ? dnsName : undefined,
           dnsDomain:
             dnsIntegrationAvailable && dnsDomain.trim() ? dnsDomain : undefined,
+          qosPolicyId: qosAvailable
+            ? optionalQosPolicyIdFromSelection(qosPolicySelection)
+            : undefined,
         },
       );
       if (!result.ok) {
@@ -1051,6 +1134,19 @@ export function AllocateFloatingIpAction({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {qosAvailable ? (
+                <QosPolicySelect
+                  description="A direct policy overrides any policy inherited from the external network."
+                  disabled={pending}
+                  emptyLabel="Use external network policy"
+                  error={qosPolicies.isError}
+                  id="floating-qos-policy"
+                  loading={qosPolicies.isLoading}
+                  onValueChange={setQosPolicySelection}
+                  policies={qosPolicies.data ?? []}
+                  value={qosPolicySelection}
+                />
+              ) : null}
               {dnsIntegrationAvailable ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
@@ -1092,6 +1188,11 @@ export function AllocateFloatingIpAction({
             {!dnsIntegrationAvailable ? (
               <MutationAlert variant="info" title="DNS integration unavailable">
                 {dnsIntegrationSupport.message}
+              </MutationAlert>
+            ) : null}
+            {!qosAvailable ? (
+              <MutationAlert variant="info" title="QoS policies unavailable">
+                {qosSupport.message}
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview

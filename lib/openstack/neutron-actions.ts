@@ -18,6 +18,9 @@ import {
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
+  NEUTRON_QOS_EXTENSION,
+  NEUTRON_QOS_FLOATING_IP_EXTENSION,
+  NEUTRON_QOS_GATEWAY_IP_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -257,6 +260,7 @@ const networkCreateSchema = z.object({
     .transform((values) => [...new Set(values)])
     .optional(),
   portSecurityEnabled: z.boolean().optional(),
+  qosPolicyId: resourceId.optional(),
 });
 const networkUpdateSchema = z.object({
   name,
@@ -264,6 +268,7 @@ const networkUpdateSchema = z.object({
   dnsDomain,
   adminStateUp: z.boolean().default(true),
   portSecurityEnabled: z.boolean().optional(),
+  qosPolicyId: resourceId.nullable().optional(),
 });
 const subnetCreateSchema = z
   .object({
@@ -341,6 +346,7 @@ const routerRouteSchema = routeSchema;
 const routerGatewaySchema = z.object({
   networkId: resourceId,
   enableSnat: z.boolean().default(true),
+  qosPolicyId: resourceId.nullable().optional(),
 });
 const routerInterfaceSchema = z.object({ subnetId: resourceId });
 const portSecurityFields = {
@@ -374,6 +380,7 @@ const portCreateSchema = z
     dnsName,
     networkId: resourceId,
     adminStateUp: z.boolean().default(true),
+    qosPolicyId: resourceId.nullable().optional(),
     ...portSecurityFields,
   })
   .superRefine(requirePortSecurityForAddressPairs);
@@ -384,6 +391,7 @@ const portUpdateSchema = z
     dnsDomain,
     dnsName,
     adminStateUp: z.boolean(),
+    qosPolicyId: resourceId.nullable().optional(),
     ...portSecurityFields,
   })
   .superRefine(requirePortSecurityForAddressPairs);
@@ -395,6 +403,7 @@ const floatingIpCreateSchema = z
     fixedIpAddress: optionalIpAddress,
     dnsName: relativeDnsName,
     dnsDomain,
+    qosPolicyId: resourceId.nullable().optional(),
   })
   .superRefine((value, context) => {
     if (Boolean(value.dnsName) === Boolean(value.dnsDomain)) return;
@@ -408,6 +417,7 @@ const floatingIpUpdateSchema = z.object({
   description,
   portId: resourceId.optional().nullable(),
   fixedIpAddress: optionalIpAddress.nullable(),
+  qosPolicyId: resourceId.nullable().optional(),
 });
 const securityGroupCreateSchema = z.object({ name, description });
 const securityGroupRuleCreateSchema = z.object({
@@ -527,6 +537,14 @@ export async function createNetworkAction(
             required: NEUTRON_PORT_SECURITY_EXTENSION,
           },
         ]),
+    ...(value.qosPolicyId === undefined
+      ? []
+      : [
+          {
+            feature: "Network QoS policies",
+            required: NEUTRON_QOS_EXTENSION,
+          },
+        ]),
     ...(value.availabilityZoneHints?.length
       ? [
           {
@@ -557,6 +575,9 @@ export async function createNetworkAction(
         ...(value.portSecurityEnabled === undefined
           ? {}
           : { port_security_enabled: value.portSecurityEnabled }),
+        ...(value.qosPolicyId === undefined
+          ? {}
+          : { qos_policy_id: value.qosPolicyId }),
       },
     },
     invalidates: networkingInvalidates,
@@ -592,6 +613,14 @@ export async function updateNetworkAction(
             required: NEUTRON_PORT_SECURITY_EXTENSION,
           },
         ]),
+    ...(value.qosPolicyId === undefined
+      ? []
+      : [
+          {
+            feature: "Network QoS policies",
+            required: NEUTRON_QOS_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -611,6 +640,9 @@ export async function updateNetworkAction(
         ...(value.portSecurityEnabled === undefined
           ? {}
           : { port_security_enabled: value.portSecurityEnabled }),
+        ...(value.qosPolicyId === undefined
+          ? {}
+          : { qos_policy_id: value.qosPolicyId }),
       },
     },
     invalidates: [
@@ -814,6 +846,15 @@ export async function setRouterGatewayAction(
   if (!parsedId.ok) return parsedId.result;
   const parsed = parse(routerGatewaySchema, input, scope);
   if (!parsed.ok) return parsed.result;
+  if (parsed.value.qosPolicyId !== undefined) {
+    const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+      {
+        feature: "Router gateway QoS policies",
+        required: NEUTRON_QOS_GATEWAY_IP_EXTENSION,
+      },
+    ]);
+    if (unsupported) return unsupported;
+  }
   return executeOpenStackMutation({
     actionLabel: "set this router gateway",
     scope,
@@ -825,6 +866,9 @@ export async function setRouterGatewayAction(
         external_gateway_info: {
           network_id: parsed.value.networkId,
           enable_snat: parsed.value.enableSnat,
+          ...(parsed.value.qosPolicyId === undefined
+            ? {}
+            : { qos_policy_id: parsed.value.qosPolicyId }),
         },
       },
     },
@@ -1115,6 +1159,14 @@ export async function createPortAction(
             required: NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
           },
         ]),
+    ...(value.qosPolicyId === undefined
+      ? []
+      : [
+          {
+            feature: "Port QoS policies",
+            required: NEUTRON_QOS_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1133,6 +1185,9 @@ export async function createPortAction(
           : { dns_domain: value.dnsDomain }),
         network_id: value.networkId,
         admin_state_up: value.adminStateUp,
+        ...(value.qosPolicyId === undefined
+          ? {}
+          : { qos_policy_id: value.qosPolicyId }),
         ...(value.portSecurityEnabled === undefined
           ? {}
           : { port_security_enabled: value.portSecurityEnabled }),
@@ -1215,6 +1270,14 @@ export async function updatePortAction(
             required: NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
           },
         ]),
+    ...(value.qosPolicyId === undefined
+      ? []
+      : [
+          {
+            feature: "Port QoS policies",
+            required: NEUTRON_QOS_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1232,6 +1295,9 @@ export async function updatePortAction(
           ? {}
           : { dns_domain: value.dnsDomain }),
         admin_state_up: value.adminStateUp,
+        ...(value.qosPolicyId === undefined
+          ? {}
+          : { qos_policy_id: value.qosPolicyId }),
         ...(value.portSecurityEnabled === undefined
           ? {}
           : { port_security_enabled: value.portSecurityEnabled }),
@@ -1289,6 +1355,14 @@ export async function createFloatingIpAction(
             required: NEUTRON_DNS_INTEGRATION_EXTENSION,
           },
         ]),
+    ...(value.qosPolicyId === undefined
+      ? []
+      : [
+          {
+            feature: "Floating IP QoS policies",
+            required: NEUTRON_QOS_FLOATING_IP_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1307,6 +1381,9 @@ export async function createFloatingIpAction(
         ...(value.dnsDomain === undefined
           ? {}
           : { dns_domain: value.dnsDomain }),
+        ...(value.qosPolicyId === undefined
+          ? {}
+          : { qos_policy_id: value.qosPolicyId }),
       },
     },
     invalidates: networkingInvalidates,
@@ -1325,6 +1402,15 @@ export async function updateFloatingIpAction(
   const parsed = parse(floatingIpUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  if (value.qosPolicyId !== undefined) {
+    const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+      {
+        feature: "Floating IP QoS policies",
+        required: NEUTRON_QOS_FLOATING_IP_EXTENSION,
+      },
+    ]);
+    if (unsupported) return unsupported;
+  }
   return executeOpenStackMutation({
     actionLabel: "update this floating IP",
     scope,
@@ -1336,6 +1422,9 @@ export async function updateFloatingIpAction(
         description: value.description,
         port_id: value.portId ?? null,
         fixed_ip_address: value.fixedIpAddress ?? null,
+        ...(value.qosPolicyId === undefined
+          ? {}
+          : { qos_policy_id: value.qosPolicyId }),
       },
     },
     invalidates: networkingInvalidates,

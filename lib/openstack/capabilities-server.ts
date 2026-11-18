@@ -33,6 +33,13 @@ export const NEUTRON_DNS_INTEGRATION_EXTENSION = "dns-integration";
 export const NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION =
   "network_availability_zone";
 export const NEUTRON_PORT_SECURITY_EXTENSION = "port-security";
+export const NEUTRON_QOS_EXTENSION = "qos";
+export const NEUTRON_QOS_FLOATING_IP_EXTENSION = "qos-fip";
+export const NEUTRON_QOS_FLOATING_IP_NETWORK_POLICY_EXTENSION =
+  "qos-fip-network-policy";
+export const NEUTRON_QOS_GATEWAY_IP_EXTENSION = "qos-gateway-ip";
+export const NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION =
+  "qos-port-network-policy";
 export const NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION =
   "router_availability_zone";
 export const NEUTRON_SECURITY_GROUP_EXTENSION = "security-group";

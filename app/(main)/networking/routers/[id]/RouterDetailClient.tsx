@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Cable, Route, Router as RouterIcon } from "lucide-react";
 
 import {
   DisconnectRouterInterfaceAction,
   RouterDetailActions,
 } from "@/components/Network/RouterDetailActions";
+import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import {
   AddRouterRouteAction,
   RouterRouteRowActions,
@@ -15,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   externalNetworksQueryOptions,
+  qosPoliciesQueryOptions,
   routerPortsQueryOptions,
   routerQueryOptions,
   subnetsQueryOptions,
@@ -28,6 +30,7 @@ interface Props {
   availabilityZoneSupport: OpenStackFeatureSupport;
   id: string;
   projectId: string;
+  qosGatewaySupport: OpenStackFeatureSupport;
   regionId: string;
   routeSupport: OpenStackFeatureSupport;
 }
@@ -36,6 +39,7 @@ export function RouterDetailClient({
   availabilityZoneSupport,
   id,
   projectId,
+  qosGatewaySupport,
   regionId,
   routeSupport,
 }: Props) {
@@ -47,6 +51,12 @@ export function RouterDetailClient({
   const externalNetworks = useSuspenseQuery(
     externalNetworksQueryOptions(regionId, projectId),
   );
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled:
+      qosGatewaySupport.status !== "unsupported" ||
+      Boolean(router.data.external_gateway_info?.qos_policy_id),
+  });
   const subnetById = useMemo(
     () => new Map(subnets.data.map((subnet) => [subnet.id, subnet])),
     [subnets.data],
@@ -80,6 +90,7 @@ export function RouterDetailClient({
             interfacePorts={interfacePorts}
             subnets={subnets.data}
             projectId={projectId}
+            qosGatewaySupport={qosGatewaySupport}
             regionId={regionId}
           />
         ) : (
@@ -126,6 +137,20 @@ export function RouterDetailClient({
             <p className="text-xs text-muted-foreground">Interfaces</p>
             <p className="mt-2 text-sm font-medium">{interfacePorts.length}</p>
           </div>
+          {qosGatewaySupport.status !== "unsupported" ||
+          router.data.external_gateway_info?.qos_policy_id ? (
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">
+                Gateway QoS policy
+              </p>
+              <p className="mt-2 break-words text-sm font-medium">
+                {qosPolicyLabel(
+                  qosPolicies.data ?? [],
+                  router.data.external_gateway_info?.qos_policy_id,
+                )}
+              </p>
+            </div>
+          ) : null}
           {availabilityZoneSupport.status === "unsupported" ? null : (
             <>
               <div className="rounded-md border p-3">

@@ -7,6 +7,11 @@ import { Link2, Trash2 } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { EditActionButton } from "@/components/resources/EditActionButton";
+import {
+  changedQosPolicyIdFromSelection,
+  QosPolicySelect,
+  qosPolicySelection,
+} from "@/components/Network/QosPolicySelect";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,19 +39,25 @@ import {
   floatingIpPortSelectionValue,
   parseFloatingIpPortSelection,
 } from "@/lib/openstack/neutron-floating-ip";
-import { externalNetworksQueryOptions } from "@/hooks/queries/useNetworks";
+import {
+  externalNetworksQueryOptions,
+  qosPoliciesQueryOptions,
+} from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import type { FloatingIp, Port } from "@/types/openstack";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 export function FloatingIpDetailActions({
   floatingIp,
   ports,
   projectId,
+  qosSupport,
   regionId,
 }: {
   floatingIp: FloatingIp;
   ports: Port[];
   projectId: string;
+  qosSupport: OpenStackFeatureSupport;
   regionId: string;
 }) {
   const router = useRouter();
@@ -63,8 +74,12 @@ export function FloatingIpDetailActions({
         )
       : "none";
   const [portSelection, setPortSelection] = useState(currentSelection);
+  const [qosPolicySelectionValue, setQosPolicySelectionValue] = useState(
+    qosPolicySelection(floatingIp.qos_policy_id),
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const qosAvailable = qosSupport.status !== "unsupported";
   const servers = useQuery({
     ...serversQueryOptions(regionId, projectId),
     enabled: dialog === "associate",
@@ -72,6 +87,10 @@ export function FloatingIpDetailActions({
   const externalNetworks = useQuery({
     ...externalNetworksQueryOptions(regionId, projectId),
     enabled: dialog === "associate",
+  });
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled: dialog === "edit" && qosAvailable,
   });
   const portOptions = useMemo(
     () =>
@@ -92,11 +111,13 @@ export function FloatingIpDetailActions({
     setError(null);
     setDescription(floatingIp.description);
     setPortSelection(currentSelection);
+    setQosPolicySelectionValue(qosPolicySelection(floatingIp.qos_policy_id));
     setDialog(next);
   };
   const update = (
     association: { portId: string; fixedIpAddress: string } | null,
     nextDescription: string,
+    qosPolicyId?: string | null,
   ) => {
     startTransition(async () => {
       const result = await updateFloatingIpAction(
@@ -106,6 +127,7 @@ export function FloatingIpDetailActions({
           description: nextDescription,
           portId: association?.portId ?? null,
           fixedIpAddress: association?.fixedIpAddress ?? null,
+          qosPolicyId,
         },
       );
       if (!result.ok) {
@@ -141,11 +163,7 @@ export function FloatingIpDetailActions({
           label="Edit floating IP"
           onClick={() => open("edit")}
         />
-        <Button
-          variant="outline"
-          onClick={() => open("delete")}
-          tone="danger"
-        >
+        <Button variant="outline" onClick={() => open("delete")} tone="danger">
           <Trash2 className="size-4" />
           Release
         </Button>
@@ -241,6 +259,12 @@ export function FloatingIpDetailActions({
                     }
                   : null,
                 description,
+                qosAvailable
+                  ? changedQosPolicyIdFromSelection(
+                      qosPolicySelectionValue,
+                      floatingIp.qos_policy_id,
+                    )
+                  : undefined,
               );
             }}
           >
@@ -259,6 +283,23 @@ export function FloatingIpDetailActions({
                 onChange={(event) => setDescription(event.target.value)}
               />
             </div>
+            {qosAvailable ? (
+              <QosPolicySelect
+                description="A direct policy overrides any policy inherited from the external network."
+                disabled={pending}
+                emptyLabel="Use external network policy"
+                error={qosPolicies.isError}
+                id="edit-floating-qos-policy"
+                loading={qosPolicies.isLoading}
+                onValueChange={setQosPolicySelectionValue}
+                policies={qosPolicies.data ?? []}
+                value={qosPolicySelectionValue}
+              />
+            ) : (
+              <MutationAlert variant="info" title="QoS policies unavailable">
+                {qosSupport.message}
+              </MutationAlert>
+            )}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             <DialogFooter>
               <Button

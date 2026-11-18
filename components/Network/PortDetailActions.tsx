@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Link2Off, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
@@ -11,6 +11,11 @@ import {
   AllowedAddressPairsFields,
   type AllowedAddressPairInput,
 } from "@/components/Network/AllowedAddressPairsFields";
+import {
+  changedQosPolicyIdFromSelection,
+  QosPolicySelect,
+  qosPolicySelection,
+} from "@/components/Network/QosPolicySelect";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,6 +48,7 @@ import {
 } from "@/lib/openstack/nova-actions";
 import type { Port, SecurityGroup, Server } from "@/types/openstack";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { qosPoliciesQueryOptions } from "@/hooks/queries/useNetworks";
 
 type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
 
@@ -59,6 +65,7 @@ interface PortDetailActionsProps {
   groups: SecurityGroup[];
   port: Port;
   portSecuritySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
   securityGroupSupport: OpenStackFeatureSupport;
@@ -72,6 +79,7 @@ export function PortDetailActions({
   groups,
   port,
   portSecuritySupport,
+  qosSupport,
   projectId,
   regionId,
   securityGroupSupport,
@@ -99,6 +107,9 @@ export function PortDetailActions({
       macAddress: pair.mac_address ?? "",
     })),
   );
+  const [qosPolicySelectionValue, setQosPolicySelectionValue] = useState(
+    qosPolicySelection(port.qos_policy_id),
+  );
   const [serverId, setServerId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -110,6 +121,11 @@ export function PortDetailActions({
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const allowedAddressPairsAvailable =
     allowedAddressPairsSupport.status !== "unsupported";
+  const qosAvailable = qosSupport.status !== "unsupported";
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled: dialog === "edit" && qosAvailable,
+  });
 
   const computeAttached =
     port.device_owner.startsWith("compute:") && Boolean(port.device_id);
@@ -135,6 +151,7 @@ export function PortDetailActions({
           macAddress: pair.mac_address ?? "",
         })),
       );
+      setQosPolicySelectionValue(qosPolicySelection(port.qos_policy_id));
     }
     if (next === "attach") setServerId("");
     setDialog(next);
@@ -185,6 +202,12 @@ export function PortDetailActions({
           allowedAddressPairsAvailable && allowedAddressPairsChanged
             ? allowedAddressPairs
             : undefined,
+        qosPolicyId: qosAvailable
+          ? changedQosPolicyIdFromSelection(
+              qosPolicySelectionValue,
+              port.qos_policy_id,
+            )
+          : undefined,
       });
       if (!result.ok) {
         setError(result.error.message);
@@ -381,6 +404,21 @@ export function PortDetailActions({
                   </p>
                 </div>
               ) : null}
+              {qosAvailable ? (
+                <div className="sm:col-span-2">
+                  <QosPolicySelect
+                    description="A direct policy overrides the policy inherited from the network."
+                    disabled={pending}
+                    emptyLabel="Use network policy"
+                    error={qosPolicies.isError}
+                    id="edit-port-qos-policy"
+                    loading={qosPolicies.isLoading}
+                    onValueChange={setQosPolicySelectionValue}
+                    policies={qosPolicies.data ?? []}
+                    value={qosPolicySelectionValue}
+                  />
+                </div>
+              ) : null}
               <label
                 className={`flex items-start gap-3 rounded-md border p-3${portSecurityAvailable ? "" : " sm:col-span-2"}`}
               >
@@ -467,7 +505,8 @@ export function PortDetailActions({
             !securityGroupsAvailable ||
             !allowedAddressPairsAvailable ||
             !dnsIntegrationAvailable ||
-            !dnsDomainPortsAvailable ? (
+            !dnsDomainPortsAvailable ||
+            !qosAvailable ? (
               <MutationAlert
                 variant="info"
                 title="Some port controls are unavailable"
@@ -487,6 +526,7 @@ export function PortDetailActions({
                 {dnsIntegrationAvailable && !dnsDomainPortsAvailable ? (
                   <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
+                {!qosAvailable ? <p>{qosSupport.message}</p> : null}
               </MutationAlert>
             ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
