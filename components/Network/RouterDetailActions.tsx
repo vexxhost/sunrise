@@ -9,8 +9,8 @@ import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import {
+  changedQosPolicyIdFromSelection,
   QosPolicySelect,
-  qosPolicyIdFromSelection,
   qosPolicySelection,
 } from "@/components/Network/QosPolicySelect";
 import { Button } from "@/components/ui/button";
@@ -158,7 +158,10 @@ export function RouterDetailActions({
                 networkId: gatewayNetworkId,
                 enableSnat,
                 qosPolicyId: qosGatewayAvailable
-                  ? qosPolicyIdFromSelection(qosPolicySelectionValue)
+                  ? changedQosPolicyIdFromSelection(
+                      qosPolicySelectionValue,
+                      routerResource.external_gateway_info?.qos_policy_id,
+                    )
                   : undefined,
               },
             );

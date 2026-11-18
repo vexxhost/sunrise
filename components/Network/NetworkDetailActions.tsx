@@ -11,8 +11,8 @@ import { IPv6ConfigurationField } from "@/components/Network/IPv6ConfigurationFi
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { SubnetAddressFields } from "@/components/Network/SubnetAddressFields";
 import {
+  changedQosPolicyIdFromSelection,
   QosPolicySelect,
-  qosPolicyIdFromSelection,
   qosPolicySelection,
 } from "@/components/Network/QosPolicySelect";
 import { EditActionButton } from "@/components/resources/EditActionButton";
@@ -159,12 +159,12 @@ export function NetworkDetailActions({
           portSecurityEnabled: portSecurityAvailable
             ? portSecurityEnabled
             : undefined,
-          qosPolicyId:
-            qosAvailable &&
-            qosPolicyIdFromSelection(qosPolicySelectionValue) !==
-              network.qos_policy_id
-              ? qosPolicyIdFromSelection(qosPolicySelectionValue)
-              : undefined,
+          qosPolicyId: qosAvailable
+            ? changedQosPolicyIdFromSelection(
+                qosPolicySelectionValue,
+                network.qos_policy_id,
+              )
+            : undefined,
         },
       );
       if (!result.ok) {

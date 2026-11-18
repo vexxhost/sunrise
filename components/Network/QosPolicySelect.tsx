@@ -26,6 +26,20 @@ export function qosPolicyIdFromSelection(value: string) {
     : value;
 }
 
+export function optionalQosPolicyIdFromSelection(value: string) {
+  return qosPolicyIdFromSelection(value) ?? undefined;
+}
+
+export function changedQosPolicyIdFromSelection(
+  value: string,
+  currentPolicyId: string | null | undefined,
+) {
+  const selectedPolicyId = qosPolicyIdFromSelection(value);
+  return selectedPolicyId === (currentPolicyId ?? null)
+    ? undefined
+    : selectedPolicyId;
+}
+
 export function qosPolicyLabel(
   policies: QosPolicy[],
   policyId: string | null | undefined,
@@ -45,7 +59,6 @@ export function QosPolicySelect({
   loading,
   onValueChange,
   policies,
-  showNoPolicyOption = false,
   value,
 }: {
   description: string;
@@ -57,7 +70,6 @@ export function QosPolicySelect({
   loading: boolean;
   onValueChange: (value: string) => void;
   policies: QosPolicy[];
-  showNoPolicyOption?: boolean;
   value: string;
 }) {
   return (
@@ -73,9 +85,6 @@ export function QosPolicySelect({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={emptyValue}>{emptyLabel}</SelectItem>
-          {showNoPolicyOption && emptyValue !== QOS_POLICY_NONE ? (
-            <SelectItem value={QOS_POLICY_NONE}>No QoS policy</SelectItem>
-          ) : null}
           {value !== QOS_POLICY_NONE &&
           value !== QOS_POLICY_CLOUD_DEFAULT &&
           !policies.some((policy) => policy.id === value) ? (

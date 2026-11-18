@@ -260,7 +260,7 @@ const networkCreateSchema = z.object({
     .transform((values) => [...new Set(values)])
     .optional(),
   portSecurityEnabled: z.boolean().optional(),
-  qosPolicyId: resourceId.nullable().optional(),
+  qosPolicyId: resourceId.optional(),
 });
 const networkUpdateSchema = z.object({
   name,

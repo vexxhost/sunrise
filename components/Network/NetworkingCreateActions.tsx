@@ -21,7 +21,7 @@ import {
   QOS_POLICY_CLOUD_DEFAULT,
   QOS_POLICY_NONE,
   QosPolicySelect,
-  qosPolicyIdFromSelection,
+  optionalQosPolicyIdFromSelection,
 } from "@/components/Network/QosPolicySelect";
 import { AvailabilityZoneMultiSelect } from "@/components/OpenStack/AvailabilityZoneSelect";
 import { Button } from "@/components/ui/button";
@@ -244,10 +244,9 @@ export function CreateNetworkAction({
           portSecurityEnabled: portSecurityAvailable
             ? portSecurityEnabled
             : undefined,
-          qosPolicyId:
-            qosAvailable && qosPolicySelection !== QOS_POLICY_CLOUD_DEFAULT
-              ? qosPolicyIdFromSelection(qosPolicySelection)
-              : undefined,
+          qosPolicyId: qosAvailable
+            ? optionalQosPolicyIdFromSelection(qosPolicySelection)
+            : undefined,
         },
       );
       if (!result.ok) {
@@ -327,7 +326,7 @@ export function CreateNetworkAction({
               ) : null}
               {qosAvailable ? (
                 <QosPolicySelect
-                  description="Use the project's cloud default, explicitly create the network without QoS, or attach a visible policy."
+                  description="Use the project's cloud default or attach a visible policy."
                   disabled={pending}
                   emptyLabel="Cloud default"
                   emptyValue={QOS_POLICY_CLOUD_DEFAULT}
@@ -336,7 +335,6 @@ export function CreateNetworkAction({
                   loading={qosPolicies.isLoading}
                   onValueChange={setQosPolicySelection}
                   policies={qosPolicies.data ?? []}
-                  showNoPolicyOption
                   value={qosPolicySelection}
                 />
               ) : null}
@@ -696,7 +694,7 @@ export function CreatePortAction({
               ? allowedAddressPairs
               : undefined,
           qosPolicyId: qosAvailable
-            ? qosPolicyIdFromSelection(qosPolicySelection)
+            ? optionalQosPolicyIdFromSelection(qosPolicySelection)
             : undefined,
         },
       );
@@ -1039,7 +1037,7 @@ export function AllocateFloatingIpAction({
           dnsDomain:
             dnsIntegrationAvailable && dnsDomain.trim() ? dnsDomain : undefined,
           qosPolicyId: qosAvailable
-            ? qosPolicyIdFromSelection(qosPolicySelection)
+            ? optionalQosPolicyIdFromSelection(qosPolicySelection)
             : undefined,
         },
       );

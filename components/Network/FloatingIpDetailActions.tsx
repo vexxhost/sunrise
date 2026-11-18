@@ -8,8 +8,8 @@ import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import {
+  changedQosPolicyIdFromSelection,
   QosPolicySelect,
-  qosPolicyIdFromSelection,
   qosPolicySelection,
 } from "@/components/Network/QosPolicySelect";
 import { Button } from "@/components/ui/button";
@@ -259,10 +259,11 @@ export function FloatingIpDetailActions({
                     }
                   : null,
                 description,
-                qosAvailable &&
-                  qosPolicyIdFromSelection(qosPolicySelectionValue) !==
-                    floatingIp.qos_policy_id
-                  ? qosPolicyIdFromSelection(qosPolicySelectionValue)
+                qosAvailable
+                  ? changedQosPolicyIdFromSelection(
+                      qosPolicySelectionValue,
+                      floatingIp.qos_policy_id,
+                    )
                   : undefined,
               );
             }}

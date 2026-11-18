@@ -128,7 +128,7 @@ describe("Neutron mutation actions", () => {
     expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
   });
 
-  it("preserves network QoS default, explicit policy, and clear semantics", async () => {
+  it("preserves network QoS default, explicit policy, and update clearing", async () => {
     await createNetworkAction(scope, {
       name: "cloud-default",
       description: "",
@@ -139,20 +139,6 @@ describe("Neutron mutation actions", () => {
     ).not.toHaveProperty("qos_policy_id");
 
     await createNetworkAction(scope, {
-      name: "without-qos",
-      description: "",
-      adminStateUp: true,
-      qosPolicyId: null,
-    });
-    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        body: {
-          network: expect.objectContaining({ qos_policy_id: null }),
-        },
-      }),
-    );
-
-    await updateNetworkAction(scope, "network-a", {
       name: "application",
       description: "",
       adminStateUp: true,
@@ -165,6 +151,32 @@ describe("Neutron mutation actions", () => {
         },
       }),
     );
+
+    await updateNetworkAction(scope, "network-a", {
+      name: "application",
+      description: "",
+      adminStateUp: true,
+      qosPolicyId: null,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          network: expect.objectContaining({ qos_policy_id: null }),
+        },
+      }),
+    );
+  });
+
+  it("rejects a null QoS policy during network creation", async () => {
+    const result = await createNetworkAction(scope, {
+      name: "application",
+      description: "",
+      adminStateUp: true,
+      qosPolicyId: null,
+    } as never);
+
+    expect(result).toMatchObject({ ok: false });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("rejects network and port QoS without the base extension", async () => {

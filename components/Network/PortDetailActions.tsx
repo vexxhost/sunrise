@@ -12,8 +12,8 @@ import {
   type AllowedAddressPairInput,
 } from "@/components/Network/AllowedAddressPairsFields";
 import {
+  changedQosPolicyIdFromSelection,
   QosPolicySelect,
-  qosPolicyIdFromSelection,
   qosPolicySelection,
 } from "@/components/Network/QosPolicySelect";
 import { EditActionButton } from "@/components/resources/EditActionButton";
@@ -184,7 +184,6 @@ export function PortDetailActions({
         dnsIntegrationAvailable && dnsName !== (port.dns_name ?? "");
       const dnsDomainChanged =
         dnsDomainPortsAvailable && dnsDomain !== (port.dns_domain ?? "");
-      const qosPolicyId = qosPolicyIdFromSelection(qosPolicySelectionValue);
       const result = await updatePortAction({ projectId, regionId }, port.id, {
         name,
         description,
@@ -203,10 +202,12 @@ export function PortDetailActions({
           allowedAddressPairsAvailable && allowedAddressPairsChanged
             ? allowedAddressPairs
             : undefined,
-        qosPolicyId:
-          qosAvailable && qosPolicyId !== port.qos_policy_id
-            ? qosPolicyId
-            : undefined,
+        qosPolicyId: qosAvailable
+          ? changedQosPolicyIdFromSelection(
+              qosPolicySelectionValue,
+              port.qos_policy_id,
+            )
+          : undefined,
       });
       if (!result.ok) {
         setError(result.error.message);
