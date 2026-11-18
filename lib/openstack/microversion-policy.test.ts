@@ -12,6 +12,8 @@ describe("OpenStack API microversion policy", () => {
     const policy = parseApiMicroversionPolicy({
       SUNRISE_API_MICROVERSION_COMPUTE: "2.95",
       SUNRISE_API_MICROVERSION_COMPUTE_REGION_ONE: "2.90",
+      SUNRISE_API_MICROVERSION_LOAD_BALANCER: "2.20",
+      SUNRISE_API_MICROVERSION_LOAD_BALANCER_REGION_ONE: "2.14",
       SUNRISE_API_MICROVERSION_SHARE: "2.70",
       SUNRISE_API_MICROVERSION_SHARE_REGION_ONE: "2.63",
       SUNRISE_API_MICROVERSION_VOLUME: "3.71",
@@ -27,6 +29,12 @@ describe("OpenStack API microversion policy", () => {
     expect(configuredApiMicroversion(policy, "volume", "Region-One")).toBe(
       "3.66",
     );
+    expect(
+      configuredApiMicroversion(policy, "load-balancer", "Region-One"),
+    ).toBe("2.14");
+    expect(
+      configuredApiMicroversion(policy, "load-balancer", "RegionTwo"),
+    ).toBe("2.20");
     expect(configuredApiMicroversion(policy, "volume", "RegionTwo")).toBe(
       "3.71",
     );
@@ -36,7 +44,7 @@ describe("OpenStack API microversion policy", () => {
     expect(configuredApiMicroversion(policy, "share", "RegionTwo")).toBe(
       "2.70",
     );
-    expect(apiMicroversionOverrideCount(policy)).toBe(6);
+    expect(apiMicroversionOverrideCount(policy)).toBe(8);
   });
 
   it("treats blank values as unconfigured", () => {
@@ -67,6 +75,11 @@ describe("OpenStack API microversion policy", () => {
         SUNRISE_API_MICROVERSION_SHARE: "2.50",
       }),
     ).toThrow("must be 2.51 or newer");
+    expect(() =>
+      parseApiMicroversionPolicy({
+        SUNRISE_API_MICROVERSION_LOAD_BALANCER: "1.9",
+      }),
+    ).toThrow("must be 2.0 or newer");
     expect(() =>
       parseApiMicroversionPolicy({
         SUNRISE_API_MICROVERSION_VOLUME: "2.99",
@@ -141,6 +154,37 @@ describe("OpenStack API microversion policy", () => {
         "volumev3",
         "RegionOne",
         "volumev3 3.65",
+      ),
+    ).toContain("explicit numeric microversion");
+  });
+
+  it("enforces Load Balancing ceilings with the Octavia header identity", () => {
+    const policy = parseApiMicroversionPolicy({
+      SUNRISE_API_MICROVERSION_LOAD_BALANCER_REGIONONE: "2.14",
+    });
+
+    expect(
+      apiMicroversionPolicyViolation(
+        policy,
+        "load-balancer",
+        "RegionOne",
+        "load-balancer 2.15",
+      ),
+    ).toContain("exceeds the configured maximum 2.14");
+    expect(
+      apiMicroversionPolicyViolation(
+        policy,
+        "load-balancer",
+        "RegionOne",
+        "load-balancer 2.14",
+      ),
+    ).toBeUndefined();
+    expect(
+      apiMicroversionPolicyViolation(
+        policy,
+        "load-balancer",
+        "RegionOne",
+        "octavia 2.14",
       ),
     ).toContain("explicit numeric microversion");
   });

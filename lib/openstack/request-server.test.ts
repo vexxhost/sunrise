@@ -138,6 +138,49 @@ describe("server-only OpenStack requests", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("enforces Octavia ceilings and sends the Load Balancing API header", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_LOAD_BALANCER_REGIONONE", "2.14");
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://load-balancer.example.test",
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ availability_zones: [] })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      openstackRequest({
+        apiVersion: "load-balancer 2.15",
+        errorMode: "throw",
+        regionId: "RegionOne",
+        serviceType: "load-balancer",
+        serviceName: "octavia",
+        path: "/v2/lbaas/availabilityzones",
+      }),
+    ).rejects.toThrow("exceeds the configured maximum 2.14");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await openstackRequest({
+      apiVersion: "load-balancer 2.14",
+      errorMode: "throw",
+      regionId: "RegionOne",
+      serviceType: "load-balancer",
+      serviceName: "octavia",
+      path: "/v2/lbaas/availabilityzones",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://load-balancer.example.test/v2/lbaas/availabilityzones",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "OpenStack-API-Version": "load-balancer 2.14",
+        }),
+      }),
+    );
+  });
+
   it("enforces Manila ceilings and sends its custom microversion header", async () => {
     vi.stubEnv("SUNRISE_API_MICROVERSION_SHARE_REGIONONE", "2.69");
     const fetchMock = vi

@@ -2,6 +2,12 @@ export interface OctaviaResourceReference {
   id: string;
 }
 
+export interface OctaviaAvailabilityZone {
+  name: string;
+  description?: string;
+  enabled: boolean;
+}
+
 export interface OctaviaLoadBalancer {
   id: string;
   name: string;

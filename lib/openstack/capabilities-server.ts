@@ -3,6 +3,7 @@ import "server-only";
 import { createLogger } from "@/lib/logging";
 import { getApiMicroversionPolicy } from "@/lib/deployment-config";
 import {
+  parseAdditiveVersionDiscovery,
   parseExtensionAliases,
   parseMicroversionDiscovery,
   preferredMicroversionSupport,
@@ -24,6 +25,8 @@ export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
 export const CINDER_BASELINE_MICROVERSION = "3.0";
 export const CINDER_DETAIL_MICROVERSION = "3.65";
 export const CINDER_IN_USE_SNAPSHOT_MICROVERSION = "3.66";
+export const OCTAVIA_BASELINE_MICROVERSION = "2.0";
+export const OCTAVIA_AVAILABILITY_ZONE_MICROVERSION = "2.14";
 
 function unavailable(
   serviceType: string,
@@ -44,6 +47,20 @@ function versionRoot(endpoint: string, majorVersion: RegExp): string {
   );
   if (versionIndex >= 0) {
     url.pathname = `/${segments.slice(0, versionIndex + 1).join("/")}`;
+  }
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function unversionedRoot(endpoint: string, majorVersion: RegExp): string {
+  const url = new URL(endpoint);
+  const segments = url.pathname.split("/").filter(Boolean);
+  const versionIndex = segments.findIndex((segment) =>
+    majorVersion.test(segment),
+  );
+  if (versionIndex >= 0) {
+    url.pathname = `/${segments.slice(0, versionIndex).join("/")}`;
   }
   url.search = "";
   url.hash = "";
@@ -129,6 +146,60 @@ export async function discoverNetworkCapabilities(
     extensions,
     message: `${extensions.length} Networking API extensions are available.`,
     serviceType: "network",
+  };
+}
+
+export async function discoverLoadBalancerCapabilities(
+  regionId: string,
+): Promise<OpenStackServiceCapabilities> {
+  const configuredMicroversionMaximum = configuredApiMicroversion(
+    getApiMicroversionPolicy(),
+    "load-balancer",
+    regionId,
+  );
+  const session = await getSession();
+  const token = session.keystoneProjectToken;
+  const endpoint = token
+    ? await getServiceEndpoint(regionId, "load-balancer", "octavia", token)
+    : null;
+  if (!endpoint) {
+    const capabilities = unavailable(
+      "load-balancer",
+      "Load Balancing API microversion discovery was unavailable.",
+    );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
+  }
+
+  const payload = await openstackRequest<unknown>({
+    acceptedStatuses: [300],
+    endpointOverride: unversionedRoot(endpoint, /^v2(?:\.0)?$/i),
+    regionId,
+    serviceType: "load-balancer",
+    serviceName: "octavia",
+    path: "/",
+  });
+  const discovery = parseAdditiveVersionDiscovery(payload, 2);
+
+  if (!discovery?.microversions) {
+    logger.warn("load-balancer-microversions-unavailable", { regionId });
+    const capabilities = unavailable(
+      "load-balancer",
+      "Load Balancing API microversion discovery was unavailable.",
+    );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
+  }
+  const { microversions } = discovery;
+
+  return {
+    ...(configuredMicroversionMaximum ? { configuredMicroversionMaximum } : {}),
+    discoveryStatus: "available",
+    message: `Load Balancing API microversions ${microversions.minimum} through ${microversions.maximum} are available.${configuredMicroversionMaximum ? ` Sunrise will not request newer than ${configuredMicroversionMaximum}.` : ""}`,
+    microversions,
+    serviceType: "load-balancer",
   };
 }
 
@@ -279,11 +350,12 @@ export async function manilaDetailApiVersion(regionId?: string) {
 }
 
 export async function discoverDeploymentCapabilities(regionId: string) {
-  const [compute, network, share, volume] = await Promise.all([
+  const [compute, loadBalancer, network, share, volume] = await Promise.all([
     discoverComputeCapabilities(regionId),
+    discoverLoadBalancerCapabilities(regionId),
     discoverNetworkCapabilities(regionId),
     discoverSharedFileSystemCapabilities(regionId),
     discoverBlockStorageCapabilities(regionId),
   ]);
-  return { compute, network, share, volume };
+  return { compute, loadBalancer, network, share, volume };
 }
