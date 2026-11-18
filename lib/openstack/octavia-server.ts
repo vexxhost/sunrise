@@ -2,8 +2,17 @@ import "server-only";
 
 import { openstackRequest } from "@/lib/openstack/request-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
+import {
+  discoverLoadBalancerCapabilities,
+  OCTAVIA_AVAILABILITY_ZONE_MICROVERSION,
+} from "@/lib/openstack/capabilities-server";
+import {
+  microversionSupport,
+  type OpenStackFeatureSupport,
+} from "@/lib/openstack/capabilities";
 import { getSession } from "@/lib/session";
 import type {
+  OctaviaAvailabilityZone,
   OctaviaHealthMonitor,
   OctaviaL7Policy,
   OctaviaL7Rule,
@@ -118,14 +127,107 @@ async function octaviaGet<T>(
   scope: OctaviaScope,
   path: string,
   errorMode: "return-null" | "throw" = "throw",
+  apiVersion?: string,
 ) {
   return openstackRequest<T>({
     regionId: scope.regionId,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
     path,
+    apiVersion,
     errorMode,
   });
+}
+
+function parseAvailabilityZones(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const zones = (payload as { availability_zones?: unknown })
+    .availability_zones;
+  if (!Array.isArray(zones)) return null;
+
+  const parsed: OctaviaAvailabilityZone[] = [];
+  for (const value of zones) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    const zone = value as Record<string, unknown>;
+    if (
+      typeof zone.name !== "string" ||
+      !zone.name.trim() ||
+      typeof zone.enabled !== "boolean" ||
+      (zone.description !== undefined &&
+        zone.description !== null &&
+        typeof zone.description !== "string")
+    ) {
+      return null;
+    }
+    parsed.push({
+      name: zone.name,
+      enabled: zone.enabled,
+      ...(typeof zone.description === "string"
+        ? { description: zone.description }
+        : {}),
+    });
+  }
+  return parsed;
+}
+
+export type OctaviaAvailabilityZoneResult = {
+  availabilityZones: OctaviaAvailabilityZone[];
+  support: OpenStackFeatureSupport;
+};
+
+export async function listLoadBalancerAvailabilityZones(
+  regionId?: string,
+  projectId?: string,
+): Promise<OctaviaAvailabilityZoneResult> {
+  const scope = await resolveScope(regionId, projectId);
+  const capabilities = await discoverLoadBalancerCapabilities(scope.regionId);
+  const support = microversionSupport(
+    capabilities,
+    OCTAVIA_AVAILABILITY_ZONE_MICROVERSION,
+    "Load balancer availability-zone selection",
+  );
+  if (support.status === "unsupported") {
+    return { availabilityZones: [], support };
+  }
+
+  const requestedMicroversion =
+    support.requestedMicroversion ?? OCTAVIA_AVAILABILITY_ZONE_MICROVERSION;
+  const payload = await octaviaGet<unknown>(
+    scope,
+    "/v2/lbaas/availabilityzones",
+    "return-null",
+    `load-balancer ${requestedMicroversion}`,
+  );
+  const availabilityZones = parseAvailabilityZones(payload);
+  if (!availabilityZones) {
+    return {
+      availabilityZones: [],
+      support: {
+        status: "unknown",
+        message:
+          "Load balancer availability zones could not be loaded for the active project.",
+      },
+    };
+  }
+
+  return {
+    availabilityZones: availabilityZones
+      .filter(({ enabled }) => enabled)
+      .sort((left, right) => left.name.localeCompare(right.name)),
+    support:
+      support.status === "unknown"
+        ? {
+            status: "supported",
+            requestedMicroversion,
+            message:
+              "Load balancer availability zones are supported by the active cloud.",
+          }
+        : support,
+  };
 }
 
 async function listCollection<T>(

@@ -1069,15 +1069,26 @@ export function ClusterTemplateMutationSheet({
                         }
                       />
                     </Field>
-                    <Field label="API load balancer availability zone">
+                    <Field
+                      label="API load balancer availability zone"
+                      description={
+                        loadBalancerAvailabilityZones.data?.support.status ===
+                        "supported"
+                          ? "Octavia availability zone for the Kubernetes API load balancer."
+                          : (loadBalancerAvailabilityZones.data?.support
+                              .message ??
+                            "Octavia availability zone support is being checked.")
+                      }
+                    >
                       <AvailabilityZoneSelect
                         onValueChange={(value) =>
                           update("apiServerLbAvailabilityZone", value)
                         }
                         value={form.apiServerLbAvailabilityZone}
-                        zones={(loadBalancerAvailabilityZones.data ?? []).map(
-                          (zone) => zone.name,
-                        )}
+                        zones={(
+                          loadBalancerAvailabilityZones.data
+                            ?.availabilityZones ?? []
+                        ).map((zone) => zone.name)}
                       />
                     </Field>
                   </div>
@@ -1312,10 +1323,7 @@ export function ClusterTemplateMutationSheet({
                       label="Verify kubelet serving certificates"
                       description="Require cluster-CA-signed kubelet certificates for new clusters. The cloud must run cluster-api-csr-approver."
                       onCheckedChange={(value) =>
-                        update(
-                          "kubeletServingCertVerificationEnabled",
-                          value,
-                        )
+                        update("kubeletServingCertVerificationEnabled", value)
                       }
                     />
                   </div>

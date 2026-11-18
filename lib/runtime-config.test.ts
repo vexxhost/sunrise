@@ -186,12 +186,14 @@ describe("validateRuntimeConfiguration", () => {
         ...validEnvironment,
         SUNRISE_API_MICROVERSION_COMPUTE: "2.95",
         SUNRISE_API_MICROVERSION_COMPUTE_REGIONONE: "2.90",
+        SUNRISE_API_MICROVERSION_LOAD_BALANCER: "2.20",
+        SUNRISE_API_MICROVERSION_LOAD_BALANCER_REGIONONE: "2.14",
         SUNRISE_API_MICROVERSION_SHARE: "2.70",
         SUNRISE_API_MICROVERSION_SHARE_REGIONONE: "2.63",
         SUNRISE_API_MICROVERSION_VOLUME: "3.71",
         SUNRISE_API_MICROVERSION_VOLUME_REGIONONE: "3.66",
       }),
-    ).toMatchObject({ apiMicroversionOverrideCount: 6 });
+    ).toMatchObject({ apiMicroversionOverrideCount: 8 });
 
     expect(() =>
       validateRuntimeConfiguration({

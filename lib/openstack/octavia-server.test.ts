@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  discoverLoadBalancerCapabilities: vi.fn(),
   getSession: vi.fn(),
   openstackRequest: vi.fn(),
 }));
@@ -10,9 +11,14 @@ vi.mock("@/lib/session", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/openstack/request-server", () => ({
   openstackRequest: mocks.openstackRequest,
 }));
+vi.mock("@/lib/openstack/capabilities-server", () => ({
+  discoverLoadBalancerCapabilities: mocks.discoverLoadBalancerCapabilities,
+  OCTAVIA_AVAILABILITY_ZONE_MICROVERSION: "2.14",
+}));
 
 import {
   getLoadBalancerDetails,
+  listLoadBalancerAvailabilityZones,
   listLoadBalancers,
 } from "@/lib/openstack/octavia-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
@@ -34,6 +40,89 @@ describe("Octavia project scoping", () => {
     mocks.getSession.mockResolvedValue({
       projectId: "project-a",
       regionId: "RegionOne",
+    });
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      message: "",
+      microversions: { minimum: "2.0", maximum: "2.30" },
+      serviceType: "load-balancer",
+    });
+  });
+
+  it("negotiates and filters load balancer availability zones", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      availability_zones: [
+        { name: "zone-b", description: "Second", enabled: true },
+        { name: "zone-disabled", enabled: false },
+        { name: "zone-a", description: null, enabled: true },
+      ],
+    });
+
+    await expect(listLoadBalancerAvailabilityZones()).resolves.toEqual({
+      availabilityZones: [
+        { name: "zone-a", enabled: true },
+        { name: "zone-b", description: "Second", enabled: true },
+      ],
+      support: expect.objectContaining({
+        status: "supported",
+        requestedMicroversion: "2.14",
+      }),
+    });
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.14",
+        path: "/v2/lbaas/availabilityzones",
+      }),
+    );
+  });
+
+  it("does not query availability zones above the effective ceiling", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      configuredMicroversionMaximum: "2.13",
+      discoveryStatus: "available",
+      message: "",
+      microversions: { minimum: "2.0", maximum: "2.30" },
+      serviceType: "load-balancer",
+    });
+
+    await expect(listLoadBalancerAvailabilityZones()).resolves.toMatchObject({
+      availabilityZones: [],
+      support: {
+        status: "unsupported",
+        message: expect.stringContaining("configured not to request newer"),
+      },
+    });
+    expect(mocks.openstackRequest).not.toHaveBeenCalled();
+  });
+
+  it("probes conservatively when Octavia discovery is unavailable", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "",
+      serviceType: "load-balancer",
+    });
+    mocks.openstackRequest.mockResolvedValue({ availability_zones: [] });
+
+    await expect(listLoadBalancerAvailabilityZones()).resolves.toMatchObject({
+      availabilityZones: [],
+      support: {
+        status: "supported",
+        requestedMicroversion: "2.14",
+      },
+    });
+  });
+
+  it("does not treat malformed availability-zone payloads as support", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      availability_zones: [{ name: "zone-a", enabled: "yes" }],
+    });
+
+    await expect(listLoadBalancerAvailabilityZones()).resolves.toMatchObject({
+      availabilityZones: [],
+      support: {
+        status: "unknown",
+        message: expect.stringContaining("could not be loaded"),
+      },
     });
   });
 

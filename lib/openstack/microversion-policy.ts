@@ -3,6 +3,7 @@ import { regionEnvironmentSuffix } from "@/lib/service-policy";
 
 export const configurableMicroversionServices = [
   "compute",
+  "load-balancer",
   "share",
   "volume",
 ] as const;
@@ -22,6 +23,7 @@ type MicroversionEnvironment = Record<string, string | undefined>;
 const ENVIRONMENT_PREFIX = "SUNRISE_API_MICROVERSION_";
 const minimumSupportedVersions = {
   compute: "2.79",
+  "load-balancer": "2.0",
   share: "2.51",
   volume: "3.0",
 } as const satisfies Record<ConfigurableMicroversionService, string>;
@@ -30,6 +32,10 @@ const requestServiceIdentities = {
   compute: {
     headerService: "compute",
     serviceTypes: ["compute"],
+  },
+  "load-balancer": {
+    headerService: "load-balancer",
+    serviceTypes: ["load-balancer"],
   },
   share: {
     headerService: null,

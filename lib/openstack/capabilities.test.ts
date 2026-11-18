@@ -4,6 +4,7 @@ import {
   compareMicroversions,
   extensionSupport,
   microversionSupport,
+  parseAdditiveVersionDiscovery,
   parseExtensionAliases,
   parseMicroversionDiscovery,
   parseMicroversionRange,
@@ -12,6 +13,28 @@ import {
 } from "@/lib/openstack/capabilities";
 
 describe("OpenStack capability evaluation", () => {
+  it("parses additive Octavia version collections", () => {
+    expect(
+      parseAdditiveVersionDiscovery(
+        {
+          versions: [
+            { id: "v1.0", status: "SUPPORTED" },
+            { id: "v2.0", status: "SUPPORTED" },
+            { id: "v2.14", status: "SUPPORTED" },
+            { id: "v2.30", status: "CURRENT" },
+            { id: "v2.31", status: "EXPERIMENTAL" },
+            { id: "invalid", status: "SUPPORTED" },
+          ],
+        },
+        2,
+      ),
+    ).toEqual({
+      microversions: { minimum: "2.0", maximum: "2.30" },
+    });
+    expect(parseAdditiveVersionDiscovery({ versions: [] }, 2)).toBeNull();
+    expect(parseAdditiveVersionDiscovery({ version: {} }, 2)).toBeNull();
+  });
+
   it("parses Nova version detail and version collection responses", () => {
     expect(
       parseMicroversionRange({

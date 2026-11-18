@@ -116,6 +116,37 @@ export function parseMicroversionDiscovery(
   return explicitlyUnsupported ? { microversions: null } : null;
 }
 
+export function parseAdditiveVersionDiscovery(
+  payload: unknown,
+  majorVersion: number,
+): MicroversionDiscovery | null {
+  const root = asRecord(payload);
+  if (!root || !Array.isArray(root.versions)) return null;
+
+  const versions = root.versions.flatMap((value) => {
+    const candidate = versionDescription(value);
+    const status =
+      typeof candidate?.status === "string"
+        ? candidate.status.toUpperCase()
+        : "";
+    if (status !== "CURRENT" && status !== "SUPPORTED") return [];
+
+    const id = typeof candidate?.id === "string" ? candidate.id : "";
+    const match = /^v(\d+)\.(\d+)$/.exec(id);
+    if (!match || Number(match[1]) !== majorVersion) return [];
+    return [`${Number(match[1])}.${Number(match[2])}`];
+  });
+  const uniqueVersions = [...new Set(versions)].sort(compareMicroversions);
+  if (!uniqueVersions.length) return null;
+
+  return {
+    microversions: {
+      minimum: uniqueVersions[0],
+      maximum: uniqueVersions[uniqueVersions.length - 1],
+    },
+  };
+}
+
 export function parseExtensionAliases(payload: unknown): string[] | null {
   const root = asRecord(payload);
   if (!root || !Array.isArray(root.extensions)) return null;

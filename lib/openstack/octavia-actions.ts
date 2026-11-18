@@ -2,6 +2,7 @@
 
 import {
   getLoadBalancerDetails,
+  listLoadBalancerAvailabilityZones,
   listLoadBalancers,
 } from "@/lib/openstack/octavia-server";
 import { listFloatingIpsForPort } from "@/lib/openstack/neutron-floating-ip-server";
@@ -16,6 +17,13 @@ export async function listLoadBalancersAction(
   projectId?: string,
 ): Promise<OctaviaLoadBalancer[]> {
   return listLoadBalancers(regionId, projectId);
+}
+
+export async function listLoadBalancerAvailabilityZonesAction(
+  regionId?: string,
+  projectId?: string,
+) {
+  return listLoadBalancerAvailabilityZones(regionId, projectId);
 }
 
 export async function getLoadBalancerDetailsAction(

@@ -89,11 +89,6 @@ const READ_ROUTES: ReadRoute[] = [
       /^\/v2\.0\/(?:networks|subnets|routers|ports|floatingips|security-groups)\/[^/]+$/,
   },
   {
-    serviceType: "load-balancer",
-    serviceName: "octavia",
-    pathname: /^\/v2\/lbaas\/availabilityzones$/,
-  },
-  {
     serviceType: "sharev2",
     serviceName: "manilav2",
     pathname: /^\/[^/]+\/share-networks\/detail$/,

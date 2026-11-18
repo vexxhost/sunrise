@@ -981,7 +981,14 @@ export function ClusterMutationSheet({
                     </Field>
                     <Field
                       label="API load balancer availability zone"
-                      description="Octavia availability zone for this cluster's Kubernetes API load balancer."
+                      description={
+                        loadBalancerAvailabilityZones.data?.support.status ===
+                        "supported"
+                          ? "Octavia availability zone for this cluster's Kubernetes API load balancer."
+                          : (loadBalancerAvailabilityZones.data?.support
+                              .message ??
+                            "Octavia availability zone support is being checked.")
+                      }
                     >
                       <AvailabilityZoneSelect
                         defaultLabel="Template or cloud default"
@@ -989,9 +996,10 @@ export function ClusterMutationSheet({
                           update("apiServerLbAvailabilityZone", value)
                         }
                         value={form.apiServerLbAvailabilityZone}
-                        zones={(loadBalancerAvailabilityZones.data ?? []).map(
-                          (zone) => zone.name,
-                        )}
+                        zones={(
+                          loadBalancerAvailabilityZones.data
+                            ?.availabilityZones ?? []
+                        ).map((zone) => zone.name)}
                       />
                     </Field>
                   </div>

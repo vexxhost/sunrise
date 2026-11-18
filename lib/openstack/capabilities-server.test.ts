@@ -19,6 +19,7 @@ import {
   cinderDetailApiVersion,
   discoverBlockStorageCapabilities,
   discoverComputeCapabilities,
+  discoverLoadBalancerCapabilities,
   discoverNetworkCapabilities,
   discoverSharedFileSystemCapabilities,
   manilaDetailApiVersion,
@@ -61,6 +62,60 @@ describe("OpenStack capability discovery", () => {
       regionId: "RegionOne",
       serviceName: "nova",
       serviceType: "compute",
+    });
+  });
+
+  it("discovers the Octavia additive API range and regional ceiling", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_LOAD_BALANCER", "2.20");
+    vi.stubEnv("SUNRISE_API_MICROVERSION_LOAD_BALANCER_REGIONONE", "2.14");
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://load-balancer.example.test/octavia/v2",
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      versions: [
+        { id: "v2.0", status: "SUPPORTED" },
+        { id: "v2.14", status: "SUPPORTED" },
+        { id: "v2.30", status: "CURRENT" },
+      ],
+    });
+
+    await expect(
+      discoverLoadBalancerCapabilities("RegionOne"),
+    ).resolves.toMatchObject({
+      configuredMicroversionMaximum: "2.14",
+      discoveryStatus: "available",
+      microversions: { minimum: "2.0", maximum: "2.30" },
+      serviceType: "load-balancer",
+    });
+    expect(mocks.getServiceEndpoint).toHaveBeenCalledWith(
+      "RegionOne",
+      "load-balancer",
+      "octavia",
+      "project-token",
+    );
+    expect(mocks.openstackRequest).toHaveBeenCalledWith({
+      acceptedStatuses: [300],
+      endpointOverride: "https://load-balancer.example.test/octavia",
+      path: "/",
+      regionId: "RegionOne",
+      serviceName: "octavia",
+      serviceType: "load-balancer",
+    });
+  });
+
+  it("returns unknown-safe Octavia capabilities for malformed discovery", async () => {
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://load-balancer.example.test/",
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      versions: [{ id: "v2.30", status: "EXPERIMENTAL" }],
+    });
+
+    await expect(
+      discoverLoadBalancerCapabilities("RegionOne"),
+    ).resolves.toMatchObject({
+      discoveryStatus: "unavailable",
+      serviceType: "load-balancer",
     });
   });
 
