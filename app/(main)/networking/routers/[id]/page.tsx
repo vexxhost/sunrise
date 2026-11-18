@@ -14,6 +14,7 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+  NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
@@ -23,14 +24,21 @@ export default async function Page({
 }) {
   const [{ id }, session] = await Promise.all([params, getSession()]);
   if (!session.projectId || !session.regionId) return null;
-  const routeSupportPromise = discoverNetworkCapabilities(
-    session.regionId,
-  ).then((capabilities) =>
+  const capabilitiesPromise = discoverNetworkCapabilities(session.regionId);
+  const routeSupportPromise = capabilitiesPromise.then((capabilities) =>
     extensionSupport(
       capabilities,
       NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
       "Static router route changes",
     ),
+  );
+  const availabilityZoneSupportPromise = capabilitiesPromise.then(
+    (capabilities) =>
+      extensionSupport(
+        capabilities,
+        NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
+        "Router availability zones",
+      ),
   );
   const queryClient = makeQueryClient();
   const routerQuery = routerQueryOptions(
@@ -54,11 +62,15 @@ export default async function Page({
     ),
   ]);
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
-  const routeSupport = await routeSupportPromise;
+  const [availabilityZoneSupport, routeSupport] = await Promise.all([
+    availabilityZoneSupportPromise,
+    routeSupportPromise,
+  ]);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <RouterDetailClient
         id={id}
+        availabilityZoneSupport={availabilityZoneSupport}
         projectId={session.projectId}
         regionId={session.regionId}
         routeSupport={routeSupport}

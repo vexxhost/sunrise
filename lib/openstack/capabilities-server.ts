@@ -27,7 +27,11 @@ const logger = createLogger("openstack.capabilities");
 
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
+export const NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION =
+  "network_availability_zone";
 export const NEUTRON_PORT_SECURITY_EXTENSION = "port-security";
+export const NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION =
+  "router_availability_zone";
 export const NEUTRON_SECURITY_GROUP_EXTENSION = "security-group";
 export const CINDER_BASELINE_MICROVERSION = "3.0";
 export const CINDER_DETAIL_MICROVERSION = "3.65";

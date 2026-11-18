@@ -85,6 +85,11 @@ const READ_ROUTES: ReadRoute[] = [
   {
     serviceType: "network",
     serviceName: "neutron",
+    pathname: /^\/v2\.0\/availability_zones$/,
+  },
+  {
+    serviceType: "network",
+    serviceName: "neutron",
     pathname:
       /^\/v2\.0\/(?:networks|subnets|routers|ports|floatingips|security-groups)\/[^/]+$/,
   },

@@ -88,6 +88,12 @@ export interface RouterExternalGatewayInfo {
   }>;
 }
 
+export interface NeutronAvailabilityZone {
+  name: string;
+  resource: string;
+  state: string;
+}
+
 export interface Router {
   id: string;
   name: string;

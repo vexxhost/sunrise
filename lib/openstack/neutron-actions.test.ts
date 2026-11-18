@@ -11,7 +11,9 @@ vi.mock("@/lib/openstack/mutations", () => ({
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
+  NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
   NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
+  NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION: "router_availability_zone",
   NEUTRON_SECURITY_GROUP_EXTENSION: "security-group",
 }));
 
@@ -20,6 +22,7 @@ import {
   addRouterRouteAction,
   createNetworkAction,
   createPortAction,
+  createRouterAction,
   createSecurityGroupRuleAction,
   createSubnetAction,
   deleteFloatingIpAction,
@@ -47,7 +50,9 @@ describe("Neutron mutation actions", () => {
       extensions: [
         "extraroute",
         "extraroute-atomic",
+        "network_availability_zone",
         "port-security",
+        "router_availability_zone",
         "security-group",
       ],
       message: "",
@@ -106,6 +111,123 @@ describe("Neutron mutation actions", () => {
       }),
     );
     expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("maps network availability-zone hints and checks extensions once", async () => {
+    await createNetworkAction(scope, {
+      name: "application",
+      description: "Application network",
+      adminStateUp: true,
+      availabilityZoneHints: ["nova-1", "nova-1", "nova-2"],
+      portSecurityEnabled: true,
+    });
+
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(1);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          network: expect.objectContaining({
+            availability_zone_hints: ["nova-1", "nova-2"],
+          }),
+        },
+      }),
+    );
+  });
+
+  it("rejects network availability-zone hints when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-security"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createNetworkAction(scope, {
+      name: "application",
+      description: "Application network",
+      adminStateUp: true,
+      availabilityZoneHints: ["nova"],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("network_availability_zone"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("maps router availability-zone hints", async () => {
+    await createRouterAction(scope, {
+      name: "application-router",
+      description: "Application routing",
+      adminStateUp: true,
+      availabilityZoneHints: ["nova"],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        path: "/v2.0/routers",
+        body: {
+          router: expect.objectContaining({
+            availability_zone_hints: ["nova"],
+          }),
+        },
+      }),
+    );
+  });
+
+  it("rejects router availability-zone hints when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["network_availability_zone"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createRouterAction(scope, {
+      name: "application-router",
+      description: "",
+      adminStateUp: true,
+      availabilityZoneHints: ["nova"],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("router_availability_zone"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("preserves explicit hints when extension discovery is unavailable", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "",
+      serviceType: "network",
+    });
+
+    await createRouterAction(scope, {
+      name: "application-router",
+      description: "",
+      adminStateUp: true,
+      availabilityZoneHints: ["nova"],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          router: expect.objectContaining({
+            availability_zone_hints: ["nova"],
+          }),
+        },
+      }),
+    );
   });
 
   it("rejects explicitly requested port security when the extension is absent", async () => {

@@ -13,6 +13,7 @@ import {
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
+import { AvailabilityZoneMultiSelect } from "@/components/OpenStack/AvailabilityZoneSelect";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -35,7 +36,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   defaultSecurityGroupRulesQueryOptions,
+  availableNetworkZoneNames,
   externalNetworksQueryOptions,
+  networkAvailabilityZonesQueryOptions,
   networksQueryOptions,
   portsQueryOptions,
   securityGroupsQueryOptions,
@@ -61,6 +64,47 @@ interface ScopeProps {
   initiallyOpen?: boolean;
   projectId: string;
   regionId: string;
+}
+
+function availabilityZoneHints(value: string) {
+  const hints = value
+    .split(",")
+    .map((zone) => zone.trim())
+    .filter(Boolean);
+  return hints.length ? [...new Set(hints)] : undefined;
+}
+
+function AvailabilityZoneHintsField({
+  disabled,
+  loading,
+  onValueChange,
+  value,
+  zones,
+}: {
+  disabled: boolean;
+  loading: boolean;
+  onValueChange: (value: string) => void;
+  value: string;
+  zones: string[];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium">Availability zone hints</p>
+      <AvailabilityZoneMultiSelect
+        disabled={disabled || loading}
+        onValueChange={onValueChange}
+        value={value}
+        zones={zones}
+      />
+      <p className="text-xs text-muted-foreground">
+        {loading
+          ? "Loading available zones."
+          : zones.length
+            ? "Optionally ask the cloud scheduler to place this resource in one of the selected zones."
+            : "No available zones were advertised. The cloud scheduler will choose placement."}
+      </p>
+    </div>
+  );
 }
 
 function FormError({ error }: { error: string | null }) {
@@ -103,21 +147,37 @@ function ToggleField({
 }
 
 export function CreateNetworkAction({
+  availabilityZoneSupport,
   initiallyOpen = false,
   projectId,
   regionId,
   portSecuritySupport,
-}: ScopeProps & { portSecuritySupport: OpenStackFeatureSupport }) {
+}: ScopeProps & {
+  availabilityZoneSupport: OpenStackFeatureSupport;
+  portSecuritySupport: OpenStackFeatureSupport;
+}) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
+  const [selectedAvailabilityZones, setSelectedAvailabilityZones] =
+    useState("");
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
+  const availabilityZonesAvailable =
+    availabilityZoneSupport.status !== "unsupported";
+  const availabilityZones = useQuery({
+    ...networkAvailabilityZonesQueryOptions(regionId, projectId),
+    enabled: open && availabilityZonesAvailable,
+  });
+  const networkZones = useMemo(
+    () => availableNetworkZoneNames(availabilityZones.data ?? [], "network"),
+    [availabilityZones.data],
+  );
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -134,6 +194,7 @@ export function CreateNetworkAction({
       setName("");
       setDescription("");
       setAdminStateUp(true);
+      setSelectedAvailabilityZones("");
       setPortSecurityEnabled(true);
     }
   };
@@ -147,6 +208,9 @@ export function CreateNetworkAction({
           name,
           description,
           adminStateUp,
+          availabilityZoneHints: availabilityZoneHints(
+            selectedAvailabilityZones,
+          ),
           portSecurityEnabled: portSecurityAvailable
             ? portSecurityEnabled
             : undefined,
@@ -202,6 +266,15 @@ export function CreateNetworkAction({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {availabilityZonesAvailable ? (
+                <AvailabilityZoneHintsField
+                  disabled={pending}
+                  loading={availabilityZones.isPending}
+                  onValueChange={setSelectedAvailabilityZones}
+                  value={selectedAvailabilityZones}
+                  zones={networkZones}
+                />
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <ToggleField
                   id="network-admin-state"
@@ -232,6 +305,14 @@ export function CreateNetworkAction({
                 title="Port security controls unavailable"
               >
                 {portSecuritySupport.message}
+              </MutationAlert>
+            ) : null}
+            {!availabilityZonesAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="Availability-zone hints unavailable"
+              >
+                {availabilityZoneSupport.message}
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview
@@ -267,18 +348,31 @@ export function CreateNetworkAction({
 }
 
 export function CreateRouterAction({
+  availabilityZoneSupport,
   initiallyOpen = false,
   projectId,
   regionId,
-}: ScopeProps) {
+}: ScopeProps & { availabilityZoneSupport: OpenStackFeatureSupport }) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
+  const [selectedAvailabilityZones, setSelectedAvailabilityZones] =
+    useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const availabilityZonesAvailable =
+    availabilityZoneSupport.status !== "unsupported";
+  const availabilityZones = useQuery({
+    ...networkAvailabilityZonesQueryOptions(regionId, projectId),
+    enabled: open && availabilityZonesAvailable,
+  });
+  const routerZones = useMemo(
+    () => availableNetworkZoneNames(availabilityZones.data ?? [], "router"),
+    [availabilityZones.data],
+  );
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -294,6 +388,7 @@ export function CreateRouterAction({
       setName("");
       setDescription("");
       setAdminStateUp(true);
+      setSelectedAvailabilityZones("");
     }
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -301,7 +396,14 @@ export function CreateRouterAction({
     startTransition(async () => {
       const result = await createRouterAction(
         { projectId, regionId },
-        { name, description, adminStateUp },
+        {
+          name,
+          description,
+          adminStateUp,
+          availabilityZoneHints: availabilityZoneHints(
+            selectedAvailabilityZones,
+          ),
+        },
       );
       if (!result.ok) {
         setError(result.error.message);
@@ -354,6 +456,15 @@ export function CreateRouterAction({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {availabilityZonesAvailable ? (
+                <AvailabilityZoneHintsField
+                  disabled={pending}
+                  loading={availabilityZones.isPending}
+                  onValueChange={setSelectedAvailabilityZones}
+                  value={selectedAvailabilityZones}
+                  zones={routerZones}
+                />
+              ) : null}
               <ToggleField
                 id="router-admin-state"
                 label="Admin state up"
@@ -363,6 +474,14 @@ export function CreateRouterAction({
                 onCheckedChange={setAdminStateUp}
               />
             </div>
+            {!availabilityZonesAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="Availability-zone hints unavailable"
+              >
+                {availabilityZoneSupport.message}
+              </MutationAlert>
+            ) : null}
             <QuotaImpactPreview
               impacts={quota.impacts}
               loading={quota.loading}

@@ -14,6 +14,7 @@ import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server"
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
@@ -46,8 +47,14 @@ export default async function Page({
       portsQueryOptions(session.regionId, session.projectId),
     ),
   ]);
+  const capabilities = await capabilitiesPromise;
+  const availabilityZoneSupport = extensionSupport(
+    capabilities,
+    NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
+    "Network availability zones",
+  );
   const portSecuritySupport = extensionSupport(
-    await capabilitiesPromise,
+    capabilities,
     NEUTRON_PORT_SECURITY_EXTENSION,
     "Port security",
   );
@@ -56,6 +63,7 @@ export default async function Page({
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <NetworkDetailClient
         id={id}
+        availabilityZoneSupport={availabilityZoneSupport}
         projectId={session.projectId}
         regionId={session.regionId}
         portSecuritySupport={portSecuritySupport}
