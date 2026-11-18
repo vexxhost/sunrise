@@ -80,12 +80,14 @@ function TableIntro({
 
 export function NetworksTableClient({
   availabilityZoneSupport,
+  dnsIntegrationSupport,
   projectId,
   regionId,
   initiallyOpen = false,
   portSecuritySupport,
 }: NetworkingTableProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
 }) {
   const networks = useSuspenseQuery(
@@ -165,6 +167,15 @@ export function NetworksTableClient({
         header: "MTU",
         meta: { fieldType: "number", visible: true },
       },
+      ...(dnsIntegrationSupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "dns_domain",
+              header: "DNS domain",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Network>,
+          ]),
       ...(portSecuritySupport.status === "unsupported"
         ? []
         : [
@@ -182,7 +193,7 @@ export function NetworksTableClient({
         meta: { fieldType: "string", visible: false },
       },
     ],
-    [portSecuritySupport.status, subnetById],
+    [dnsIntegrationSupport.status, portSecuritySupport.status, subnetById],
   );
 
   return (
@@ -194,6 +205,7 @@ export function NetworksTableClient({
             regionId={regionId}
             initiallyOpen={initiallyOpen}
             availabilityZoneSupport={availabilityZoneSupport}
+            dnsIntegrationSupport={dnsIntegrationSupport}
             portSecuritySupport={portSecuritySupport}
           />
         }
@@ -338,6 +350,8 @@ export function RoutersTableClient({
 
 export function PortsTableClient({
   allowedAddressPairsSupport,
+  dnsDomainPortsSupport,
+  dnsIntegrationSupport,
   projectId,
   regionId,
   initiallyOpen = false,
@@ -345,6 +359,8 @@ export function PortsTableClient({
   securityGroupSupport,
 }: NetworkingTableProps & {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
+  dnsDomainPortsSupport: OpenStackFeatureSupport;
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
 }) {
@@ -425,8 +441,26 @@ export function PortsTableClient({
         header: "MAC address",
         meta: { fieldType: "string", visible: false, monospace: true },
       },
+      ...(dnsIntegrationSupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "dns_name",
+              header: "DNS name",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]),
+      ...(dnsDomainPortsSupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "dns_domain",
+              header: "DNS domain",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]),
     ],
-    [networkById],
+    [dnsDomainPortsSupport.status, dnsIntegrationSupport.status, networkById],
   );
 
   return (
@@ -435,6 +469,8 @@ export function PortsTableClient({
         action={
           <CreatePortAction
             allowedAddressPairsSupport={allowedAddressPairsSupport}
+            dnsDomainPortsSupport={dnsDomainPortsSupport}
+            dnsIntegrationSupport={dnsIntegrationSupport}
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
@@ -460,10 +496,13 @@ export function PortsTableClient({
 }
 
 export function FloatingIpsTableClient({
+  dnsIntegrationSupport,
   projectId,
   regionId,
   initiallyOpen = false,
-}: NetworkingTableProps) {
+}: NetworkingTableProps & {
+  dnsIntegrationSupport: OpenStackFeatureSupport;
+}) {
   const floatingIps = useSuspenseQuery(
     floatingIpsQueryOptions(regionId, projectId),
   );
@@ -534,8 +573,22 @@ export function FloatingIpsTableClient({
         header: "Description",
         meta: { fieldType: "string", visible: true },
       },
+      ...(dnsIntegrationSupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "dns_name",
+              header: "DNS name",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<FloatingIp>,
+            {
+              accessorKey: "dns_domain",
+              header: "DNS domain",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<FloatingIp>,
+          ]),
     ],
-    [],
+    [dnsIntegrationSupport.status],
   );
 
   return (
@@ -543,6 +596,7 @@ export function FloatingIpsTableClient({
       <TableIntro
         action={
           <AllocateFloatingIpAction
+            dnsIntegrationSupport={dnsIntegrationSupport}
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}

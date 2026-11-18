@@ -19,6 +19,7 @@ import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface NetworkDetailClientProps {
   availabilityZoneSupport: OpenStackFeatureSupport;
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   id: string;
   portSecuritySupport: OpenStackFeatureSupport;
   projectId: string;
@@ -43,6 +44,7 @@ function DetailGrid({ rows }: { rows: Array<[string, React.ReactNode]> }) {
 
 export function NetworkDetailClient({
   availabilityZoneSupport,
+  dnsIntegrationSupport,
   id,
   portSecuritySupport,
   projectId,
@@ -82,6 +84,12 @@ export function NetworkDetailClient({
       ["Description", network.data.description || "None"],
       ["Admin state", network.data.admin_state_up ? "Up" : "Down"],
       ["MTU", network.data.mtu],
+      ...(dnsIntegrationSupport.status !== "unsupported" ||
+      network.data.dns_domain
+        ? ([["DNS domain", network.data.dns_domain || "None"]] as Array<
+            [string, React.ReactNode]
+          >)
+        : []),
       ...(portSecuritySupport.status === "unsupported"
         ? []
         : ([
@@ -108,6 +116,7 @@ export function NetworkDetailClient({
     ],
     [
       availabilityZoneSupport.status,
+      dnsIntegrationSupport.status,
       network.data,
       portSecuritySupport.status,
     ],
@@ -129,6 +138,7 @@ export function NetworkDetailClient({
         </div>
         {owned ? (
           <NetworkDetailActions
+            dnsIntegrationSupport={dnsIntegrationSupport}
             network={network.data}
             portSecuritySupport={portSecuritySupport}
             projectId={projectId}

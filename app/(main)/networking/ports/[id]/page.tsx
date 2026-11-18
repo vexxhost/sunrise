@@ -14,6 +14,8 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
+  NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
+  NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -43,6 +45,16 @@ export default async function Page({
     NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
     "Allowed address pairs",
   );
+  const dnsIntegrationSupport = extensionSupport(
+    capabilities,
+    NEUTRON_DNS_INTEGRATION_EXTENSION,
+    "Port DNS names",
+  );
+  const dnsDomainPortsSupport = extensionSupport(
+    capabilities,
+    NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
+    "Per-port DNS domains",
+  );
   await Promise.all([
     queryClient.prefetchQuery(
       networkQueryOptions(session.regionId, session.projectId, port.network_id),
@@ -68,6 +80,8 @@ export default async function Page({
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <PortDetailClient
         allowedAddressPairsSupport={allowedAddressPairsSupport}
+        dnsDomainPortsSupport={dnsDomainPortsSupport}
+        dnsIntegrationSupport={dnsIntegrationSupport}
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}

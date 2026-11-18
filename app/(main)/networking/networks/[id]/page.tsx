@@ -14,6 +14,7 @@ import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server"
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -53,6 +54,11 @@ export default async function Page({
     NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
     "Network availability zones",
   );
+  const dnsIntegrationSupport = extensionSupport(
+    capabilities,
+    NEUTRON_DNS_INTEGRATION_EXTENSION,
+    "Network DNS domains",
+  );
   const portSecuritySupport = extensionSupport(
     capabilities,
     NEUTRON_PORT_SECURITY_EXTENSION,
@@ -64,6 +70,7 @@ export default async function Page({
       <NetworkDetailClient
         id={id}
         availabilityZoneSupport={availabilityZoneSupport}
+        dnsIntegrationSupport={dnsIntegrationSupport}
         projectId={session.projectId}
         regionId={session.regionId}
         portSecuritySupport={portSecuritySupport}

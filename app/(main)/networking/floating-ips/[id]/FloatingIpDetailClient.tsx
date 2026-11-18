@@ -9,12 +9,15 @@ import {
   portsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 export function FloatingIpDetailClient({
+  dnsIntegrationSupport,
   id,
   projectId,
   regionId,
 }: {
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   id: string;
   projectId: string;
   regionId: string;
@@ -33,6 +36,14 @@ export function FloatingIpDetailClient({
     ["ID", floatingIp.data.id],
     ["Status", floatingIp.data.status],
     ["Description", floatingIp.data.description || "None"],
+    ...(dnsIntegrationSupport.status !== "unsupported" ||
+    floatingIp.data.dns_name ||
+    floatingIp.data.dns_domain
+      ? ([
+          ["DNS name", floatingIp.data.dns_name || "None"],
+          ["DNS domain", floatingIp.data.dns_domain || "None"],
+        ] as Array<[string, ReactNode]>)
+      : []),
     ["Fixed IP", floatingIp.data.fixed_ip_address || "Not associated"],
     [
       "Port",

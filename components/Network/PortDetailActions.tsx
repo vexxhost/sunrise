@@ -48,13 +48,14 @@ type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
 
 function sameStringSet(left: string[], right: string[]) {
   return (
-    left.length === right.length &&
-    left.every((value) => right.includes(value))
+    left.length === right.length && left.every((value) => right.includes(value))
   );
 }
 
 interface PortDetailActionsProps {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
+  dnsDomainPortsSupport: OpenStackFeatureSupport;
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   groups: SecurityGroup[];
   port: Port;
   portSecuritySupport: OpenStackFeatureSupport;
@@ -66,6 +67,8 @@ interface PortDetailActionsProps {
 
 export function PortDetailActions({
   allowedAddressPairsSupport,
+  dnsDomainPortsSupport,
+  dnsIntegrationSupport,
   groups,
   port,
   portSecuritySupport,
@@ -79,6 +82,8 @@ export function PortDetailActions({
   const [dialog, setDialog] = useState<PortDialog>(null);
   const [name, setName] = useState(port.name);
   const [description, setDescription] = useState(port.description);
+  const [dnsDomain, setDnsDomain] = useState(port.dns_domain ?? "");
+  const [dnsName, setDnsName] = useState(port.dns_name ?? "");
   const [adminStateUp, setAdminStateUp] = useState(port.admin_state_up);
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(
     port.port_security_enabled,
@@ -98,6 +103,10 @@ export function PortDetailActions({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
+  const dnsIntegrationAvailable =
+    dnsIntegrationSupport.status !== "unsupported";
+  const dnsDomainPortsAvailable =
+    dnsIntegrationAvailable && dnsDomainPortsSupport.status !== "unsupported";
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const allowedAddressPairsAvailable =
     allowedAddressPairsSupport.status !== "unsupported";
@@ -115,6 +124,8 @@ export function PortDetailActions({
     if (next === "edit") {
       setName(port.name);
       setDescription(port.description);
+      setDnsDomain(port.dns_domain ?? "");
+      setDnsName(port.dns_name ?? "");
       setAdminStateUp(port.admin_state_up);
       setPortSecurityEnabled(port.port_security_enabled);
       setSecurityGroupIds(port.security_groups);
@@ -137,12 +148,12 @@ export function PortDetailActions({
   const submitEdit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     startTransition(async () => {
-      const originalAllowedAddressPairs = (port.allowed_address_pairs ?? []).map(
-        (pair) => ({
-          ipAddress: pair.ip_address,
-          macAddress: pair.mac_address ?? "",
-        }),
-      );
+      const originalAllowedAddressPairs = (
+        port.allowed_address_pairs ?? []
+      ).map((pair) => ({
+        ipAddress: pair.ip_address,
+        macAddress: pair.mac_address ?? "",
+      }));
       const allowedAddressPairsChanged =
         JSON.stringify(allowedAddressPairs) !==
         JSON.stringify(originalAllowedAddressPairs);
@@ -152,9 +163,15 @@ export function PortDetailActions({
       const securityGroupsChanged =
         securityGroupsAvailable &&
         !sameStringSet(securityGroupIds, port.security_groups);
+      const dnsNameChanged =
+        dnsIntegrationAvailable && dnsName !== (port.dns_name ?? "");
+      const dnsDomainChanged =
+        dnsDomainPortsAvailable && dnsDomain !== (port.dns_domain ?? "");
       const result = await updatePortAction({ projectId, regionId }, port.id, {
         name,
         description,
+        dnsName: dnsNameChanged ? dnsName : undefined,
+        dnsDomain: dnsDomainChanged ? dnsDomain : undefined,
         adminStateUp,
         portSecurityEnabled: portSecurityChanged
           ? portSecurityEnabled
@@ -308,7 +325,8 @@ export function PortDetailActions({
             <DialogHeader>
               <DialogTitle>Edit port</DialogTitle>
               <DialogDescription>
-                Update the interface label, state, and security policy.
+                Update the interface label, DNS identity, state, and security
+                policy.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -331,6 +349,38 @@ export function PortDetailActions({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {dnsIntegrationAvailable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-port-dns-name">DNS name</Label>
+                  <Input
+                    id="edit-port-dns-name"
+                    maxLength={255}
+                    placeholder="api"
+                    value={dnsName}
+                    disabled={pending}
+                    onChange={(event) => setDnsName(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Host name published for this port.
+                  </p>
+                </div>
+              ) : null}
+              {dnsDomainPortsAvailable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-port-dns-domain">DNS domain</Label>
+                  <Input
+                    id="edit-port-dns-domain"
+                    maxLength={255}
+                    placeholder="apps.example.org."
+                    value={dnsDomain}
+                    disabled={pending}
+                    onChange={(event) => setDnsDomain(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Per-port domain including the trailing dot.
+                  </p>
+                </div>
+              ) : null}
               <label
                 className={`flex items-start gap-3 rounded-md border p-3${portSecurityAvailable ? "" : " sm:col-span-2"}`}
               >
@@ -415,7 +465,9 @@ export function PortDetailActions({
             </div>
             {!portSecurityAvailable ||
             !securityGroupsAvailable ||
-            !allowedAddressPairsAvailable ? (
+            !allowedAddressPairsAvailable ||
+            !dnsIntegrationAvailable ||
+            !dnsDomainPortsAvailable ? (
               <MutationAlert
                 variant="info"
                 title="Some port controls are unavailable"
@@ -428,6 +480,12 @@ export function PortDetailActions({
                 ) : null}
                 {!allowedAddressPairsAvailable ? (
                   <p>{allowedAddressPairsSupport.message}</p>
+                ) : null}
+                {!dnsIntegrationAvailable ? (
+                  <p>{dnsIntegrationSupport.message}</p>
+                ) : null}
+                {dnsIntegrationAvailable && !dnsDomainPortsAvailable ? (
+                  <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
               </MutationAlert>
             ) : null}

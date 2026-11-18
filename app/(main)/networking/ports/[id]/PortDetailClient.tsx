@@ -17,6 +17,8 @@ import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface PortDetailClientProps {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
+  dnsDomainPortsSupport: OpenStackFeatureSupport;
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   id: string;
   portSecuritySupport: OpenStackFeatureSupport;
   projectId: string;
@@ -41,6 +43,8 @@ function DetailRow({
 
 export function PortDetailClient({
   allowedAddressPairsSupport,
+  dnsDomainPortsSupport,
+  dnsIntegrationSupport,
   id,
   portSecuritySupport,
   projectId,
@@ -96,6 +100,8 @@ export function PortDetailClient({
         {owned ? (
           <PortDetailActions
             allowedAddressPairsSupport={allowedAddressPairsSupport}
+            dnsDomainPortsSupport={dnsDomainPortsSupport}
+            dnsIntegrationSupport={dnsIntegrationSupport}
             port={port.data}
             portSecuritySupport={portSecuritySupport}
             groups={groups.data ?? []}
@@ -124,6 +130,17 @@ export function PortDetailClient({
             }
           />
           <DetailRow label="MAC address" value={port.data.mac_address} />
+          {dnsIntegrationSupport.status !== "unsupported" ||
+          port.data.dns_name ? (
+            <DetailRow label="DNS name" value={port.data.dns_name || "None"} />
+          ) : null}
+          {dnsDomainPortsSupport.status !== "unsupported" ||
+          port.data.dns_domain ? (
+            <DetailRow
+              label="DNS domain"
+              value={port.data.dns_domain || "None"}
+            />
+          ) : null}
           <DetailRow
             label="Attachment"
             value={
@@ -167,6 +184,33 @@ export function PortDetailClient({
           />
         </div>
       </section>
+
+      {dnsIntegrationSupport.status !== "unsupported" ||
+      port.data.dns_assignment?.length ? (
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold">DNS assignments</h3>
+          <div className="divide-y rounded-md border">
+            {port.data.dns_assignment?.length ? (
+              port.data.dns_assignment.map((assignment) => (
+                <div
+                  key={`${assignment.ip_address}-${assignment.fqdn}`}
+                  className="grid gap-1 px-3 py-2.5 text-sm sm:grid-cols-3"
+                >
+                  <span className="font-mono">{assignment.ip_address}</span>
+                  <span>{assignment.hostname}</span>
+                  <span className="break-all text-muted-foreground">
+                    {assignment.fqdn}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                No DNS assignments reported.
+              </p>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <div
         className={
