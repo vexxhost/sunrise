@@ -6,6 +6,7 @@ import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isEntireIpv4AddressSpace } from "@/lib/openstack/neutron-allowed-address-pairs";
 
 export interface AllowedAddressPairInput {
   ipAddress: string;
@@ -39,7 +40,7 @@ export function AllowedAddressPairsFields({
     );
   };
   const hasAnyIpv4Pair = value.some(
-    (pair) => pair.ipAddress.trim() === "0.0.0.0/0",
+    (pair) => isEntireIpv4AddressSpace(pair.ipAddress),
   );
 
   return (
@@ -131,8 +132,8 @@ export function AllowedAddressPairsFields({
 
       {hasAnyIpv4Pair ? (
         <MutationAlert title="Broad address pair" variant="warning">
-          0.0.0.0/0 can bypass source-address restrictions from remote security
-          group rules. Use it only when that behavior is intentional.
+          An IPv4 /0 pair can bypass source-address restrictions from remote
+          security group rules. Use it only when that behavior is intentional.
         </MutationAlert>
       ) : null}
     </section>

@@ -46,6 +46,13 @@ import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
 
+function sameStringSet(left: string[], right: string[]) {
+  return (
+    left.length === right.length &&
+    left.every((value) => right.includes(value))
+  );
+}
+
 interface PortDetailActionsProps {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   groups: SecurityGroup[];
@@ -139,14 +146,20 @@ export function PortDetailActions({
       const allowedAddressPairsChanged =
         JSON.stringify(allowedAddressPairs) !==
         JSON.stringify(originalAllowedAddressPairs);
+      const portSecurityChanged =
+        portSecurityAvailable &&
+        portSecurityEnabled !== port.port_security_enabled;
+      const securityGroupsChanged =
+        securityGroupsAvailable &&
+        !sameStringSet(securityGroupIds, port.security_groups);
       const result = await updatePortAction({ projectId, regionId }, port.id, {
         name,
         description,
         adminStateUp,
-        portSecurityEnabled: portSecurityAvailable
+        portSecurityEnabled: portSecurityChanged
           ? portSecurityEnabled
           : undefined,
-        securityGroupIds: securityGroupsAvailable
+        securityGroupIds: securityGroupsChanged
           ? portSecurityAvailable && !portSecurityEnabled
             ? []
             : securityGroupIds
@@ -290,7 +303,7 @@ export function PortDetailActions({
         open={dialog === "edit"}
         onOpenChange={(isOpen) => !isOpen && setDialog(null)}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-2xl overflow-y-auto">
           <form className="space-y-5" onSubmit={submitEdit}>
             <DialogHeader>
               <DialogTitle>Edit port</DialogTitle>
