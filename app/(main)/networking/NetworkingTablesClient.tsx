@@ -39,6 +39,7 @@ import type {
   Subnet,
 } from "@/types/openstack";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface NetworkingTableProps {
   projectId: string;
@@ -81,7 +82,10 @@ export function NetworksTableClient({
   projectId,
   regionId,
   initiallyOpen = false,
-}: NetworkingTableProps) {
+  portSecuritySupport,
+}: NetworkingTableProps & {
+  portSecuritySupport: OpenStackFeatureSupport;
+}) {
   const networks = useSuspenseQuery(
     projectNetworksQueryOptions(regionId, projectId),
   );
@@ -159,20 +163,24 @@ export function NetworksTableClient({
         header: "MTU",
         meta: { fieldType: "number", visible: true },
       },
-      {
-        accessorKey: "port_security_enabled",
-        header: "Port security",
-        cell: ({ row }) =>
-          row.original.port_security_enabled ? "Enabled" : "Disabled",
-        meta: { fieldType: "boolean", visible: false },
-      },
+      ...(portSecuritySupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "port_security_enabled",
+              header: "Port security",
+              cell: ({ row }: { row: { original: Network } }) =>
+                row.original.port_security_enabled ? "Enabled" : "Disabled",
+              meta: { fieldType: "boolean", visible: false },
+            } satisfies ColumnDef<Network>,
+          ]),
       {
         accessorKey: "description",
         header: "Description",
         meta: { fieldType: "string", visible: false },
       },
     ],
-    [subnetById],
+    [portSecuritySupport.status, subnetById],
   );
 
   return (
@@ -183,6 +191,7 @@ export function NetworksTableClient({
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
+            portSecuritySupport={portSecuritySupport}
           />
         }
       >
@@ -324,7 +333,12 @@ export function PortsTableClient({
   projectId,
   regionId,
   initiallyOpen = false,
-}: NetworkingTableProps) {
+  portSecuritySupport,
+  securityGroupSupport,
+}: NetworkingTableProps & {
+  portSecuritySupport: OpenStackFeatureSupport;
+  securityGroupSupport: OpenStackFeatureSupport;
+}) {
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
   const networks = useSuspenseQuery(networksQueryOptions(regionId, projectId));
   const networkById = useMemo(
@@ -414,6 +428,8 @@ export function PortsTableClient({
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
+            portSecuritySupport={portSecuritySupport}
+            securityGroupSupport={securityGroupSupport}
           />
         }
       >

@@ -54,6 +54,8 @@ import {
 } from "@/lib/openstack/neutron-floating-ip";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { cn } from "@/lib/utils";
 
 interface ScopeProps {
   initiallyOpen?: boolean;
@@ -67,6 +69,7 @@ function FormError({ error }: { error: string | null }) {
 
 function ToggleField({
   checked,
+  className,
   disabled,
   description,
   id,
@@ -74,6 +77,7 @@ function ToggleField({
   onCheckedChange,
 }: {
   checked: boolean;
+  className?: string;
   disabled: boolean;
   description: string;
   id: string;
@@ -81,7 +85,9 @@ function ToggleField({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-md border p-3">
+    <div
+      className={cn("flex items-start gap-3 rounded-md border p-3", className)}
+    >
       <Checkbox
         id={id}
         checked={checked}
@@ -100,7 +106,8 @@ export function CreateNetworkAction({
   initiallyOpen = false,
   projectId,
   regionId,
-}: ScopeProps) {
+  portSecuritySupport,
+}: ScopeProps & { portSecuritySupport: OpenStackFeatureSupport }) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
@@ -110,6 +117,7 @@ export function CreateNetworkAction({
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -135,7 +143,14 @@ export function CreateNetworkAction({
     startTransition(async () => {
       const result = await createNetworkAction(
         { projectId, regionId },
-        { name, description, adminStateUp, portSecurityEnabled },
+        {
+          name,
+          description,
+          adminStateUp,
+          portSecurityEnabled: portSecurityAvailable
+            ? portSecurityEnabled
+            : undefined,
+        },
       );
       if (!result.ok) {
         setError(result.error.message);
@@ -190,22 +205,35 @@ export function CreateNetworkAction({
               <div className="grid gap-3 sm:grid-cols-2">
                 <ToggleField
                   id="network-admin-state"
+                  className={
+                    portSecurityAvailable ? undefined : "sm:col-span-2"
+                  }
                   label="Admin state up"
                   description="Allow the network to forward traffic."
                   checked={adminStateUp}
                   disabled={pending}
                   onCheckedChange={setAdminStateUp}
                 />
-                <ToggleField
-                  id="network-port-security"
-                  label="Port security"
-                  description="Apply anti-spoofing and security groups."
-                  checked={portSecurityEnabled}
-                  disabled={pending}
-                  onCheckedChange={setPortSecurityEnabled}
-                />
+                {portSecurityAvailable ? (
+                  <ToggleField
+                    id="network-port-security"
+                    label="Port security"
+                    description="Apply anti-spoofing and security groups."
+                    checked={portSecurityEnabled}
+                    disabled={pending}
+                    onCheckedChange={setPortSecurityEnabled}
+                  />
+                ) : null}
               </div>
             </div>
+            {!portSecurityAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="Port security controls unavailable"
+              >
+                {portSecuritySupport.message}
+              </MutationAlert>
+            ) : null}
             <QuotaImpactPreview
               impacts={quota.impacts}
               loading={quota.loading}
@@ -371,7 +399,12 @@ export function CreatePortAction({
   initiallyOpen = false,
   projectId,
   regionId,
-}: ScopeProps) {
+  portSecuritySupport,
+  securityGroupSupport,
+}: ScopeProps & {
+  portSecuritySupport: OpenStackFeatureSupport;
+  securityGroupSupport: OpenStackFeatureSupport;
+}) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
@@ -383,6 +416,8 @@ export function CreatePortAction({
   const [securityGroupIds, setSecurityGroupIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
+  const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -396,7 +431,7 @@ export function CreatePortAction({
   });
   const groups = useQuery({
     ...securityGroupsQueryOptions(regionId, projectId),
-    enabled: open,
+    enabled: open && securityGroupsAvailable,
   });
   const setDialogOpen = (next: boolean) => {
     setOpen(next);
@@ -421,8 +456,14 @@ export function CreatePortAction({
           description,
           networkId,
           adminStateUp,
-          portSecurityEnabled,
-          securityGroupIds,
+          portSecurityEnabled: portSecurityAvailable
+            ? portSecurityEnabled
+            : undefined,
+          securityGroupIds: securityGroupsAvailable
+            ? portSecurityAvailable && !portSecurityEnabled
+              ? []
+              : securityGroupIds
+            : undefined,
         },
       );
       if (!result.ok) {
@@ -494,24 +535,28 @@ export function CreatePortAction({
               </div>
               <ToggleField
                 id="port-admin-state"
+                className={portSecurityAvailable ? undefined : "sm:col-span-2"}
                 label="Admin state up"
                 description="Allow traffic when the port is attached."
                 checked={adminStateUp}
                 disabled={pending}
                 onCheckedChange={setAdminStateUp}
               />
-              <ToggleField
-                id="port-security"
-                label="Port security"
-                description="Enable anti-spoofing and security groups."
-                checked={portSecurityEnabled}
-                disabled={pending}
-                onCheckedChange={(checked) => {
-                  setPortSecurityEnabled(checked);
-                  if (!checked) setSecurityGroupIds([]);
-                }}
-              />
-              {portSecurityEnabled ? (
+              {portSecurityAvailable ? (
+                <ToggleField
+                  id="port-security"
+                  label="Port security"
+                  description="Enable anti-spoofing and security groups."
+                  checked={portSecurityEnabled}
+                  disabled={pending}
+                  onCheckedChange={(checked) => {
+                    setPortSecurityEnabled(checked);
+                    if (!checked) setSecurityGroupIds([]);
+                  }}
+                />
+              ) : null}
+              {securityGroupsAvailable &&
+              (!portSecurityAvailable || portSecurityEnabled) ? (
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Security groups</Label>
                   <div className="grid max-h-36 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
@@ -545,6 +590,18 @@ export function CreatePortAction({
                 </div>
               ) : null}
             </div>
+            {!portSecurityAvailable || !securityGroupsAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="Some security controls are unavailable"
+              >
+                {!portSecurityAvailable ? portSecuritySupport.message : null}
+                {!portSecurityAvailable && !securityGroupsAvailable
+                  ? " "
+                  : null}
+                {!securityGroupsAvailable ? securityGroupSupport.message : null}
+              </MutationAlert>
+            ) : null}
             <QuotaImpactPreview
               impacts={quota.impacts}
               loading={quota.loading}

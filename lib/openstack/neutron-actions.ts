@@ -13,6 +13,8 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+  NEUTRON_PORT_SECURITY_EXTENSION,
+  NEUTRON_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import {
   getIpv6ConfigurationAttributes,
@@ -164,7 +166,7 @@ const networkCreateSchema = z.object({
   name,
   description,
   adminStateUp: z.boolean().default(true),
-  portSecurityEnabled: z.boolean().default(true),
+  portSecurityEnabled: z.boolean().optional(),
 });
 const networkUpdateSchema = networkCreateSchema;
 const subnetCreateSchema = z
@@ -241,15 +243,15 @@ const portCreateSchema = z.object({
   description,
   networkId: resourceId,
   adminStateUp: z.boolean().default(true),
-  portSecurityEnabled: z.boolean().default(true),
-  securityGroupIds: z.array(resourceId).default([]),
+  portSecurityEnabled: z.boolean().optional(),
+  securityGroupIds: z.array(resourceId).optional(),
 });
 const portUpdateSchema = z.object({
   name,
   description,
   adminStateUp: z.boolean(),
-  portSecurityEnabled: z.boolean(),
-  securityGroupIds: z.array(resourceId),
+  portSecurityEnabled: z.boolean().optional(),
+  securityGroupIds: z.array(resourceId).optional(),
 });
 const floatingIpCreateSchema = z.object({
   floatingNetworkId: resourceId,
@@ -333,6 +335,38 @@ function transformResource<T>(key: string) {
 
 const networkingInvalidates = ["/networking", "/networking/topology"];
 
+async function unsupportedNetworkExtensionsFailure(
+  scope: MutationScope,
+  requirements: Array<{ feature: string; required: string }>,
+) {
+  if (!scope.regionId || requirements.length === 0) return null;
+  const capabilities = await discoverNetworkCapabilities(scope.regionId);
+  const unsupported = requirements
+    .map(({ feature, required }) =>
+      extensionSupport(capabilities, required, feature),
+    )
+    .find((support) => support.status === "unsupported");
+  if (!unsupported) return null;
+
+  return mutationFailure(
+    {
+      code: "service-unavailable",
+      message: unsupported.message,
+      retryable: false,
+    },
+    scope,
+  );
+}
+
+async function unsupportedPortSecurityFailure(scope: MutationScope) {
+  return unsupportedNetworkExtensionsFailure(scope, [
+    {
+      feature: "Port security",
+      required: NEUTRON_PORT_SECURITY_EXTENSION,
+    },
+  ]);
+}
+
 export async function createNetworkAction(
   scope: MutationScope,
   input: CreateNetworkInput,
@@ -340,6 +374,10 @@ export async function createNetworkAction(
   const parsed = parse(networkCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  if (value.portSecurityEnabled !== undefined) {
+    const unsupported = await unsupportedPortSecurityFailure(scope);
+    if (unsupported) return unsupported;
+  }
   return executeOpenStackMutation({
     actionLabel: "create a network",
     scope,
@@ -351,7 +389,9 @@ export async function createNetworkAction(
         name: value.name,
         description: value.description,
         admin_state_up: value.adminStateUp,
-        port_security_enabled: value.portSecurityEnabled,
+        ...(value.portSecurityEnabled === undefined
+          ? {}
+          : { port_security_enabled: value.portSecurityEnabled }),
       },
     },
     invalidates: networkingInvalidates,
@@ -370,6 +410,10 @@ export async function updateNetworkAction(
   const parsed = parse(networkUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  if (value.portSecurityEnabled !== undefined) {
+    const unsupported = await unsupportedPortSecurityFailure(scope);
+    if (unsupported) return unsupported;
+  }
   return executeOpenStackMutation({
     actionLabel: "edit this network",
     scope,
@@ -381,7 +425,9 @@ export async function updateNetworkAction(
         name: value.name,
         description: value.description,
         admin_state_up: value.adminStateUp,
-        port_security_enabled: value.portSecurityEnabled,
+        ...(value.portSecurityEnabled === undefined
+          ? {}
+          : { port_security_enabled: value.portSecurityEnabled }),
       },
     },
     invalidates: [
@@ -829,6 +875,25 @@ export async function createPortAction(
   const parsed = parse(portCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.portSecurityEnabled === undefined
+      ? []
+      : [
+          {
+            feature: "Port security",
+            required: NEUTRON_PORT_SECURITY_EXTENSION,
+          },
+        ]),
+    ...(value.securityGroupIds === undefined
+      ? []
+      : [
+          {
+            feature: "Security group assignment",
+            required: NEUTRON_SECURITY_GROUP_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "create a port",
     scope,
@@ -841,10 +906,17 @@ export async function createPortAction(
         description: value.description,
         network_id: value.networkId,
         admin_state_up: value.adminStateUp,
-        port_security_enabled: value.portSecurityEnabled,
-        security_groups: value.portSecurityEnabled
-          ? value.securityGroupIds
-          : [],
+        ...(value.portSecurityEnabled === undefined
+          ? {}
+          : { port_security_enabled: value.portSecurityEnabled }),
+        ...(value.securityGroupIds === undefined
+          ? {}
+          : {
+              security_groups:
+                value.portSecurityEnabled === false
+                  ? []
+                  : value.securityGroupIds,
+            }),
       },
     },
     invalidates: networkingInvalidates,
@@ -863,6 +935,25 @@ export async function updatePortAction(
   const parsed = parse(portUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.portSecurityEnabled === undefined
+      ? []
+      : [
+          {
+            feature: "Port security",
+            required: NEUTRON_PORT_SECURITY_EXTENSION,
+          },
+        ]),
+    ...(value.securityGroupIds === undefined
+      ? []
+      : [
+          {
+            feature: "Security group assignment",
+            required: NEUTRON_SECURITY_GROUP_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "edit this port",
     scope,
@@ -874,10 +965,17 @@ export async function updatePortAction(
         name: value.name,
         description: value.description,
         admin_state_up: value.adminStateUp,
-        port_security_enabled: value.portSecurityEnabled,
-        security_groups: value.portSecurityEnabled
-          ? value.securityGroupIds
-          : [],
+        ...(value.portSecurityEnabled === undefined
+          ? {}
+          : { port_security_enabled: value.portSecurityEnabled }),
+        ...(value.securityGroupIds === undefined
+          ? {}
+          : {
+              security_groups:
+                value.portSecurityEnabled === false
+                  ? []
+                  : value.securityGroupIds,
+            }),
       },
     },
     invalidates: networkingInvalidates,

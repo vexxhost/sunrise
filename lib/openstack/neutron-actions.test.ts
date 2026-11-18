@@ -11,6 +11,8 @@ vi.mock("@/lib/openstack/mutations", () => ({
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
+  NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
+  NEUTRON_SECURITY_GROUP_EXTENSION: "security-group",
 }));
 
 import {
@@ -42,7 +44,12 @@ describe("Neutron mutation actions", () => {
     vi.clearAllMocks();
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",
-      extensions: ["extraroute", "extraroute-atomic"],
+      extensions: [
+        "extraroute",
+        "extraroute-atomic",
+        "port-security",
+        "security-group",
+      ],
       message: "",
       serviceType: "network",
     });
@@ -80,6 +87,52 @@ describe("Neutron mutation actions", () => {
     );
   });
 
+  it("omits port security when the field is not requested", async () => {
+    await createNetworkAction(scope, {
+      name: "application",
+      description: "Application network",
+      adminStateUp: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          network: {
+            name: "application",
+            description: "Application network",
+            admin_state_up: true,
+          },
+        },
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("rejects explicitly requested port security when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["security-group"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createNetworkAction(scope, {
+      name: "application",
+      description: "Application network",
+      adminStateUp: true,
+      portSecurityEnabled: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("port-security"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("clears security groups when port security is disabled", async () => {
     const port = {
       name: "application-port",
@@ -115,6 +168,75 @@ describe("Neutron mutation actions", () => {
         },
       }),
     );
+  });
+
+  it("checks port and security-group extensions in one discovery request", async () => {
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "Application interface",
+      networkId: "network-a",
+      adminStateUp: true,
+      portSecurityEnabled: true,
+      securityGroupIds: ["security-group-a"],
+    });
+
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits unsupported optional security attributes from a port request", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: [],
+      message: "",
+      serviceType: "network",
+    });
+
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "Application interface",
+      networkId: "network-a",
+      adminStateUp: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          port: {
+            name: "application-port",
+            description: "Application interface",
+            network_id: "network-a",
+            admin_state_up: true,
+          },
+        },
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("rejects security group assignment when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-security"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createPortAction(scope, {
+      name: "application-port",
+      description: "Application interface",
+      networkId: "network-a",
+      adminStateUp: true,
+      securityGroupIds: ["security-group-a"],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("security-group"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("maps router gateway and interface operations to Neutron", async () => {

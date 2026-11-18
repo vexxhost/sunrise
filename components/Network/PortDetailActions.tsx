@@ -38,22 +38,27 @@ import {
   detachPortAction,
 } from "@/lib/openstack/nova-actions";
 import type { Port, SecurityGroup, Server } from "@/types/openstack";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
 
 interface PortDetailActionsProps {
   groups: SecurityGroup[];
   port: Port;
+  portSecuritySupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
+  securityGroupSupport: OpenStackFeatureSupport;
   servers: Server[];
 }
 
 export function PortDetailActions({
   groups,
   port,
+  portSecuritySupport,
   projectId,
   regionId,
+  securityGroupSupport,
   servers,
 }: PortDetailActionsProps) {
   const router = useRouter();
@@ -71,6 +76,8 @@ export function PortDetailActions({
   const [serverId, setServerId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
+  const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
 
   const computeAttached =
     port.device_owner.startsWith("compute:") && Boolean(port.device_id);
@@ -105,8 +112,14 @@ export function PortDetailActions({
         name,
         description,
         adminStateUp,
-        portSecurityEnabled,
-        securityGroupIds,
+        portSecurityEnabled: portSecurityAvailable
+          ? portSecurityEnabled
+          : undefined,
+        securityGroupIds: securityGroupsAvailable
+          ? portSecurityAvailable && !portSecurityEnabled
+            ? []
+            : securityGroupIds
+          : undefined,
       });
       if (!result.ok) {
         setError(result.error.message);
@@ -164,10 +177,7 @@ export function PortDetailActions({
     <>
       <div className="flex flex-wrap items-center gap-2">
         {computeAttached ? (
-          <Button
-            variant="outline"
-            onClick={() => open("detach")}
-          >
+          <Button variant="outline" onClick={() => open("detach")}>
             <Link2Off className="size-4" /> Detach
           </Button>
         ) : (
@@ -273,7 +283,9 @@ export function PortDetailActions({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
-              <label className="flex items-start gap-3 rounded-md border p-3">
+              <label
+                className={`flex items-start gap-3 rounded-md border p-3${portSecurityAvailable ? "" : " sm:col-span-2"}`}
+              >
                 <Checkbox
                   checked={adminStateUp}
                   disabled={pending}
@@ -288,26 +300,29 @@ export function PortDetailActions({
                   </span>
                 </span>
               </label>
-              <label className="flex items-start gap-3 rounded-md border p-3">
-                <Checkbox
-                  checked={portSecurityEnabled}
-                  disabled={pending}
-                  onCheckedChange={(value) => {
-                    const checked = value === true;
-                    setPortSecurityEnabled(checked);
-                    if (!checked) setSecurityGroupIds([]);
-                  }}
-                />
-                <span>
-                  <span className="block text-sm font-medium">
-                    Port security
+              {portSecurityAvailable ? (
+                <label className="flex items-start gap-3 rounded-md border p-3">
+                  <Checkbox
+                    checked={portSecurityEnabled}
+                    disabled={pending}
+                    onCheckedChange={(value) => {
+                      const checked = value === true;
+                      setPortSecurityEnabled(checked);
+                      if (!checked) setSecurityGroupIds([]);
+                    }}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">
+                      Port security
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Apply anti-spoofing and security groups.
+                    </span>
                   </span>
-                  <span className="block text-xs text-muted-foreground">
-                    Apply anti-spoofing and security groups.
-                  </span>
-                </span>
-              </label>
-              {portSecurityEnabled ? (
+                </label>
+              ) : null}
+              {securityGroupsAvailable &&
+              (!portSecurityAvailable || portSecurityEnabled) ? (
                 <div className="space-y-2 sm:col-span-2">
                   <Label>Security groups</Label>
                   <div className="grid max-h-40 gap-2 overflow-y-auto rounded-md border p-3 sm:grid-cols-2">
@@ -336,6 +351,18 @@ export function PortDetailActions({
                 </div>
               ) : null}
             </div>
+            {!portSecurityAvailable || !securityGroupsAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="Some security controls are unavailable"
+              >
+                {!portSecurityAvailable ? portSecuritySupport.message : null}
+                {!portSecurityAvailable && !securityGroupsAvailable
+                  ? " "
+                  : null}
+                {!securityGroupsAvailable ? securityGroupSupport.message : null}
+              </MutationAlert>
+            ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             <DialogFooter>
               <Button
