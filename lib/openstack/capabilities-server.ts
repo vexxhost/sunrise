@@ -28,6 +28,8 @@ const logger = createLogger("openstack.capabilities");
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
 export const NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION = "allowed-address-pairs";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
+export const NEUTRON_DNS_DOMAIN_PORTS_EXTENSION = "dns-domain-ports";
+export const NEUTRON_DNS_INTEGRATION_EXTENSION = "dns-integration";
 export const NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION =
   "network_availability_zone";
 export const NEUTRON_PORT_SECURITY_EXTENSION = "port-security";
@@ -137,7 +139,19 @@ export async function discoverComputeCapabilities(
 export async function discoverNetworkCapabilities(
   regionId: string,
 ): Promise<OpenStackServiceCapabilities> {
+  const session = await getSession();
+  const token = session.keystoneProjectToken;
+  const endpoint = token
+    ? await getServiceEndpoint(regionId, "network", "neutron", token)
+    : null;
+  if (!endpoint) {
+    return unavailable(
+      "network",
+      "Networking API extension discovery was unavailable.",
+    );
+  }
   const payload = await openstackRequest<unknown>({
+    endpointOverride: endpoint,
     regionId,
     serviceType: "network",
     serviceName: "neutron",

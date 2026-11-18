@@ -48,6 +48,7 @@ import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface NetworkDetailActionsProps {
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   network: Network;
   portSecuritySupport: OpenStackFeatureSupport;
   projectId: string;
@@ -55,6 +56,7 @@ interface NetworkDetailActionsProps {
 }
 
 export function NetworkDetailActions({
+  dnsIntegrationSupport,
   network,
   portSecuritySupport,
   projectId,
@@ -68,8 +70,11 @@ export function NetworkDetailActions({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
+  const dnsIntegrationAvailable =
+    dnsIntegrationSupport.status !== "unsupported";
   const [name, setName] = useState(network.name);
   const [description, setDescription] = useState(network.description);
+  const [dnsDomain, setDnsDomain] = useState(network.dns_domain ?? "");
   const [adminStateUp, setAdminStateUp] = useState(network.admin_state_up);
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(
     network.port_security_enabled,
@@ -97,6 +102,7 @@ export function NetworkDetailActions({
     if (next === "edit") {
       setName(network.name);
       setDescription(network.description);
+      setDnsDomain(network.dns_domain ?? "");
       setAdminStateUp(network.admin_state_up);
       setPortSecurityEnabled(network.port_security_enabled);
     }
@@ -128,6 +134,10 @@ export function NetworkDetailActions({
         {
           name,
           description,
+          dnsDomain:
+            dnsIntegrationAvailable && dnsDomain !== (network.dns_domain ?? "")
+              ? dnsDomain
+              : undefined,
           adminStateUp,
           portSecurityEnabled: portSecurityAvailable
             ? portSecurityEnabled
@@ -218,7 +228,8 @@ export function NetworkDetailActions({
             <DialogHeader>
               <DialogTitle>Edit network</DialogTitle>
               <DialogDescription>
-                Update the network label and administrative controls.
+                Update the network label, DNS domain, and administrative
+                controls.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -241,6 +252,23 @@ export function NetworkDetailActions({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {dnsIntegrationAvailable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-network-dns-domain">DNS domain</Label>
+                  <Input
+                    id="edit-network-dns-domain"
+                    maxLength={255}
+                    placeholder="apps.example.org."
+                    value={dnsDomain}
+                    disabled={pending}
+                    onChange={(event) => setDnsDomain(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Fully qualified domain including the trailing dot. Clear it
+                    to remove the network domain.
+                  </p>
+                </div>
+              ) : null}
               <label className="flex items-start gap-3 rounded-md border p-3">
                 <Checkbox
                   checked={adminStateUp}
@@ -282,6 +310,11 @@ export function NetworkDetailActions({
                 title="Port security controls unavailable"
               >
                 {portSecuritySupport.message}
+              </MutationAlert>
+            ) : null}
+            {!dnsIntegrationAvailable ? (
+              <MutationAlert variant="info" title="DNS integration unavailable">
+                {dnsIntegrationSupport.message}
               </MutationAlert>
             ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}

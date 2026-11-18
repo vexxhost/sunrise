@@ -152,12 +152,14 @@ function ToggleField({
 
 export function CreateNetworkAction({
   availabilityZoneSupport,
+  dnsIntegrationSupport,
   initiallyOpen = false,
   projectId,
   regionId,
   portSecuritySupport,
 }: ScopeProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
 }) {
   const queryClient = useQueryClient();
@@ -165,6 +167,7 @@ export function CreateNetworkAction({
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [dnsDomain, setDnsDomain] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
   const [selectedAvailabilityZones, setSelectedAvailabilityZones] =
     useState("");
@@ -172,6 +175,8 @@ export function CreateNetworkAction({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
+  const dnsIntegrationAvailable =
+    dnsIntegrationSupport.status !== "unsupported";
   const availabilityZonesAvailable =
     availabilityZoneSupport.status !== "unsupported";
   const availabilityZones = useQuery({
@@ -197,6 +202,7 @@ export function CreateNetworkAction({
     if (next) {
       setName("");
       setDescription("");
+      setDnsDomain("");
       setAdminStateUp(true);
       setSelectedAvailabilityZones("");
       setPortSecurityEnabled(true);
@@ -211,6 +217,8 @@ export function CreateNetworkAction({
         {
           name,
           description,
+          dnsDomain:
+            dnsIntegrationAvailable && dnsDomain.trim() ? dnsDomain : undefined,
           adminStateUp,
           availabilityZoneHints: availabilityZoneHints(
             selectedAvailabilityZones,
@@ -270,6 +278,22 @@ export function CreateNetworkAction({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {dnsIntegrationAvailable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="network-dns-domain">DNS domain</Label>
+                  <Input
+                    id="network-dns-domain"
+                    maxLength={255}
+                    placeholder="apps.example.org."
+                    value={dnsDomain}
+                    disabled={pending}
+                    onChange={(event) => setDnsDomain(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional fully qualified domain. Include the trailing dot.
+                  </p>
+                </div>
+              ) : null}
               {availabilityZonesAvailable ? (
                 <AvailabilityZoneHintsField
                   disabled={pending}
@@ -317,6 +341,11 @@ export function CreateNetworkAction({
                 title="Availability-zone hints unavailable"
               >
                 {availabilityZoneSupport.message}
+              </MutationAlert>
+            ) : null}
+            {!dnsIntegrationAvailable ? (
+              <MutationAlert variant="info" title="DNS integration unavailable">
+                {dnsIntegrationSupport.message}
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview
@@ -520,6 +549,8 @@ export function CreateRouterAction({
 
 export function CreatePortAction({
   allowedAddressPairsSupport,
+  dnsDomainPortsSupport,
+  dnsIntegrationSupport,
   initiallyOpen = false,
   projectId,
   regionId,
@@ -527,6 +558,8 @@ export function CreatePortAction({
   securityGroupSupport,
 }: ScopeProps & {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
+  dnsDomainPortsSupport: OpenStackFeatureSupport;
+  dnsIntegrationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
 }) {
@@ -535,6 +568,8 @@ export function CreatePortAction({
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [dnsDomain, setDnsDomain] = useState("");
+  const [dnsName, setDnsName] = useState("");
   const [networkId, setNetworkId] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
@@ -545,6 +580,10 @@ export function CreatePortAction({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const portSecurityAvailable = portSecuritySupport.status !== "unsupported";
+  const dnsIntegrationAvailable =
+    dnsIntegrationSupport.status !== "unsupported";
+  const dnsDomainPortsAvailable =
+    dnsIntegrationAvailable && dnsDomainPortsSupport.status !== "unsupported";
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const allowedAddressPairsAvailable =
     allowedAddressPairsSupport.status !== "unsupported";
@@ -570,6 +609,8 @@ export function CreatePortAction({
     if (next) {
       setName("");
       setDescription("");
+      setDnsDomain("");
+      setDnsName("");
       setNetworkId("");
       setAdminStateUp(true);
       setPortSecurityEnabled(true);
@@ -585,6 +626,10 @@ export function CreatePortAction({
         {
           name,
           description,
+          dnsName:
+            dnsIntegrationAvailable && dnsName.trim() ? dnsName : undefined,
+          dnsDomain:
+            dnsDomainPortsAvailable && dnsDomain.trim() ? dnsDomain : undefined,
           networkId,
           adminStateUp,
           portSecurityEnabled: portSecurityAvailable
@@ -668,6 +713,38 @@ export function CreatePortAction({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {dnsIntegrationAvailable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="port-dns-name">DNS name</Label>
+                  <Input
+                    id="port-dns-name"
+                    maxLength={255}
+                    placeholder="api"
+                    value={dnsName}
+                    disabled={pending}
+                    onChange={(event) => setDnsName(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Host name published for this port.
+                  </p>
+                </div>
+              ) : null}
+              {dnsDomainPortsAvailable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="port-dns-domain">DNS domain</Label>
+                  <Input
+                    id="port-dns-domain"
+                    maxLength={255}
+                    placeholder="apps.example.org."
+                    value={dnsDomain}
+                    disabled={pending}
+                    onChange={(event) => setDnsDomain(event.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional per-port domain. Include the trailing dot.
+                  </p>
+                </div>
+              ) : null}
               <ToggleField
                 id="port-admin-state"
                 className={portSecurityAvailable ? undefined : "sm:col-span-2"}
@@ -741,7 +818,9 @@ export function CreatePortAction({
             </div>
             {!portSecurityAvailable ||
             !securityGroupsAvailable ||
-            !allowedAddressPairsAvailable ? (
+            !allowedAddressPairsAvailable ||
+            !dnsIntegrationAvailable ||
+            !dnsDomainPortsAvailable ? (
               <MutationAlert
                 variant="info"
                 title="Some port controls are unavailable"
@@ -754,6 +833,12 @@ export function CreatePortAction({
                 ) : null}
                 {!allowedAddressPairsAvailable ? (
                   <p>{allowedAddressPairsSupport.message}</p>
+                ) : null}
+                {!dnsIntegrationAvailable ? (
+                  <p>{dnsIntegrationSupport.message}</p>
+                ) : null}
+                {dnsIntegrationAvailable && !dnsDomainPortsAvailable ? (
+                  <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
               </MutationAlert>
             ) : null}
@@ -795,18 +880,25 @@ export function CreatePortAction({
 }
 
 export function AllocateFloatingIpAction({
+  dnsIntegrationSupport,
   initiallyOpen = false,
   projectId,
   regionId,
-}: ScopeProps) {
+}: ScopeProps & { dnsIntegrationSupport: OpenStackFeatureSupport }) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [floatingNetworkId, setFloatingNetworkId] = useState("");
   const [portSelection, setPortSelection] = useState("none");
   const [description, setDescription] = useState("");
+  const [dnsDomain, setDnsDomain] = useState("");
+  const [dnsName, setDnsName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const dnsIntegrationAvailable =
+    dnsIntegrationSupport.status !== "unsupported";
+  const incompleteDnsRecord =
+    Boolean(dnsName.trim()) !== Boolean(dnsDomain.trim());
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -845,6 +937,8 @@ export function AllocateFloatingIpAction({
       setFloatingNetworkId("");
       setPortSelection("none");
       setDescription("");
+      setDnsDomain("");
+      setDnsName("");
     }
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -858,6 +952,10 @@ export function AllocateFloatingIpAction({
           portId: association?.portId,
           fixedIpAddress: association?.fixedIpAddress,
           description,
+          dnsName:
+            dnsIntegrationAvailable && dnsName.trim() ? dnsName : undefined,
+          dnsDomain:
+            dnsIntegrationAvailable && dnsDomain.trim() ? dnsDomain : undefined,
         },
       );
       if (!result.ok) {
@@ -953,7 +1051,49 @@ export function AllocateFloatingIpAction({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {dnsIntegrationAvailable ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="floating-dns-name">DNS name</Label>
+                    <Input
+                      id="floating-dns-name"
+                      maxLength={255}
+                      placeholder="api"
+                      value={dnsName}
+                      disabled={pending}
+                      onChange={(event) => setDnsName(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Relative record name without a trailing dot.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="floating-dns-domain">DNS domain</Label>
+                    <Input
+                      id="floating-dns-domain"
+                      maxLength={255}
+                      placeholder="apps.example.org."
+                      value={dnsDomain}
+                      disabled={pending}
+                      onChange={(event) => setDnsDomain(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Fully qualified domain including the trailing dot.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
+            {incompleteDnsRecord ? (
+              <MutationAlert variant="info" title="Complete the DNS record">
+                Enter both a DNS name and DNS domain, or leave both empty.
+              </MutationAlert>
+            ) : null}
+            {!dnsIntegrationAvailable ? (
+              <MutationAlert variant="info" title="DNS integration unavailable">
+                {dnsIntegrationSupport.message}
+              </MutationAlert>
+            ) : null}
             <QuotaImpactPreview
               impacts={quota.impacts}
               loading={quota.loading}
@@ -975,7 +1115,10 @@ export function AllocateFloatingIpAction({
               <Button
                 type="submit"
                 disabled={
-                  pending || !floatingNetworkId || quota.issues.length > 0
+                  pending ||
+                  !floatingNetworkId ||
+                  incompleteDnsRecord ||
+                  quota.issues.length > 0
                 }
               >
                 {pending ? "Allocating" : "Allocate"}

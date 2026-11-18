@@ -12,6 +12,8 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION: "allowed-address-pairs",
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
+  NEUTRON_DNS_DOMAIN_PORTS_EXTENSION: "dns-domain-ports",
+  NEUTRON_DNS_INTEGRATION_EXTENSION: "dns-integration",
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
   NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION: "router_availability_zone",
@@ -21,6 +23,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
 import {
   addRouterInterfaceAction,
   addRouterRouteAction,
+  createFloatingIpAction,
   createNetworkAction,
   createPortAction,
   createRouterAction,
@@ -37,6 +40,7 @@ import {
   replaceRouterRouteAction,
   replaceSecurityGroupRuleAction,
   setRouterGatewayAction,
+  updateNetworkAction,
   updatePortAction,
   updateSubnetAction,
 } from "@/lib/openstack/neutron-actions";
@@ -50,6 +54,8 @@ describe("Neutron mutation actions", () => {
       discoveryStatus: "available",
       extensions: [
         "allowed-address-pairs",
+        "dns-domain-ports",
+        "dns-integration",
         "extraroute",
         "extraroute-atomic",
         "network_availability_zone",
@@ -113,6 +119,77 @@ describe("Neutron mutation actions", () => {
       }),
     );
     expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("maps network DNS domains and supports clearing them", async () => {
+    await createNetworkAction(scope, {
+      name: "application",
+      description: "",
+      adminStateUp: true,
+      dnsDomain: "apps.example.org.",
+    });
+    await updateNetworkAction(scope, "network-a", {
+      name: "application",
+      description: "",
+      adminStateUp: true,
+      dnsDomain: "",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: {
+          network: expect.objectContaining({
+            dns_domain: "apps.example.org.",
+          }),
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: {
+          network: expect.objectContaining({ dns_domain: "" }),
+        },
+      }),
+    );
+  });
+
+  it("rejects network DNS domains without dns-integration", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-security"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createNetworkAction(scope, {
+      name: "application",
+      description: "",
+      adminStateUp: true,
+      dnsDomain: "apps.example.org.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("dns-integration") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed network DNS domains", async () => {
+    const result = await createNetworkAction(scope, {
+      name: "application",
+      description: "",
+      adminStateUp: true,
+      dnsDomain: "apps.example.org",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("maps network availability-zone hints and checks extensions once", async () => {
@@ -411,9 +488,7 @@ describe("Neutron mutation actions", () => {
       networkId: "network-a",
       adminStateUp: true,
       portSecurityEnabled: false,
-      allowedAddressPairs: [
-        { ipAddress: "192.0.2.10", macAddress: "" },
-      ],
+      allowedAddressPairs: [{ ipAddress: "192.0.2.10", macAddress: "" }],
     });
 
     expect(result).toMatchObject({
@@ -440,9 +515,7 @@ describe("Neutron mutation actions", () => {
       networkId: "network-a",
       adminStateUp: true,
       portSecurityEnabled: true,
-      allowedAddressPairs: [
-        { ipAddress: "192.0.2.10", macAddress: "" },
-      ],
+      allowedAddressPairs: [{ ipAddress: "192.0.2.10", macAddress: "" }],
     });
 
     expect(result).toMatchObject({
@@ -467,9 +540,7 @@ describe("Neutron mutation actions", () => {
       description: "",
       networkId: "network-a",
       adminStateUp: true,
-      allowedAddressPairs: [
-        { ipAddress: "192.0.2.10", macAddress: "" },
-      ],
+      allowedAddressPairs: [{ ipAddress: "192.0.2.10", macAddress: "" }],
     });
 
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
@@ -527,6 +598,139 @@ describe("Neutron mutation actions", () => {
         code: "service-unavailable",
         message: expect.stringContaining("security-group"),
       },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("maps port DNS fields and supports clearing them", async () => {
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      dnsName: "api",
+      dnsDomain: "apps.example.org.",
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "application-port",
+      description: "",
+      adminStateUp: true,
+      dnsName: "",
+      dnsDomain: "",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            dns_name: "api",
+            dns_domain: "apps.example.org.",
+          }),
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({ dns_name: "", dns_domain: "" }),
+        },
+      }),
+    );
+  });
+
+  it("enforces dns-domain-ports independently from dns-integration", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["dns-integration"],
+      message: "",
+      serviceType: "network",
+    });
+
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      dnsName: "api",
+    });
+    const result = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      dnsDomain: "apps.example.org.",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("dns-domain-ports") },
+    });
+  });
+
+  it("validates and maps floating IP DNS records at creation time", async () => {
+    await createFloatingIpAction(scope, {
+      floatingNetworkId: "public",
+      description: "Public API",
+      dnsName: "api",
+      dnsDomain: "apps.example.org.",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          floatingip: expect.objectContaining({
+            dns_name: "api",
+            dns_domain: "apps.example.org.",
+          }),
+        },
+      }),
+    );
+
+    vi.clearAllMocks();
+    const incomplete = await createFloatingIpAction(scope, {
+      floatingNetworkId: "public",
+      description: "",
+      dnsName: "api",
+    });
+    const absoluteName = await createFloatingIpAction(scope, {
+      floatingNetworkId: "public",
+      description: "",
+      dnsName: "api.example.org.",
+      dnsDomain: "apps.example.org.",
+    });
+
+    expect(incomplete).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(absoluteName).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects floating IP DNS records without dns-integration", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: [],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createFloatingIpAction(scope, {
+      floatingNetworkId: "public",
+      description: "",
+      dnsName: "api",
+      dnsDomain: "apps.example.org.",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("dns-integration") },
     });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });

@@ -8,6 +8,11 @@ import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { FloatingIpDetailClient } from "./FloatingIpDetailClient";
 import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
+import { extensionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverNetworkCapabilities,
+  NEUTRON_DNS_INTEGRATION_EXTENSION,
+} from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
   params,
@@ -16,6 +21,7 @@ export default async function Page({
 }) {
   const [{ id }, session] = await Promise.all([params, getSession()]);
   if (!session.projectId || !session.regionId) return null;
+  const capabilitiesPromise = discoverNetworkCapabilities(session.regionId);
   const queryClient = makeQueryClient();
   const floatingIpQuery = floatingIpQueryOptions(
     session.regionId,
@@ -29,10 +35,16 @@ export default async function Page({
   await queryClient.prefetchQuery(
     portsQueryOptions(session.regionId, session.projectId),
   );
+  const dnsIntegrationSupport = extensionSupport(
+    await capabilitiesPromise,
+    NEUTRON_DNS_INTEGRATION_EXTENSION,
+    "Floating IP DNS records",
+  );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <FloatingIpDetailClient
+        dnsIntegrationSupport={dnsIntegrationSupport}
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}

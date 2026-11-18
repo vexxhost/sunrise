@@ -14,6 +14,8 @@ import {
   discoverNetworkCapabilities,
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+  NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
+  NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
@@ -42,6 +44,47 @@ const NEUTRON_SERVICE = {
 const resourceId = z.string().trim().min(1).max(255);
 const name = z.string().trim().min(1).max(255);
 const description = z.string().trim().max(1024).default("");
+function isValidDnsLabels(value: string) {
+  const labels = value.split(".");
+  return labels.every(
+    (label) =>
+      label.length >= 1 &&
+      label.length <= 63 &&
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label),
+  );
+}
+function isValidDnsName(value: string) {
+  if (!value) return true;
+  const labels = value.endsWith(".") ? value.slice(0, -1) : value;
+  return Boolean(labels) && isValidDnsLabels(labels);
+}
+const dnsName = z
+  .string()
+  .trim()
+  .max(255)
+  .refine(
+    isValidDnsName,
+    "Enter a valid DNS name using letters, numbers, dots, and hyphens.",
+  )
+  .optional();
+const dnsDomain = z
+  .string()
+  .trim()
+  .max(255)
+  .refine(
+    (value) => value === "" || (value.endsWith(".") && isValidDnsName(value)),
+    "Enter a fully qualified DNS domain ending with a dot, such as example.org.",
+  )
+  .optional();
+const relativeDnsName = z
+  .string()
+  .trim()
+  .max(255)
+  .refine(
+    (value) => value === "" || (!value.endsWith(".") && isValidDnsName(value)),
+    "Enter a relative DNS name without a trailing dot.",
+  )
+  .optional();
 function isCidr(value: string) {
   const [address, prefix, ...rest] = value.split("/");
   const version = isIP(address ?? "");
@@ -74,8 +117,7 @@ const optionalMacAddress = z
   .trim()
   .max(17)
   .refine(
-    (value) =>
-      value === "" || /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(value),
+    (value) => value === "" || /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(value),
     "Enter a valid MAC address, such as fa:16:3e:00:00:01.",
   )
   .transform((value) => value.toLowerCase());
@@ -208,6 +250,7 @@ function validateIpv6Configuration(
 const networkCreateSchema = z.object({
   name,
   description,
+  dnsDomain,
   adminStateUp: z.boolean().default(true),
   availabilityZoneHints: z
     .array(resourceId)
@@ -218,6 +261,7 @@ const networkCreateSchema = z.object({
 const networkUpdateSchema = z.object({
   name,
   description,
+  dnsDomain,
   adminStateUp: z.boolean().default(true),
   portSecurityEnabled: z.boolean().optional(),
 });
@@ -311,7 +355,10 @@ function requirePortSecurityForAddressPairs(
   },
   context: z.RefinementCtx,
 ) {
-  if (value.portSecurityEnabled === false && value.allowedAddressPairs?.length) {
+  if (
+    value.portSecurityEnabled === false &&
+    value.allowedAddressPairs?.length
+  ) {
     context.addIssue({
       code: "custom",
       message: "Enable port security before adding allowed address pairs.",
@@ -323,6 +370,8 @@ const portCreateSchema = z
   .object({
     name,
     description,
+    dnsDomain,
+    dnsName,
     networkId: resourceId,
     adminStateUp: z.boolean().default(true),
     ...portSecurityFields,
@@ -332,16 +381,29 @@ const portUpdateSchema = z
   .object({
     name,
     description,
+    dnsDomain,
+    dnsName,
     adminStateUp: z.boolean(),
     ...portSecurityFields,
   })
   .superRefine(requirePortSecurityForAddressPairs);
-const floatingIpCreateSchema = z.object({
-  floatingNetworkId: resourceId,
-  description,
-  portId: resourceId.optional(),
-  fixedIpAddress: optionalIpAddress,
-});
+const floatingIpCreateSchema = z
+  .object({
+    floatingNetworkId: resourceId,
+    description,
+    portId: resourceId.optional(),
+    fixedIpAddress: optionalIpAddress,
+    dnsName: relativeDnsName,
+    dnsDomain,
+  })
+  .superRefine((value, context) => {
+    if (Boolean(value.dnsName) === Boolean(value.dnsDomain)) return;
+    context.addIssue({
+      code: "custom",
+      message: "Enter both a DNS name and DNS domain, or leave both empty.",
+      path: [value.dnsName ? "dnsDomain" : "dnsName"],
+    });
+  });
 const floatingIpUpdateSchema = z.object({
   description,
   portId: resourceId.optional().nullable(),
@@ -441,15 +503,6 @@ async function unsupportedNetworkExtensionsFailure(
   );
 }
 
-async function unsupportedPortSecurityFailure(scope: MutationScope) {
-  return unsupportedNetworkExtensionsFailure(scope, [
-    {
-      feature: "Port security",
-      required: NEUTRON_PORT_SECURITY_EXTENSION,
-    },
-  ]);
-}
-
 export async function createNetworkAction(
   scope: MutationScope,
   input: CreateNetworkInput,
@@ -458,6 +511,14 @@ export async function createNetworkAction(
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
   const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.dnsDomain === undefined
+      ? []
+      : [
+          {
+            feature: "Network DNS domains",
+            required: NEUTRON_DNS_INTEGRATION_EXTENSION,
+          },
+        ]),
     ...(value.portSecurityEnabled === undefined
       ? []
       : [
@@ -486,6 +547,9 @@ export async function createNetworkAction(
       network: {
         name: value.name,
         description: value.description,
+        ...(value.dnsDomain === undefined
+          ? {}
+          : { dns_domain: value.dnsDomain }),
         admin_state_up: value.adminStateUp,
         ...(value.availabilityZoneHints?.length
           ? { availability_zone_hints: value.availabilityZoneHints }
@@ -511,10 +575,25 @@ export async function updateNetworkAction(
   const parsed = parse(networkUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
-  if (value.portSecurityEnabled !== undefined) {
-    const unsupported = await unsupportedPortSecurityFailure(scope);
-    if (unsupported) return unsupported;
-  }
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.dnsDomain === undefined
+      ? []
+      : [
+          {
+            feature: "Network DNS domains",
+            required: NEUTRON_DNS_INTEGRATION_EXTENSION,
+          },
+        ]),
+    ...(value.portSecurityEnabled === undefined
+      ? []
+      : [
+          {
+            feature: "Port security",
+            required: NEUTRON_PORT_SECURITY_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "edit this network",
     scope,
@@ -525,6 +604,9 @@ export async function updateNetworkAction(
       network: {
         name: value.name,
         description: value.description,
+        ...(value.dnsDomain === undefined
+          ? {}
+          : { dns_domain: value.dnsDomain }),
         admin_state_up: value.adminStateUp,
         ...(value.portSecurityEnabled === undefined
           ? {}
@@ -989,6 +1071,26 @@ export async function createPortAction(
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
   const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.dnsName === undefined
+      ? []
+      : [
+          {
+            feature: "Port DNS names",
+            required: NEUTRON_DNS_INTEGRATION_EXTENSION,
+          },
+        ]),
+    ...(value.dnsDomain === undefined
+      ? []
+      : [
+          {
+            feature: "Per-port DNS domains",
+            required: NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
+          },
+          {
+            feature: "Port DNS names",
+            required: NEUTRON_DNS_INTEGRATION_EXTENSION,
+          },
+        ]),
     ...(value.portSecurityEnabled === undefined
       ? []
       : [
@@ -1025,6 +1127,10 @@ export async function createPortAction(
       port: {
         name: value.name,
         description: value.description,
+        ...(value.dnsName === undefined ? {} : { dns_name: value.dnsName }),
+        ...(value.dnsDomain === undefined
+          ? {}
+          : { dns_domain: value.dnsDomain }),
         network_id: value.networkId,
         admin_state_up: value.adminStateUp,
         ...(value.portSecurityEnabled === undefined
@@ -1065,6 +1171,26 @@ export async function updatePortAction(
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
   const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.dnsName === undefined
+      ? []
+      : [
+          {
+            feature: "Port DNS names",
+            required: NEUTRON_DNS_INTEGRATION_EXTENSION,
+          },
+        ]),
+    ...(value.dnsDomain === undefined
+      ? []
+      : [
+          {
+            feature: "Per-port DNS domains",
+            required: NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
+          },
+          {
+            feature: "Port DNS names",
+            required: NEUTRON_DNS_INTEGRATION_EXTENSION,
+          },
+        ]),
     ...(value.portSecurityEnabled === undefined
       ? []
       : [
@@ -1101,6 +1227,10 @@ export async function updatePortAction(
       port: {
         name: value.name,
         description: value.description,
+        ...(value.dnsName === undefined ? {} : { dns_name: value.dnsName }),
+        ...(value.dnsDomain === undefined
+          ? {}
+          : { dns_domain: value.dnsDomain }),
         admin_state_up: value.adminStateUp,
         ...(value.portSecurityEnabled === undefined
           ? {}
@@ -1150,6 +1280,17 @@ export async function createFloatingIpAction(
   const parsed = parse(floatingIpCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.dnsName === undefined && value.dnsDomain === undefined
+      ? []
+      : [
+          {
+            feature: "Floating IP DNS records",
+            required: NEUTRON_DNS_INTEGRATION_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "allocate a floating IP",
     scope,
@@ -1162,6 +1303,10 @@ export async function createFloatingIpAction(
         description: value.description,
         port_id: value.portId,
         fixed_ip_address: value.fixedIpAddress,
+        ...(value.dnsName === undefined ? {} : { dns_name: value.dnsName }),
+        ...(value.dnsDomain === undefined
+          ? {}
+          : { dns_domain: value.dnsDomain }),
       },
     },
     invalidates: networkingInvalidates,

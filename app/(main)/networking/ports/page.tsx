@@ -12,6 +12,8 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
+  NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
+  NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -53,11 +55,23 @@ export default async function Page({
     NEUTRON_SECURITY_GROUP_EXTENSION,
     "Security group assignment",
   );
+  const dnsIntegrationSupport = extensionSupport(
+    capabilities,
+    NEUTRON_DNS_INTEGRATION_EXTENSION,
+    "Port DNS names",
+  );
+  const dnsDomainPortsSupport = extensionSupport(
+    capabilities,
+    NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
+    "Per-port DNS domains",
+  );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <PortsTableClient
         allowedAddressPairsSupport={allowedAddressPairsSupport}
+        dnsDomainPortsSupport={dnsDomainPortsSupport}
+        dnsIntegrationSupport={dnsIntegrationSupport}
         key={createRequested ? "create" : "idle"}
         regionId={session.regionId}
         projectId={session.projectId}

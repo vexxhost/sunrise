@@ -361,6 +361,19 @@ describe("OpenStack capability discovery", () => {
     });
   });
 
+  it("does not probe Neutron without a scoped project token", async () => {
+    mocks.getSession.mockResolvedValue({});
+
+    await expect(
+      discoverNetworkCapabilities("RegionOne"),
+    ).resolves.toMatchObject({
+      discoveryStatus: "unavailable",
+      serviceType: "network",
+    });
+    expect(mocks.getServiceEndpoint).not.toHaveBeenCalled();
+    expect(mocks.openstackRequest).not.toHaveBeenCalled();
+  });
+
   it("returns an unknown-safe state when a probe cannot be parsed", async () => {
     mocks.openstackRequest.mockResolvedValue(null);
 
