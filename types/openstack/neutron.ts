@@ -82,6 +82,7 @@ export interface Subnet {
 export interface RouterExternalGatewayInfo {
   network_id: string;
   enable_snat: boolean;
+  qos_policy_id?: string | null;
   external_fixed_ips: Array<{
     subnet_id: string;
     ip_address: string;
@@ -136,6 +137,8 @@ export interface FloatingIp {
   tenant_id: string;
   project_id: string;
   status: string;
+  qos_policy_id?: string | null;
+  qos_network_policy_id?: string | null;
   dns_domain?: string;
   dns_name?: string;
   port_details?: FloatingIpPortDetails | null;
@@ -143,6 +146,27 @@ export interface FloatingIp {
   created_at: string;
   updated_at: string;
   revision_number: number;
+}
+
+export interface QosPolicyRule {
+  id: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+export interface QosPolicy {
+  id: string;
+  name: string;
+  description?: string;
+  shared: boolean;
+  is_default?: boolean;
+  tenant_id?: string;
+  project_id?: string;
+  rules: QosPolicyRule[];
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+  revision_number?: number;
 }
 
 export interface Port {

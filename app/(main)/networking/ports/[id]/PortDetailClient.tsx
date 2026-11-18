@@ -5,10 +5,12 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { EthernetPort } from "lucide-react";
 
 import { PortDetailActions } from "@/components/Network/PortDetailActions";
+import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { Badge } from "@/components/ui/badge";
 import {
   networkQueryOptions,
   portQueryOptions,
+  qosPoliciesQueryOptions,
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
@@ -21,6 +23,8 @@ interface PortDetailClientProps {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   id: string;
   portSecuritySupport: OpenStackFeatureSupport;
+  qosNetworkPolicySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
   securityGroupSupport: OpenStackFeatureSupport;
@@ -48,6 +52,8 @@ export function PortDetailClient({
   id,
   portSecuritySupport,
   projectId,
+  qosNetworkPolicySupport,
+  qosSupport,
   regionId,
   securityGroupSupport,
 }: PortDetailClientProps) {
@@ -58,6 +64,14 @@ export function PortDetailClient({
   const groups = useQuery({
     ...securityGroupsQueryOptions(regionId, projectId),
     enabled: securityGroupSupport.status !== "unsupported",
+  });
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled:
+      qosSupport.status !== "unsupported" ||
+      qosNetworkPolicySupport.status !== "unsupported" ||
+      Boolean(port.data.qos_policy_id) ||
+      Boolean(port.data.qos_network_policy_id),
   });
   const servers = useSuspenseQuery(serversQueryOptions(regionId, projectId));
   const groupById = useMemo(
@@ -104,6 +118,7 @@ export function PortDetailClient({
             dnsIntegrationSupport={dnsIntegrationSupport}
             port={port.data}
             portSecuritySupport={portSecuritySupport}
+            qosSupport={qosSupport}
             groups={groups.data ?? []}
             servers={servers.data}
             projectId={projectId}
@@ -129,6 +144,25 @@ export function PortDetailClient({
               </ResourceLink>
             }
           />
+          {qosSupport.status !== "unsupported" || port.data.qos_policy_id ? (
+            <DetailRow
+              label="Direct QoS policy"
+              value={qosPolicyLabel(
+                qosPolicies.data ?? [],
+                port.data.qos_policy_id,
+              )}
+            />
+          ) : null}
+          {qosNetworkPolicySupport.status !== "unsupported" ||
+          port.data.qos_network_policy_id ? (
+            <DetailRow
+              label="Network QoS policy"
+              value={qosPolicyLabel(
+                qosPolicies.data ?? [],
+                port.data.qos_network_policy_id,
+              )}
+            />
+          ) : null}
           <DetailRow label="MAC address" value={port.data.mac_address} />
           {dnsIntegrationSupport.status !== "unsupported" ||
           port.data.dns_name ? (

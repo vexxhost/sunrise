@@ -85,10 +85,12 @@ export function NetworksTableClient({
   regionId,
   initiallyOpen = false,
   portSecuritySupport,
+  qosSupport,
 }: NetworkingTableProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
 }) {
   const networks = useSuspenseQuery(
     projectNetworksQueryOptions(regionId, projectId),
@@ -187,13 +189,27 @@ export function NetworksTableClient({
               meta: { fieldType: "boolean", visible: false },
             } satisfies ColumnDef<Network>,
           ]),
+      ...(qosSupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "qos_policy_id",
+              header: "QoS policy ID",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Network>,
+          ]),
       {
         accessorKey: "description",
         header: "Description",
         meta: { fieldType: "string", visible: false },
       },
     ],
-    [dnsIntegrationSupport.status, portSecuritySupport.status, subnetById],
+    [
+      dnsIntegrationSupport.status,
+      portSecuritySupport.status,
+      qosSupport.status,
+      subnetById,
+    ],
   );
 
   return (
@@ -207,6 +223,7 @@ export function NetworksTableClient({
             availabilityZoneSupport={availabilityZoneSupport}
             dnsIntegrationSupport={dnsIntegrationSupport}
             portSecuritySupport={portSecuritySupport}
+            qosSupport={qosSupport}
           />
         }
       >
@@ -356,12 +373,16 @@ export function PortsTableClient({
   regionId,
   initiallyOpen = false,
   portSecuritySupport,
+  qosNetworkPolicySupport,
+  qosSupport,
   securityGroupSupport,
 }: NetworkingTableProps & {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
+  qosNetworkPolicySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
 }) {
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
@@ -459,8 +480,32 @@ export function PortsTableClient({
               meta: { fieldType: "string", visible: false },
             } satisfies ColumnDef<Port>,
           ]),
+      ...(qosSupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "qos_policy_id",
+              header: "Direct QoS policy ID",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]),
+      ...(qosNetworkPolicySupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "qos_network_policy_id",
+              header: "Network QoS policy ID",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]),
     ],
-    [dnsDomainPortsSupport.status, dnsIntegrationSupport.status, networkById],
+    [
+      dnsDomainPortsSupport.status,
+      dnsIntegrationSupport.status,
+      networkById,
+      qosNetworkPolicySupport.status,
+      qosSupport.status,
+    ],
   );
 
   return (
@@ -475,6 +520,7 @@ export function PortsTableClient({
             regionId={regionId}
             initiallyOpen={initiallyOpen}
             portSecuritySupport={portSecuritySupport}
+            qosSupport={qosSupport}
             securityGroupSupport={securityGroupSupport}
           />
         }
@@ -500,8 +546,12 @@ export function FloatingIpsTableClient({
   projectId,
   regionId,
   initiallyOpen = false,
+  qosNetworkPolicySupport,
+  qosSupport,
 }: NetworkingTableProps & {
   dnsIntegrationSupport: OpenStackFeatureSupport;
+  qosNetworkPolicySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
 }) {
   const floatingIps = useSuspenseQuery(
     floatingIpsQueryOptions(regionId, projectId),
@@ -587,8 +637,30 @@ export function FloatingIpsTableClient({
               meta: { fieldType: "string", visible: false },
             } satisfies ColumnDef<FloatingIp>,
           ]),
+      ...(qosSupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "qos_policy_id",
+              header: "Direct QoS policy ID",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<FloatingIp>,
+          ]),
+      ...(qosNetworkPolicySupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "qos_network_policy_id",
+              header: "Network QoS policy ID",
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<FloatingIp>,
+          ]),
     ],
-    [dnsIntegrationSupport.status],
+    [
+      dnsIntegrationSupport.status,
+      qosNetworkPolicySupport.status,
+      qosSupport.status,
+    ],
   );
 
   return (
@@ -600,6 +672,7 @@ export function FloatingIpsTableClient({
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
+            qosSupport={qosSupport}
           />
         }
       >

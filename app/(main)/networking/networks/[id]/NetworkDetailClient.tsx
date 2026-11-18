@@ -1,16 +1,18 @@
 "use client";
 
 import { Fragment, useMemo } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { GitBranch, Network as NetworkIcon } from "lucide-react";
 
 import { NetworkDetailActions } from "@/components/Network/NetworkDetailActions";
+import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { SubnetDetailActions } from "@/components/Network/SubnetDetailActions";
 import { Badge } from "@/components/ui/badge";
 import {
   networkQueryOptions,
   networkSubnetsQueryOptions,
   portsQueryOptions,
+  qosPoliciesQueryOptions,
   routersQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { isRouterInterfacePort } from "@/lib/openstack/neutron-topology";
@@ -22,6 +24,7 @@ interface NetworkDetailClientProps {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   id: string;
   portSecuritySupport: OpenStackFeatureSupport;
+  qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
 }
@@ -47,6 +50,7 @@ export function NetworkDetailClient({
   dnsIntegrationSupport,
   id,
   portSecuritySupport,
+  qosSupport,
   projectId,
   regionId,
 }: NetworkDetailClientProps) {
@@ -58,6 +62,12 @@ export function NetworkDetailClient({
   );
   const routers = useSuspenseQuery(routersQueryOptions(regionId, projectId));
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
+  const qosPolicies = useQuery({
+    ...qosPoliciesQueryOptions(regionId, projectId),
+    enabled:
+      qosSupport.status !== "unsupported" ||
+      Boolean(network.data.qos_policy_id),
+  });
   const routerInterfaces = useMemo(
     () => ports.data.filter(isRouterInterfacePort),
     [ports.data],
@@ -98,6 +108,17 @@ export function NetworkDetailClient({
               network.data.port_security_enabled ? "Enabled" : "Disabled",
             ],
           ] as Array<[string, React.ReactNode]>)),
+      ...(qosSupport.status === "unsupported" && !network.data.qos_policy_id
+        ? []
+        : ([
+            [
+              "QoS policy",
+              qosPolicyLabel(
+                qosPolicies.data ?? [],
+                network.data.qos_policy_id,
+              ),
+            ],
+          ] as Array<[string, React.ReactNode]>)),
       ["Shared", network.data.shared ? "Yes" : "No"],
       ["External", network.data["router:external"] ? "Yes" : "No"],
       ...(availabilityZoneSupport.status === "unsupported"
@@ -119,6 +140,8 @@ export function NetworkDetailClient({
       dnsIntegrationSupport.status,
       network.data,
       portSecuritySupport.status,
+      qosPolicies.data,
+      qosSupport.status,
     ],
   );
 
@@ -141,6 +164,7 @@ export function NetworkDetailClient({
             dnsIntegrationSupport={dnsIntegrationSupport}
             network={network.data}
             portSecuritySupport={portSecuritySupport}
+            qosSupport={qosSupport}
             projectId={projectId}
             regionId={regionId}
           />

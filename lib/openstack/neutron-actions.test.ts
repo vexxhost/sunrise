@@ -16,6 +16,9 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_DNS_INTEGRATION_EXTENSION: "dns-integration",
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
   NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
+  NEUTRON_QOS_EXTENSION: "qos",
+  NEUTRON_QOS_FLOATING_IP_EXTENSION: "qos-fip",
+  NEUTRON_QOS_GATEWAY_IP_EXTENSION: "qos-gateway-ip",
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION: "router_availability_zone",
   NEUTRON_SECURITY_GROUP_EXTENSION: "security-group",
 }));
@@ -41,6 +44,7 @@ import {
   replaceSecurityGroupRuleAction,
   setRouterGatewayAction,
   updateNetworkAction,
+  updateFloatingIpAction,
   updatePortAction,
   updateSubnetAction,
 } from "@/lib/openstack/neutron-actions";
@@ -60,6 +64,9 @@ describe("Neutron mutation actions", () => {
         "extraroute-atomic",
         "network_availability_zone",
         "port-security",
+        "qos",
+        "qos-fip",
+        "qos-gateway-ip",
         "router_availability_zone",
         "security-group",
       ],
@@ -119,6 +126,78 @@ describe("Neutron mutation actions", () => {
       }),
     );
     expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("preserves network QoS default, explicit policy, and clear semantics", async () => {
+    await createNetworkAction(scope, {
+      name: "cloud-default",
+      description: "",
+      adminStateUp: true,
+    });
+    expect(
+      mocks.executeOpenStackMutation.mock.calls.at(-1)?.[0].body.network,
+    ).not.toHaveProperty("qos_policy_id");
+
+    await createNetworkAction(scope, {
+      name: "without-qos",
+      description: "",
+      adminStateUp: true,
+      qosPolicyId: null,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          network: expect.objectContaining({ qos_policy_id: null }),
+        },
+      }),
+    );
+
+    await updateNetworkAction(scope, "network-a", {
+      name: "application",
+      description: "",
+      adminStateUp: true,
+      qosPolicyId: "policy-a",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          network: expect.objectContaining({ qos_policy_id: "policy-a" }),
+        },
+      }),
+    );
+  });
+
+  it("rejects network and port QoS without the base extension", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-security"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const networkResult = await createNetworkAction(scope, {
+      name: "application",
+      description: "",
+      adminStateUp: true,
+      qosPolicyId: "policy-a",
+    });
+    const portResult = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      qosPolicyId: "policy-a",
+    });
+
+    expect(networkResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("qos") },
+    });
+    expect(portResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("qos") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("maps network DNS domains and supports clearing them", async () => {
@@ -434,6 +513,35 @@ describe("Neutron mutation actions", () => {
     );
   });
 
+  it("maps and clears direct port QoS policies", async () => {
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      qosPolicyId: "policy-a",
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "application-port",
+      description: "",
+      adminStateUp: true,
+      qosPolicyId: null,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: { port: expect.objectContaining({ qos_policy_id: "policy-a" }) },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: { port: expect.objectContaining({ qos_policy_id: null }) },
+      }),
+    );
+  });
+
   it("omits unchanged allowed address pairs from an update", async () => {
     await updatePortAction(scope, "port-a", {
       name: "application-port",
@@ -735,6 +843,55 @@ describe("Neutron mutation actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
+  it("maps, clears, and independently gates floating IP QoS", async () => {
+    await createFloatingIpAction(scope, {
+      floatingNetworkId: "public",
+      description: "",
+      qosPolicyId: "policy-a",
+    });
+    await updateFloatingIpAction(scope, "floating-a", {
+      description: "",
+      portId: null,
+      fixedIpAddress: null,
+      qosPolicyId: null,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: {
+          floatingip: expect.objectContaining({ qos_policy_id: "policy-a" }),
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: {
+          floatingip: expect.objectContaining({ qos_policy_id: null }),
+        },
+      }),
+    );
+
+    vi.clearAllMocks();
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["qos"],
+      message: "",
+      serviceType: "network",
+    });
+    const result = await createFloatingIpAction(scope, {
+      floatingNetworkId: "public",
+      description: "",
+      qosPolicyId: "policy-a",
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("qos-fip") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("maps router gateway and interface operations to Neutron", async () => {
     await setRouterGatewayAction(scope, "router-a", {
       networkId: "external-a",
@@ -774,6 +931,45 @@ describe("Neutron mutation actions", () => {
         body: { subnet_id: "subnet-a" },
       }),
     );
+  });
+
+  it("maps and independently gates router gateway QoS", async () => {
+    await setRouterGatewayAction(scope, "router-a", {
+      networkId: "external-a",
+      enableSnat: true,
+      qosPolicyId: "policy-a",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          router: {
+            external_gateway_info: {
+              network_id: "external-a",
+              enable_snat: true,
+              qos_policy_id: "policy-a",
+            },
+          },
+        },
+      }),
+    );
+
+    vi.clearAllMocks();
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["qos"],
+      message: "",
+      serviceType: "network",
+    });
+    const result = await setRouterGatewayAction(scope, "router-a", {
+      networkId: "external-a",
+      enableSnat: true,
+      qosPolicyId: "policy-a",
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("qos-gateway-ip") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("adds and removes router routes atomically", async () => {

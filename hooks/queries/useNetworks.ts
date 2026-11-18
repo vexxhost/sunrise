@@ -10,6 +10,7 @@ import type {
   Network,
   NeutronAvailabilityZone,
   Port,
+  QosPolicy,
   Router,
   SecurityGroup,
   Subnet,
@@ -89,6 +90,26 @@ export function networksQueryOptions(
       return data.networks;
     },
     enabled: !!regionId,
+  });
+}
+
+export function qosPoliciesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "network-qos-policies"],
+    queryFn: async () => {
+      const data = await openstack<{ policies: QosPolicy[] }>({
+        regionId: regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: "/v2.0/qos/policies",
+      });
+
+      return data?.policies ?? [];
+    },
+    enabled: !!regionId && !!projectId,
   });
 }
 
