@@ -81,16 +81,20 @@ function TableIntro({
 export function NetworksTableClient({
   availabilityZoneSupport,
   dnsIntegrationSupport,
+  mtuSupport,
   projectId,
   regionId,
   initiallyOpen = false,
   portSecuritySupport,
   qosSupport,
+  vlanTransparencySupport,
 }: NetworkingTableProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
+  mtuSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
+  vlanTransparencySupport: OpenStackFeatureSupport;
 }) {
   const networks = useSuspenseQuery(
     projectNetworksQueryOptions(regionId, projectId),
@@ -169,6 +173,21 @@ export function NetworksTableClient({
         header: "MTU",
         meta: { fieldType: "number", visible: true },
       },
+      ...(vlanTransparencySupport.status === "unsupported"
+        ? []
+        : [
+            {
+              accessorKey: "vlan_transparent",
+              header: "VLAN transparent",
+              cell: ({ row }: { row: { original: Network } }) =>
+                row.original.vlan_transparent == null
+                  ? "Not reported"
+                  : row.original.vlan_transparent
+                    ? "Enabled"
+                    : "Disabled",
+              meta: { fieldType: "boolean", visible: false },
+            } satisfies ColumnDef<Network>,
+          ]),
       ...(dnsIntegrationSupport.status === "unsupported"
         ? []
         : [
@@ -209,6 +228,7 @@ export function NetworksTableClient({
       portSecuritySupport.status,
       qosSupport.status,
       subnetById,
+      vlanTransparencySupport.status,
     ],
   );
 
@@ -222,8 +242,10 @@ export function NetworksTableClient({
             initiallyOpen={initiallyOpen}
             availabilityZoneSupport={availabilityZoneSupport}
             dnsIntegrationSupport={dnsIntegrationSupport}
+            mtuSupport={mtuSupport}
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}
+            vlanTransparencySupport={vlanTransparencySupport}
           />
         }
       >

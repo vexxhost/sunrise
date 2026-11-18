@@ -15,12 +15,14 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION: "dns-domain-ports",
   NEUTRON_DNS_INTEGRATION_EXTENSION: "dns-integration",
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
+  NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION: "net-mtu-writable",
   NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
   NEUTRON_QOS_EXTENSION: "qos",
   NEUTRON_QOS_FLOATING_IP_EXTENSION: "qos-fip",
   NEUTRON_QOS_GATEWAY_IP_EXTENSION: "qos-gateway-ip",
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION: "router_availability_zone",
   NEUTRON_SECURITY_GROUP_EXTENSION: "security-group",
+  NEUTRON_VLAN_TRANSPARENCY_EXTENSION: "vlan-transparent",
 }));
 
 import {
@@ -63,12 +65,14 @@ describe("Neutron mutation actions", () => {
         "extraroute",
         "extraroute-atomic",
         "network_availability_zone",
+        "net-mtu-writable",
         "port-security",
         "qos",
         "qos-fip",
         "qos-gateway-ip",
         "router_availability_zone",
         "security-group",
+        "vlan-transparent",
       ],
       message: "",
       serviceType: "network",
@@ -126,6 +130,94 @@ describe("Neutron mutation actions", () => {
       }),
     );
     expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("maps writable network MTU and create-only VLAN transparency", async () => {
+    await createNetworkAction(scope, {
+      name: "jumbo",
+      description: "Jumbo-frame tenant network",
+      adminStateUp: true,
+      mtu: 9000,
+      vlanTransparent: true,
+    });
+    await updateNetworkAction(scope, "network-a", {
+      name: "jumbo",
+      description: "Jumbo-frame tenant network",
+      adminStateUp: true,
+      mtu: 1500,
+      vlanTransparent: true,
+    } as never);
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: {
+          network: expect.objectContaining({
+            mtu: 9000,
+            vlan_transparent: true,
+          }),
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: {
+          network: expect.objectContaining({ mtu: 1500 }),
+        },
+      }),
+    );
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[1]?.[0]?.body.network,
+    ).not.toHaveProperty("vlan_transparent");
+  });
+
+  it("rejects unsupported network MTU and VLAN transparency requests", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: [],
+      message: "",
+      serviceType: "network",
+    });
+
+    const mtuResult = await createNetworkAction(scope, {
+      name: "jumbo",
+      description: "",
+      adminStateUp: true,
+      mtu: 9000,
+    });
+    const vlanResult = await createNetworkAction(scope, {
+      name: "transparent",
+      description: "",
+      adminStateUp: true,
+      vlanTransparent: true,
+    });
+
+    expect(mtuResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("net-mtu-writable") },
+    });
+    expect(vlanResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("vlan-transparent") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("validates network MTU before discovering capabilities", async () => {
+    const result = await createNetworkAction(scope, {
+      name: "invalid-mtu",
+      description: "",
+      adminStateUp: true,
+      mtu: -1,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("preserves network QoS default, explicit policy, and update clearing", async () => {

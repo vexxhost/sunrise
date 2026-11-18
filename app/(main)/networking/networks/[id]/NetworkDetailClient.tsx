@@ -23,10 +23,12 @@ interface NetworkDetailClientProps {
   availabilityZoneSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   id: string;
+  mtuSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
+  vlanTransparencySupport: OpenStackFeatureSupport;
 }
 
 function DetailGrid({ rows }: { rows: Array<[string, React.ReactNode]> }) {
@@ -49,10 +51,12 @@ export function NetworkDetailClient({
   availabilityZoneSupport,
   dnsIntegrationSupport,
   id,
+  mtuSupport,
   portSecuritySupport,
   qosSupport,
   projectId,
   regionId,
+  vlanTransparencySupport,
 }: NetworkDetailClientProps) {
   const network = useSuspenseQuery(
     networkQueryOptions(regionId, projectId, id),
@@ -94,6 +98,19 @@ export function NetworkDetailClient({
       ["Description", network.data.description || "None"],
       ["Admin state", network.data.admin_state_up ? "Up" : "Down"],
       ["MTU", network.data.mtu],
+      ...(vlanTransparencySupport.status === "unsupported" &&
+      network.data.vlan_transparent == null
+        ? []
+        : ([
+            [
+              "VLAN transparent",
+              network.data.vlan_transparent == null
+                ? "Not reported"
+                : network.data.vlan_transparent
+                  ? "Enabled"
+                  : "Disabled",
+            ],
+          ] as Array<[string, React.ReactNode]>)),
       ...(dnsIntegrationSupport.status !== "unsupported" ||
       network.data.dns_domain
         ? ([["DNS domain", network.data.dns_domain || "None"]] as Array<
@@ -142,6 +159,7 @@ export function NetworkDetailClient({
       portSecuritySupport.status,
       qosPolicies.data,
       qosSupport.status,
+      vlanTransparencySupport.status,
     ],
   );
 
@@ -162,6 +180,7 @@ export function NetworkDetailClient({
         {owned ? (
           <NetworkDetailActions
             dnsIntegrationSupport={dnsIntegrationSupport}
+            mtuSupport={mtuSupport}
             network={network.data}
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}

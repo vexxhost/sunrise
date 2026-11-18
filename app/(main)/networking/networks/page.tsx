@@ -13,8 +13,10 @@ import {
   discoverNetworkCapabilities,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
+  NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_QOS_EXTENSION,
+  NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
@@ -54,10 +56,20 @@ export default async function Page({
     NEUTRON_PORT_SECURITY_EXTENSION,
     "Port security",
   );
+  const mtuSupport = extensionSupport(
+    capabilities,
+    NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
+    "Network MTU configuration",
+  );
   const qosSupport = extensionSupport(
     capabilities,
     NEUTRON_QOS_EXTENSION,
     "Network QoS policies",
+  );
+  const vlanTransparencySupport = extensionSupport(
+    capabilities,
+    NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
+    "VLAN transparency",
   );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
@@ -69,8 +81,10 @@ export default async function Page({
         initiallyOpen={createRequested}
         availabilityZoneSupport={availabilityZoneSupport}
         dnsIntegrationSupport={dnsIntegrationSupport}
+        mtuSupport={mtuSupport}
         portSecuritySupport={portSecuritySupport}
         qosSupport={qosSupport}
+        vlanTransparencySupport={vlanTransparencySupport}
       />
     </QueryHydrationBoundary>
   );
