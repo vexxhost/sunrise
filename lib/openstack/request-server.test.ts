@@ -138,6 +138,47 @@ describe("server-only OpenStack requests", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("enforces Magnum ceilings and sends its service microversion header", async () => {
+    vi.stubEnv("SUNRISE_API_MICROVERSION_CONTAINER_INFRA_REGIONONE", "1.13");
+    mocks.getServiceEndpoint.mockResolvedValue(
+      "https://container-infra.example.test/v1",
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ clusters: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      openstackRequest({
+        apiVersion: "container-infra 1.14",
+        errorMode: "throw",
+        regionId: "RegionOne",
+        serviceType: "container-infra",
+        serviceName: "magnum",
+        path: "/clusters/detail",
+      }),
+    ).rejects.toThrow("exceeds the configured maximum 1.13");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await openstackRequest({
+      apiVersion: "container-infra 1.13",
+      errorMode: "throw",
+      regionId: "RegionOne",
+      serviceType: "container-infra",
+      serviceName: "magnum",
+      path: "/clusters/detail",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://container-infra.example.test/v1/clusters/detail",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "OpenStack-API-Version": "container-infra 1.13",
+        }),
+      }),
+    );
+  });
+
   it("enforces Octavia ceilings and sends the Load Balancing API header", async () => {
     vi.stubEnv("SUNRISE_API_MICROVERSION_LOAD_BALANCER_REGIONONE", "2.14");
     mocks.getServiceEndpoint.mockResolvedValue(

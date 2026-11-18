@@ -12,6 +12,8 @@ describe("OpenStack API microversion policy", () => {
     const policy = parseApiMicroversionPolicy({
       SUNRISE_API_MICROVERSION_COMPUTE: "2.95",
       SUNRISE_API_MICROVERSION_COMPUTE_REGION_ONE: "2.90",
+      SUNRISE_API_MICROVERSION_CONTAINER_INFRA: "1.14",
+      SUNRISE_API_MICROVERSION_CONTAINER_INFRA_REGION_ONE: "1.13",
       SUNRISE_API_MICROVERSION_LOAD_BALANCER: "2.20",
       SUNRISE_API_MICROVERSION_LOAD_BALANCER_REGION_ONE: "2.14",
       SUNRISE_API_MICROVERSION_SHARE: "2.70",
@@ -26,6 +28,12 @@ describe("OpenStack API microversion policy", () => {
     expect(configuredApiMicroversion(policy, "compute", "RegionTwo")).toBe(
       "2.95",
     );
+    expect(
+      configuredApiMicroversion(policy, "container-infra", "Region-One"),
+    ).toBe("1.13");
+    expect(
+      configuredApiMicroversion(policy, "container-infra", "RegionTwo"),
+    ).toBe("1.14");
     expect(configuredApiMicroversion(policy, "volume", "Region-One")).toBe(
       "3.66",
     );
@@ -44,7 +52,7 @@ describe("OpenStack API microversion policy", () => {
     expect(configuredApiMicroversion(policy, "share", "RegionTwo")).toBe(
       "2.70",
     );
-    expect(apiMicroversionOverrideCount(policy)).toBe(8);
+    expect(apiMicroversionOverrideCount(policy)).toBe(10);
   });
 
   it("treats blank values as unconfigured", () => {
@@ -70,6 +78,11 @@ describe("OpenStack API microversion policy", () => {
         SUNRISE_API_MICROVERSION_COMPUTE: "2.78",
       }),
     ).toThrow("must be 2.79 or newer");
+    expect(() =>
+      parseApiMicroversionPolicy({
+        SUNRISE_API_MICROVERSION_CONTAINER_INFRA: "1.11",
+      }),
+    ).toThrow("must be 1.12 or newer");
     expect(() =>
       parseApiMicroversionPolicy({
         SUNRISE_API_MICROVERSION_SHARE: "2.50",
@@ -187,6 +200,35 @@ describe("OpenStack API microversion policy", () => {
         "octavia 2.14",
       ),
     ).toContain("explicit numeric microversion");
+  });
+
+  it("enforces Magnum ceilings for Container Infrastructure aliases", () => {
+    const policy = parseApiMicroversionPolicy({
+      SUNRISE_API_MICROVERSION_CONTAINER_INFRA_REGIONONE: "1.13",
+    });
+
+    for (const serviceType of [
+      "container-infra",
+      "container-infrastructure",
+      "container-infrastructure-management",
+    ]) {
+      expect(
+        apiMicroversionPolicyViolation(
+          policy,
+          serviceType,
+          "RegionOne",
+          "container-infra 1.14",
+        ),
+      ).toContain("exceeds the configured maximum 1.13");
+      expect(
+        apiMicroversionPolicyViolation(
+          policy,
+          serviceType,
+          "RegionOne",
+          "container-infra 1.13",
+        ),
+      ).toBeUndefined();
+    }
   });
 
   it("enforces bare Manila microversions for share service type aliases", () => {

@@ -95,6 +95,7 @@ export interface MagnumClusterTemplate {
   created_at?: string;
   updated_at?: string | null;
   description?: string | null;
+  driver?: string;
 }
 
 export interface MagnumClusterTemplateListResponse {
@@ -304,6 +305,7 @@ export interface MagnumCluster {
   status: MagnumClusterStatus;
   status_reason?: string | null;
   cluster_template_id: string;
+  cluster_id?: string;
   stack_id?: string;
   coe_version?: string;
   container_version?: string;

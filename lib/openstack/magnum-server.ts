@@ -1,5 +1,6 @@
 import "server-only";
 
+import { magnumDetailApiVersion } from "@/lib/openstack/capabilities-server";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import { getSession } from "@/lib/session";
 import type {
@@ -20,7 +21,6 @@ import type {
 
 const SERVICE_TYPE = "container-infra";
 const SERVICE_NAME = "magnum";
-const API_VERSION = "container-infra latest";
 
 function buildQueryString(params: Record<string, unknown> = {}) {
   const searchParams = new URLSearchParams();
@@ -49,12 +49,14 @@ async function magnumGet<T>(
   regionId?: string,
   errorMode: "return-null" | "throw" = "return-null",
   endpointOverride?: string,
+  apiVersion?: string,
 ): Promise<T | null> {
+  const activeRegionId = await resolveRegionId(regionId);
   return openstackRequest<T>({
-    regionId: await resolveRegionId(regionId),
+    regionId: activeRegionId,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
-    apiVersion: API_VERSION,
+    apiVersion: apiVersion ?? (await magnumDetailApiVersion(activeRegionId)),
     path,
     errorMode,
     endpointOverride,
@@ -137,19 +139,28 @@ export async function listClusters(
   projectId?: string,
   endpointOverride?: string,
 ): Promise<MagnumCluster[]> {
+  const activeRegionId = await resolveRegionId(regionId);
+  const apiVersion = await magnumDetailApiVersion(activeRegionId);
   const query = buildQueryString(options);
   const data = await magnumGet<MagnumClusterListResponse>(
     query ? `/clusters/detail?${query}` : "/clusters/detail",
-    regionId,
+    activeRegionId,
     "return-null",
     endpointOverride,
+    apiVersion,
   );
   const clusters = data?.clusters ?? [];
 
   const detailedClusters = await Promise.all(
     clusters.map(async (cluster) => {
       const [nodeGroups] = await Promise.allSettled([
-        listClusterNodeGroups(cluster.uuid, regionId, false, endpointOverride),
+        listClusterNodeGroups(
+          cluster.uuid,
+          activeRegionId,
+          false,
+          endpointOverride,
+          apiVersion,
+        ),
       ]);
 
       return {
@@ -190,12 +201,17 @@ export async function listClusterNodeGroups(
   regionId?: string,
   detailed = false,
   endpointOverride?: string,
+  apiVersion?: string,
 ): Promise<MagnumClusterNodeGroup[]> {
+  const activeRegionId = await resolveRegionId(regionId);
+  const selectedApiVersion =
+    apiVersion ?? (await magnumDetailApiVersion(activeRegionId));
   const data = await magnumGet<MagnumClusterNodeGroupListResponse>(
     `/clusters/${clusterId}/nodegroups`,
-    regionId,
+    activeRegionId,
     "return-null",
     endpointOverride,
+    selectedApiVersion,
   );
   const nodeGroups = data?.nodegroups ?? [];
   if (!detailed) return nodeGroups;
@@ -203,7 +219,12 @@ export async function listClusterNodeGroups(
   return Promise.all(
     nodeGroups.map(async (nodeGroup) => {
       try {
-        return await getClusterNodeGroup(clusterId, nodeGroup.uuid, regionId);
+        return await getClusterNodeGroup(
+          clusterId,
+          nodeGroup.uuid,
+          activeRegionId,
+          selectedApiVersion,
+        );
       } catch {
         return nodeGroup;
       }
@@ -215,11 +236,14 @@ export async function getClusterNodeGroup(
   clusterId: string,
   nodeGroupId: string,
   regionId?: string,
+  apiVersion?: string,
 ): Promise<MagnumClusterNodeGroup> {
   const data = await magnumGet<MagnumClusterNodeGroupResponse>(
     `/clusters/${clusterId}/nodegroups/${nodeGroupId}`,
     regionId,
     "throw",
+    undefined,
+    apiVersion,
   );
   const nodeGroup = unwrapNodeGroup(data);
 

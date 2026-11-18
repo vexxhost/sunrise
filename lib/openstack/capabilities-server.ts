@@ -17,6 +17,11 @@ import {
   MANILA_BASELINE_MICROVERSION,
   MANILA_DETAIL_MICROVERSION,
 } from "@/lib/openstack/manila-microversions";
+import {
+  MAGNUM_BASELINE_MICROVERSION,
+  MAGNUM_DETAIL_MICROVERSION,
+  magnumApiVersion,
+} from "@/lib/openstack/magnum-microversions";
 
 const logger = createLogger("openstack.capabilities");
 
@@ -146,6 +151,64 @@ export async function discoverNetworkCapabilities(
     extensions,
     message: `${extensions.length} Networking API extensions are available.`,
     serviceType: "network",
+  };
+}
+
+export async function discoverContainerInfrastructureCapabilities(
+  regionId: string,
+): Promise<OpenStackServiceCapabilities> {
+  const configuredMicroversionMaximum = configuredApiMicroversion(
+    getApiMicroversionPolicy(),
+    "container-infra",
+    regionId,
+  );
+  const session = await getSession();
+  const token = session.keystoneProjectToken;
+  const endpoint = token
+    ? await getServiceEndpoint(regionId, "container-infra", "magnum", token)
+    : null;
+  if (!endpoint) {
+    const capabilities = unavailable(
+      "container-infra",
+      "Container Infrastructure API microversion discovery was unavailable.",
+    );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
+  }
+
+  const payload = await openstackRequest<unknown>({
+    acceptedStatuses: [300],
+    endpointOverride: unversionedRoot(endpoint, /^v1$/i),
+    regionId,
+    serviceType: "container-infra",
+    serviceName: "magnum",
+    path: "/",
+  });
+  const discovery = parseMicroversionDiscovery(payload);
+
+  if (!discovery) {
+    logger.warn("container-infrastructure-microversions-unavailable", {
+      regionId,
+    });
+    const capabilities = unavailable(
+      "container-infra",
+      "Container Infrastructure API microversion discovery was unavailable.",
+    );
+    return configuredMicroversionMaximum
+      ? { ...capabilities, configuredMicroversionMaximum }
+      : capabilities;
+  }
+  const { microversions } = discovery;
+
+  return {
+    ...(configuredMicroversionMaximum ? { configuredMicroversionMaximum } : {}),
+    discoveryStatus: "available",
+    message: microversions
+      ? `Container Infrastructure API microversions ${microversions.minimum} through ${microversions.maximum} are available.${configuredMicroversionMaximum ? ` Sunrise will not request newer than ${configuredMicroversionMaximum}.` : ""}`
+      : "The Container Infrastructure API does not advertise microversion support.",
+    microversions,
+    serviceType: "container-infra",
   };
 }
 
@@ -332,6 +395,26 @@ export async function cinderDetailApiVersion(regionId?: string) {
   return `volume ${support.requestedMicroversion ?? CINDER_BASELINE_MICROVERSION}`;
 }
 
+export async function magnumDetailApiVersion(regionId?: string) {
+  if (!regionId) return magnumApiVersion(MAGNUM_BASELINE_MICROVERSION);
+
+  const capabilities =
+    await discoverContainerInfrastructureCapabilities(regionId);
+  const support = preferredMicroversionSupport(
+    capabilities,
+    MAGNUM_BASELINE_MICROVERSION,
+    MAGNUM_DETAIL_MICROVERSION,
+    "Extended Container Infrastructure details",
+  );
+  if (support.status === "unsupported") {
+    throw new Error(support.message);
+  }
+
+  return magnumApiVersion(
+    support.requestedMicroversion ?? MAGNUM_BASELINE_MICROVERSION,
+  );
+}
+
 export async function manilaDetailApiVersion(regionId?: string) {
   if (!regionId) return MANILA_BASELINE_MICROVERSION;
 
@@ -350,12 +433,14 @@ export async function manilaDetailApiVersion(regionId?: string) {
 }
 
 export async function discoverDeploymentCapabilities(regionId: string) {
-  const [compute, loadBalancer, network, share, volume] = await Promise.all([
-    discoverComputeCapabilities(regionId),
-    discoverLoadBalancerCapabilities(regionId),
-    discoverNetworkCapabilities(regionId),
-    discoverSharedFileSystemCapabilities(regionId),
-    discoverBlockStorageCapabilities(regionId),
-  ]);
-  return { compute, loadBalancer, network, share, volume };
+  const [compute, containerInfra, loadBalancer, network, share, volume] =
+    await Promise.all([
+      discoverComputeCapabilities(regionId),
+      discoverContainerInfrastructureCapabilities(regionId),
+      discoverLoadBalancerCapabilities(regionId),
+      discoverNetworkCapabilities(regionId),
+      discoverSharedFileSystemCapabilities(regionId),
+      discoverBlockStorageCapabilities(regionId),
+    ]);
+  return { compute, containerInfra, loadBalancer, network, share, volume };
 }

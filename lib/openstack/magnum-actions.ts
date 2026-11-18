@@ -15,6 +15,7 @@ import {
   planNodeGroupAutoscalerTransition,
 } from "@/lib/openstack/magnum-lifecycle";
 import { getClusterNodeGroupAction } from "@/lib/openstack/magnum";
+import { MAGNUM_BASELINE_API_VERSION } from "@/lib/openstack/magnum-microversions";
 import {
   mutationFailure,
   mutationSuccess,
@@ -38,7 +39,7 @@ const MAGNUM_SERVICE = {
   serviceType: "container-infra",
   serviceName: "magnum",
 } as const;
-const MAGNUM_API_VERSION = "container-infra latest";
+const MAGNUM_API_VERSION = MAGNUM_BASELINE_API_VERSION;
 
 const optionalText = z.string().trim().max(2048).optional();
 const optionalSmallText = z.string().trim().max(255).optional();

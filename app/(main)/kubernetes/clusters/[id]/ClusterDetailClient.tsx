@@ -69,6 +69,7 @@ import { flavorsQueryOptions } from "@/hooks/queries/useServers";
 import {
   clusterKubernetesVersion,
   getKubernetesHealthDiagnostics,
+  magnumClusterInfrastructureId,
 } from "@/lib/openstack/magnum-domain";
 import { deleteClusterNodeGroupAction } from "@/lib/openstack/magnum-actions";
 import type {
@@ -1040,8 +1041,11 @@ export function ClusterDetailClient({
               <DetailField label="Cluster ID" className="font-mono text-xs">
                 {cluster.uuid}
               </DetailField>
-              <DetailField label="Stack ID" className="font-mono text-xs">
-                {emptyToDash(cluster.stack_id)}
+              <DetailField
+                label="Infrastructure ID"
+                className="font-mono text-xs"
+              >
+                {emptyToDash(magnumClusterInfrastructureId(cluster))}
               </DetailField>
               <DetailField label="Created">
                 {emptyToDash(cluster.created_at)}
