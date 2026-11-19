@@ -13,6 +13,7 @@ import {
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_STANDARD_ATTRIBUTE_REVISION_EXTENSION,
   NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
@@ -35,7 +36,7 @@ const NEUTRON_SERVICE = {
 const resourceId = z.string().trim().min(1).max(255);
 const tag = z.string().trim().min(1).max(NEUTRON_MAX_TAG_LENGTH);
 const networkTagsInput = z.object({
-  expectedRevisionNumber: z.number().int().nonnegative(),
+  expectedRevisionNumber: z.number().int().nonnegative().optional(),
   tags: z
     .array(tag)
     .max(NEUTRON_MAX_TAGS)
@@ -57,7 +58,7 @@ const networkTagsInput = z.object({
 type NetworkTagState = {
   id: string;
   projectId: string;
-  revisionNumber: number;
+  revisionNumber?: number;
   tags: string[];
 };
 
@@ -88,8 +89,8 @@ function parseNetworkTagState(
   if (
     id !== expectedId ||
     typeof projectId !== "string" ||
-    !Number.isInteger(revisionNumber) ||
-    (revisionNumber as number) < 0 ||
+    (revisionNumber !== undefined &&
+      (!Number.isInteger(revisionNumber) || (revisionNumber as number) < 0)) ||
     !Array.isArray(tags) ||
     !tags.every((value) => typeof value === "string")
   ) {
@@ -99,7 +100,9 @@ function parseNetworkTagState(
   return {
     id,
     projectId,
-    revisionNumber: revisionNumber as number,
+    ...(revisionNumber !== undefined
+      ? { revisionNumber: revisionNumber as number }
+      : {}),
     tags,
   };
 }
@@ -178,6 +181,11 @@ export async function updateNetworkTagsAction(
       activeScope,
     );
   }
+  const revisionSupport = extensionSupport(
+    capabilities,
+    NEUTRON_STANDARD_ATTRIBUTE_REVISION_EXTENSION,
+    "Network revision checks",
+  );
 
   let payload: unknown;
   try {
@@ -216,7 +224,34 @@ export async function updateNetworkTagsAction(
       activeScope,
     );
   }
-  if (network.revisionNumber !== parsedInput.data.expectedRevisionNumber) {
+  if (
+    revisionSupport.status === "supported" &&
+    network.revisionNumber === undefined
+  ) {
+    return mutationFailure(
+      {
+        code: "invalid-response",
+        message:
+          "The network revision could not be verified. Refresh and try again.",
+        retryable: true,
+      },
+      activeScope,
+    );
+  }
+  if (
+    network.revisionNumber !== undefined &&
+    parsedInput.data.expectedRevisionNumber === undefined
+  ) {
+    return validationFailure(
+      activeScope,
+      "The network revision is missing. Refresh and try again.",
+    );
+  }
+  if (
+    network.revisionNumber !== undefined &&
+    parsedInput.data.expectedRevisionNumber !== undefined &&
+    network.revisionNumber !== parsedInput.data.expectedRevisionNumber
+  ) {
     return mutationFailure(
       mutationErrorForStatus(412, "save network tags"),
       activeScope,

@@ -68,7 +68,9 @@ export function NetworkTagsSection({
         { projectId, regionId },
         network.id,
         {
-          expectedRevisionNumber: network.revision_number,
+          ...(network.revision_number !== undefined
+            ? { expectedRevisionNumber: network.revision_number }
+            : {}),
           tags: parsed.tags,
         },
       );

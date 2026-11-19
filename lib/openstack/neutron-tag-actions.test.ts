@@ -12,6 +12,7 @@ vi.mock("@/lib/mutation-context", () => ({
 }));
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
+  NEUTRON_STANDARD_ATTRIBUTE_REVISION_EXTENSION: "standard-attr-revisions",
   NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION: "standard-attr-tag",
 }));
 vi.mock("@/lib/openstack/mutations", () => ({
@@ -55,7 +56,11 @@ describe("Neutron network tag mutation", () => {
       context: { projectToken: "token", scope },
     });
     mocks.discoverNetworkCapabilities.mockResolvedValue(
-      capabilities(["standard-attr-tag", "revision-if-match"]),
+      capabilities([
+        "standard-attr-tag",
+        "standard-attr-revisions",
+        "revision-if-match",
+      ]),
     );
     mocks.openstackRequest.mockResolvedValue(networkPayload());
     mocks.executeOpenStackMutation.mockResolvedValue({
@@ -126,6 +131,56 @@ describe("Neutron network tag mutation", () => {
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
       expect.not.objectContaining({ headers: expect.anything() }),
     );
+  });
+
+  it("supports tag-only deployments without revision numbers", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue(
+      capabilities(["standard-attr-tag"]),
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      network: {
+        id: "network-a",
+        project_id: "project-a",
+        tags: ["old"],
+      },
+    });
+
+    await expect(
+      updateNetworkTagsAction(scope, "network-a", { tags: ["new"] }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { tags: ["new"] },
+        path: "/v2.0/networks/network-a/tags",
+      }),
+    );
+  });
+
+  it("requires advertised and returned revision data", async () => {
+    await expect(
+      updateNetworkTagsAction(scope, "network-a", { tags: ["new"] }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+
+    mocks.openstackRequest.mockResolvedValueOnce({
+      network: {
+        id: "network-a",
+        project_id: "project-a",
+        tags: ["old"],
+      },
+    });
+    await expect(
+      updateNetworkTagsAction(scope, "network-a", {
+        expectedRevisionNumber: 7,
+        tags: ["new"],
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-response" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("blocks a shared network and a stale network revision", async () => {
