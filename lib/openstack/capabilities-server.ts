@@ -61,6 +61,12 @@ export const NEUTRON_QOS_EXTENSION = "qos";
 export const NEUTRON_QOS_FLOATING_IP_EXTENSION = "qos-fip";
 export const NEUTRON_QOS_FLOATING_IP_NETWORK_POLICY_EXTENSION =
   "qos-fip-network-policy";
+export const NEUTRON_FLOATING_IP_PORT_FORWARDING_EXTENSION =
+  "floating-ip-port-forwarding";
+export const NEUTRON_FLOATING_IP_PORT_FORWARDING_DESCRIPTION_EXTENSION =
+  "floating-ip-port-forwarding-description";
+export const NEUTRON_FLOATING_IP_PORT_FORWARDING_PORT_RANGES_EXTENSION =
+  "floating-ip-port-forwarding-port-ranges";
 export const NEUTRON_QOS_GATEWAY_IP_EXTENSION = "qos-gateway-ip";
 export const NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION =
   "qos-port-network-policy";

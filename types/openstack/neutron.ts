@@ -170,6 +170,18 @@ export interface FloatingIp {
   revision_number: number;
 }
 
+export interface FloatingIpPortForwarding {
+  id: string;
+  internal_port_id: string;
+  internal_ip_address: string;
+  internal_port?: number | null;
+  external_port?: number | null;
+  internal_port_range?: string | null;
+  external_port_range?: string | null;
+  protocol: string;
+  description?: string;
+}
+
 export interface QosPolicyRule {
   id: string;
   type?: string;
