@@ -391,6 +391,7 @@ export function PortsTableClient({
   allowedAddressPairsSupport,
   dnsDomainPortsSupport,
   dnsIntegrationSupport,
+  extraDhcpOptionsSupport,
   projectId,
   regionId,
   initiallyOpen = false,
@@ -402,6 +403,7 @@ export function PortsTableClient({
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
+  extraDhcpOptionsSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
@@ -538,6 +540,7 @@ export function PortsTableClient({
             allowedAddressPairsSupport={allowedAddressPairsSupport}
             dnsDomainPortsSupport={dnsDomainPortsSupport}
             dnsIntegrationSupport={dnsIntegrationSupport}
+            extraDhcpOptionsSupport={extraDhcpOptionsSupport}
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}

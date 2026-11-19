@@ -16,6 +16,7 @@ import {
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
+  NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
@@ -48,6 +49,7 @@ const NEUTRON_SERVICE = {
 
 const resourceId = z.string().trim().min(1).max(255);
 const name = z.string().trim().min(1).max(255);
+const optionalName = z.string().trim().max(255);
 const description = z.string().trim().max(1024).default("");
 function isValidDnsLabels(value: string) {
   const labels = value.split(".");
@@ -148,6 +150,83 @@ const allowedAddressPairs = z
     }
   })
   .optional();
+const blankExtraDhcpOptionNames = new Set([
+  "router",
+  "classless-static-route",
+]);
+const extraDhcpOptionName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine((value) => !/[\r\n]/.test(value), "Use a single-line option name.");
+const extraDhcpOptionValue = z
+  .string()
+  .trim()
+  .max(255)
+  .refine((value) => !/[\r\n]/.test(value), "Use a single-line option value.");
+const extraDhcpOption = z
+  .object({
+    ipVersion: z.union([z.literal(4), z.literal(6)]),
+    optName: extraDhcpOptionName,
+    optValue: extraDhcpOptionValue,
+  })
+  .superRefine((option, context) => {
+    if (
+      !option.optValue &&
+      !blankExtraDhcpOptionNames.has(option.optName)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Enter an option value.",
+        path: ["optValue"],
+      });
+    }
+  });
+const extraDhcpOptionPatch = z
+  .object({
+    ipVersion: z.union([z.literal(4), z.literal(6)]),
+    optName: extraDhcpOptionName,
+    optValue: extraDhcpOptionValue.nullable(),
+  })
+  .superRefine((option, context) => {
+    if (
+      option.optValue === "" &&
+      !blankExtraDhcpOptionNames.has(option.optName)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Enter an option value.",
+        path: ["optValue"],
+      });
+    }
+  });
+function extraDhcpOptionsSchema<Option extends z.ZodTypeAny>(option: Option) {
+  return z
+    .array(option)
+    .superRefine((options, context) => {
+      const seen = new Set<string>();
+      for (const [index, value] of options.entries()) {
+        const parsed = value as {
+          ipVersion: 4 | 6;
+          optName: string;
+        };
+        const key = `${parsed.ipVersion}:${parsed.optName}`;
+        if (seen.has(key)) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "Remove the duplicate DHCP option for this IP version.",
+            path: [index],
+          });
+        }
+        seen.add(key);
+      }
+    })
+    .optional();
+}
+const extraDhcpOptions = extraDhcpOptionsSchema(extraDhcpOption);
+const extraDhcpOptionPatches = extraDhcpOptionsSchema(extraDhcpOptionPatch);
 const allocationPools = z
   .array(z.object({ start: ipAddress, end: ipAddress }))
   .max(32)
@@ -386,17 +465,19 @@ const portCreateSchema = z
     dnsName,
     networkId: resourceId,
     adminStateUp: z.boolean().default(true),
+    extraDhcpOptions,
     qosPolicyId: resourceId.nullable().optional(),
     ...portSecurityFields,
   })
   .superRefine(requirePortSecurityForAddressPairs);
 const portUpdateSchema = z
   .object({
-    name,
+    name: optionalName,
     description,
     dnsDomain,
     dnsName,
     adminStateUp: z.boolean(),
+    extraDhcpOptions: extraDhcpOptionPatches,
     qosPolicyId: resourceId.nullable().optional(),
     ...portSecurityFields,
   })
@@ -1176,6 +1257,14 @@ export async function createPortAction(
             required: NEUTRON_PORT_SECURITY_EXTENSION,
           },
         ]),
+    ...(value.extraDhcpOptions === undefined
+      ? []
+      : [
+          {
+            feature: "Extra DHCP options",
+            required: NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
+          },
+        ]),
     ...(value.securityGroupIds === undefined
       ? []
       : [
@@ -1218,6 +1307,15 @@ export async function createPortAction(
           : { dns_domain: value.dnsDomain }),
         network_id: value.networkId,
         admin_state_up: value.adminStateUp,
+        ...(value.extraDhcpOptions === undefined
+          ? {}
+          : {
+              extra_dhcp_opts: value.extraDhcpOptions.map((option) => ({
+                ip_version: option.ipVersion,
+                opt_name: option.optName,
+                opt_value: option.optValue,
+              })),
+            }),
         ...(value.qosPolicyId === undefined
           ? {}
           : { qos_policy_id: value.qosPolicyId }),
@@ -1287,6 +1385,14 @@ export async function updatePortAction(
             required: NEUTRON_PORT_SECURITY_EXTENSION,
           },
         ]),
+    ...(value.extraDhcpOptions === undefined
+      ? []
+      : [
+          {
+            feature: "Extra DHCP options",
+            required: NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
+          },
+        ]),
     ...(value.securityGroupIds === undefined
       ? []
       : [
@@ -1328,6 +1434,15 @@ export async function updatePortAction(
           ? {}
           : { dns_domain: value.dnsDomain }),
         admin_state_up: value.adminStateUp,
+        ...(value.extraDhcpOptions === undefined
+          ? {}
+          : {
+              extra_dhcp_opts: value.extraDhcpOptions.map((option) => ({
+                ip_version: option.ipVersion,
+                opt_name: option.optName,
+                opt_value: option.optValue,
+              })),
+            }),
         ...(value.qosPolicyId === undefined
           ? {}
           : { qos_policy_id: value.qosPolicyId }),

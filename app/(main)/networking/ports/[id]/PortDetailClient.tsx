@@ -21,6 +21,7 @@ interface PortDetailClientProps {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
+  extraDhcpOptionsSupport: OpenStackFeatureSupport;
   id: string;
   portSecuritySupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
@@ -49,6 +50,7 @@ export function PortDetailClient({
   allowedAddressPairsSupport,
   dnsDomainPortsSupport,
   dnsIntegrationSupport,
+  extraDhcpOptionsSupport,
   id,
   portSecuritySupport,
   projectId,
@@ -116,6 +118,7 @@ export function PortDetailClient({
             allowedAddressPairsSupport={allowedAddressPairsSupport}
             dnsDomainPortsSupport={dnsDomainPortsSupport}
             dnsIntegrationSupport={dnsIntegrationSupport}
+            extraDhcpOptionsSupport={extraDhcpOptionsSupport}
             port={port.data}
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}
@@ -318,6 +321,36 @@ export function PortDetailClient({
               ) : (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">
                   No additional address pairs allowed.
+                </p>
+              )}
+            </div>
+          </section>
+        ) : null}
+        {extraDhcpOptionsSupport.status !== "unsupported" ||
+        port.data.extra_dhcp_opts?.length ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">Extra DHCP options</h3>
+            <div className="divide-y rounded-md border">
+              {port.data.extra_dhcp_opts?.length ? (
+                port.data.extra_dhcp_opts.map((option) => (
+                  <div
+                    key={`${option.ip_version ?? 4}-${option.opt_name}`}
+                    className="grid gap-1 px-3 py-2.5 text-sm sm:grid-cols-[5rem_minmax(0,1fr)_minmax(0,1fr)]"
+                  >
+                    <span className="text-muted-foreground">
+                      IPv{option.ip_version ?? 4}
+                    </span>
+                    <span className="font-mono text-xs">
+                      {option.opt_name}
+                    </span>
+                    <span className="break-words font-mono text-xs text-muted-foreground">
+                      {option.opt_value || "Empty value"}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  No extra DHCP options configured.
                 </p>
               )}
             </div>

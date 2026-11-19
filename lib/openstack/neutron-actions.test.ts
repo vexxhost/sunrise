@@ -14,6 +14,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION: "dns-domain-ports",
   NEUTRON_DNS_INTEGRATION_EXTENSION: "dns-integration",
+  NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION: "extra_dhcp_opt",
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION: "net-mtu-writable",
   NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
@@ -62,6 +63,7 @@ describe("Neutron mutation actions", () => {
         "allowed-address-pairs",
         "dns-domain-ports",
         "dns-integration",
+        "extra_dhcp_opt",
         "extraroute",
         "extraroute-atomic",
         "network_availability_zone",
@@ -756,6 +758,161 @@ describe("Neutron mutation actions", () => {
     });
 
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps extra DHCP options when creating a port", async () => {
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      extraDhcpOptions: [
+        {
+          ipVersion: 4,
+          optName: "bootfile-name",
+          optValue: "pxelinux.0",
+        },
+        { ipVersion: 6, optName: "dns-server", optValue: "2001:db8::53" },
+      ],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            extra_dhcp_opts: [
+              {
+                ip_version: 4,
+                opt_name: "bootfile-name",
+                opt_value: "pxelinux.0",
+              },
+              {
+                ip_version: 6,
+                opt_name: "dns-server",
+                opt_value: "2001:db8::53",
+              },
+            ],
+          }),
+        },
+      }),
+    );
+  });
+
+  it("maps extra DHCP option changes and explicit removals", async () => {
+    await updatePortAction(scope, "port-a", {
+      name: "",
+      description: "",
+      adminStateUp: true,
+      extraDhcpOptions: [
+        { ipVersion: 4, optName: "bootfile-name", optValue: "new-image" },
+        { ipVersion: 6, optName: "dns-server", optValue: null },
+      ],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            extra_dhcp_opts: [
+              {
+                ip_version: 4,
+                opt_name: "bootfile-name",
+                opt_value: "new-image",
+              },
+              {
+                ip_version: 6,
+                opt_name: "dns-server",
+                opt_value: null,
+              },
+            ],
+          }),
+        },
+      }),
+    );
+  });
+
+  it("accepts blank values only for Neutron's blankable DHCP options", async () => {
+    const accepted = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      extraDhcpOptions: [
+        { ipVersion: 4, optName: "router", optValue: "" },
+      ],
+    });
+    const rejected = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      extraDhcpOptions: [
+        { ipVersion: 4, optName: "bootfile-name", optValue: "" },
+      ],
+    });
+
+    expect(accepted.ok).toBe(true);
+    expect(rejected).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: "Enter an option value.",
+      },
+    });
+  });
+
+  it("rejects duplicate extra DHCP options for the same IP version", async () => {
+    const result = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      extraDhcpOptions: [
+        { ipVersion: 4, optName: "dns-server", optValue: "192.0.2.54" },
+        { ipVersion: 4, optName: "dns-server", optValue: "192.0.2.55" },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("duplicate DHCP option"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects extra DHCP options when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: [],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      extraDhcpOptions: [
+        {
+          ipVersion: 4,
+          optName: "bootfile-name",
+          optValue: "pxelinux.0",
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "service-unavailable",
+        message: expect.stringContaining("extra_dhcp_opt"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("omits unsupported optional security attributes from a port request", async () => {

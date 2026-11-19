@@ -30,6 +30,7 @@ export const NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION = "allowed-address-pairs";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
 export const NEUTRON_DNS_DOMAIN_PORTS_EXTENSION = "dns-domain-ports";
 export const NEUTRON_DNS_INTEGRATION_EXTENSION = "dns-integration";
+export const NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION = "extra_dhcp_opt";
 export const NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION =
   "network_availability_zone";
 export const NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION = "net-mtu-writable";
