@@ -132,10 +132,10 @@ export interface Router {
   availability_zone_hints: string[];
   availability_zones: string[];
   flavor_id?: string | null;
-  tags: string[];
+  tags?: string[];
   created_at: string;
   updated_at: string;
-  revision_number: number;
+  revision_number?: number;
 }
 
 export interface FloatingIpPortDetails {

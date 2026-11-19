@@ -19,6 +19,7 @@ import {
   NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
+  NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import { canManageNeutronAdminOnlyRouterSettings } from "@/lib/openstack/neutron-router-gateways";
 
@@ -75,6 +76,13 @@ export default async function Page({
         "Router default-route ECMP",
       ),
   );
+  const tagSupportPromise = capabilitiesPromise.then((capabilities) =>
+    extensionSupport(
+      capabilities,
+      NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+      "Router tags",
+    ),
+  );
   const queryClient = makeQueryClient();
   const routerQuery = routerQueryOptions(
     session.regionId,
@@ -104,6 +112,7 @@ export default async function Page({
     multihomingSupport,
     qosGatewaySupport,
     routeSupport,
+    tagSupport,
   ] = await Promise.all([
     availabilityZoneSupportPromise,
     defaultRouteBfdSupportPromise,
@@ -111,6 +120,7 @@ export default async function Page({
     multihomingSupportPromise,
     qosGatewaySupportPromise,
     routeSupportPromise,
+    tagSupportPromise,
   ]);
   const canManageAdminOnlyRouterSettings =
     canManageNeutronAdminOnlyRouterSettings(session.keystoneProjectRoles);
@@ -126,6 +136,7 @@ export default async function Page({
         projectId={session.projectId}
         regionId={session.regionId}
         routeSupport={routeSupport}
+        tagSupport={tagSupport}
         qosGatewaySupport={qosGatewaySupport}
       />
     </QueryHydrationBoundary>

@@ -9,6 +9,7 @@ import {
   RemoveRouterExternalGatewayAction,
   RouterDetailActions,
 } from "@/components/Network/RouterDetailActions";
+import { NeutronResourceTagsSection } from "@/components/Network/NeutronResourceTagsSection";
 import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import {
   AddRouterRouteAction,
@@ -44,6 +45,7 @@ interface Props {
   qosGatewaySupport: OpenStackFeatureSupport;
   regionId: string;
   routeSupport: OpenStackFeatureSupport;
+  tagSupport: OpenStackFeatureSupport;
 }
 
 export function RouterDetailClient({
@@ -57,6 +59,7 @@ export function RouterDetailClient({
   qosGatewaySupport,
   regionId,
   routeSupport,
+  tagSupport,
 }: Props) {
   const router = useSuspenseQuery(routerQueryOptions(regionId, projectId, id));
   const ports = useSuspenseQuery(
@@ -111,9 +114,7 @@ export function RouterDetailClient({
         </div>
         {owned ? (
           <RouterDetailActions
-            canManageAdminOnlyRouterSettings={
-              canManageAdminOnlyRouterSettings
-            }
+            canManageAdminOnlyRouterSettings={canManageAdminOnlyRouterSettings}
             routerResource={router.data}
             externalNetworks={externalNetworks.data}
             interfacePorts={interfacePorts}
@@ -232,6 +233,14 @@ export function RouterDetailClient({
           ) : null}
         </div>
       </section>
+      <NeutronResourceTagsSection
+        owned={owned}
+        projectId={projectId}
+        regionId={regionId}
+        resource={router.data}
+        resourceType="router"
+        support={tagSupport}
+      />
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <Cable className="size-4 text-muted-foreground" />

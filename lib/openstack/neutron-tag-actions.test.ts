@@ -22,7 +22,7 @@ vi.mock("@/lib/openstack/request-server", () => ({
   openstackRequest: mocks.openstackRequest,
 }));
 
-import { updateNetworkTagsAction } from "@/lib/openstack/neutron-tag-actions";
+import { updateNeutronResourceTagsAction } from "@/lib/openstack/neutron-tag-actions";
 import { OpenStackRequestError } from "@/lib/openstack/request";
 
 const scope = { projectId: "project-a", regionId: "RegionOne" };
@@ -50,7 +50,19 @@ function networkPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("Neutron network tag mutation", () => {
+function routerPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    router: {
+      id: "router-a",
+      project_id: "project-a",
+      revision_number: 9,
+      tags: ["old"],
+      ...overrides,
+    },
+  };
+}
+
+describe("Neutron resource tag mutation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.guardMutationContext.mockResolvedValue({
@@ -76,7 +88,7 @@ describe("Neutron network tag mutation", () => {
 
   it("revalidates ownership and replaces network tags without a subresource precondition", async () => {
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["old"],
         tags: [" environment:production ", "", "line\nbreak"],
@@ -105,13 +117,84 @@ describe("Neutron network tag mutation", () => {
     );
   });
 
+  it("reuses the guarded tag workflow for routers", async () => {
+    mocks.openstackRequest.mockResolvedValue(routerPayload());
+
+    await expect(
+      updateNeutronResourceTagsAction(scope, "router", "router-a", {
+        expectedRevisionNumber: 9,
+        expectedTags: ["old"],
+        tags: ["edge"],
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/v2.0/routers/router-a" }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionLabel: "save router tags",
+        body: { tags: ["edge"] },
+        invalidates: [
+          "/networking",
+          "/networking/routers",
+          "/networking/routers/router-a",
+        ],
+        path: "/v2.0/routers/router-a/tags",
+        successMessage: "Router tags saved.",
+      }),
+    );
+  });
+
+  it("requires the matching router payload and active-project ownership", async () => {
+    mocks.openstackRequest.mockResolvedValueOnce(networkPayload());
+    await expect(
+      updateNeutronResourceTagsAction(scope, "router", "router-a", {
+        expectedRevisionNumber: 9,
+        expectedTags: ["old"],
+        tags: ["edge"],
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid-response" },
+    });
+
+    mocks.openstackRequest.mockResolvedValueOnce(
+      routerPayload({ project_id: "project-b" }),
+    );
+    await expect(
+      updateNeutronResourceTagsAction(scope, "router", "router-a", {
+        expectedRevisionNumber: 9,
+        expectedTags: ["old"],
+        tags: ["edge"],
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "permission-denied" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported resource kinds before authentication", async () => {
+    await expect(
+      updateNeutronResourceTagsAction(scope, "subnet", "subnet-a", {
+        expectedTags: [],
+        tags: ["new"],
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.guardMutationContext).not.toHaveBeenCalled();
+  });
+
   it("rejects confirmed unsupported tagging before reading the network", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue(
       capabilities(["revision-if-match"]),
     );
 
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["old"],
         tags: ["new"],
@@ -127,7 +210,7 @@ describe("Neutron network tag mutation", () => {
   it("allows inconclusive tag discovery", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue(capabilities());
 
-    await updateNetworkTagsAction(scope, "network-a", {
+    await updateNeutronResourceTagsAction(scope, "network", "network-a", {
       expectedRevisionNumber: 7,
       expectedTags: ["old"],
       tags: ["new"],
@@ -151,7 +234,7 @@ describe("Neutron network tag mutation", () => {
     });
 
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedTags: ["old"],
         tags: ["new"],
       }),
@@ -174,7 +257,7 @@ describe("Neutron network tag mutation", () => {
     );
 
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: legacyTags,
         tags: ["retained"],
@@ -198,7 +281,7 @@ describe("Neutron network tag mutation", () => {
     });
 
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedTags: ["old"],
         tags: ["new"],
       }),
@@ -211,7 +294,7 @@ describe("Neutron network tag mutation", () => {
 
   it("requires advertised and returned revision data", async () => {
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedTags: ["old"],
         tags: ["new"],
       }),
@@ -228,7 +311,7 @@ describe("Neutron network tag mutation", () => {
       },
     });
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["old"],
         tags: ["new"],
@@ -245,7 +328,7 @@ describe("Neutron network tag mutation", () => {
       networkPayload({ project_id: "project-b" }),
     );
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["old"],
         tags: ["new"],
@@ -259,7 +342,7 @@ describe("Neutron network tag mutation", () => {
       networkPayload({ revision_number: 8 }),
     );
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["old"],
         tags: ["new"],
@@ -277,7 +360,7 @@ describe("Neutron network tag mutation", () => {
     );
 
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["one", "two"],
         tags: ["two", "one"],
@@ -292,7 +375,7 @@ describe("Neutron network tag mutation", () => {
 
   it("rejects invalid tags and malformed or missing networks", async () => {
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["old"],
         tags: ["duplicate", "duplicate"],
@@ -305,7 +388,7 @@ describe("Neutron network tag mutation", () => {
 
     mocks.openstackRequest.mockResolvedValueOnce({ network: { id: "other" } });
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["old"],
         tags: ["new"],
@@ -319,7 +402,7 @@ describe("Neutron network tag mutation", () => {
       new OpenStackRequestError(404, "Not found"),
     );
     await expect(
-      updateNetworkTagsAction(scope, "network-a", {
+      updateNeutronResourceTagsAction(scope, "network", "network-a", {
         expectedRevisionNumber: 7,
         expectedTags: ["old"],
         tags: ["new"],
