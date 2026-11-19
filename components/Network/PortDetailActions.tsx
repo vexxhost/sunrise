@@ -55,6 +55,10 @@ import {
   portExtraDhcpOptionInputs,
   type ExtraDhcpOptionInput,
 } from "@/lib/openstack/neutron-extra-dhcp-options";
+import {
+  isNeutronPortVnicType,
+  NEUTRON_PORT_VNIC_TYPE_OPTIONS,
+} from "@/lib/openstack/neutron-port-vnic-types";
 
 type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
 
@@ -71,6 +75,7 @@ interface PortDetailActionsProps {
   extraDhcpOptionsSupport: OpenStackFeatureSupport;
   groups: SecurityGroup[];
   port: Port;
+  portBindingSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
@@ -88,6 +93,7 @@ export function PortDetailActions({
   extraDhcpOptionsSupport,
   groups,
   port,
+  portBindingSupport,
   portSecuritySupport,
   qosSupport,
   projectId,
@@ -105,6 +111,9 @@ export function PortDetailActions({
   const [dnsDomain, setDnsDomain] = useState(port.dns_domain ?? "");
   const [dnsName, setDnsName] = useState(port.dns_name ?? "");
   const [adminStateUp, setAdminStateUp] = useState(port.admin_state_up);
+  const [vnicType, setVnicType] = useState(
+    port["binding:vnic_type"] ?? "normal",
+  );
   const [propagateUplinkStatus, setPropagateUplinkStatus] = useState(
     port.propagate_uplink_status ?? true,
   );
@@ -142,6 +151,7 @@ export function PortDetailActions({
   const extraDhcpOptionsAvailable =
     extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
+  const portBindingAvailable = portBindingSupport.status !== "unsupported";
   const uplinkStatusPropagationAvailable =
     uplinkStatusPropagationSupport.status !== "unsupported";
   const uplinkStatusPropagationUpdatable =
@@ -159,6 +169,7 @@ export function PortDetailActions({
   const computeAttached =
     port.device_owner.startsWith("compute:") && Boolean(port.device_id);
   const infrastructureManaged = Boolean(port.device_owner) && !computeAttached;
+  const portBound = computeAttached || Boolean(port["binding:host_id"]);
 
   if (infrastructureManaged) {
     return <Badge variant="outline">Managed by OpenStack</Badge>;
@@ -172,6 +183,7 @@ export function PortDetailActions({
       setDnsDomain(port.dns_domain ?? "");
       setDnsName(port.dns_name ?? "");
       setAdminStateUp(port.admin_state_up);
+      setVnicType(port["binding:vnic_type"] ?? "normal");
       setPropagateUplinkStatus(port.propagate_uplink_status ?? true);
       setPortSecurityEnabled(port.port_security_enabled);
       setSecurityGroupIds(port.security_groups);
@@ -224,12 +236,20 @@ export function PortDetailActions({
       const propagateUplinkStatusChanged =
         uplinkStatusPropagationUpdatable &&
         propagateUplinkStatus !== (port.propagate_uplink_status ?? true);
+      const vnicTypeChanged =
+        portBindingAvailable &&
+        !portBound &&
+        vnicType !== (port["binding:vnic_type"] ?? "normal");
       const result = await updatePortAction({ projectId, regionId }, port.id, {
         name,
         description,
         dnsName: dnsNameChanged ? dnsName : undefined,
         dnsDomain: dnsDomainChanged ? dnsDomain : undefined,
         adminStateUp,
+        vnicType:
+          vnicTypeChanged && isNeutronPortVnicType(vnicType)
+            ? vnicType
+            : undefined,
         propagateUplinkStatus: propagateUplinkStatusChanged
           ? propagateUplinkStatus
           : undefined,
@@ -462,6 +482,41 @@ export function PortDetailActions({
                   />
                 </div>
               ) : null}
+              {portBindingAvailable ? (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="edit-port-vnic-type">vNIC type</Label>
+                  <Select
+                    value={vnicType}
+                    disabled={pending || portBound}
+                    onValueChange={setVnicType}
+                  >
+                    <SelectTrigger id="edit-port-vnic-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!isNeutronPortVnicType(vnicType) ? (
+                        <SelectItem value={vnicType}>
+                          {vnicType} (reported by Neutron)
+                        </SelectItem>
+                      ) : null}
+                      {NEUTRON_PORT_VNIC_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {portBound
+                      ? "Detach this port before changing its vNIC type."
+                      : `${
+                          NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
+                            (option) => option.value === vnicType,
+                          )?.description ?? "Value reported by Neutron"
+                        }. Availability depends on the network backend and compute hosts.`}
+                  </p>
+                </div>
+              ) : null}
               <label
                 className={`flex items-start gap-3 rounded-md border p-3${portSecurityAvailable ? "" : " sm:col-span-2"}`}
               >
@@ -579,6 +634,7 @@ export function PortDetailActions({
             !dnsIntegrationAvailable ||
             !dnsDomainPortsAvailable ||
             !qosAvailable ||
+            !portBindingAvailable ||
             !uplinkStatusPropagationUpdatable ? (
               <MutationAlert
                 variant="info"
@@ -603,6 +659,9 @@ export function PortDetailActions({
                   <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
                 {!qosAvailable ? <p>{qosSupport.message}</p> : null}
+                {!portBindingAvailable ? (
+                  <p>{portBindingSupport.message}</p>
+                ) : null}
                 {!uplinkStatusPropagationUpdatable ? (
                   <p>{uplinkStatusPropagationUnavailableMessage}</p>
                 ) : null}

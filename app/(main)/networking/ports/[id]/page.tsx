@@ -17,6 +17,7 @@ import {
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
+  NEUTRON_PORT_BINDING_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
@@ -64,6 +65,11 @@ export default async function Page({
     capabilities,
     NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
     "Extra DHCP options",
+  );
+  const portBindingSupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_BINDING_EXTENSION,
+    "Port vNIC types",
   );
   const qosSupport = extensionSupport(
     capabilities,
@@ -117,6 +123,7 @@ export default async function Page({
         projectId={session.projectId}
         regionId={session.regionId}
         portSecuritySupport={portSecuritySupport}
+        portBindingSupport={portBindingSupport}
         qosNetworkPolicySupport={qosNetworkPolicySupport}
         qosSupport={qosSupport}
         securityGroupSupport={securityGroupSupport}

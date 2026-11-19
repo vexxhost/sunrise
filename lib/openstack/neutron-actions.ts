@@ -19,6 +19,7 @@ import {
   NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
+  NEUTRON_PORT_BINDING_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_FLOATING_IP_EXTENSION,
@@ -30,6 +31,7 @@ import {
   NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
+import { NEUTRON_PORT_VNIC_TYPES } from "@/lib/openstack/neutron-port-vnic-types";
 import {
   getIpv6ConfigurationAttributes,
   usesIpv6AutoAddressing,
@@ -470,6 +472,7 @@ const portCreateSchema = z
     dnsName,
     networkId: resourceId,
     adminStateUp: z.boolean().default(true),
+    vnicType: z.enum(NEUTRON_PORT_VNIC_TYPES).optional(),
     propagateUplinkStatus: z.boolean().optional(),
     extraDhcpOptions,
     qosPolicyId: resourceId.nullable().optional(),
@@ -483,6 +486,7 @@ const portUpdateSchema = z
     dnsDomain,
     dnsName,
     adminStateUp: z.boolean(),
+    vnicType: z.enum(NEUTRON_PORT_VNIC_TYPES).optional(),
     propagateUplinkStatus: z.boolean().optional(),
     extraDhcpOptions: extraDhcpOptionPatches,
     qosPolicyId: resourceId.nullable().optional(),
@@ -1332,6 +1336,14 @@ export async function createPortAction(
             required: NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
           },
         ]),
+    ...(value.vnicType === undefined
+      ? []
+      : [
+          {
+            feature: "Port vNIC types",
+            required: NEUTRON_PORT_BINDING_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1350,6 +1362,9 @@ export async function createPortAction(
           : { dns_domain: value.dnsDomain }),
         network_id: value.networkId,
         admin_state_up: value.adminStateUp,
+        ...(value.vnicType === undefined
+          ? {}
+          : { "binding:vnic_type": value.vnicType }),
         ...(value.propagateUplinkStatus === undefined
           ? {}
           : { propagate_uplink_status: value.propagateUplinkStatus }),
@@ -1475,6 +1490,14 @@ export async function updatePortAction(
             required: NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
           },
         ]),
+    ...(value.vnicType === undefined
+      ? []
+      : [
+          {
+            feature: "Port vNIC types",
+            required: NEUTRON_PORT_BINDING_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1492,6 +1515,9 @@ export async function updatePortAction(
           ? {}
           : { dns_domain: value.dnsDomain }),
         admin_state_up: value.adminStateUp,
+        ...(value.vnicType === undefined
+          ? {}
+          : { "binding:vnic_type": value.vnicType }),
         ...(value.propagateUplinkStatus === undefined
           ? {}
           : { propagate_uplink_status: value.propagateUplinkStatus }),

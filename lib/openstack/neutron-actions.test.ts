@@ -17,6 +17,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION: "extra_dhcp_opt",
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION: "net-mtu-writable",
+  NEUTRON_PORT_BINDING_EXTENSION: "binding",
   NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
   NEUTRON_QOS_EXTENSION: "qos",
   NEUTRON_QOS_FLOATING_IP_EXTENSION: "qos-fip",
@@ -65,6 +66,7 @@ describe("Neutron mutation actions", () => {
       discoveryStatus: "available",
       extensions: [
         "allowed-address-pairs",
+        "binding",
         "dns-domain-ports",
         "dns-integration",
         "extra_dhcp_opt",
@@ -577,6 +579,136 @@ describe("Neutron mutation actions", () => {
     });
 
     expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps explicit port vNIC types on create and update", async () => {
+    await createPortAction(scope, {
+      name: "sriov-port",
+      description: "SR-IOV interface",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "direct",
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "sriov-port",
+      description: "Return to a virtual interface",
+      adminStateUp: true,
+      vnicType: "normal",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({ "binding:vnic_type": "direct" }),
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({ "binding:vnic_type": "normal" }),
+        },
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(2);
+  });
+
+  it("omits default and unchanged port vNIC types", async () => {
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "Application interface",
+      networkId: "network-a",
+      adminStateUp: true,
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "application-port",
+      description: "Renamed only",
+      adminStateUp: true,
+    });
+
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[0]?.[0]?.body.port,
+    ).not.toHaveProperty("binding:vnic_type");
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[1]?.[0]?.body.port,
+    ).not.toHaveProperty("binding:vnic_type");
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("rejects explicit port vNIC types when port binding is unsupported", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: [],
+      message: "",
+      serviceType: "network",
+    });
+
+    const createResult = await createPortAction(scope, {
+      name: "sriov-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "direct",
+    });
+    const updateResult = await updatePortAction(scope, "port-a", {
+      name: "sriov-port",
+      description: "",
+      adminStateUp: true,
+      vnicType: "direct",
+    });
+
+    expect(createResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("binding") },
+    });
+    expect(updateResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("binding") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid port vNIC types before contacting Neutron", async () => {
+    const result = await createPortAction(scope, {
+      name: "invalid-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "unsupported-future-type",
+    } as never);
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("lets Neutron validate port vNIC types when discovery is unavailable", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "Network capability discovery failed.",
+      serviceType: "network",
+    });
+
+    await createPortAction(scope, {
+      name: "sriov-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "direct",
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "sriov-port",
+      description: "",
+      adminStateUp: true,
+      vnicType: "normal",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(2);
   });
 
   it("maps create and update port uplink-status propagation", async () => {
