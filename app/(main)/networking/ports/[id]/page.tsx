@@ -16,6 +16,7 @@ import {
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
+  NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
@@ -57,6 +58,11 @@ export default async function Page({
     NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
     "Per-port DNS domains",
   );
+  const extraDhcpOptionsSupport = extensionSupport(
+    capabilities,
+    NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
+    "Extra DHCP options",
+  );
   const qosSupport = extensionSupport(
     capabilities,
     NEUTRON_QOS_EXTENSION,
@@ -94,6 +100,7 @@ export default async function Page({
         allowedAddressPairsSupport={allowedAddressPairsSupport}
         dnsDomainPortsSupport={dnsDomainPortsSupport}
         dnsIntegrationSupport={dnsIntegrationSupport}
+        extraDhcpOptionsSupport={extraDhcpOptionsSupport}
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}

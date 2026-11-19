@@ -11,6 +11,7 @@ import {
   AllowedAddressPairsFields,
   type AllowedAddressPairInput,
 } from "@/components/Network/AllowedAddressPairsFields";
+import { ExtraDhcpOptionsFields } from "@/components/Network/ExtraDhcpOptionsFields";
 import {
   changedQosPolicyIdFromSelection,
   QosPolicySelect,
@@ -49,6 +50,11 @@ import {
 import type { Port, SecurityGroup, Server } from "@/types/openstack";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { qosPoliciesQueryOptions } from "@/hooks/queries/useNetworks";
+import {
+  diffExtraDhcpOptions,
+  portExtraDhcpOptionInputs,
+  type ExtraDhcpOptionInput,
+} from "@/lib/openstack/neutron-extra-dhcp-options";
 
 type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
 
@@ -62,6 +68,7 @@ interface PortDetailActionsProps {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
+  extraDhcpOptionsSupport: OpenStackFeatureSupport;
   groups: SecurityGroup[];
   port: Port;
   portSecuritySupport: OpenStackFeatureSupport;
@@ -76,6 +83,7 @@ export function PortDetailActions({
   allowedAddressPairsSupport,
   dnsDomainPortsSupport,
   dnsIntegrationSupport,
+  extraDhcpOptionsSupport,
   groups,
   port,
   portSecuritySupport,
@@ -107,6 +115,9 @@ export function PortDetailActions({
       macAddress: pair.mac_address ?? "",
     })),
   );
+  const [extraDhcpOptions, setExtraDhcpOptions] = useState<
+    ExtraDhcpOptionInput[]
+  >(portExtraDhcpOptionInputs(port.extra_dhcp_opts));
   const [qosPolicySelectionValue, setQosPolicySelectionValue] = useState(
     qosPolicySelection(port.qos_policy_id),
   );
@@ -121,6 +132,8 @@ export function PortDetailActions({
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const allowedAddressPairsAvailable =
     allowedAddressPairsSupport.status !== "unsupported";
+  const extraDhcpOptionsAvailable =
+    extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
   const qosPolicies = useQuery({
     ...qosPoliciesQueryOptions(regionId, projectId),
@@ -151,6 +164,7 @@ export function PortDetailActions({
           macAddress: pair.mac_address ?? "",
         })),
       );
+      setExtraDhcpOptions(portExtraDhcpOptionInputs(port.extra_dhcp_opts));
       setQosPolicySelectionValue(qosPolicySelection(port.qos_policy_id));
     }
     if (next === "attach") setServerId("");
@@ -174,6 +188,12 @@ export function PortDetailActions({
       const allowedAddressPairsChanged =
         JSON.stringify(allowedAddressPairs) !==
         JSON.stringify(originalAllowedAddressPairs);
+      const extraDhcpOptionsPatch = extraDhcpOptionsAvailable
+        ? diffExtraDhcpOptions(
+            extraDhcpOptions,
+            portExtraDhcpOptionInputs(port.extra_dhcp_opts),
+          )
+        : undefined;
       const portSecurityChanged =
         portSecurityAvailable &&
         portSecurityEnabled !== port.port_security_enabled;
@@ -202,6 +222,7 @@ export function PortDetailActions({
           allowedAddressPairsAvailable && allowedAddressPairsChanged
             ? allowedAddressPairs
             : undefined,
+        extraDhcpOptions: extraDhcpOptionsPatch,
         qosPolicyId: qosAvailable
           ? changedQosPolicyIdFromSelection(
               qosPolicySelectionValue,
@@ -348,8 +369,8 @@ export function PortDetailActions({
             <DialogHeader>
               <DialogTitle>Edit port</DialogTitle>
               <DialogDescription>
-                Update the interface label, DNS identity, state, and security
-                policy.
+                Update the interface label, DNS identity, DHCP options, state,
+                and security policy.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -357,7 +378,6 @@ export function PortDetailActions({
                 <Label htmlFor="edit-port-name">Name</Label>
                 <Input
                   id="edit-port-name"
-                  required
                   value={name}
                   disabled={pending}
                   onChange={(event) => setName(event.target.value)}
@@ -500,10 +520,19 @@ export function PortDetailActions({
                   value={allowedAddressPairs}
                 />
               ) : null}
+              {extraDhcpOptionsAvailable ? (
+                <ExtraDhcpOptionsFields
+                  disabled={pending}
+                  idPrefix="edit-port"
+                  onValueChange={setExtraDhcpOptions}
+                  value={extraDhcpOptions}
+                />
+              ) : null}
             </div>
             {!portSecurityAvailable ||
             !securityGroupsAvailable ||
             !allowedAddressPairsAvailable ||
+            !extraDhcpOptionsAvailable ||
             !dnsIntegrationAvailable ||
             !dnsDomainPortsAvailable ||
             !qosAvailable ? (
@@ -519,6 +548,9 @@ export function PortDetailActions({
                 ) : null}
                 {!allowedAddressPairsAvailable ? (
                   <p>{allowedAddressPairsSupport.message}</p>
+                ) : null}
+                {!extraDhcpOptionsAvailable ? (
+                  <p>{extraDhcpOptionsSupport.message}</p>
                 ) : null}
                 {!dnsIntegrationAvailable ? (
                   <p>{dnsIntegrationSupport.message}</p>
@@ -539,7 +571,7 @@ export function PortDetailActions({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
+              <Button type="submit" disabled={pending}>
                 {pending ? "Saving" : "Save changes"}
               </Button>
             </DialogFooter>

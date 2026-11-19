@@ -16,6 +16,7 @@ import {
   AllowedAddressPairsFields,
   type AllowedAddressPairInput,
 } from "@/components/Network/AllowedAddressPairsFields";
+import { ExtraDhcpOptionsFields } from "@/components/Network/ExtraDhcpOptionsFields";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import {
   QOS_POLICY_CLOUD_DEFAULT,
@@ -69,6 +70,7 @@ import {
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import type { ExtraDhcpOptionInput } from "@/lib/openstack/neutron-extra-dhcp-options";
 import { cn } from "@/lib/utils";
 
 interface ScopeProps {
@@ -652,6 +654,7 @@ export function CreatePortAction({
   allowedAddressPairsSupport,
   dnsDomainPortsSupport,
   dnsIntegrationSupport,
+  extraDhcpOptionsSupport,
   initiallyOpen = false,
   projectId,
   regionId,
@@ -662,6 +665,7 @@ export function CreatePortAction({
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
+  extraDhcpOptionsSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
@@ -680,6 +684,9 @@ export function CreatePortAction({
   const [allowedAddressPairs, setAllowedAddressPairs] = useState<
     AllowedAddressPairInput[]
   >([]);
+  const [extraDhcpOptions, setExtraDhcpOptions] = useState<
+    ExtraDhcpOptionInput[]
+  >([]);
   const [qosPolicySelection, setQosPolicySelection] = useState(QOS_POLICY_NONE);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -691,6 +698,8 @@ export function CreatePortAction({
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const allowedAddressPairsAvailable =
     allowedAddressPairsSupport.status !== "unsupported";
+  const extraDhcpOptionsAvailable =
+    extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
   const quota = useProjectQuotaImpact({
     enabled: open,
@@ -725,6 +734,7 @@ export function CreatePortAction({
       setPortSecurityEnabled(true);
       setSecurityGroupIds([]);
       setAllowedAddressPairs([]);
+      setExtraDhcpOptions([]);
       setQosPolicySelection(QOS_POLICY_NONE);
     }
   };
@@ -753,6 +763,10 @@ export function CreatePortAction({
           allowedAddressPairs:
             allowedAddressPairsAvailable && allowedAddressPairs.length
               ? allowedAddressPairs
+              : undefined,
+          extraDhcpOptions:
+            extraDhcpOptionsAvailable && extraDhcpOptions.length
+              ? extraDhcpOptions
               : undefined,
           qosPolicyId: qosAvailable
             ? optionalQosPolicyIdFromSelection(qosPolicySelection)
@@ -943,10 +957,19 @@ export function CreatePortAction({
                   value={allowedAddressPairs}
                 />
               ) : null}
+              {extraDhcpOptionsAvailable ? (
+                <ExtraDhcpOptionsFields
+                  disabled={pending}
+                  idPrefix="create-port"
+                  onValueChange={setExtraDhcpOptions}
+                  value={extraDhcpOptions}
+                />
+              ) : null}
             </div>
             {!portSecurityAvailable ||
             !securityGroupsAvailable ||
             !allowedAddressPairsAvailable ||
+            !extraDhcpOptionsAvailable ||
             !dnsIntegrationAvailable ||
             !dnsDomainPortsAvailable ||
             !qosAvailable ? (
@@ -962,6 +985,9 @@ export function CreatePortAction({
                 ) : null}
                 {!allowedAddressPairsAvailable ? (
                   <p>{allowedAddressPairsSupport.message}</p>
+                ) : null}
+                {!extraDhcpOptionsAvailable ? (
+                  <p>{extraDhcpOptionsSupport.message}</p>
                 ) : null}
                 {!dnsIntegrationAvailable ? (
                   <p>{dnsIntegrationSupport.message}</p>
