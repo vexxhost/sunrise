@@ -81,14 +81,17 @@ export interface Subnet {
   revision_number: number;
 }
 
+export interface RouterExternalFixedIp {
+  subnet_id: string;
+  ip_address: string;
+  port_id?: string;
+}
+
 export interface RouterExternalGatewayInfo {
   network_id: string;
   enable_snat: boolean;
   qos_policy_id?: string | null;
-  external_fixed_ips: Array<{
-    subnet_id: string;
-    ip_address: string;
-  }>;
+  external_fixed_ips: RouterExternalFixedIp[];
 }
 
 export interface NeutronAvailabilityZone {
@@ -106,6 +109,9 @@ export interface Router {
   tenant_id: string;
   project_id: string;
   external_gateway_info: RouterExternalGatewayInfo | null;
+  external_gateways?: RouterExternalGatewayInfo[];
+  enable_default_route_bfd?: boolean;
+  enable_default_route_ecmp?: boolean;
   routes: HostRoute[];
   distributed: boolean;
   ha: boolean;

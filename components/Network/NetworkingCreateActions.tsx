@@ -71,6 +71,7 @@ import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import type { ExtraDhcpOptionInput } from "@/lib/openstack/neutron-extra-dhcp-options";
+import { routerCapabilityBooleanInput } from "@/lib/openstack/neutron-router-gateways";
 import {
   isNeutronPortHardwareOffloadType,
   isNeutronPortNumaAffinityPolicy,
@@ -498,22 +499,38 @@ export function CreateNetworkAction({
 
 export function CreateRouterAction({
   availabilityZoneSupport,
+  canManageAdminOnlyRouterSettings,
+  defaultRouteBfdSupport,
+  defaultRouteEcmpSupport,
   initiallyOpen = false,
   projectId,
   regionId,
-}: ScopeProps & { availabilityZoneSupport: OpenStackFeatureSupport }) {
+}: ScopeProps & {
+  availabilityZoneSupport: OpenStackFeatureSupport;
+  canManageAdminOnlyRouterSettings: boolean;
+  defaultRouteBfdSupport: OpenStackFeatureSupport;
+  defaultRouteEcmpSupport: OpenStackFeatureSupport;
+}) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
+  const [enableDefaultRouteBfd, setEnableDefaultRouteBfd] = useState(false);
+  const [enableDefaultRouteEcmp, setEnableDefaultRouteEcmp] = useState(false);
   const [selectedAvailabilityZones, setSelectedAvailabilityZones] =
     useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const availabilityZonesAvailable =
     availabilityZoneSupport.status !== "unsupported";
+  const defaultRouteBfdAvailable =
+    canManageAdminOnlyRouterSettings &&
+    defaultRouteBfdSupport.status !== "unsupported";
+  const defaultRouteEcmpAvailable =
+    canManageAdminOnlyRouterSettings &&
+    defaultRouteEcmpSupport.status !== "unsupported";
   const availabilityZones = useQuery({
     ...networkAvailabilityZonesQueryOptions(regionId, projectId),
     enabled: open && availabilityZonesAvailable,
@@ -537,6 +554,8 @@ export function CreateRouterAction({
       setName("");
       setDescription("");
       setAdminStateUp(true);
+      setEnableDefaultRouteBfd(false);
+      setEnableDefaultRouteEcmp(false);
       setSelectedAvailabilityZones("");
     }
   };
@@ -549,6 +568,16 @@ export function CreateRouterAction({
           name,
           description,
           adminStateUp,
+          enableDefaultRouteBfd: routerCapabilityBooleanInput(
+            defaultRouteBfdSupport,
+            enableDefaultRouteBfd,
+            canManageAdminOnlyRouterSettings,
+          ),
+          enableDefaultRouteEcmp: routerCapabilityBooleanInput(
+            defaultRouteEcmpSupport,
+            enableDefaultRouteEcmp,
+            canManageAdminOnlyRouterSettings,
+          ),
           availabilityZoneHints: availabilityZoneHints(
             selectedAvailabilityZones,
           ),
@@ -622,6 +651,38 @@ export function CreateRouterAction({
                 disabled={pending}
                 onCheckedChange={setAdminStateUp}
               />
+              {defaultRouteEcmpAvailable ? (
+                <ToggleField
+                  id="router-default-route-ecmp"
+                  label="Default-route ECMP"
+                  description="Use equal-cost paths when this router has multiple external gateways."
+                  checked={enableDefaultRouteEcmp}
+                  disabled={pending}
+                  onCheckedChange={setEnableDefaultRouteEcmp}
+                />
+              ) : null}
+              {defaultRouteBfdAvailable ? (
+                <ToggleField
+                  id="router-default-route-bfd"
+                  label="Default-route BFD"
+                  description="Monitor external gateway paths with bidirectional forwarding detection."
+                  checked={enableDefaultRouteBfd}
+                  disabled={pending}
+                  onCheckedChange={setEnableDefaultRouteBfd}
+                />
+              ) : null}
+              {!canManageAdminOnlyRouterSettings &&
+              (defaultRouteBfdSupport.status !== "unsupported" ||
+                defaultRouteEcmpSupport.status !== "unsupported") ? (
+                <MutationAlert
+                  variant="info"
+                  title="Advanced routing settings are read-only"
+                >
+                  Neutron&apos;s default policy requires the admin role to set
+                  default-route ECMP or BFD. Sunrise omits these attributes for
+                  the current project token.
+                </MutationAlert>
+              ) : null}
             </div>
             {!availabilityZonesAvailable ? (
               <MutationAlert
@@ -995,11 +1056,11 @@ export function CreatePortAction({
                       ? "Switchdev hardware offload requires a Direct vNIC. Select no hardware offload to choose another type."
                       : trustedVifSelected
                         ? "Trusted VIF mode requires a Direct SR-IOV vNIC. Disable trusted mode to choose another type."
-                      : `${
-                          NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
-                            (option) => option.value === vnicType,
-                          )?.description
-                        }. Availability depends on the network backend and compute hosts.`}
+                        : `${
+                            NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
+                              (option) => option.value === vnicType,
+                            )?.description
+                          }. Availability depends on the network backend and compute hosts.`}
                   </p>
                 </div>
               ) : null}

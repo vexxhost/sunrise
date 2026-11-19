@@ -71,6 +71,7 @@ import type {
   Server as ServerType,
   Subnet,
 } from "@/types/openstack";
+import { routerExternalGateways } from "@/lib/openstack/neutron-router-gateways";
 
 interface NetworkTopologyClientProps {
   projectId: string;
@@ -199,14 +200,12 @@ function detailRows(data: TopologyNodeData) {
     }
     case "router": {
       const router = resource as Router;
+      const primaryGateway = routerExternalGateways(router)[0];
       return [
         ...common,
         ["Status", router.status],
         ["Admin state", router.admin_state_up ? "Up" : "Down"],
-        [
-          "SNAT",
-          router.external_gateway_info?.enable_snat ? "Enabled" : "Disabled",
-        ],
+        ["SNAT", primaryGateway?.enable_snat ? "Enabled" : "Disabled"],
         ["High availability", router.ha ? "Enabled" : "Disabled"],
       ];
     }
@@ -877,11 +876,7 @@ export function NetworkTopologyClient({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            variant="outline"
-            onClick={refresh}
-            loading={refreshing}
-          >
+          <Button variant="outline" onClick={refresh} loading={refreshing}>
             <RefreshCw className="size-4" />
             Refresh
           </Button>

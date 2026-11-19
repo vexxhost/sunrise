@@ -14,6 +14,10 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION: "dns-domain-ports",
   NEUTRON_DNS_INTEGRATION_EXTENSION: "dns-integration",
+  NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION: "enable-default-route-bfd",
+  NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION: "enable-default-route-ecmp",
+  NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION:
+    "external-gateway-multihoming",
   NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION: "extra_dhcp_opt",
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION: "net-mtu-writable",
@@ -39,6 +43,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
 }));
 
 import {
+  addRouterExternalGatewayAction,
   addRouterInterfaceAction,
   addRouterRouteAction,
   createFloatingIpAction,
@@ -59,10 +64,12 @@ import {
   replaceRouterRouteAction,
   replaceSecurityGroupRuleAction,
   regeneratePortMacAddressAction,
+  removeRouterExternalGatewayAction,
   setRouterGatewayAction,
   updateNetworkAction,
   updateFloatingIpAction,
   updatePortAction,
+  updateRouterAction,
   updateSubnetAction,
   updateSecurityGroupAction,
 } from "@/lib/openstack/neutron-actions";
@@ -79,6 +86,9 @@ describe("Neutron mutation actions", () => {
         "binding",
         "dns-domain-ports",
         "dns-integration",
+        "enable-default-route-bfd",
+        "enable-default-route-ecmp",
+        "external-gateway-multihoming",
         "extra_dhcp_opt",
         "extraroute",
         "extraroute-atomic",
@@ -467,6 +477,89 @@ describe("Neutron mutation actions", () => {
         },
       }),
     );
+  });
+
+  it("maps router default-route BFD and ECMP independently", async () => {
+    await createRouterAction(scope, {
+      name: "application-router",
+      description: "Application routing",
+      adminStateUp: true,
+      enableDefaultRouteBfd: true,
+      enableDefaultRouteEcmp: false,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          router: expect.objectContaining({
+            enable_default_route_bfd: true,
+            enable_default_route_ecmp: false,
+          }),
+        },
+      }),
+    );
+
+    await updateRouterAction(scope, "router-a", {
+      name: "application-router",
+      description: "Application routing",
+      adminStateUp: true,
+      enableDefaultRouteEcmp: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          router: {
+            name: "application-router",
+            description: "Application routing",
+            admin_state_up: true,
+            enable_default_route_ecmp: true,
+          },
+        },
+      }),
+    );
+  });
+
+  it("gates router BFD and ECMP using their own extensions", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["enable-default-route-bfd"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const ecmpResult = await updateRouterAction(scope, "router-a", {
+      name: "application-router",
+      description: "",
+      adminStateUp: true,
+      enableDefaultRouteEcmp: false,
+    });
+
+    expect(ecmpResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("enable-default-route-ecmp") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["enable-default-route-ecmp"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const bfdResult = await updateRouterAction(scope, "router-a", {
+      name: "application-router",
+      description: "",
+      adminStateUp: true,
+      enableDefaultRouteBfd: false,
+    });
+
+    expect(bfdResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("enable-default-route-bfd") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("rejects router availability-zone hints when the extension is absent", async () => {
@@ -1799,6 +1892,21 @@ describe("Neutron mutation actions", () => {
       }),
     );
 
+    await setRouterGatewayAction(scope, "router-a", {
+      networkId: "external-b",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          router: {
+            external_gateway_info: {
+              network_id: "external-b",
+            },
+          },
+        },
+      }),
+    );
+
     await addRouterInterfaceAction(scope, "router-a", {
       subnetId: "subnet-a",
     });
@@ -1818,6 +1926,123 @@ describe("Neutron mutation actions", () => {
         body: { subnet_id: "subnet-a" },
       }),
     );
+  });
+
+  it("adds and precisely removes multihomed router gateways", async () => {
+    await addRouterExternalGatewayAction(scope, "router-a", {
+      networkId: "external-a",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2.0/routers/router-a/add_external_gateways",
+        body: {
+          router: {
+            external_gateways: [{ network_id: "external-a" }],
+          },
+        },
+      }),
+    );
+
+    await removeRouterExternalGatewayAction(scope, "router-a", {
+      networkId: "external-a",
+      externalFixedIps: [
+        {
+          subnetId: "subnet-a",
+          ipAddress: "203.0.113.10",
+          portId: "response-only-port-a",
+        },
+      ],
+    } as never);
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2.0/routers/router-a/remove_external_gateways",
+        body: {
+          router: {
+            external_gateways: [
+              {
+                network_id: "external-a",
+                external_fixed_ips: [
+                  {
+                    subnet_id: "subnet-a",
+                    ip_address: "203.0.113.10",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    await removeRouterExternalGatewayAction(scope, "router-a", {
+      networkId: "external-a",
+      externalFixedIps: [{ subnetId: "subnet-b", ipAddress: "203.0.113.11" }],
+    });
+    const removalBodies = mocks.executeOpenStackMutation.mock.calls
+      .slice(-2)
+      .map(([options]) => options.body);
+    expect(removalBodies).toEqual([
+      {
+        router: {
+          external_gateways: [
+            {
+              network_id: "external-a",
+              external_fixed_ips: [
+                { subnet_id: "subnet-a", ip_address: "203.0.113.10" },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        router: {
+          external_gateways: [
+            {
+              network_id: "external-a",
+              external_fixed_ips: [
+                { subnet_id: "subnet-b", ip_address: "203.0.113.11" },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+
+    await removeRouterExternalGatewayAction(scope, "router-a", {
+      networkId: "link-local-external",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          router: {
+            external_gateways: [{ network_id: "link-local-external" }],
+          },
+        },
+      }),
+    );
+  });
+
+  it("rejects multihomed gateway mutations without extension support", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["router"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await addRouterExternalGatewayAction(scope, "router-a", {
+      networkId: "external-a",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining("external-gateway-multihoming"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("maps and independently gates router gateway QoS", async () => {

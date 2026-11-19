@@ -44,6 +44,12 @@ export const NEUTRON_PORT_RESOURCE_REQUEST_GROUPS_EXTENSION =
 export const NEUTRON_PORT_TRUSTED_VIF_EXTENSION = "port-trusted-vif";
 export const NEUTRON_DNS_DOMAIN_PORTS_EXTENSION = "dns-domain-ports";
 export const NEUTRON_DNS_INTEGRATION_EXTENSION = "dns-integration";
+export const NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION =
+  "external-gateway-multihoming";
+export const NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION =
+  "enable-default-route-bfd";
+export const NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION =
+  "enable-default-route-ecmp";
 export const NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION = "extra_dhcp_opt";
 export const NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION =
   "network_availability_zone";

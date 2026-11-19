@@ -11,8 +11,11 @@ import { isCreateActionRequested } from "@/lib/create-actions";
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION,
+  NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
+import { canManageNeutronAdminOnlyRouterSettings } from "@/lib/openstack/neutron-router-gateways";
 
 export default async function Page({
   searchParams,
@@ -35,12 +38,25 @@ export default async function Page({
       externalNetworksQueryOptions(session.regionId, session.projectId),
     ),
   ]);
+  const capabilities = await capabilitiesPromise;
   const availabilityZoneSupport = extensionSupport(
-    await capabilitiesPromise,
+    capabilities,
     NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
     "Router availability-zone scheduling",
   );
+  const defaultRouteBfdSupport = extensionSupport(
+    capabilities,
+    NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION,
+    "Router default-route BFD",
+  );
+  const defaultRouteEcmpSupport = extensionSupport(
+    capabilities,
+    NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
+    "Router default-route ECMP",
+  );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
+  const canManageAdminOnlyRouterSettings =
+    canManageNeutronAdminOnlyRouterSettings(session.keystoneProjectRoles);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <RoutersTableClient
@@ -49,6 +65,9 @@ export default async function Page({
         projectId={session.projectId}
         initiallyOpen={createRequested}
         availabilityZoneSupport={availabilityZoneSupport}
+        defaultRouteBfdSupport={defaultRouteBfdSupport}
+        defaultRouteEcmpSupport={defaultRouteEcmpSupport}
+        canManageAdminOnlyRouterSettings={canManageAdminOnlyRouterSettings}
       />
     </QueryHydrationBoundary>
   );

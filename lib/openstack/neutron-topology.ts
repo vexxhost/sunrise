@@ -6,6 +6,7 @@ import type {
   Server,
   Subnet,
 } from "@/types/openstack";
+import { routerExternalGateways } from "@/lib/openstack/neutron-router-gateways";
 
 export type TopologyResourceKind =
   | "external-network"
@@ -224,8 +225,8 @@ function layoutTopology(
 function relevantExternalNetworks(input: NetworkTopologyInput) {
   const ids = new Set<string>();
   for (const router of input.routers) {
-    if (router.external_gateway_info?.network_id) {
-      ids.add(router.external_gateway_info.network_id);
+    for (const gateway of routerExternalGateways(router)) {
+      ids.add(gateway.network_id);
     }
   }
   for (const floatingIp of input.floatingIps) {
@@ -316,30 +317,31 @@ export function buildNetworkTopology(input: NetworkTopologyInput) {
   }
 
   for (const router of input.routers) {
+    const gateways = routerExternalGateways(router);
     pushNode(
       createNode(
         "router",
         router,
         input.projectId,
         resourceName(router.name, router.id),
-        router.external_gateway_info
-          ? "Gateway connected"
-          : "No external gateway",
+        gateways.length === 0
+          ? "No external gateway"
+          : `${gateways.length} external gateway${gateways.length === 1 ? "" : "s"}`,
         router.status,
       ),
     );
-    const gatewayNetworkId = router.external_gateway_info?.network_id;
-    if (
-      gatewayNetworkId &&
-      knownNodeIds.has(nodeId("external-network", gatewayNetworkId))
-    ) {
-      edges.push(
-        createEdge(
-          nodeId("external-network", gatewayNetworkId),
-          nodeId("router", router.id),
-          "Gateway",
-        ),
-      );
+    for (const gatewayNetworkId of new Set(
+      gateways.map((gateway) => gateway.network_id),
+    )) {
+      if (knownNodeIds.has(nodeId("external-network", gatewayNetworkId))) {
+        edges.push(
+          createEdge(
+            nodeId("external-network", gatewayNetworkId),
+            nodeId("router", router.id),
+            "Gateway",
+          ),
+        );
+      }
     }
   }
 

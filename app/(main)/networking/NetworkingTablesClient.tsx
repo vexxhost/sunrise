@@ -45,6 +45,7 @@ import {
   neutronPortNumaAffinityPolicyLabel,
 } from "@/lib/openstack/neutron-port-placement";
 import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-types";
+import { routerExternalGateways } from "@/lib/openstack/neutron-router-gateways";
 
 interface NetworkingTableProps {
   projectId: string;
@@ -272,11 +273,17 @@ export function NetworksTableClient({
 
 export function RoutersTableClient({
   availabilityZoneSupport,
+  canManageAdminOnlyRouterSettings,
+  defaultRouteBfdSupport,
+  defaultRouteEcmpSupport,
   projectId,
   regionId,
   initiallyOpen = false,
 }: NetworkingTableProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
+  canManageAdminOnlyRouterSettings: boolean;
+  defaultRouteBfdSupport: OpenStackFeatureSupport;
+  defaultRouteEcmpSupport: OpenStackFeatureSupport;
 }) {
   const routers = useSuspenseQuery(routersQueryOptions(regionId, projectId));
   const externalNetworks = useSuspenseQuery(
@@ -319,21 +326,31 @@ export function RoutersTableClient({
       },
       {
         id: "gateway",
-        accessorFn: (router) =>
-          externalById.get(router.external_gateway_info?.network_id ?? "")
-            ?.name ?? "",
+        accessorFn: (router) => {
+          const gateways = routerExternalGateways(router);
+          const primary = gateways[0];
+          return primary
+            ? `${externalById.get(primary.network_id)?.name ?? primary.network_id} ${gateways.length}`
+            : "";
+        },
         header: "External gateway",
         cell: ({ row }) => {
-          const gateway = row.original.external_gateway_info;
-          if (!gateway)
+          const gateways = routerExternalGateways(row.original);
+          const primary = gateways[0];
+          if (!primary)
             return <span className="text-muted-foreground">Not connected</span>;
-          const gatewayNetwork = externalById.get(gateway.network_id);
+          const gatewayNetwork = externalById.get(primary.network_id);
           return (
-            <ResourceLink
-              href={`/networking/networks/${encodeURIComponent(gateway.network_id)}`}
-            >
-              {gatewayNetwork?.name || gateway.network_id}
-            </ResourceLink>
+            <span className="flex flex-wrap items-center gap-2">
+              <ResourceLink
+                href={`/networking/networks/${encodeURIComponent(primary.network_id)}`}
+              >
+                {gatewayNetwork?.name || primary.network_id}
+              </ResourceLink>
+              {gateways.length > 1 ? (
+                <Badge variant="outline">+{gateways.length - 1}</Badge>
+              ) : null}
+            </span>
           );
         },
         meta: { fieldType: "string", visible: true },
@@ -341,10 +358,10 @@ export function RoutersTableClient({
       {
         id: "snat",
         accessorFn: (router) =>
-          Boolean(router.external_gateway_info?.enable_snat),
+          Boolean(routerExternalGateways(router)[0]?.enable_snat),
         header: "SNAT",
         cell: ({ row }) =>
-          row.original.external_gateway_info?.enable_snat
+          routerExternalGateways(row.original)[0]?.enable_snat
             ? "Enabled"
             : "Disabled",
         meta: { fieldType: "boolean", visible: true },
@@ -373,6 +390,11 @@ export function RoutersTableClient({
             regionId={regionId}
             initiallyOpen={initiallyOpen}
             availabilityZoneSupport={availabilityZoneSupport}
+            canManageAdminOnlyRouterSettings={
+              canManageAdminOnlyRouterSettings
+            }
+            defaultRouteBfdSupport={defaultRouteBfdSupport}
+            defaultRouteEcmpSupport={defaultRouteEcmpSupport}
           />
         }
       >
