@@ -12,12 +12,12 @@ describe("address group input", () => {
     ).toEqual(["192.0.2.10", "198.51.100.0/24", "2001:db8::/64"]);
   });
 
-  it("accepts IPv4 and IPv6 addresses and CIDRs", () => {
+  it("accepts IPv4 and IPv6 CIDRs", () => {
     expect(
       addressListIssues([
-        "192.0.2.10",
+        "192.0.2.10/32",
         "198.51.100.0/24",
-        "2001:db8::1",
+        "2001:db8::1/128",
         "2001:db8::/64",
       ]),
     ).toEqual([]);
@@ -32,6 +32,12 @@ describe("address group input", () => {
     ]);
     expect(addressListIssues(["not-an-address"])).toEqual([
       "Invalid address: not-an-address",
+    ]);
+    expect(addressListIssues(["192.0.2.10"])).toEqual([
+      "Add a CIDR prefix, such as 192.0.2.10/32.",
+    ]);
+    expect(addressListIssues(["2001:db8::1"])).toEqual([
+      "Add a CIDR prefix, such as 2001:db8::1/128.",
     ]);
     expect(addressListIssues(["2001:DB8::/64", "2001:db8::/64"])).toEqual([
       "Remove duplicate address entries.",

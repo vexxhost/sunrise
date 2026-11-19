@@ -37,7 +37,9 @@ function addressError(address: string) {
   const [ip, prefix, ...rest] = address.split("/");
   const version = detectIpVersion(ip ?? "");
   if (!version || rest.length > 0) return `Invalid address: ${address}`;
-  if (prefix === undefined) return null;
+  if (prefix === undefined) {
+    return `Add a CIDR prefix, such as ${address}/${version === 4 ? 32 : 128}.`;
+  }
   const prefixLength = getCidrPrefixLength(address);
   if (prefixLength === null || prefixLength > (version === 4 ? 32 : 128)) {
     return `Invalid CIDR: ${address}`;
@@ -136,7 +138,7 @@ export function AddressGroupCreateAction({
             value={step}
             onValueChange={(value) => setStep(value as Step)}
           >
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid h-auto w-full grid-cols-3">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="addresses">Addresses</TabsTrigger>
               <TabsTrigger value="review">Review</TabsTrigger>
@@ -168,19 +170,20 @@ export function AddressGroupCreateAction({
               </TabsContent>
               <TabsContent value="addresses" className="space-y-2 pt-3">
                 <Label htmlFor="address-group-addresses">
-                  IP addresses and CIDRs
+                  IPv4 and IPv6 CIDRs
                 </Label>
                 <Textarea
                   id="address-group-addresses"
                   className="min-h-44 font-mono"
-                  placeholder={"10.20.0.0/16\n192.0.2.10\n2001:db8::/64"}
+                  placeholder={"10.20.0.0/16\n192.0.2.10/32\n2001:db8::1/128"}
                   value={addressText}
                   disabled={pending}
                   onChange={(event) => setAddressText(event.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Enter one IPv4 or IPv6 address or CIDR per line. You can also
-                  separate entries with commas.
+                  Enter one CIDR per line. Use /32 for one IPv4 address or /128
+                  for one IPv6 address. You can also separate entries with
+                  commas.
                 </p>
               </TabsContent>
               <TabsContent value="review" className="space-y-4 pt-3">

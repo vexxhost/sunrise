@@ -87,7 +87,7 @@ export function AddressGroupDetailActions({
     const addresses = addressesFromText(addressText);
     const issues = addressListIssues(addresses);
     if (!addresses.length || issues.length) {
-      setError(issues[0] ?? "Enter at least one address.");
+      setError(issues[0] ?? "Enter at least one CIDR.");
       return;
     }
     startTransition(async () => {
@@ -164,7 +164,9 @@ export function AddressGroupDetailActions({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit-address-group-description">Description</Label>
+                <Label htmlFor="edit-address-group-description">
+                  Description
+                </Label>
                 <Textarea
                   id="edit-address-group-description"
                   maxLength={1024}
@@ -206,16 +208,20 @@ export function AddressGroupDetailActions({
             </DialogHeader>
             <div className="space-y-1.5">
               <Label htmlFor="add-address-group-addresses">
-                IP addresses and CIDRs
+                IPv4 and IPv6 CIDRs
               </Label>
               <Textarea
                 id="add-address-group-addresses"
                 className="min-h-40 font-mono"
-                placeholder={"10.20.0.0/16\n192.0.2.10"}
+                placeholder={"10.20.0.0/16\n192.0.2.10/32\n2001:db8::1/128"}
                 value={addressText}
                 disabled={pending}
                 onChange={(event) => setAddressText(event.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                Enter one CIDR per line. Use /32 for one IPv4 address or /128
+                for one IPv6 address. You can also separate entries with commas.
+              </p>
             </div>
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             <DialogFooter>

@@ -40,6 +40,16 @@ export function AddressGroupDetailClient({
   const group = useSuspenseQuery(
     addressGroupQueryOptions(regionId, projectId, id),
   );
+  const optionalMetadata: Array<readonly [string, string | number]> = [];
+  if (group.data.created_at) {
+    optionalMetadata.push(["Created", group.data.created_at]);
+  }
+  if (group.data.updated_at) {
+    optionalMetadata.push(["Updated", group.data.updated_at]);
+  }
+  if (group.data.revision_number !== undefined) {
+    optionalMetadata.push(["Revision", group.data.revision_number]);
+  }
 
   return (
     <div className="space-y-6">
@@ -109,18 +119,9 @@ export function AddressGroupDetailClient({
               group.data.project_id || group.data.tenant_id || "Not reported"
             }
           />
-          <DetailRow
-            label="Created"
-            value={group.data.created_at || "Not reported"}
-          />
-          <DetailRow
-            label="Updated"
-            value={group.data.updated_at || "Not reported"}
-          />
-          <DetailRow
-            label="Revision"
-            value={group.data.revision_number ?? "Not reported"}
-          />
+          {optionalMetadata.map(([label, value]) => (
+            <DetailRow key={label} label={label} value={value} />
+          ))}
         </div>
       </section>
     </div>

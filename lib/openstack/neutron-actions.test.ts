@@ -2625,7 +2625,7 @@ describe("Neutron mutation actions", () => {
     await createAddressGroupAction(scope, {
       name: "trusted-clients",
       description: "Known client networks",
-      addresses: ["192.0.2.10", "2001:db8::/64"],
+      addresses: ["10.11.12.13/32", "10.13.67.0/24", "2001:db8::1/128"],
     });
     expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -2635,7 +2635,7 @@ describe("Neutron mutation actions", () => {
           address_group: {
             name: "trusted-clients",
             description: "Known client networks",
-            addresses: ["192.0.2.10", "2001:db8::/64"],
+            addresses: ["10.11.12.13/32", "10.13.67.0/24", "2001:db8::1/128"],
           },
         },
       }),
@@ -2670,13 +2670,13 @@ describe("Neutron mutation actions", () => {
     );
 
     await removeAddressGroupAddressesAction(scope, "group-a", {
-      addresses: ["192.0.2.10"],
+      addresses: ["192.0.2.10/32"],
     });
     expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
       expect.objectContaining({
         method: "PUT",
         path: "/v2.0/address-groups/group-a/remove_addresses",
-        body: { addresses: ["192.0.2.10"] },
+        body: { addresses: ["192.0.2.10/32"] },
       }),
     );
 
@@ -2700,6 +2700,11 @@ describe("Neutron mutation actions", () => {
       description: "",
       addresses: ["2001:DB8::/64", "2001:db8::/64"],
     });
+    const missingPrefix = await createAddressGroupAction(scope, {
+      name: "missing-prefix",
+      description: "",
+      addresses: ["192.0.2.10"],
+    });
     expect(invalid).toMatchObject({
       ok: false,
       error: { code: "validation-failed" },
@@ -2707,6 +2712,10 @@ describe("Neutron mutation actions", () => {
     expect(duplicate).toMatchObject({
       ok: false,
       error: { message: "Remove the duplicate address." },
+    });
+    expect(missingPrefix).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
     });
 
     mocks.discoverNetworkCapabilities.mockResolvedValue({

@@ -33,8 +33,8 @@ export function AddressGroupsClient({
   const projectGroups = useSuspenseQuery(
     projectAddressGroupsQueryOptions(regionId, projectId),
   );
-  const columns = useMemo<ColumnDef<AddressGroup>[]>(
-    () => [
+  const columns = useMemo<ColumnDef<AddressGroup>[]>(() => {
+    const columns: ColumnDef<AddressGroup>[] = [
       {
         accessorKey: "name",
         header: "Name",
@@ -72,14 +72,18 @@ export function AddressGroupsClient({
         header: "Access",
         meta: { fieldType: "string", visible: true },
       },
-      {
+    ];
+
+    if (groups.data.some((group) => group.created_at)) {
+      columns.push({
         accessorKey: "created_at",
         header: "Age",
         meta: { fieldType: "date", dateDisplay: "age", visible: false },
-      },
-    ],
-    [projectGroups.data, projectId],
-  );
+      });
+    }
+
+    return columns;
+  }, [groups.data, projectGroups.data, projectId]);
 
   return (
     <>

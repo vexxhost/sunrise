@@ -13,6 +13,7 @@ import {
 } from "@/hooks/queries/useNetworks";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import type { SecurityGroupRule } from "@/types/openstack";
 
 function ports(rule: {
   port_range_min: number | null;
@@ -22,6 +23,18 @@ function ports(rule: {
   if (rule.port_range_min === rule.port_range_max)
     return String(rule.port_range_min);
   return `${rule.port_range_min ?? "Any"}-${rule.port_range_max ?? "Any"}`;
+}
+
+export function securityGroupRuleRemoteType(
+  rule: Pick<
+    SecurityGroupRule,
+    "remote_address_group_id" | "remote_group_id" | "remote_ip_prefix"
+  >,
+) {
+  if (rule.remote_address_group_id) return "Address group";
+  if (rule.remote_group_id) return "Security group";
+  if (rule.remote_ip_prefix) return "CIDR";
+  return "Unrestricted";
 }
 
 export function SecurityGroupDetailClient({
@@ -110,25 +123,32 @@ export function SecurityGroupDetailClient({
                 <span>{rule.ethertype}</span>
                 <span className="uppercase">{rule.protocol || "Any"}</span>
                 <span>{ports(rule)}</span>
-                <span className="truncate font-mono text-xs">
+                <div className="min-w-0">
+                  <span className="block text-xs text-muted-foreground">
+                    {securityGroupRuleRemoteType(rule)}
+                  </span>
                   {rule.remote_address_group_id ? (
                     <ResourceLink
+                      className="block truncate font-mono text-xs"
                       href={`/networking/address-groups/${encodeURIComponent(rule.remote_address_group_id)}`}
                     >
-                      {addressGroupById.get(rule.remote_address_group_id)?.name ||
-                        rule.remote_address_group_id}
+                      {addressGroupById.get(rule.remote_address_group_id)
+                        ?.name || rule.remote_address_group_id}
                     </ResourceLink>
                   ) : rule.remote_group_id ? (
                     <ResourceLink
+                      className="block truncate font-mono text-xs"
                       href={`/networking/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
                     >
                       {groupById.get(rule.remote_group_id)?.name ||
                         rule.remote_group_id}
                     </ResourceLink>
                   ) : (
-                    rule.remote_ip_prefix || "Any"
+                    <span className="block truncate font-mono text-xs">
+                      {rule.remote_ip_prefix || "Any"}
+                    </span>
                   )}
-                </span>
+                </div>
                 <span className="truncate text-muted-foreground">
                   {rule.description || "-"}
                 </span>

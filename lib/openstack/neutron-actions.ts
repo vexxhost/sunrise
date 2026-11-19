@@ -610,7 +610,7 @@ const securityGroupRuleCreateSchema = z
     }
   });
 const addressGroupAddresses = z
-  .array(ipAddressOrCidr)
+  .array(cidr)
   .superRefine((addresses, context) => {
     const seen = new Set<string>();
     for (const [index, address] of addresses.entries()) {
