@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
-import { updateNetworkTagsAction } from "@/lib/openstack/neutron-tag-actions";
+import { updateNeutronResourceTagsAction } from "@/lib/openstack/neutron-tag-actions";
 import {
   decodeNeutronTagFromEditor,
   encodeNeutronTagForEditor,
@@ -27,7 +27,14 @@ import {
   sameNeutronTags,
   validateNeutronTags,
 } from "@/lib/openstack/neutron-tags";
-import type { Network } from "@/types/openstack";
+
+type TaggableResourceType = "network" | "router";
+
+type TaggableResource = {
+  id: string;
+  revision_number?: number;
+  tags?: string[];
+};
 
 type TagDraft = {
   id: number;
@@ -39,22 +46,24 @@ type TagDraftSource = {
   tags: string[];
 };
 
-export function NetworkTagsSection({
-  network,
+export function NeutronResourceTagsSection({
   owned,
   projectId,
   regionId,
+  resource,
+  resourceType,
   support,
 }: {
-  network: Network;
   owned: boolean;
   projectId: string;
   regionId: string;
+  resource: TaggableResource;
+  resourceType: TaggableResourceType;
   support: OpenStackFeatureSupport;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const tags = network.tags ?? [];
+  const tags = resource.tags ?? [];
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<TagDraft[]>([]);
   const [draftSource, setDraftSource] = useState<TagDraftSource>({ tags: [] });
@@ -69,6 +78,7 @@ export function NetworkTagsSection({
   const parsed = useMemo(() => validateNeutronTags(draftTags), [draftTags]);
   const changed = parsed.ok && !sameNeutronTags(parsed.tags, draftSource.tags);
   const canEdit = owned && support.status !== "unsupported";
+  const resourceTitle = resourceType === "network" ? "Network" : "Router";
 
   if (support.status === "unsupported" && tags.length === 0) return null;
 
@@ -79,8 +89,8 @@ export function NetworkTagsSection({
   const openEditor = () => {
     setDraft(tags.map((tag) => newDraft(encodeNeutronTagForEditor(tag))));
     setDraftSource({
-      ...(network.revision_number !== undefined
-        ? { revisionNumber: network.revision_number }
+      ...(resource.revision_number !== undefined
+        ? { revisionNumber: resource.revision_number }
         : {}),
       tags: [...tags],
     });
@@ -95,9 +105,10 @@ export function NetworkTagsSection({
     setError(null);
     startTransition(async () => {
       try {
-        const result = await updateNetworkTagsAction(
+        const result = await updateNeutronResourceTagsAction(
           { projectId, regionId },
-          network.id,
+          resourceType,
+          resource.id,
           {
             ...(draftSource.revisionNumber !== undefined
               ? { expectedRevisionNumber: draftSource.revisionNumber }
@@ -116,7 +127,7 @@ export function NetworkTagsSection({
         });
         router.refresh();
       } catch {
-        setError("The network tags could not be saved. Try again.");
+        setError(`The ${resourceType} tags could not be saved. Try again.`);
       } finally {
         submissionInFlight.current = false;
       }
@@ -133,7 +144,7 @@ export function NetworkTagsSection({
           <EditActionButton
             compact
             className="ml-auto"
-            label="Edit network tags"
+            label={`Edit ${resourceType} tags`}
             onClick={openEditor}
           />
         ) : null}
@@ -163,9 +174,9 @@ export function NetworkTagsSection({
       >
         <DialogContent className="max-h-[calc(100vh-2rem)] sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit network tags</DialogTitle>
+            <DialogTitle>Edit {resourceTitle} tags</DialogTitle>
             <DialogDescription>
-              Replace the tags associated with this network.
+              Replace the tags associated with this {resourceType}.
             </DialogDescription>
           </DialogHeader>
           <form className="min-h-0 space-y-4 overflow-hidden" onSubmit={submit}>

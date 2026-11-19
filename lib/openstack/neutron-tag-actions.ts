@@ -34,6 +34,16 @@ const NEUTRON_SERVICE = {
   serviceName: "neutron",
 } as const;
 
+const taggableResource = z.enum(["network", "router"]);
+type TaggableResource = z.infer<typeof taggableResource>;
+const TAGGABLE_RESOURCES: Record<
+  TaggableResource,
+  { collection: string; label: string; title: string }
+> = {
+  network: { collection: "networks", label: "network", title: "Network" },
+  router: { collection: "routers", label: "router", title: "Router" },
+};
+
 const resourceId = z.string().trim().min(1).max(255);
 const tag = z
   .string()
@@ -54,13 +64,13 @@ const tags = z.array(tag).superRefine((values, context) => {
     seen.add(value);
   }
 });
-const networkTagsInput = z.object({
+const resourceTagsInput = z.object({
   expectedRevisionNumber: z.number().int().nonnegative().optional(),
   expectedTags: tags,
   tags,
 });
 
-type NetworkTagState = {
+type NeutronResourceTagState = {
   id: string;
   projectId: string;
   revisionNumber?: number;
@@ -78,19 +88,20 @@ function validationFailure(scope: MutationScope, message: string) {
   );
 }
 
-function parseNetworkTagState(
+function parseNeutronResourceTagState(
   payload: unknown,
+  resourceType: TaggableResource,
   expectedId: string,
-): NetworkTagState | null {
+): NeutronResourceTagState | null {
   if (!payload || typeof payload !== "object") return null;
-  const network = Reflect.get(payload, "network");
-  if (!network || typeof network !== "object") return null;
+  const resource = Reflect.get(payload, resourceType);
+  if (!resource || typeof resource !== "object") return null;
 
-  const id = Reflect.get(network, "id");
+  const id = Reflect.get(resource, "id");
   const projectId =
-    Reflect.get(network, "project_id") ?? Reflect.get(network, "tenant_id");
-  const revisionNumber = Reflect.get(network, "revision_number");
-  const tags = Reflect.get(network, "tags");
+    Reflect.get(resource, "project_id") ?? Reflect.get(resource, "tenant_id");
+  const revisionNumber = Reflect.get(resource, "revision_number");
+  const tags = Reflect.get(resource, "tags");
   if (
     id !== expectedId ||
     typeof projectId !== "string" ||
@@ -114,22 +125,26 @@ function parseNetworkTagState(
 
 function parseTagsResponse(payload: unknown) {
   if (!payload || typeof payload !== "object") {
-    throw new Error("Neutron did not return network tags");
+    throw new Error("Neutron did not return resource tags");
   }
   const tags = Reflect.get(payload, "tags");
   if (
     !Array.isArray(tags) ||
     !tags.every((value) => typeof value === "string")
   ) {
-    throw new Error("Neutron returned invalid network tags");
+    throw new Error("Neutron returned invalid resource tags");
   }
   return tags;
 }
 
-function readFailure(error: unknown, scope: MutationScope) {
+function readFailure(
+  error: unknown,
+  scope: MutationScope,
+  resourceLabel: string,
+) {
   if (error instanceof OpenStackRequestError) {
     return mutationFailure(
-      mutationErrorForStatus(error.status, "read this network"),
+      mutationErrorForStatus(error.status, `read this ${resourceLabel}`),
       scope,
     );
   }
@@ -147,23 +162,31 @@ function readFailure(error: unknown, scope: MutationScope) {
   return mutationFailure(
     {
       code: "service-error",
-      message: "The network could not be verified. Refresh and try again.",
+      message: `The ${resourceLabel} could not be verified. Refresh and try again.`,
       retryable: true,
     },
     scope,
   );
 }
 
-export async function updateNetworkTagsAction(
+export async function updateNeutronResourceTagsAction(
   scope: MutationScope,
+  resourceType: unknown,
   id: string,
   input: unknown,
 ): Promise<MutationResult<string[]>> {
+  const parsedResourceType = taggableResource.safeParse(resourceType);
+  if (!parsedResourceType.success) {
+    return validationFailure(scope, "Select a supported Networking resource.");
+  }
   const parsedId = resourceId.safeParse(id);
   if (!parsedId.success) {
-    return validationFailure(scope, "Select a valid network.");
+    return validationFailure(
+      scope,
+      `Select a valid ${TAGGABLE_RESOURCES[parsedResourceType.data].label}.`,
+    );
   }
-  const parsedInput = networkTagsInput.safeParse(input);
+  const parsedInput = resourceTagsInput.safeParse(input);
   if (!parsedInput.success) {
     return validationFailure(
       scope,
@@ -174,11 +197,12 @@ export async function updateNetworkTagsAction(
   const guarded = await guardMutationContext(scope);
   if (!guarded.ok) return guarded.result;
   const activeScope = guarded.context.scope;
+  const resource = TAGGABLE_RESOURCES[parsedResourceType.data];
   const capabilities = await discoverNetworkCapabilities(activeScope.regionId!);
   const tagSupport = extensionSupport(
     capabilities,
     NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
-    "Network tags",
+    `${resource.title} tags`,
   );
   if (tagSupport.status === "unsupported") {
     return mutationFailure(
@@ -193,7 +217,7 @@ export async function updateNetworkTagsAction(
   const revisionSupport = extensionSupport(
     capabilities,
     NEUTRON_STANDARD_ATTRIBUTE_REVISION_EXTENSION,
-    "Network revision checks",
+    `${resource.title} revision checks`,
   );
 
   let payload: unknown;
@@ -201,33 +225,36 @@ export async function updateNetworkTagsAction(
     payload = await openstackRequest<unknown>({
       ...NEUTRON_SERVICE,
       regionId: activeScope.regionId!,
-      path: `/v2.0/networks/${encodeURIComponent(parsedId.data)}`,
+      path: `/v2.0/${resource.collection}/${encodeURIComponent(parsedId.data)}`,
       errorMode: "throw",
     });
   } catch (error) {
-    return readFailure(error, activeScope);
+    return readFailure(error, activeScope, resource.label);
   }
 
-  const network = parseNetworkTagState(payload, parsedId.data);
-  if (!network) {
+  const currentResource = parseNeutronResourceTagState(
+    payload,
+    parsedResourceType.data,
+    parsedId.data,
+  );
+  if (!currentResource) {
     return mutationFailure(
       {
         code: "invalid-response",
-        message:
-          "The network details could not be verified. Refresh and try again.",
+        message: `The ${resource.label} details could not be verified. Refresh and try again.`,
         retryable: true,
       },
       activeScope,
     );
   }
   if (
-    normalizeProjectId(network.projectId) !==
+    normalizeProjectId(currentResource.projectId) !==
     normalizeProjectId(activeScope.projectId)
   ) {
     return mutationFailure(
       {
         code: "permission-denied",
-        message: "Only networks owned by the active project can be tagged.",
+        message: `Only ${resource.collection} owned by the active project can be tagged.`,
         retryable: false,
       },
       activeScope,
@@ -235,47 +262,46 @@ export async function updateNetworkTagsAction(
   }
   if (
     revisionSupport.status === "supported" &&
-    network.revisionNumber === undefined
+    currentResource.revisionNumber === undefined
   ) {
     return mutationFailure(
       {
         code: "invalid-response",
-        message:
-          "The network revision could not be verified. Refresh and try again.",
+        message: `The ${resource.label} revision could not be verified. Refresh and try again.`,
         retryable: true,
       },
       activeScope,
     );
   }
   if (
-    network.revisionNumber !== undefined &&
+    currentResource.revisionNumber !== undefined &&
     parsedInput.data.expectedRevisionNumber === undefined
   ) {
     return validationFailure(
       activeScope,
-      "The network revision is missing. Refresh and try again.",
+      `The ${resource.label} revision is missing. Refresh and try again.`,
     );
   }
   if (
-    network.revisionNumber !== undefined &&
+    currentResource.revisionNumber !== undefined &&
     parsedInput.data.expectedRevisionNumber !== undefined &&
-    network.revisionNumber !== parsedInput.data.expectedRevisionNumber
+    currentResource.revisionNumber !== parsedInput.data.expectedRevisionNumber
   ) {
     return mutationFailure(
-      mutationErrorForStatus(412, "save network tags"),
+      mutationErrorForStatus(412, `save ${resource.label} tags`),
       activeScope,
     );
   }
-  if (!sameNeutronTags(network.tags, parsedInput.data.expectedTags)) {
+  if (!sameNeutronTags(currentResource.tags, parsedInput.data.expectedTags)) {
     return mutationFailure(
-      mutationErrorForStatus(412, "save network tags"),
+      mutationErrorForStatus(412, `save ${resource.label} tags`),
       activeScope,
     );
   }
-  if (sameNeutronTags(network.tags, parsedInput.data.tags)) {
+  if (sameNeutronTags(currentResource.tags, parsedInput.data.tags)) {
     return mutationSuccess({
-      data: network.tags,
-      message: "Network tags unchanged.",
+      data: currentResource.tags,
+      message: `${resource.title} tags unchanged.`,
       scope: activeScope,
     });
   }
@@ -283,18 +309,18 @@ export async function updateNetworkTagsAction(
   // Neutron's revision precondition applies to parent resource updates. Some
   // deployments return 500 when it is sent to the tag replacement subresource.
   return executeOpenStackMutation({
-    actionLabel: "save network tags",
+    actionLabel: `save ${resource.label} tags`,
     scope: activeScope,
     ...NEUTRON_SERVICE,
-    path: `/v2.0/networks/${encodeURIComponent(parsedId.data)}/tags`,
+    path: `/v2.0/${resource.collection}/${encodeURIComponent(parsedId.data)}/tags`,
     method: "PUT",
     body: { tags: parsedInput.data.tags },
     invalidates: [
       "/networking",
-      "/networking/networks",
-      `/networking/networks/${parsedId.data}`,
+      `/networking/${resource.collection}`,
+      `/networking/${resource.collection}/${parsedId.data}`,
     ],
-    successMessage: "Network tags saved.",
+    successMessage: `${resource.title} tags saved.`,
     transform: parseTagsResponse,
   });
 }

@@ -6,7 +6,7 @@ import { GitBranch, Network as NetworkIcon } from "lucide-react";
 
 import { NetworkDetailActions } from "@/components/Network/NetworkDetailActions";
 import { NetworkIpAvailabilitySection } from "@/components/Network/NetworkIpAvailabilitySection";
-import { NetworkTagsSection } from "@/components/Network/NetworkTagsSection";
+import { NeutronResourceTagsSection } from "@/components/Network/NeutronResourceTagsSection";
 import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { SubnetDetailActions } from "@/components/Network/SubnetDetailActions";
 import { Badge } from "@/components/ui/badge";
@@ -213,11 +213,12 @@ export function NetworkDetailClient({
         <h3 className="text-sm font-semibold">Network details</h3>
         <DetailGrid rows={networkRows} />
       </section>
-      <NetworkTagsSection
-        network={network.data}
+      <NeutronResourceTagsSection
         owned={owned}
         projectId={projectId}
         regionId={regionId}
+        resource={network.data}
+        resourceType="network"
         support={tagSupport}
       />
       {ipAvailabilitySupport.status !== "unsupported" ? (
