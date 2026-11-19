@@ -8,6 +8,11 @@ import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { SecurityGroupDetailClient } from "./SecurityGroupDetailClient";
 import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server";
+import { extensionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverNetworkCapabilities,
+  NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
+} from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
   params,
@@ -16,6 +21,7 @@ export default async function Page({
 }) {
   const [{ id }, session] = await Promise.all([params, getSession()]);
   if (!session.projectId || !session.regionId) return null;
+  const capabilitiesPromise = discoverNetworkCapabilities(session.regionId);
   const queryClient = makeQueryClient();
   const securityGroupQuery = securityGroupQueryOptions(
     session.regionId,
@@ -29,6 +35,11 @@ export default async function Page({
   await queryClient.prefetchQuery(
     securityGroupsQueryOptions(session.regionId, session.projectId),
   );
+  const statefulSupport = extensionSupport(
+    await capabilitiesPromise,
+    NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
+    "Security group connection tracking",
+  );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
@@ -36,6 +47,7 @@ export default async function Page({
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}
+        statefulSupport={statefulSupport}
       />
     </QueryHydrationBoundary>
   );

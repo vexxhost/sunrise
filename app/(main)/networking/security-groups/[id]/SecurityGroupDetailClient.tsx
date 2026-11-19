@@ -11,6 +11,7 @@ import {
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 function ports(rule: {
   port_range_min: number | null;
@@ -26,10 +27,12 @@ export function SecurityGroupDetailClient({
   id,
   projectId,
   regionId,
+  statefulSupport,
 }: {
   id: string;
   projectId: string;
   regionId: string;
+  statefulSupport: OpenStackFeatureSupport;
 }) {
   const group = useSuspenseQuery(
     securityGroupQueryOptions(regionId, projectId, id),
@@ -62,6 +65,7 @@ export function SecurityGroupDetailClient({
             groups={groups.data}
             projectId={projectId}
             regionId={regionId}
+            statefulSupport={statefulSupport}
           />
         ) : (
           <Badge variant="outline">Read-only context</Badge>
@@ -134,6 +138,14 @@ export function SecurityGroupDetailClient({
           {[
             ["ID", group.data.id],
             ["Project ID", group.data.project_id],
+            [
+              "Connection tracking",
+              group.data.stateful === undefined
+                ? "Not reported"
+                : group.data.stateful
+                  ? "Stateful"
+                  : "Stateless",
+            ],
             ["Created", group.data.created_at],
             ["Updated", group.data.updated_at],
           ].map(([label, value]) => (

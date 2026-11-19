@@ -59,6 +59,8 @@ export const NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION =
 export const NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION =
   "router_availability_zone";
 export const NEUTRON_SECURITY_GROUP_EXTENSION = "security-group";
+export const NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION =
+  "stateful-security-group";
 export const NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION =
   "subnet-dns-publish-fixed-ip";
 export const NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION =

@@ -5,6 +5,11 @@ import { dehydrateQueryClient } from "@/lib/query-hydration";
 import { getSession } from "@/lib/session";
 import { SecurityGroupsTableClient } from "../NetworkingTablesClient";
 import { isCreateActionRequested } from "@/lib/create-actions";
+import { extensionSupport } from "@/lib/openstack/capabilities";
+import {
+  discoverNetworkCapabilities,
+  NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
+} from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
   searchParams,
@@ -18,8 +23,14 @@ export default async function Page({
     "security-group",
   );
   const queryClient = makeQueryClient();
+  const capabilitiesPromise = discoverNetworkCapabilities(session.regionId);
   await queryClient.prefetchQuery(
     securityGroupsQueryOptions(session.regionId, session.projectId),
+  );
+  const statefulSupport = extensionSupport(
+    await capabilitiesPromise,
+    NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
+    "Security group connection tracking",
   );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
@@ -29,6 +40,7 @@ export default async function Page({
         regionId={session.regionId}
         projectId={session.projectId}
         initiallyOpen={createRequested}
+        statefulSupport={statefulSupport}
       />
     </QueryHydrationBoundary>
   );

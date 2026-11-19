@@ -1560,12 +1560,14 @@ export function CreateSecurityGroupAction({
   initiallyOpen = false,
   projectId,
   regionId,
-}: ScopeProps) {
+  statefulSupport,
+}: ScopeProps & { statefulSupport: OpenStackFeatureSupport }) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
   const [open, setOpen] = useState(initiallyOpen);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [stateful, setStateful] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const defaultRules = useQuery({
@@ -1599,6 +1601,7 @@ export function CreateSecurityGroupAction({
     if (next) {
       setName("");
       setDescription("");
+      setStateful(true);
     }
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -1606,7 +1609,11 @@ export function CreateSecurityGroupAction({
     startTransition(async () => {
       const result = await createSecurityGroupAction(
         { projectId, regionId },
-        { name, description },
+        {
+          name,
+          description,
+          ...(stateful ? {} : { stateful: false }),
+        },
       );
       if (!result.ok) {
         setError(result.error.message);
@@ -1631,8 +1638,8 @@ export function CreateSecurityGroupAction({
                 Create security group
               </DialogTitle>
               <DialogDescription>
-                Create a reusable stateful firewall policy. Add rules from its
-                detail view.
+                Create a reusable firewall policy. Add rules from its detail
+                view.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -1656,6 +1663,31 @@ export function CreateSecurityGroupAction({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {statefulSupport.status !== "unsupported" ? (
+                <div className="flex items-start gap-3 rounded-md border p-3">
+                  <Checkbox
+                    id="group-stateful"
+                    checked={stateful}
+                    disabled={pending}
+                    onCheckedChange={(checked) => setStateful(checked === true)}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="group-stateful">
+                      Stateful connection tracking
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      When enabled, return traffic for an allowed connection is
+                      accepted automatically. Stateless groups require explicit
+                      rules in both directions.
+                    </p>
+                    {statefulSupport.status === "unknown" ? (
+                      <p className="text-xs text-muted-foreground">
+                        {statefulSupport.message}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
             <QuotaImpactPreview
               impacts={quota.impacts}
