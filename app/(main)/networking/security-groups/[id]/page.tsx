@@ -15,6 +15,7 @@ import {
   NEUTRON_ADDRESS_GROUP_EXTENSION,
   NEUTRON_RBAC_ADDRESS_GROUP_EXTENSION,
   NEUTRON_SECURITY_GROUP_REMOTE_ADDRESS_GROUP_EXTENSION,
+  NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
   NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
@@ -58,6 +59,11 @@ export default async function Page({
     NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
     "Security group connection tracking",
   );
+  const tagSupport = extensionSupport(
+    capabilities,
+    NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+    "Security group tags",
+  );
   const remoteAddressGroupSupport = extensionSupport(
     capabilities,
     NEUTRON_SECURITY_GROUP_REMOTE_ADDRESS_GROUP_EXTENSION,
@@ -97,6 +103,7 @@ export default async function Page({
         rbacSharingSupported={rbacSharingSupported}
         regionId={session.regionId}
         statefulSupport={statefulSupport}
+        tagSupport={tagSupport}
       />
     </QueryHydrationBoundary>
   );

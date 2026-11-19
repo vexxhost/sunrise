@@ -5,6 +5,7 @@ import {
   SecurityGroupDetailActions,
   SecurityGroupRuleActions,
 } from "@/components/Network/SecurityGroupDetailActions";
+import { NeutronResourceTagsSection } from "@/components/Network/NeutronResourceTagsSection";
 import { Badge } from "@/components/ui/badge";
 import {
   addressGroupsQueryOptions,
@@ -44,6 +45,7 @@ export function SecurityGroupDetailClient({
   rbacSharingSupported,
   regionId,
   statefulSupport,
+  tagSupport,
 }: {
   addressGroupSupport: OpenStackFeatureSupport;
   id: string;
@@ -51,6 +53,7 @@ export function SecurityGroupDetailClient({
   rbacSharingSupported: boolean;
   regionId: string;
   statefulSupport: OpenStackFeatureSupport;
+  tagSupport: OpenStackFeatureSupport;
 }) {
   const group = useSuspenseQuery(
     securityGroupQueryOptions(regionId, projectId, id),
@@ -98,6 +101,14 @@ export function SecurityGroupDetailClient({
           <Badge variant="outline">Read-only context</Badge>
         )}
       </div>
+      <NeutronResourceTagsSection
+        owned={owned}
+        projectId={projectId}
+        regionId={regionId}
+        resource={group.data}
+        resourceType="security-group"
+        support={tagSupport}
+      />
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold">Rules</h3>

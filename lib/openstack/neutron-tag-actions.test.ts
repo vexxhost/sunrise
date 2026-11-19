@@ -74,6 +74,18 @@ function floatingIpPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function securityGroupPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    security_group: {
+      id: "security-group-a",
+      project_id: "project-a",
+      revision_number: 13,
+      tags: ["old"],
+      ...overrides,
+    },
+  };
+}
+
 describe("Neutron resource tag mutation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -214,6 +226,42 @@ describe("Neutron resource tag mutation", () => {
         ],
         path: "/v2.0/floatingips/floating-ip-a/tags",
         successMessage: "Floating IP tags saved.",
+      }),
+    );
+  });
+
+  it("reuses the guarded tag workflow for security groups", async () => {
+    mocks.openstackRequest.mockResolvedValue(securityGroupPayload());
+
+    await expect(
+      updateNeutronResourceTagsAction(
+        scope,
+        "security-group",
+        "security-group-a",
+        {
+          expectedRevisionNumber: 13,
+          expectedTags: ["old"],
+          tags: ["firewall:web"],
+        },
+      ),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2.0/security-groups/security-group-a",
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionLabel: "save security group tags",
+        body: { tags: ["firewall:web"] },
+        invalidates: [
+          "/networking",
+          "/networking/security-groups",
+          "/networking/security-groups/security-group-a",
+        ],
+        path: "/v2.0/security-groups/security-group-a/tags",
+        successMessage: "Security group tags saved.",
       }),
     );
   });
