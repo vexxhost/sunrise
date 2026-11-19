@@ -501,6 +501,13 @@ const portCreateSchema = z
         path: ["hardwareOffloadType"],
       });
     }
+    if (value.trusted === true && value.vnicType !== "direct") {
+      context.addIssue({
+        code: "custom",
+        message: "Trusted VIF mode requires a direct vNIC type.",
+        path: ["trusted"],
+      });
+    }
   });
 const portUpdateSchema = z
   .object({
@@ -1403,6 +1410,10 @@ export async function createPortAction(
             feature: "Trusted virtual interfaces",
             required: NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
           },
+          {
+            feature: "Trusted virtual interfaces",
+            required: NEUTRON_PORT_BINDING_EXTENSION,
+          },
         ]),
   ]);
   if (unsupported) return unsupported;
@@ -1587,6 +1598,10 @@ export async function updatePortAction(
           {
             feature: "Trusted virtual interfaces",
             required: NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
+          },
+          {
+            feature: "Trusted virtual interfaces",
+            required: NEUTRON_PORT_BINDING_EXTENSION,
           },
         ]),
   ]);

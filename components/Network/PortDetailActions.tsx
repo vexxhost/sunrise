@@ -179,7 +179,8 @@ export function PortDetailActions({
   const numaAffinityAvailable = numaAffinitySupport.status !== "unsupported";
   const numaSocketAvailable = numaSocketSupport.status !== "unsupported";
   const portBindingAvailable = portBindingSupport.status !== "unsupported";
-  const trustedVifAvailable = trustedVifSupport.status !== "unsupported";
+  const trustedVifAvailable =
+    trustedVifSupport.status !== "unsupported" && portBindingAvailable;
   const uplinkStatusPropagationAvailable =
     uplinkStatusPropagationSupport.status !== "unsupported";
   const uplinkStatusPropagationUpdatable =
@@ -189,6 +190,11 @@ export function PortDetailActions({
     uplinkStatusPropagationAvailable
       ? uplinkStatusPropagationUpdateSupport.message
       : uplinkStatusPropagationSupport.message;
+  const trustedVifUnavailableMessage =
+    trustedVifSupport.status === "unsupported"
+      ? trustedVifSupport.message
+      : "Trusted virtual interfaces require support for Neutron port bindings.";
+  const trustedVifSelected = trustedVif === PORT_TRUSTED;
   const qosPolicies = useQuery({
     ...qosPoliciesQueryOptions(regionId, projectId),
     enabled: dialog === "edit" && qosAvailable,
@@ -276,7 +282,9 @@ export function PortDetailActions({
         numaAffinityPolicy !==
           (port.numa_affinity_policy ?? PORT_SETTING_DEFAULT);
       const trustedVifChanged =
-        trustedVifAvailable && trustedVif !== trustedVifSelection(port.trusted);
+        trustedVifAvailable &&
+        !portBound &&
+        trustedVif !== trustedVifSelection(port.trusted);
       const result = await updatePortAction({ projectId, regionId }, port.id, {
         name,
         description,
@@ -538,7 +546,7 @@ export function PortDetailActions({
                   <Label htmlFor="edit-port-vnic-type">vNIC type</Label>
                   <Select
                     value={vnicType}
-                    disabled={pending || portBound}
+                    disabled={pending || portBound || trustedVifSelected}
                     onValueChange={setVnicType}
                   >
                     <SelectTrigger id="edit-port-vnic-type">
@@ -560,6 +568,8 @@ export function PortDetailActions({
                   <p className="text-xs text-muted-foreground">
                     {portBound
                       ? "Detach this port before changing its vNIC type."
+                      : trustedVifSelected
+                        ? "Trusted VIF mode requires a Direct SR-IOV vNIC. Disable trusted mode to choose another type."
                       : `${
                           NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
                             (option) => option.value === vnicType,
@@ -616,8 +626,11 @@ export function PortDetailActions({
                   <Label htmlFor="edit-port-trusted-vif">Trusted VIF</Label>
                   <Select
                     value={trustedVif}
-                    disabled={pending}
-                    onValueChange={setTrustedVif}
+                    disabled={pending || portBound}
+                    onValueChange={(value) => {
+                      setTrustedVif(value);
+                      if (value === PORT_TRUSTED) setVnicType("direct");
+                    }}
                   >
                     <SelectTrigger id="edit-port-trusted-vif">
                       <SelectValue />
@@ -635,8 +648,9 @@ export function PortDetailActions({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Neutron policy commonly restricts this setting to
-                    administrators.
+                    {portBound
+                      ? "Detach this port before changing its trusted VIF state."
+                      : "Trusted mode uses a Direct SR-IOV vNIC. Neutron policy commonly restricts this setting to administrators."}
                   </p>
                 </div>
               ) : null}
@@ -791,7 +805,7 @@ export function PortDetailActions({
                   <p>{portBindingSupport.message}</p>
                 ) : null}
                 {!trustedVifAvailable ? (
-                  <p>{trustedVifSupport.message}</p>
+                  <p>{trustedVifUnavailableMessage}</p>
                 ) : null}
                 {!uplinkStatusPropagationUpdatable ? (
                   <p>{uplinkStatusPropagationUnavailableMessage}</p>

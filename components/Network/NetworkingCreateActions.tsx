@@ -738,14 +738,21 @@ export function CreatePortAction({
     hardwareOffloadSupport.status !== "unsupported" && portBindingAvailable;
   const numaAffinityAvailable = numaAffinitySupport.status !== "unsupported";
   const numaSocketAvailable = numaSocketSupport.status !== "unsupported";
-  const trustedVifAvailable = trustedVifSupport.status !== "unsupported";
+  const trustedVifAvailable =
+    trustedVifSupport.status !== "unsupported" && portBindingAvailable;
   const uplinkStatusPropagationAvailable =
     uplinkStatusPropagationSupport.status !== "unsupported";
   const hardwareOffloadUnavailableMessage =
     hardwareOffloadSupport.status === "unsupported"
       ? hardwareOffloadSupport.message
       : "Port hardware offload requires support for Neutron port bindings.";
+  const trustedVifUnavailableMessage =
+    trustedVifSupport.status === "unsupported"
+      ? trustedVifSupport.message
+      : "Trusted virtual interfaces require support for Neutron port bindings.";
   const switchdevOffloadSelected = hardwareOffloadType === "switchdev";
+  const trustedVifSelected = trustedVif === PORT_TRUSTED;
+  const directVnicRequired = switchdevOffloadSelected || trustedVifSelected;
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -967,7 +974,7 @@ export function CreatePortAction({
                   <Label htmlFor="port-vnic-type">vNIC type</Label>
                   <Select
                     value={vnicType}
-                    disabled={pending || switchdevOffloadSelected}
+                    disabled={pending || directVnicRequired}
                     onValueChange={(value) =>
                       setVnicType(value as NeutronPortVnicType)
                     }
@@ -986,6 +993,8 @@ export function CreatePortAction({
                   <p className="text-xs text-muted-foreground">
                     {switchdevOffloadSelected
                       ? "Switchdev hardware offload requires a Direct vNIC. Select no hardware offload to choose another type."
+                      : trustedVifSelected
+                        ? "Trusted VIF mode requires a Direct SR-IOV vNIC. Disable trusted mode to choose another type."
                       : `${
                           NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
                             (option) => option.value === vnicType,
@@ -1060,7 +1069,10 @@ export function CreatePortAction({
                   <Select
                     value={trustedVif}
                     disabled={pending}
-                    onValueChange={setTrustedVif}
+                    onValueChange={(value) => {
+                      setTrustedVif(value);
+                      if (value === PORT_TRUSTED) setVnicType("direct");
+                    }}
                   >
                     <SelectTrigger id="port-trusted-vif">
                       <SelectValue />
@@ -1076,8 +1088,9 @@ export function CreatePortAction({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Pass trust state to services such as Nova. Neutron policy
-                    commonly restricts this setting to administrators.
+                    Trusted mode uses a Direct SR-IOV vNIC and passes trust
+                    state to services such as Nova. Neutron policy commonly
+                    restricts this setting to administrators.
                   </p>
                 </div>
               ) : null}
@@ -1215,7 +1228,7 @@ export function CreatePortAction({
                   <p>{portBindingSupport.message}</p>
                 ) : null}
                 {!trustedVifAvailable ? (
-                  <p>{trustedVifSupport.message}</p>
+                  <p>{trustedVifUnavailableMessage}</p>
                 ) : null}
                 {!uplinkStatusPropagationAvailable ? (
                   <p>{uplinkStatusPropagationSupport.message}</p>

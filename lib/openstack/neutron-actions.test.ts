@@ -891,6 +891,28 @@ describe("Neutron mutation actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
+  it("requires port binding support for trusted VIF updates", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-trusted-vif"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await updatePortAction(scope, "port-a", {
+      name: "trusted-port",
+      description: "",
+      adminStateUp: true,
+      trusted: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("binding") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid placement values before capability discovery", async () => {
     const result = await createPortAction(scope, {
       name: "invalid-port",
@@ -916,6 +938,26 @@ describe("Neutron mutation actions", () => {
       networkId: "network-a",
       adminStateUp: true,
       hardwareOffloadType: "switchdev",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("direct vNIC"),
+      },
+    });
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("requires direct vNIC placement for trusted mode", async () => {
+    const result = await createPortAction(scope, {
+      name: "trusted-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      trusted: true,
     });
 
     expect(result).toMatchObject({
