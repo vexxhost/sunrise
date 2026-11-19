@@ -76,7 +76,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
-        tags: [" environment:production ", "managed-by:terraform"],
+        tags: [" environment:production ", "", "line\nbreak"],
       }),
     ).resolves.toMatchObject({ ok: true });
 
@@ -90,7 +90,7 @@ describe("Neutron network tag mutation", () => {
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
       expect.objectContaining({
         body: {
-          tags: ["environment:production", "managed-by:terraform"],
+          tags: [" environment:production ", "", "line\nbreak"],
         },
         method: "PUT",
         path: "/v2.0/networks/network-a/tags",
