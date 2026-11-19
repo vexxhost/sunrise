@@ -31,10 +31,16 @@ export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
 export const NEUTRON_PORT_BINDING_EXTENSION = "binding";
 export const NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION =
   "port-hardware-offload-type";
+export const NEUTRON_PORT_IP_ALLOCATION_EXTENSION = "ip_allocation";
+export const NEUTRON_PORT_MAC_ADDRESS_REGENERATE_EXTENSION =
+  "port-mac-address-regenerate";
 export const NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION =
   "port-numa-affinity-policy";
 export const NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION =
   "port-numa-affinity-policy-socket";
+export const NEUTRON_PORT_RESOURCE_REQUEST_EXTENSION = "port-resource-request";
+export const NEUTRON_PORT_RESOURCE_REQUEST_GROUPS_EXTENSION =
+  "port-resource-request-groups";
 export const NEUTRON_PORT_TRUSTED_VIF_EXTENSION = "port-trusted-vif";
 export const NEUTRON_DNS_DOMAIN_PORTS_EXTENSION = "dns-domain-ports";
 export const NEUTRON_DNS_INTEGRATION_EXTENSION = "dns-integration";

@@ -19,8 +19,11 @@ import {
   NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
   NEUTRON_PORT_BINDING_EXTENSION,
   NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION,
+  NEUTRON_PORT_IP_ALLOCATION_EXTENSION,
+  NEUTRON_PORT_MAC_ADDRESS_REGENERATE_EXTENSION,
   NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION,
   NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION,
+  NEUTRON_PORT_RESOURCE_REQUEST_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
   NEUTRON_QOS_EXTENSION,
@@ -80,6 +83,16 @@ export default async function Page({
     NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION,
     "Port hardware offload",
   );
+  const ipAllocationSupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_IP_ALLOCATION_EXTENSION,
+    "Port IP allocation state",
+  );
+  const portMacAddressRegenerationSupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_MAC_ADDRESS_REGENERATE_EXTENSION,
+    "Port MAC address regeneration",
+  );
   const numaAffinitySupport = extensionSupport(
     capabilities,
     NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION,
@@ -94,6 +107,11 @@ export default async function Page({
     capabilities,
     NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
     "Trusted virtual interfaces",
+  );
+  const resourceRequestSupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_RESOURCE_REQUEST_EXTENSION,
+    "Port Placement requirements",
   );
   const qosSupport = extensionSupport(
     capabilities,
@@ -145,14 +163,17 @@ export default async function Page({
         extraDhcpOptionsSupport={extraDhcpOptionsSupport}
         hardwareOffloadSupport={hardwareOffloadSupport}
         id={id}
+        ipAllocationSupport={ipAllocationSupport}
         numaAffinitySupport={numaAffinitySupport}
         numaSocketSupport={numaSocketSupport}
         projectId={session.projectId}
         regionId={session.regionId}
         portSecuritySupport={portSecuritySupport}
         portBindingSupport={portBindingSupport}
+        portMacAddressRegenerationSupport={portMacAddressRegenerationSupport}
         qosNetworkPolicySupport={qosNetworkPolicySupport}
         qosSupport={qosSupport}
+        resourceRequestSupport={resourceRequestSupport}
         securityGroupSupport={securityGroupSupport}
         trustedVifSupport={trustedVifSupport}
         uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}

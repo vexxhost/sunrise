@@ -21,6 +21,7 @@ import {
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
   NEUTRON_PORT_BINDING_EXTENSION,
   NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION,
+  NEUTRON_PORT_MAC_ADDRESS_REGENERATE_EXTENSION,
   NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION,
   NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
@@ -163,10 +164,7 @@ const allowedAddressPairs = z
     }
   })
   .optional();
-const blankExtraDhcpOptionNames = new Set([
-  "router",
-  "classless-static-route",
-]);
+const blankExtraDhcpOptionNames = new Set(["router", "classless-static-route"]);
 const extraDhcpOptionName = z
   .string()
   .trim()
@@ -185,10 +183,7 @@ const extraDhcpOption = z
     optValue: extraDhcpOptionValue,
   })
   .superRefine((option, context) => {
-    if (
-      !option.optValue &&
-      !blankExtraDhcpOptionNames.has(option.optName)
-    ) {
+    if (!option.optValue && !blankExtraDhcpOptionNames.has(option.optName)) {
       context.addIssue({
         code: "custom",
         message: "Enter an option value.",
@@ -228,8 +223,7 @@ function extraDhcpOptionsSchema<Option extends z.ZodTypeAny>(option: Option) {
         if (seen.has(key)) {
           context.addIssue({
             code: "custom",
-            message:
-              "Remove the duplicate DHCP option for this IP version.",
+            message: "Remove the duplicate DHCP option for this IP version.",
             path: [index],
           });
         }
@@ -1681,6 +1675,33 @@ export async function deletePortAction(scope: MutationScope, id: string) {
     method: "DELETE",
     invalidates: [],
     successMessage: "Port deleted.",
+  });
+}
+
+export async function regeneratePortMacAddressAction(
+  scope: MutationScope,
+  id: string,
+): Promise<MutationResult<Port>> {
+  const parsed = parseId(scope, id);
+  if (!parsed.ok) return parsed.result;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    {
+      feature: "Port MAC address regeneration",
+      required: NEUTRON_PORT_MAC_ADDRESS_REGENERATE_EXTENSION,
+    },
+  ]);
+  if (unsupported) return unsupported;
+
+  return executeOpenStackMutation({
+    actionLabel: "regenerate this port's MAC address",
+    scope,
+    ...NEUTRON_SERVICE,
+    path: `/v2.0/ports/${encodeURIComponent(parsed.value)}`,
+    method: "PUT",
+    body: { port: { mac_address: null } },
+    invalidates: networkingInvalidates,
+    successMessage: "Port MAC address regenerated.",
+    transform: transformResource<Port>("port"),
   });
 }
 
