@@ -661,6 +661,7 @@ export function CreatePortAction({
   portSecuritySupport,
   qosSupport,
   securityGroupSupport,
+  uplinkStatusPropagationSupport,
 }: ScopeProps & {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
@@ -669,6 +670,7 @@ export function CreatePortAction({
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
+  uplinkStatusPropagationSupport: OpenStackFeatureSupport;
 }) {
   const queryClient = useQueryClient();
   const clearCreateActionIntent = useClearCreateActionIntent();
@@ -679,6 +681,7 @@ export function CreatePortAction({
   const [dnsName, setDnsName] = useState("");
   const [networkId, setNetworkId] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
+  const [propagateUplinkStatus, setPropagateUplinkStatus] = useState(true);
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
   const [securityGroupIds, setSecurityGroupIds] = useState<string[]>([]);
   const [allowedAddressPairs, setAllowedAddressPairs] = useState<
@@ -701,6 +704,8 @@ export function CreatePortAction({
   const extraDhcpOptionsAvailable =
     extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
+  const uplinkStatusPropagationAvailable =
+    uplinkStatusPropagationSupport.status !== "unsupported";
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -731,6 +736,7 @@ export function CreatePortAction({
       setDnsName("");
       setNetworkId("");
       setAdminStateUp(true);
+      setPropagateUplinkStatus(true);
       setPortSecurityEnabled(true);
       setSecurityGroupIds([]);
       setAllowedAddressPairs([]);
@@ -752,6 +758,10 @@ export function CreatePortAction({
             dnsDomainPortsAvailable && dnsDomain.trim() ? dnsDomain : undefined,
           networkId,
           adminStateUp,
+          propagateUplinkStatus:
+            uplinkStatusPropagationAvailable && !propagateUplinkStatus
+              ? false
+              : undefined,
           portSecurityEnabled: portSecurityAvailable
             ? portSecurityEnabled
             : undefined,
@@ -896,6 +906,16 @@ export function CreatePortAction({
                 disabled={pending}
                 onCheckedChange={setAdminStateUp}
               />
+              {uplinkStatusPropagationAvailable ? (
+                <ToggleField
+                  id="port-uplink-status-propagation"
+                  label="Propagate uplink status"
+                  description="Make the virtual interface link state follow its physical uplink, including SR-IOV ports."
+                  checked={propagateUplinkStatus}
+                  disabled={pending}
+                  onCheckedChange={setPropagateUplinkStatus}
+                />
+              ) : null}
               {portSecurityAvailable ? (
                 <ToggleField
                   id="port-security"
@@ -972,7 +992,8 @@ export function CreatePortAction({
             !extraDhcpOptionsAvailable ||
             !dnsIntegrationAvailable ||
             !dnsDomainPortsAvailable ||
-            !qosAvailable ? (
+            !qosAvailable ||
+            !uplinkStatusPropagationAvailable ? (
               <MutationAlert
                 variant="info"
                 title="Some port controls are unavailable"
@@ -996,6 +1017,9 @@ export function CreatePortAction({
                   <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
                 {!qosAvailable ? <p>{qosSupport.message}</p> : null}
+                {!uplinkStatusPropagationAvailable ? (
+                  <p>{uplinkStatusPropagationSupport.message}</p>
+                ) : null}
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview

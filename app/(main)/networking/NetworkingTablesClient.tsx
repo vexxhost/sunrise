@@ -399,6 +399,7 @@ export function PortsTableClient({
   qosNetworkPolicySupport,
   qosSupport,
   securityGroupSupport,
+  uplinkStatusPropagationSupport,
 }: NetworkingTableProps & {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
@@ -408,6 +409,7 @@ export function PortsTableClient({
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
+  uplinkStatusPropagationSupport: OpenStackFeatureSupport;
 }) {
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
   const networks = useSuspenseQuery(networksQueryOptions(regionId, projectId));
@@ -415,6 +417,9 @@ export function PortsTableClient({
     () => new Map(networks.data.map((network) => [network.id, network])),
     [networks.data],
   );
+  const showUplinkStatusPropagation =
+    uplinkStatusPropagationSupport.status !== "unsupported" ||
+    ports.data.some((port) => port.propagate_uplink_status !== undefined);
   const columns = useMemo<ColumnDef<Port>[]>(
     () => [
       {
@@ -522,6 +527,22 @@ export function PortsTableClient({
               meta: { fieldType: "string", visible: false },
             } satisfies ColumnDef<Port>,
           ]),
+      ...(showUplinkStatusPropagation
+        ? [
+            {
+              id: "propagate_uplink_status",
+              accessorFn: (port) => port.propagate_uplink_status,
+              header: "Uplink status propagation",
+              cell: ({ row }) =>
+                row.original.propagate_uplink_status === undefined
+                  ? "Not reported"
+                  : row.original.propagate_uplink_status
+                    ? "Enabled"
+                    : "Disabled",
+              meta: { fieldType: "boolean", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]
+        : []),
     ],
     [
       dnsDomainPortsSupport.status,
@@ -529,6 +550,7 @@ export function PortsTableClient({
       networkById,
       qosNetworkPolicySupport.status,
       qosSupport.status,
+      showUplinkStatusPropagation,
     ],
   );
 
@@ -547,6 +569,7 @@ export function PortsTableClient({
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}
             securityGroupSupport={securityGroupSupport}
+            uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
           />
         }
       >

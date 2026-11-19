@@ -47,6 +47,10 @@ export const NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION =
 export const NEUTRON_SECURITY_GROUP_EXTENSION = "security-group";
 export const NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION =
   "subnet-dns-publish-fixed-ip";
+export const NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION =
+  "uplink-status-propagation";
+export const NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION =
+  "uplink-status-propagation-updatable";
 export const NEUTRON_VLAN_TRANSPARENCY_EXTENSION = "vlan-transparent";
 export const CINDER_BASELINE_MICROVERSION = "3.0";
 export const CINDER_DETAIL_MICROVERSION = "3.65";

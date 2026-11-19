@@ -24,6 +24,9 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION: "router_availability_zone",
   NEUTRON_SECURITY_GROUP_EXTENSION: "security-group",
   NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION: "subnet-dns-publish-fixed-ip",
+  NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION: "uplink-status-propagation",
+  NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION:
+    "uplink-status-propagation-updatable",
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION: "vlan-transparent",
 }));
 
@@ -76,6 +79,8 @@ describe("Neutron mutation actions", () => {
         "router_availability_zone",
         "security-group",
         "subnet-dns-publish-fixed-ip",
+        "uplink-status-propagation",
+        "uplink-status-propagation-updatable",
         "vlan-transparent",
       ],
       message: "",
@@ -572,6 +577,155 @@ describe("Neutron mutation actions", () => {
     });
 
     expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps create and update port uplink-status propagation", async () => {
+    await createPortAction(scope, {
+      name: "sriov-port",
+      description: "SR-IOV interface",
+      networkId: "network-a",
+      adminStateUp: true,
+      propagateUplinkStatus: false,
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "sriov-port",
+      description: "SR-IOV interface",
+      adminStateUp: true,
+      propagateUplinkStatus: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({ propagate_uplink_status: false }),
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({ propagate_uplink_status: true }),
+        },
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(2);
+  });
+
+  it("omits unchanged port uplink-status propagation", async () => {
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "Application interface",
+      networkId: "network-a",
+      adminStateUp: true,
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "application-port",
+      description: "Renamed only",
+      adminStateUp: true,
+    });
+
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[0]?.[0]?.body.port,
+    ).not.toHaveProperty("propagate_uplink_status");
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[1]?.[0]?.body.port,
+    ).not.toHaveProperty("propagate_uplink_status");
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("enforces create and update uplink-status capabilities independently", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["uplink-status-propagation"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const createResult = await createPortAction(scope, {
+      name: "sriov-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      propagateUplinkStatus: false,
+    });
+    const updateResult = await updatePortAction(scope, "port-a", {
+      name: "sriov-port",
+      description: "",
+      adminStateUp: true,
+      propagateUplinkStatus: false,
+    });
+
+    expect(createResult.ok).toBe(true);
+    expect(updateResult).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining("uplink-status-propagation-updatable"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects port uplink-status propagation when create support is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["uplink-status-propagation-updatable"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createPortAction(scope, {
+      name: "sriov-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      propagateUplinkStatus: false,
+    });
+    const updateResult = await updatePortAction(scope, "port-a", {
+      name: "sriov-port",
+      description: "",
+      adminStateUp: true,
+      propagateUplinkStatus: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining("uplink-status-propagation"),
+      },
+    });
+    expect(updateResult).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining("uplink-status-propagation"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("lets Neutron validate uplink-status propagation when discovery is unavailable", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "Network capability discovery failed.",
+      serviceType: "network",
+    });
+
+    await createPortAction(scope, {
+      name: "sriov-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      propagateUplinkStatus: false,
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "sriov-port",
+      description: "",
+      adminStateUp: true,
+      propagateUplinkStatus: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(2);
   });
 
   it("maps allowed address pairs and omits an empty optional MAC", async () => {

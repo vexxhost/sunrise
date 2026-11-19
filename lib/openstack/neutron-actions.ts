@@ -26,6 +26,8 @@ import {
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
   NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
+  NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
+  NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import {
@@ -468,6 +470,7 @@ const portCreateSchema = z
     dnsName,
     networkId: resourceId,
     adminStateUp: z.boolean().default(true),
+    propagateUplinkStatus: z.boolean().optional(),
     extraDhcpOptions,
     qosPolicyId: resourceId.nullable().optional(),
     ...portSecurityFields,
@@ -480,6 +483,7 @@ const portUpdateSchema = z
     dnsDomain,
     dnsName,
     adminStateUp: z.boolean(),
+    propagateUplinkStatus: z.boolean().optional(),
     extraDhcpOptions: extraDhcpOptionPatches,
     qosPolicyId: resourceId.nullable().optional(),
     ...portSecurityFields,
@@ -1320,6 +1324,14 @@ export async function createPortAction(
             required: NEUTRON_QOS_EXTENSION,
           },
         ]),
+    ...(value.propagateUplinkStatus === undefined
+      ? []
+      : [
+          {
+            feature: "Port uplink-status propagation",
+            required: NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1338,6 +1350,9 @@ export async function createPortAction(
           : { dns_domain: value.dnsDomain }),
         network_id: value.networkId,
         admin_state_up: value.adminStateUp,
+        ...(value.propagateUplinkStatus === undefined
+          ? {}
+          : { propagate_uplink_status: value.propagateUplinkStatus }),
         ...(value.extraDhcpOptions === undefined
           ? {}
           : {
@@ -1448,6 +1463,18 @@ export async function updatePortAction(
             required: NEUTRON_QOS_EXTENSION,
           },
         ]),
+    ...(value.propagateUplinkStatus === undefined
+      ? []
+      : [
+          {
+            feature: "Port uplink-status propagation",
+            required: NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
+          },
+          {
+            feature: "Updating port uplink-status propagation",
+            required: NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1465,6 +1492,9 @@ export async function updatePortAction(
           ? {}
           : { dns_domain: value.dnsDomain }),
         admin_state_up: value.adminStateUp,
+        ...(value.propagateUplinkStatus === undefined
+          ? {}
+          : { propagate_uplink_status: value.propagateUplinkStatus }),
         ...(value.extraDhcpOptions === undefined
           ? {}
           : {

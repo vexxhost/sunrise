@@ -77,6 +77,8 @@ interface PortDetailActionsProps {
   regionId: string;
   securityGroupSupport: OpenStackFeatureSupport;
   servers: Server[];
+  uplinkStatusPropagationSupport: OpenStackFeatureSupport;
+  uplinkStatusPropagationUpdateSupport: OpenStackFeatureSupport;
 }
 
 export function PortDetailActions({
@@ -92,6 +94,8 @@ export function PortDetailActions({
   regionId,
   securityGroupSupport,
   servers,
+  uplinkStatusPropagationSupport,
+  uplinkStatusPropagationUpdateSupport,
 }: PortDetailActionsProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -101,6 +105,9 @@ export function PortDetailActions({
   const [dnsDomain, setDnsDomain] = useState(port.dns_domain ?? "");
   const [dnsName, setDnsName] = useState(port.dns_name ?? "");
   const [adminStateUp, setAdminStateUp] = useState(port.admin_state_up);
+  const [propagateUplinkStatus, setPropagateUplinkStatus] = useState(
+    port.propagate_uplink_status ?? true,
+  );
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(
     port.port_security_enabled,
   );
@@ -135,6 +142,15 @@ export function PortDetailActions({
   const extraDhcpOptionsAvailable =
     extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
+  const uplinkStatusPropagationAvailable =
+    uplinkStatusPropagationSupport.status !== "unsupported";
+  const uplinkStatusPropagationUpdatable =
+    uplinkStatusPropagationAvailable &&
+    uplinkStatusPropagationUpdateSupport.status !== "unsupported";
+  const uplinkStatusPropagationUnavailableMessage =
+    uplinkStatusPropagationAvailable
+      ? uplinkStatusPropagationUpdateSupport.message
+      : uplinkStatusPropagationSupport.message;
   const qosPolicies = useQuery({
     ...qosPoliciesQueryOptions(regionId, projectId),
     enabled: dialog === "edit" && qosAvailable,
@@ -156,6 +172,7 @@ export function PortDetailActions({
       setDnsDomain(port.dns_domain ?? "");
       setDnsName(port.dns_name ?? "");
       setAdminStateUp(port.admin_state_up);
+      setPropagateUplinkStatus(port.propagate_uplink_status ?? true);
       setPortSecurityEnabled(port.port_security_enabled);
       setSecurityGroupIds(port.security_groups);
       setAllowedAddressPairs(
@@ -204,12 +221,18 @@ export function PortDetailActions({
         dnsIntegrationAvailable && dnsName !== (port.dns_name ?? "");
       const dnsDomainChanged =
         dnsDomainPortsAvailable && dnsDomain !== (port.dns_domain ?? "");
+      const propagateUplinkStatusChanged =
+        uplinkStatusPropagationUpdatable &&
+        propagateUplinkStatus !== (port.propagate_uplink_status ?? true);
       const result = await updatePortAction({ projectId, regionId }, port.id, {
         name,
         description,
         dnsName: dnsNameChanged ? dnsName : undefined,
         dnsDomain: dnsDomainChanged ? dnsDomain : undefined,
         adminStateUp,
+        propagateUplinkStatus: propagateUplinkStatusChanged
+          ? propagateUplinkStatus
+          : undefined,
         portSecurityEnabled: portSecurityChanged
           ? portSecurityEnabled
           : undefined,
@@ -456,6 +479,26 @@ export function PortDetailActions({
                   </span>
                 </span>
               </label>
+              {uplinkStatusPropagationUpdatable ? (
+                <label className="flex items-start gap-3 rounded-md border p-3">
+                  <Checkbox
+                    checked={propagateUplinkStatus}
+                    disabled={pending}
+                    onCheckedChange={(value) =>
+                      setPropagateUplinkStatus(value === true)
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">
+                      Propagate uplink status
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Make the virtual interface link state follow its physical
+                      uplink, including SR-IOV ports.
+                    </span>
+                  </span>
+                </label>
+              ) : null}
               {portSecurityAvailable ? (
                 <label className="flex items-start gap-3 rounded-md border p-3">
                   <Checkbox
@@ -535,7 +578,8 @@ export function PortDetailActions({
             !extraDhcpOptionsAvailable ||
             !dnsIntegrationAvailable ||
             !dnsDomainPortsAvailable ||
-            !qosAvailable ? (
+            !qosAvailable ||
+            !uplinkStatusPropagationUpdatable ? (
               <MutationAlert
                 variant="info"
                 title="Some port controls are unavailable"
@@ -559,6 +603,9 @@ export function PortDetailActions({
                   <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
                 {!qosAvailable ? <p>{qosSupport.message}</p> : null}
+                {!uplinkStatusPropagationUpdatable ? (
+                  <p>{uplinkStatusPropagationUnavailableMessage}</p>
+                ) : null}
               </MutationAlert>
             ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
