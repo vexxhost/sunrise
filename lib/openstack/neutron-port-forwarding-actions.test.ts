@@ -216,6 +216,62 @@ describe("Neutron floating IP port forwarding actions", () => {
     );
   });
 
+  it("updates singular protocol and external-port fields allowed by Neutron", async () => {
+    await updateFloatingIpPortForwardingAction(scope, "floating-a", "rule-a", {
+      description: "DNS",
+      externalPortStart: 53,
+      internalIpAddress: "10.0.0.5",
+      internalPortId: "port-a",
+      internalPortStart: 5353,
+      protocol: "udp",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          port_forwarding: {
+            description: "DNS",
+            external_port: 53,
+            internal_ip_address: "10.0.0.5",
+            internal_port: 5353,
+            internal_port_id: "port-a",
+            protocol: "udp",
+          },
+        },
+        method: "PUT",
+        path: "/v2.0/floatingips/floating-a/port_forwardings/rule-a",
+      }),
+    );
+  });
+
+  it("updates external and internal ranges allowed by Neutron", async () => {
+    await updateFloatingIpPortForwardingAction(scope, "floating-a", "rule-a", {
+      externalPortEnd: 8_010,
+      externalPortStart: 8_000,
+      internalIpAddress: "10.0.0.5",
+      internalPortEnd: 9_010,
+      internalPortId: "port-a",
+      internalPortStart: 9_000,
+      protocol: "tcp",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          port_forwarding: {
+            external_port_range: "8000:8010",
+            internal_ip_address: "10.0.0.5",
+            internal_port_id: "port-a",
+            internal_port_range: "9000:9010",
+            protocol: "tcp",
+          },
+        },
+        method: "PUT",
+        path: "/v2.0/floatingips/floating-a/port_forwardings/rule-a",
+      }),
+    );
+  });
+
   it("rejects ranges when the deployment does not advertise them", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",

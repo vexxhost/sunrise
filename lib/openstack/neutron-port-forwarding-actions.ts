@@ -511,6 +511,8 @@ export async function updateFloatingIpPortForwardingAction(
     portForwardingId,
   );
   if (!prepared.ok) return prepared.result;
+  // Neutron declares protocol and both external port forms allow_put. Sending
+  // the complete mapping also lets Neutron run its collision checks atomically.
   return executeOpenStackMutation<FloatingIpPortForwarding>({
     actionLabel: "update the floating IP port forwarding rule",
     body: prepared.body,
