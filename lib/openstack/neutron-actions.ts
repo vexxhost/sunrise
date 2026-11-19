@@ -25,6 +25,7 @@ import {
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
+  NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import {
@@ -365,6 +366,7 @@ const subnetCreateSchema = z
     gatewayIp: optionalIpAddress,
     disableGateway: z.boolean().default(false),
     enableDhcp: z.boolean().default(true),
+    dnsPublishFixedIp: z.boolean().optional(),
     ipv6Mode: ipv6ConfigurationMode,
     allocationPools,
     dnsNameservers,
@@ -390,6 +392,7 @@ const subnetUpdateSchema = z
     gatewayIp: optionalIpAddress,
     disableGateway: z.boolean().default(false),
     enableDhcp: z.boolean(),
+    dnsPublishFixedIp: z.boolean().optional(),
     currentIpv6Mode: ipv6ConfigurationMode,
     allocationPools,
     dnsNameservers,
@@ -790,6 +793,17 @@ export async function createSubnetAction(
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
   const ipv6Configuration = getIpv6ConfigurationAttributes(value.ipv6Mode);
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.dnsPublishFixedIp === undefined
+      ? []
+      : [
+          {
+            feature: "Subnet fixed-IP DNS publication",
+            required: NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "create a subnet",
     scope,
@@ -809,6 +823,9 @@ export async function createSubnetAction(
             ? { gateway_ip: value.gatewayIp }
             : {}),
         enable_dhcp: value.enableDhcp,
+        ...(value.dnsPublishFixedIp === undefined
+          ? {}
+          : { dns_publish_fixed_ip: value.dnsPublishFixedIp }),
         ...(value.ipVersion === 6 && value.ipv6Mode !== "none"
           ? ipv6Configuration
           : {}),
@@ -833,6 +850,17 @@ export async function updateSubnetAction(
   const parsed = parse(subnetUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.dnsPublishFixedIp === undefined
+      ? []
+      : [
+          {
+            feature: "Subnet fixed-IP DNS publication",
+            required: NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "edit this subnet",
     scope,
@@ -845,6 +873,9 @@ export async function updateSubnetAction(
         description: value.description,
         gateway_ip: value.disableGateway ? null : value.gatewayIp,
         enable_dhcp: value.enableDhcp,
+        ...(value.dnsPublishFixedIp === undefined
+          ? {}
+          : { dns_publish_fixed_ip: value.dnsPublishFixedIp }),
         allocation_pools: value.allocationPools,
         dns_nameservers: value.dnsNameservers,
         host_routes: value.hostRoutes,

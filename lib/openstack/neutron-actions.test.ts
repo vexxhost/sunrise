@@ -23,6 +23,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_QOS_GATEWAY_IP_EXTENSION: "qos-gateway-ip",
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION: "router_availability_zone",
   NEUTRON_SECURITY_GROUP_EXTENSION: "security-group",
+  NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION: "subnet-dns-publish-fixed-ip",
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION: "vlan-transparent",
 }));
 
@@ -74,6 +75,7 @@ describe("Neutron mutation actions", () => {
         "qos-gateway-ip",
         "router_availability_zone",
         "security-group",
+        "subnet-dns-publish-fixed-ip",
         "vlan-transparent",
       ],
       message: "",
@@ -1408,6 +1410,106 @@ describe("Neutron mutation actions", () => {
         },
       }),
     );
+  });
+
+  it("maps supported subnet fixed-IP DNS publication changes", async () => {
+    await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "public-v6",
+      description: "Globally routed addresses",
+      cidr: "2001:db8:42::/64",
+      ipVersion: 6,
+      disableGateway: false,
+      enableDhcp: true,
+      dnsPublishFixedIp: true,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          subnet: expect.objectContaining({ dns_publish_fixed_ip: true }),
+        },
+      }),
+    );
+
+    await updateSubnetAction(scope, "subnet-a", {
+      name: "private-v4",
+      description: "Private addresses",
+      cidr: "10.20.30.0/24",
+      ipVersion: 4,
+      gatewayIp: "10.20.30.1",
+      disableGateway: false,
+      enableDhcp: true,
+      dnsPublishFixedIp: false,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          subnet: expect.objectContaining({ dns_publish_fixed_ip: false }),
+        },
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(2);
+  });
+
+  it("omits unchanged subnet DNS publication from unrelated updates", async () => {
+    await updateSubnetAction(scope, "subnet-a", {
+      name: "application-subnet",
+      description: "Renamed only",
+      cidr: "10.20.30.0/24",
+      ipVersion: 4,
+      gatewayIp: "10.20.30.1",
+      disableGateway: false,
+      enableDhcp: true,
+    });
+
+    const subnetRequest =
+      mocks.executeOpenStackMutation.mock.calls.at(-1)?.[0].body.subnet;
+    expect(subnetRequest).not.toHaveProperty("dns_publish_fixed_ip");
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("rejects subnet DNS publication when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: [],
+      message: "",
+      serviceType: "network",
+    });
+
+    const createResult = await createSubnetAction(scope, {
+      networkId: "network-a",
+      name: "public-v6",
+      description: "",
+      cidr: "2001:db8:42::/64",
+      ipVersion: 6,
+      disableGateway: false,
+      enableDhcp: true,
+      dnsPublishFixedIp: true,
+    });
+    const updateResult = await updateSubnetAction(scope, "subnet-a", {
+      name: "private-v4",
+      description: "",
+      cidr: "10.20.30.0/24",
+      ipVersion: 4,
+      gatewayIp: "10.20.30.1",
+      disableGateway: false,
+      enableDhcp: true,
+      dnsPublishFixedIp: false,
+    });
+
+    expect(createResult).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining("subnet-dns-publish-fixed-ip"),
+      },
+    });
+    expect(updateResult).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining("subnet-dns-publish-fixed-ip"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("preserves automatic and disabled gateway semantics", async () => {

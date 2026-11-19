@@ -28,6 +28,7 @@ interface NetworkDetailClientProps {
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
+  subnetDnsPublishSupport: OpenStackFeatureSupport;
   vlanTransparencySupport: OpenStackFeatureSupport;
 }
 
@@ -56,6 +57,7 @@ export function NetworkDetailClient({
   qosSupport,
   projectId,
   regionId,
+  subnetDnsPublishSupport,
   vlanTransparencySupport,
 }: NetworkDetailClientProps) {
   const network = useSuspenseQuery(
@@ -83,6 +85,9 @@ export function NetworkDetailClient({
   const owned =
     network.data.project_id === projectId ||
     network.data.tenant_id === projectId;
+  const showSubnetDnsPublication =
+    subnetDnsPublishSupport.status !== "unsupported" ||
+    subnets.data.some((subnet) => subnet.dns_publish_fixed_ip !== undefined);
   const networkRows = useMemo<Array<[string, React.ReactNode]>>(
     () => [
       ["ID", network.data.id],
@@ -186,6 +191,7 @@ export function NetworkDetailClient({
             qosSupport={qosSupport}
             projectId={projectId}
             regionId={regionId}
+            subnetDnsPublishSupport={subnetDnsPublishSupport}
           />
         ) : (
           <Badge variant="outline">Read-only context</Badge>
@@ -204,13 +210,20 @@ export function NetworkDetailClient({
         </div>
         {subnets.data.length ? (
           <div className="overflow-x-auto rounded-md border">
-            <div className="grid min-w-[76rem] grid-cols-[minmax(8rem,1fr)_minmax(9rem,1fr)_minmax(12rem,1.4fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_7rem_6rem] border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+            <div
+              className={
+                showSubnetDnsPublication
+                  ? "grid min-w-[84rem] grid-cols-[minmax(8rem,1fr)_minmax(9rem,1fr)_minmax(12rem,1.4fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_7rem_8rem_6rem] border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground"
+                  : "grid min-w-[76rem] grid-cols-[minmax(8rem,1fr)_minmax(9rem,1fr)_minmax(12rem,1.4fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_7rem_6rem] border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground"
+              }
+            >
               <span>Name</span>
               <span>CIDR</span>
               <span>Allocation pools</span>
               <span>DNS servers</span>
               <span>Router</span>
               <span>DHCP</span>
+              {showSubnetDnsPublication ? <span>External DNS</span> : null}
               <span className="text-right">Actions</span>
             </div>
             {subnets.data.map((subnet) => {
@@ -225,7 +238,11 @@ export function NetworkDetailClient({
               return (
                 <div
                   key={subnet.id}
-                  className="grid min-w-[76rem] grid-cols-[minmax(8rem,1fr)_minmax(9rem,1fr)_minmax(12rem,1.4fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_7rem_6rem] items-center px-3 py-2 text-sm not-last:border-b"
+                  className={
+                    showSubnetDnsPublication
+                      ? "grid min-w-[84rem] grid-cols-[minmax(8rem,1fr)_minmax(9rem,1fr)_minmax(12rem,1.4fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_7rem_8rem_6rem] items-center px-3 py-2 text-sm not-last:border-b"
+                      : "grid min-w-[76rem] grid-cols-[minmax(8rem,1fr)_minmax(9rem,1fr)_minmax(12rem,1.4fr)_minmax(8rem,1fr)_minmax(8rem,1fr)_7rem_6rem] items-center px-3 py-2 text-sm not-last:border-b"
+                  }
                 >
                   <span className="truncate" title={subnet.name || subnet.id}>
                     {subnet.name || subnet.id}
@@ -256,6 +273,15 @@ export function NetworkDetailClient({
                       : "Not attached"}
                   </span>
                   <span>{subnet.enable_dhcp ? "Enabled" : "Disabled"}</span>
+                  {showSubnetDnsPublication ? (
+                    <span>
+                      {subnet.dns_publish_fixed_ip === undefined
+                        ? "Not reported"
+                        : subnet.dns_publish_fixed_ip
+                          ? "Published"
+                          : "Not published"}
+                    </span>
+                  ) : null}
                   <div className="flex justify-end">
                     <SubnetDetailActions
                       projectId={projectId}
@@ -263,6 +289,7 @@ export function NetworkDetailClient({
                       routerInterfaces={routerInterfaces}
                       routers={routers.data}
                       subnet={subnet}
+                      subnetDnsPublishSupport={subnetDnsPublishSupport}
                     />
                   </div>
                 </div>

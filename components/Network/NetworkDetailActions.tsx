@@ -61,6 +61,7 @@ interface NetworkDetailActionsProps {
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
+  subnetDnsPublishSupport: OpenStackFeatureSupport;
 }
 
 export function NetworkDetailActions({
@@ -71,6 +72,7 @@ export function NetworkDetailActions({
   qosSupport,
   projectId,
   regionId,
+  subnetDnsPublishSupport,
 }: NetworkDetailActionsProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -84,6 +86,8 @@ export function NetworkDetailActions({
     dnsIntegrationSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
   const mtuWritable = mtuSupport.status !== "unsupported";
+  const subnetDnsPublishAvailable =
+    subnetDnsPublishSupport.status !== "unsupported";
   const [name, setName] = useState(network.name);
   const [description, setDescription] = useState(network.description);
   const [dnsDomain, setDnsDomain] = useState(network.dns_domain ?? "");
@@ -101,6 +105,7 @@ export function NetworkDetailActions({
   const [gatewayIp, setGatewayIp] = useState("");
   const [disableGateway, setDisableGateway] = useState(false);
   const [enableDhcp, setEnableDhcp] = useState(true);
+  const [dnsPublishFixedIp, setDnsPublishFixedIp] = useState(false);
   const [ipv6Mode, setIpv6Mode] = useState<IPv6ConfigurationMode>("none");
   const [allocationPools, setAllocationPools] = useState<AllocationPool[]>([]);
   const [dnsNameservers, setDnsNameservers] = useState<string[]>([]);
@@ -135,6 +140,7 @@ export function NetworkDetailActions({
       setGatewayIp("");
       setDisableGateway(false);
       setEnableDhcp(true);
+      setDnsPublishFixedIp(false);
       setIpv6Mode("none");
       setAllocationPools([]);
       setDnsNameservers([]);
@@ -198,6 +204,8 @@ export function NetworkDetailActions({
           gatewayIp: gatewayIp || undefined,
           disableGateway,
           enableDhcp,
+          dnsPublishFixedIp:
+            subnetDnsPublishAvailable && dnsPublishFixedIp ? true : undefined,
           ipv6Mode,
           allocationPools: allocationPools.length ? allocationPools : undefined,
           dnsNameservers: dnsNameservers.length ? dnsNameservers : undefined,
@@ -510,6 +518,26 @@ export function NetworkDetailActions({
                   </span>
                 </span>
               </label>
+              {subnetDnsPublishAvailable ? (
+                <label className="flex items-start gap-3 rounded-md border p-3 sm:col-span-2">
+                  <Checkbox
+                    checked={dnsPublishFixedIp}
+                    disabled={pending}
+                    onCheckedChange={(value) =>
+                      setDnsPublishFixedIp(value === true)
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">
+                      Publish fixed IP addresses to external DNS
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Publish addresses from this subnet for ports with an
+                      external DNS name and domain.
+                    </span>
+                  </span>
+                </label>
+              ) : null}
               <label className="flex items-start gap-3 rounded-md border p-3 sm:col-span-2">
                 <Checkbox
                   checked={enableDhcp}
@@ -557,6 +585,14 @@ export function NetworkDetailActions({
               loading={subnetQuota.loading}
               unavailableMessage={subnetQuota.unavailableMessage}
             />
+            {!subnetDnsPublishAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="External DNS publication unavailable"
+              >
+                {subnetDnsPublishSupport.message}
+              </MutationAlert>
+            ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             {subnetQuota.issues.length ? (
               <MutationAlert>{subnetQuota.issues.join(" ")}</MutationAlert>
