@@ -12,6 +12,7 @@ export const recoveryResourceKinds = [
   "port",
   "floating-ip",
   "security-group",
+  "address-group",
   "load-balancer",
   "cluster",
   "cluster-template",
@@ -51,6 +52,7 @@ const recoveryLabels: Record<RecoveryResourceKind, string> = {
   port: "port",
   "floating-ip": "floating IP",
   "security-group": "security group",
+  "address-group": "address group",
   "load-balancer": "load balancer",
   cluster: "Kubernetes cluster",
   "cluster-template": "Kubernetes template",
@@ -129,6 +131,8 @@ export function recoveryDestination({
       return "/networking/floating-ips";
     case "security-group":
       return "/networking/security-groups";
+    case "address-group":
+      return "/networking/address-groups";
     case "load-balancer":
       return "/networking/load-balancers";
     case "cluster":

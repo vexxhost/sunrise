@@ -6,6 +6,7 @@ import { queryOptions } from "@tanstack/react-query";
 import { openstack } from "@/lib/openstack/actions";
 import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availability-zones";
 import type {
+  AddressGroup,
   FloatingIp,
   Network,
   NeutronAvailabilityZone,
@@ -44,6 +45,81 @@ function withQuery(path: string, values: Record<string, string | undefined>) {
   }
   const query = params.toString();
   return query ? `${path}?${query}` : path;
+}
+
+export function addressGroupsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "network-address-groups"],
+    queryFn: async () => {
+      const data = await openstack<{ address_groups: AddressGroup[] }>({
+        regionId: regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: "/v2.0/address-groups",
+        errorMode: "throw",
+      });
+
+      return data?.address_groups ?? [];
+    },
+    enabled: !!regionId && !!projectId,
+  });
+}
+
+export function projectAddressGroupsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "project-network-address-groups"],
+    queryFn: async () => {
+      const data = await openstack<{ address_groups: AddressGroup[] }>({
+        regionId: regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: withQuery("/v2.0/address-groups", { project_id: projectId }),
+        errorMode: "throw",
+      });
+
+      return data?.address_groups ?? [];
+    },
+    enabled: !!regionId && !!projectId,
+  });
+}
+
+export function isOwnedAddressGroup(
+  group: AddressGroup,
+  projectId: string,
+  projectGroups: AddressGroup[],
+) {
+  if (group.project_id || group.tenant_id) {
+    return group.project_id === projectId || group.tenant_id === projectId;
+  }
+  return projectGroups.some((candidate) => candidate.id === group.id);
+}
+
+export function addressGroupQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  id: string,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "network-address-group", id],
+    queryFn: async () => {
+      const data = await openstack<{ address_group: AddressGroup }>({
+        regionId: regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: `/v2.0/address-groups/${encodeURIComponent(id)}`,
+        errorMode: "throw",
+      });
+      if (!data?.address_group) throw new Error("Address group was not found");
+      return data.address_group;
+    },
+    enabled: !!regionId && !!projectId && !!id,
+  });
 }
 
 export function networkAvailabilityZonesQueryOptions(

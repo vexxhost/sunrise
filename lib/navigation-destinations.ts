@@ -30,6 +30,7 @@ export type NavigationDestinationId =
   | "networking.floating-ips"
   | "networking.load-balancers"
   | "networking.security-groups"
+  | "networking.address-groups"
   | "kubernetes.clusters"
   | "kubernetes.templates"
   | "object-storage.buckets"
@@ -285,6 +286,18 @@ const definitions: NavigationDestinationDefinition[] = [
     catalogIdentities: neutron,
   },
   {
+    id: "networking.address-groups",
+    label: "Address groups",
+    description: "Reusable IP address sets for security group rules.",
+    href: "/networking/address-groups",
+    service: "networking",
+    policyService: "network",
+    group: "Networking",
+    icon: "security-group",
+    keywords: ["neutron", "firewall", "cidr", "ip sets", "address groups"],
+    catalogIdentities: neutron,
+  },
+  {
     id: "kubernetes.clusters",
     label: "Kubernetes clusters",
     description: "Magnum-backed Kubernetes control planes and node groups.",
@@ -500,6 +513,7 @@ export const createActionSearchTerms: Record<CreateActionId, string[]> = {
   port: ["neutron", "interface", "nic"],
   "floating-ip": ["neutron", "public ip", "elastic ip", "eip"],
   "security-group": ["neutron", "firewall", "rules"],
+  "address-group": ["neutron", "firewall", "cidr", "ip set"],
   "key-pair": ["ssh", "public key"],
   cluster: ["magnum", "kubernetes", "k8s", "capi"],
   "cluster-template": ["magnum", "kubernetes", "k8s", "capi"],

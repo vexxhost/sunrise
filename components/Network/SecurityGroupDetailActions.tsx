@@ -33,18 +33,26 @@ import {
   replaceSecurityGroupRuleAction,
   updateSecurityGroupAction,
 } from "@/lib/openstack/neutron-actions";
-import type { SecurityGroup, SecurityGroupRule } from "@/types/openstack";
+import type {
+  AddressGroup,
+  SecurityGroup,
+  SecurityGroupRule,
+} from "@/types/openstack";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 export function SecurityGroupDetailActions({
+  addressGroups,
+  addressGroupSupport,
   group,
   groups,
   projectId,
   regionId,
   statefulSupport,
 }: {
+  addressGroups: AddressGroup[];
+  addressGroupSupport: OpenStackFeatureSupport;
   group: SecurityGroup;
   groups: SecurityGroup[];
   projectId: string;
@@ -134,6 +142,8 @@ export function SecurityGroupDetailActions({
             remoteType === "cidr" ? remote || undefined : undefined,
           remoteGroupId:
             remoteType === "group" ? remote || undefined : undefined,
+          remoteAddressGroupId:
+            remoteType === "address-group" ? remote || undefined : undefined,
         },
       );
       if (!result.ok) {
@@ -249,8 +259,8 @@ export function SecurityGroupDetailActions({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
-                {pending ? "Saving" : "Save changes"}
+              <Button type="submit" loading={pending} disabled={!name.trim()}>
+                Save changes
               </Button>
             </DialogFooter>
           </form>
@@ -265,11 +275,13 @@ export function SecurityGroupDetailActions({
             <DialogHeader>
               <DialogTitle>Add security group rule</DialogTitle>
               <DialogDescription>
-                Allow a protocol and optional port range from a CIDR or another
-                security group.
+                Allow a protocol and optional port range from a CIDR, security
+                group, or address group.
               </DialogDescription>
             </DialogHeader>
             <SecurityGroupRuleFields
+              addressGroups={addressGroups}
+              addressGroupSupport={addressGroupSupport}
               idPrefix="add-rule"
               description={ruleDescription}
               direction={direction}
@@ -310,13 +322,13 @@ export function SecurityGroupDetailActions({
               </Button>
               <Button
                 type="submit"
+                loading={pending}
                 disabled={
-                  pending ||
                   (remoteType !== "any" && !remote) ||
                   ruleQuota.issues.length > 0
                 }
               >
-                {pending ? "Adding" : "Add rule"}
+                Add rule
               </Button>
             </DialogFooter>
           </form>
@@ -353,15 +365,20 @@ function ruleInput(rule: SecurityGroupRule) {
     portRangeMax: rule.port_range_max ?? undefined,
     remoteIpPrefix: rule.remote_ip_prefix || undefined,
     remoteGroupId: rule.remote_group_id || undefined,
+    remoteAddressGroupId: rule.remote_address_group_id || undefined,
   };
 }
 
 export function SecurityGroupRuleActions({
+  addressGroups,
+  addressGroupSupport,
   groups,
   projectId,
   regionId,
   rule,
 }: {
+  addressGroups: AddressGroup[];
+  addressGroupSupport: OpenStackFeatureSupport;
   groups: SecurityGroup[];
   projectId: string;
   regionId: string;
@@ -385,10 +402,19 @@ export function SecurityGroupRuleActions({
     rule.port_range_max === null ? "" : String(rule.port_range_max),
   );
   const [remoteType, setRemoteType] = useState<SecurityRuleRemoteType>(
-    rule.remote_group_id ? "group" : rule.remote_ip_prefix ? "cidr" : "any",
+    rule.remote_address_group_id
+      ? "address-group"
+      : rule.remote_group_id
+        ? "group"
+        : rule.remote_ip_prefix
+          ? "cidr"
+          : "any",
   );
   const [remote, setRemote] = useState(
-    rule.remote_group_id || rule.remote_ip_prefix || "",
+    rule.remote_address_group_id ||
+      rule.remote_group_id ||
+      rule.remote_ip_prefix ||
+      "",
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -404,9 +430,20 @@ export function SecurityGroupRuleActions({
     setPortMin(rule.port_range_min === null ? "" : String(rule.port_range_min));
     setPortMax(rule.port_range_max === null ? "" : String(rule.port_range_max));
     setRemoteType(
-      rule.remote_group_id ? "group" : rule.remote_ip_prefix ? "cidr" : "any",
+      rule.remote_address_group_id
+        ? "address-group"
+        : rule.remote_group_id
+          ? "group"
+          : rule.remote_ip_prefix
+            ? "cidr"
+            : "any",
     );
-    setRemote(rule.remote_group_id || rule.remote_ip_prefix || "");
+    setRemote(
+      rule.remote_address_group_id ||
+        rule.remote_group_id ||
+        rule.remote_ip_prefix ||
+        "",
+    );
     setError(null);
     setDialog("edit");
   };
@@ -429,6 +466,8 @@ export function SecurityGroupRuleActions({
             remoteType === "cidr" ? remote || undefined : undefined,
           remoteGroupId:
             remoteType === "group" ? remote || undefined : undefined,
+          remoteAddressGroupId:
+            remoteType === "address-group" ? remote || undefined : undefined,
         },
       );
       if (!result.ok) {
@@ -460,6 +499,7 @@ export function SecurityGroupRuleActions({
         <Button
           size="icon-sm"
           variant="ghost"
+          tone="danger"
           title="Delete rule"
           onClick={() => {
             setError(null);
@@ -484,6 +524,8 @@ export function SecurityGroupRuleActions({
               </DialogDescription>
             </DialogHeader>
             <SecurityGroupRuleFields
+              addressGroups={addressGroups}
+              addressGroupSupport={addressGroupSupport}
               idPrefix={`edit-rule-${rule.id}`}
               description={description}
               direction={direction}
@@ -516,9 +558,10 @@ export function SecurityGroupRuleActions({
               </Button>
               <Button
                 type="submit"
-                disabled={pending || (remoteType !== "any" && !remote)}
+                loading={pending}
+                disabled={remoteType !== "any" && !remote}
               >
-                {pending ? "Saving" : "Save changes"}
+                Save changes
               </Button>
             </DialogFooter>
           </form>

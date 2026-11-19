@@ -23,6 +23,7 @@ export type CreateActionId =
   | "port"
   | "floating-ip"
   | "security-group"
+  | "address-group"
   | "key-pair"
   | "cluster"
   | "cluster-template"
@@ -170,6 +171,16 @@ const definitions: CreateActionDefinition[] = [
     label: "Create security group",
     description: "Create a reusable stateful firewall policy.",
     href: "/networking/security-groups?create=security-group",
+    service: "networking",
+    policyService: "network",
+    group: "Networking",
+    catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
+  },
+  {
+    id: "address-group",
+    label: "Create address group",
+    description: "Create a reusable set of IP addresses for firewall rules.",
+    href: "/networking/address-groups?create=address-group",
     service: "networking",
     policyService: "network",
     group: "Networking",

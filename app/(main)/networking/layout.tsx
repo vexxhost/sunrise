@@ -81,6 +81,15 @@ function networkingSidebarSections(
               },
             ]
           : []),
+        ...(visibleDestinations.has("networking.address-groups")
+          ? [
+              {
+                name: "Address Groups",
+                href: "/networking/address-groups",
+                icon: "ListTree",
+              },
+            ]
+          : []),
       ],
     },
   ];

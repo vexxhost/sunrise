@@ -1,5 +1,5 @@
 "use client";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import {
   SecurityGroupDetailActions,
@@ -7,6 +7,7 @@ import {
 } from "@/components/Network/SecurityGroupDetailActions";
 import { Badge } from "@/components/ui/badge";
 import {
+  addressGroupsQueryOptions,
   securityGroupQueryOptions,
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
@@ -24,11 +25,13 @@ function ports(rule: {
 }
 
 export function SecurityGroupDetailClient({
+  addressGroupSupport,
   id,
   projectId,
   regionId,
   statefulSupport,
 }: {
+  addressGroupSupport: OpenStackFeatureSupport;
   id: string;
   projectId: string;
   regionId: string;
@@ -39,6 +42,13 @@ export function SecurityGroupDetailClient({
   );
   const groups = useSuspenseQuery(
     securityGroupsQueryOptions(regionId, projectId),
+  );
+  const addressGroups = useQuery({
+    ...addressGroupsQueryOptions(regionId, projectId),
+    enabled: addressGroupSupport.status !== "unsupported",
+  });
+  const addressGroupById = new Map(
+    (addressGroups.data ?? []).map((candidate) => [candidate.id, candidate]),
   );
   const groupById = new Map(
     groups.data.map((candidate) => [candidate.id, candidate]),
@@ -61,6 +71,8 @@ export function SecurityGroupDetailClient({
         </div>
         {owned ? (
           <SecurityGroupDetailActions
+            addressGroups={addressGroups.data ?? []}
+            addressGroupSupport={addressGroupSupport}
             group={group.data}
             groups={groups.data}
             projectId={projectId}
@@ -99,7 +111,14 @@ export function SecurityGroupDetailClient({
                 <span className="uppercase">{rule.protocol || "Any"}</span>
                 <span>{ports(rule)}</span>
                 <span className="truncate font-mono text-xs">
-                  {rule.remote_group_id ? (
+                  {rule.remote_address_group_id ? (
+                    <ResourceLink
+                      href={`/networking/address-groups/${encodeURIComponent(rule.remote_address_group_id)}`}
+                    >
+                      {addressGroupById.get(rule.remote_address_group_id)?.name ||
+                        rule.remote_address_group_id}
+                    </ResourceLink>
+                  ) : rule.remote_group_id ? (
                     <ResourceLink
                       href={`/networking/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
                     >
@@ -116,6 +135,8 @@ export function SecurityGroupDetailClient({
                 <span>
                   {owned ? (
                     <SecurityGroupRuleActions
+                      addressGroups={addressGroups.data ?? []}
+                      addressGroupSupport={addressGroupSupport}
                       groups={groups.data}
                       projectId={projectId}
                       regionId={regionId}

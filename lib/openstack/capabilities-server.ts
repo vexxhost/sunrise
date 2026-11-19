@@ -27,6 +27,7 @@ const logger = createLogger("openstack.capabilities");
 
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
 export const NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION = "allowed-address-pairs";
+export const NEUTRON_ADDRESS_GROUP_EXTENSION = "address-group";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
 export const NEUTRON_PORT_BINDING_EXTENSION = "binding";
 export const NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION =
@@ -65,6 +66,8 @@ export const NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION =
 export const NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION =
   "router_availability_zone";
 export const NEUTRON_SECURITY_GROUP_EXTENSION = "security-group";
+export const NEUTRON_SECURITY_GROUP_REMOTE_ADDRESS_GROUP_EXTENSION =
+  "security-groups-remote-address-group";
 export const NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION =
   "stateful-security-group";
 export const NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION =

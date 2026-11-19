@@ -10,6 +10,7 @@ vi.mock("@/lib/openstack/mutations", () => ({
 }));
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
+  NEUTRON_ADDRESS_GROUP_EXTENSION: "address-group",
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION: "allowed-address-pairs",
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION: "dns-domain-ports",
@@ -34,6 +35,8 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_QOS_GATEWAY_IP_EXTENSION: "qos-gateway-ip",
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION: "router_availability_zone",
   NEUTRON_SECURITY_GROUP_EXTENSION: "security-group",
+  NEUTRON_SECURITY_GROUP_REMOTE_ADDRESS_GROUP_EXTENSION:
+    "security-groups-remote-address-group",
   NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION: "stateful-security-group",
   NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION: "subnet-dns-publish-fixed-ip",
   NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION: "uplink-status-propagation",
@@ -43,10 +46,12 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
 }));
 
 import {
+  addAddressGroupAddressesAction,
   addRouterExternalGatewayAction,
   addRouterInterfaceAction,
   addRouterRouteAction,
   createFloatingIpAction,
+  createAddressGroupAction,
   createNetworkAction,
   createPortAction,
   createRouterAction,
@@ -54,12 +59,14 @@ import {
   createSecurityGroupAction,
   createSubnetAction,
   deleteFloatingIpAction,
+  deleteAddressGroupAction,
   deleteNetworkAction,
   deletePortAction,
   deleteRouterAction,
   deleteSecurityGroupAction,
   deleteSubnetAction,
   removeRouterInterfaceAction,
+  removeAddressGroupAddressesAction,
   removeRouterRouteAction,
   replaceRouterRouteAction,
   replaceSecurityGroupRuleAction,
@@ -67,6 +74,7 @@ import {
   removeRouterExternalGatewayAction,
   setRouterGatewayAction,
   updateNetworkAction,
+  updateAddressGroupAction,
   updateFloatingIpAction,
   updatePortAction,
   updateRouterAction,
@@ -82,6 +90,7 @@ describe("Neutron mutation actions", () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",
       extensions: [
+        "address-group",
         "allowed-address-pairs",
         "binding",
         "dns-domain-ports",
@@ -105,6 +114,7 @@ describe("Neutron mutation actions", () => {
         "qos-gateway-ip",
         "router_availability_zone",
         "security-group",
+        "security-groups-remote-address-group",
         "stateful-security-group",
         "subnet-dns-publish-fixed-ip",
         "uplink-status-propagation",
@@ -2606,6 +2616,173 @@ describe("Neutron mutation actions", () => {
         code: "validation-failed",
         message:
           "IPv6 address configuration is only available for IPv6 subnets.",
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("maps address group lifecycle operations to their Neutron APIs", async () => {
+    await createAddressGroupAction(scope, {
+      name: "trusted-clients",
+      description: "Known client networks",
+      addresses: ["192.0.2.10", "2001:db8::/64"],
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        path: "/v2.0/address-groups",
+        body: {
+          address_group: {
+            name: "trusted-clients",
+            description: "Known client networks",
+            addresses: ["192.0.2.10", "2001:db8::/64"],
+          },
+        },
+      }),
+    );
+
+    await updateAddressGroupAction(scope, "group-a", {
+      name: "trusted-networks",
+      description: "Updated",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2.0/address-groups/group-a",
+        body: {
+          address_group: {
+            name: "trusted-networks",
+            description: "Updated",
+          },
+        },
+      }),
+    );
+
+    await addAddressGroupAddressesAction(scope, "group-a", {
+      addresses: ["198.51.100.0/24"],
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2.0/address-groups/group-a/add_addresses",
+        body: { addresses: ["198.51.100.0/24"] },
+      }),
+    );
+
+    await removeAddressGroupAddressesAction(scope, "group-a", {
+      addresses: ["192.0.2.10"],
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2.0/address-groups/group-a/remove_addresses",
+        body: { addresses: ["192.0.2.10"] },
+      }),
+    );
+
+    await deleteAddressGroupAction(scope, "group-a");
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/v2.0/address-groups/group-a",
+      }),
+    );
+  });
+
+  it("rejects invalid, duplicate, and unsupported address groups", async () => {
+    const invalid = await createAddressGroupAction(scope, {
+      name: "invalid",
+      description: "",
+      addresses: ["192.0.2.999"],
+    });
+    const duplicate = await createAddressGroupAction(scope, {
+      name: "duplicate",
+      description: "",
+      addresses: ["2001:DB8::/64", "2001:db8::/64"],
+    });
+    expect(invalid).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(duplicate).toMatchObject({
+      ok: false,
+      error: { message: "Remove the duplicate address." },
+    });
+
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["security-group"],
+      message: "",
+      serviceType: "network",
+    });
+    const unsupported = await deleteAddressGroupAction(scope, "group-a");
+    expect(unsupported).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("address-group") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("maps and independently gates remote address groups in security rules", async () => {
+    await createSecurityGroupRuleAction(scope, {
+      securityGroupId: "security-group-a",
+      direction: "ingress",
+      ethertype: "IPv4",
+      protocol: "tcp",
+      portRangeMin: 443,
+      portRangeMax: 443,
+      remoteAddressGroupId: "address-group-a",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          security_group_rule: expect.objectContaining({
+            remote_address_group_id: "address-group-a",
+            remote_group_id: null,
+            remote_ip_prefix: null,
+          }),
+        },
+      }),
+    );
+
+    vi.clearAllMocks();
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["address-group", "security-group"],
+      message: "",
+      serviceType: "network",
+    });
+    const unsupported = await createSecurityGroupRuleAction(scope, {
+      securityGroupId: "security-group-a",
+      direction: "ingress",
+      ethertype: "IPv4",
+      remoteAddressGroupId: "address-group-a",
+    });
+    expect(unsupported).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining(
+          "security-groups-remote-address-group",
+        ),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects security rules with multiple remote selectors", async () => {
+    const result = await createSecurityGroupRuleAction(scope, {
+      securityGroupId: "security-group-a",
+      direction: "ingress",
+      ethertype: "IPv4",
+      remoteIpPrefix: "192.0.2.0/24",
+      remoteAddressGroupId: "address-group-a",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        message:
+          "Choose only one remote CIDR, security group, or address group.",
       },
     });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();

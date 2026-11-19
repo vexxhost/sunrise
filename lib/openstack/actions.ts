@@ -80,6 +80,12 @@ const READ_ROUTES: ReadRoute[] = [
   {
     serviceType: "network",
     serviceName: "neutron",
+    pathname: /^\/v2\.0\/address-groups$/,
+    query: { project_id: true },
+  },
+  {
+    serviceType: "network",
+    serviceName: "neutron",
     pathname: /^\/v2\.0\/default-security-group-rules$/,
   },
   {
@@ -96,7 +102,7 @@ const READ_ROUTES: ReadRoute[] = [
     serviceType: "network",
     serviceName: "neutron",
     pathname:
-      /^\/v2\.0\/(?:networks|subnets|routers|ports|floatingips|security-groups)\/[^/]+$/,
+      /^\/v2\.0\/(?:networks|subnets|routers|ports|floatingips|security-groups|address-groups)\/[^/]+$/,
   },
   {
     serviceType: "sharev2",

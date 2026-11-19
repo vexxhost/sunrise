@@ -12,6 +12,7 @@ import { getCidrPrefixLength } from "@/lib/network-address";
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
+  NEUTRON_ADDRESS_GROUP_EXTENSION,
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
@@ -34,6 +35,7 @@ import {
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
+  NEUTRON_SECURITY_GROUP_REMOTE_ADDRESS_GROUP_EXTENSION,
   NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
   NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
   NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
@@ -51,6 +53,7 @@ import {
 } from "@/lib/openstack/neutron-ipv6";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import type {
+  AddressGroup,
   FloatingIp,
   Network,
   Port,
@@ -578,16 +581,61 @@ const securityGroupUpdateSchema = z.object({
   description,
   stateful: z.boolean().optional(),
 });
-const securityGroupRuleCreateSchema = z.object({
-  securityGroupId: resourceId,
+const securityGroupRuleCreateSchema = z
+  .object({
+    securityGroupId: resourceId,
+    description,
+    direction: z.enum(["ingress", "egress"]),
+    ethertype: z.enum(["IPv4", "IPv6"]),
+    protocol: z.string().trim().max(32).optional(),
+    portRangeMin: z.coerce.number().int().min(1).max(65535).optional(),
+    portRangeMax: z.coerce.number().int().min(1).max(65535).optional(),
+    remoteIpPrefix: z.string().trim().max(64).optional(),
+    remoteGroupId: resourceId.optional(),
+    remoteAddressGroupId: resourceId.optional(),
+  })
+  .superRefine((value, context) => {
+    const remoteCount = [
+      value.remoteIpPrefix,
+      value.remoteGroupId,
+      value.remoteAddressGroupId,
+    ].filter(Boolean).length;
+    if (remoteCount > 1) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Choose only one remote CIDR, security group, or address group.",
+        path: ["remoteIpPrefix"],
+      });
+    }
+  });
+const addressGroupAddresses = z
+  .array(ipAddressOrCidr)
+  .superRefine((addresses, context) => {
+    const seen = new Set<string>();
+    for (const [index, address] of addresses.entries()) {
+      const key = address.toLowerCase();
+      if (seen.has(key)) {
+        context.addIssue({
+          code: "custom",
+          message: "Remove the duplicate address.",
+          path: [index],
+        });
+      }
+      seen.add(key);
+    }
+  });
+const addressGroupCreateSchema = z.object({
+  name,
   description,
-  direction: z.enum(["ingress", "egress"]),
-  ethertype: z.enum(["IPv4", "IPv6"]),
-  protocol: z.string().trim().max(32).optional(),
-  portRangeMin: z.coerce.number().int().min(1).max(65535).optional(),
-  portRangeMax: z.coerce.number().int().min(1).max(65535).optional(),
-  remoteIpPrefix: z.string().trim().max(64).optional(),
-  remoteGroupId: resourceId.optional(),
+  addresses: addressGroupAddresses.default([]),
+});
+const addressGroupUpdateSchema = z.object({
+  name,
+  description,
+});
+const addressGroupAddressesSchema = z.object({
+  addresses: addressGroupAddresses.min(1, "Enter at least one address."),
 });
 
 export type CreateNetworkInput = z.input<typeof networkCreateSchema>;
@@ -616,6 +664,11 @@ export type UpdateSecurityGroupInput = z.input<
 >;
 export type CreateSecurityGroupRuleInput = z.input<
   typeof securityGroupRuleCreateSchema
+>;
+export type CreateAddressGroupInput = z.input<typeof addressGroupCreateSchema>;
+export type UpdateAddressGroupInput = z.input<typeof addressGroupUpdateSchema>;
+export type ChangeAddressGroupAddressesInput = z.input<
+  typeof addressGroupAddressesSchema
 >;
 type SecurityGroupRuleValue = z.output<typeof securityGroupRuleCreateSchema>;
 
@@ -653,6 +706,11 @@ function transformResource<T>(key: string) {
 }
 
 const networkingInvalidates = ["/networking", "/networking/topology"];
+const addressGroupInvalidates = [
+  ...networkingInvalidates,
+  "/networking/address-groups",
+  "/networking/security-groups",
+];
 
 async function unsupportedNetworkExtensionsFailure(
   scope: MutationScope,
@@ -1981,6 +2039,134 @@ export async function deleteFloatingIpAction(scope: MutationScope, id: string) {
   });
 }
 
+async function addressGroupSupportFailure(scope: MutationScope) {
+  return unsupportedNetworkExtensionsFailure(scope, [
+    {
+      feature: "Network address groups",
+      required: NEUTRON_ADDRESS_GROUP_EXTENSION,
+    },
+  ]);
+}
+
+export async function createAddressGroupAction(
+  scope: MutationScope,
+  input: CreateAddressGroupInput,
+): Promise<MutationResult<AddressGroup>> {
+  const parsed = parse(addressGroupCreateSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+  const unsupported = await addressGroupSupportFailure(scope);
+  if (unsupported) return unsupported;
+
+  return executeOpenStackMutation({
+    actionLabel: "create an address group",
+    scope,
+    ...NEUTRON_SERVICE,
+    path: "/v2.0/address-groups",
+    method: "POST",
+    body: {
+      address_group: {
+        name: parsed.value.name,
+        description: parsed.value.description,
+        addresses: parsed.value.addresses,
+      },
+    },
+    invalidates: addressGroupInvalidates,
+    successMessage: `Address group ${parsed.value.name} created.`,
+    transform: transformResource<AddressGroup>("address_group"),
+  });
+}
+
+export async function updateAddressGroupAction(
+  scope: MutationScope,
+  id: string,
+  input: UpdateAddressGroupInput,
+): Promise<MutationResult<AddressGroup>> {
+  const parsedId = parseId(scope, id);
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parse(addressGroupUpdateSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+  const unsupported = await addressGroupSupportFailure(scope);
+  if (unsupported) return unsupported;
+
+  return executeOpenStackMutation({
+    actionLabel: "edit this address group",
+    scope,
+    ...NEUTRON_SERVICE,
+    path: `/v2.0/address-groups/${encodeURIComponent(parsedId.value)}`,
+    method: "PUT",
+    body: { address_group: parsed.value },
+    invalidates: addressGroupInvalidates,
+    successMessage: "Address group updated.",
+    transform: transformResource<AddressGroup>("address_group"),
+  });
+}
+
+async function changeAddressGroupAddresses(
+  scope: MutationScope,
+  id: string,
+  input: ChangeAddressGroupAddressesInput,
+  operation: "add_addresses" | "remove_addresses",
+): Promise<MutationResult<AddressGroup>> {
+  const parsedId = parseId(scope, id);
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parse(addressGroupAddressesSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+  const unsupported = await addressGroupSupportFailure(scope);
+  if (unsupported) return unsupported;
+
+  return executeOpenStackMutation({
+    actionLabel:
+      operation === "add_addresses"
+        ? "add addresses to this address group"
+        : "remove addresses from this address group",
+    scope,
+    ...NEUTRON_SERVICE,
+    path: `/v2.0/address-groups/${encodeURIComponent(parsedId.value)}/${operation}`,
+    method: "PUT",
+    body: { addresses: parsed.value.addresses },
+    invalidates: addressGroupInvalidates,
+    successMessage:
+      operation === "add_addresses" ? "Addresses added." : "Addresses removed.",
+    transform: transformResource<AddressGroup>("address_group"),
+  });
+}
+
+export async function addAddressGroupAddressesAction(
+  scope: MutationScope,
+  id: string,
+  input: ChangeAddressGroupAddressesInput,
+) {
+  return changeAddressGroupAddresses(scope, id, input, "add_addresses");
+}
+
+export async function removeAddressGroupAddressesAction(
+  scope: MutationScope,
+  id: string,
+  input: ChangeAddressGroupAddressesInput,
+) {
+  return changeAddressGroupAddresses(scope, id, input, "remove_addresses");
+}
+
+export async function deleteAddressGroupAction(
+  scope: MutationScope,
+  id: string,
+) {
+  const parsed = parseId(scope, id);
+  if (!parsed.ok) return parsed.result;
+  const unsupported = await addressGroupSupportFailure(scope);
+  if (unsupported) return unsupported;
+
+  return executeOpenStackMutation({
+    actionLabel: "delete this address group",
+    scope,
+    ...NEUTRON_SERVICE,
+    path: `/v2.0/address-groups/${encodeURIComponent(parsed.value)}`,
+    method: "DELETE",
+    invalidates: addressGroupInvalidates,
+    successMessage: "Address group deleted.",
+  });
+}
+
 export async function createSecurityGroupAction(
   scope: MutationScope,
   input: CreateSecurityGroupInput,
@@ -2095,7 +2281,22 @@ export async function createSecurityGroupRuleAction(
   const value = parsed.value;
   const invalid = validateSecurityGroupRule(scope, value);
   if (invalid) return invalid;
+  const unsupported = await remoteAddressGroupSupportFailure(scope, value);
+  if (unsupported) return unsupported;
   return createSecurityGroupRuleMutation(scope, value, networkingInvalidates);
+}
+
+async function remoteAddressGroupSupportFailure(
+  scope: MutationScope,
+  value: SecurityGroupRuleValue,
+) {
+  if (!value.remoteAddressGroupId) return null;
+  return unsupportedNetworkExtensionsFailure(scope, [
+    {
+      feature: "Remote address groups in security rules",
+      required: NEUTRON_SECURITY_GROUP_REMOTE_ADDRESS_GROUP_EXTENSION,
+    },
+  ]);
 }
 
 function validateSecurityGroupRule(
@@ -2137,6 +2338,7 @@ function createSecurityGroupRuleMutation(
         port_range_max: value.portRangeMax,
         remote_ip_prefix: value.remoteIpPrefix || null,
         remote_group_id: value.remoteGroupId || null,
+        remote_address_group_id: value.remoteAddressGroupId || null,
       },
     },
     invalidates,
@@ -2174,6 +2376,7 @@ function sameRuleMatch(
     value.portRangeMax ?? null,
     value.remoteIpPrefix || null,
     value.remoteGroupId || null,
+    value.remoteAddressGroupId || null,
   ];
   return JSON.stringify(match(original)) === JSON.stringify(match(replacement));
 }
@@ -2196,6 +2399,11 @@ export async function replaceSecurityGroupRuleAction(
   if (!replacement.ok) return replacement.result;
   const invalid = validateSecurityGroupRule(scope, replacement.value);
   if (invalid) return invalid;
+  const unsupported = await remoteAddressGroupSupportFailure(
+    scope,
+    replacement.value,
+  );
+  if (unsupported) return unsupported;
   if (original.value.securityGroupId !== replacement.value.securityGroupId) {
     return validationFailure(
       scope,
