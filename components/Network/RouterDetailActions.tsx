@@ -651,12 +651,14 @@ export function RouterDetailActions({
 export function RemoveRouterExternalGatewayAction({
   gateway,
   networkLabel,
+  removable,
   projectId,
   regionId,
   routerId,
 }: {
   gateway: RouterExternalGatewayInfo;
   networkLabel: string;
+  removable: boolean;
   projectId: string;
   regionId: string;
   routerId: string;
@@ -666,7 +668,6 @@ export function RemoveRouterExternalGatewayAction({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const removable = gateway.external_fixed_ips.length > 0;
   const confirm = () => {
     startTransition(async () => {
       const result = await removeRouterExternalGatewayAction(
@@ -699,7 +700,7 @@ export function RemoveRouterExternalGatewayAction({
         title={
           removable
             ? "Remove external gateway"
-            : "Gateway fixed IP details are required before removal"
+            : "Neutron cannot distinguish multiple unaddressed gateways on this network"
         }
         onClick={() => {
           setError(null);

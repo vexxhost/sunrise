@@ -462,7 +462,7 @@ const routerExternalGatewayRemovalSchema = z.object({
         ipAddress,
       }),
     )
-    .min(1),
+    .default([]),
 });
 const routerInterfaceSchema = z.object({ subnetId: resourceId });
 const portSecurityFields = {
@@ -1225,12 +1225,16 @@ export async function removeRouterExternalGatewayAction(
         external_gateways: [
           {
             network_id: parsed.value.networkId,
-            external_fixed_ips: parsed.value.externalFixedIps.map(
-              ({ subnetId, ipAddress: address }) => ({
-                subnet_id: subnetId,
-                ip_address: address,
-              }),
-            ),
+            ...(parsed.value.externalFixedIps.length
+              ? {
+                  external_fixed_ips: parsed.value.externalFixedIps.map(
+                    ({ subnetId, ipAddress: address }) => ({
+                      subnet_id: subnetId,
+                      ip_address: address,
+                    }),
+                  ),
+                }
+              : {}),
           },
         ],
       },

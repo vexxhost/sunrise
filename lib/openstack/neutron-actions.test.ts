@@ -1994,6 +1994,19 @@ describe("Neutron mutation actions", () => {
         },
       },
     ]);
+
+    await removeRouterExternalGatewayAction(scope, "router-a", {
+      networkId: "link-local-external",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          router: {
+            external_gateways: [{ network_id: "link-local-external" }],
+          },
+        },
+      }),
+    );
   });
 
   it("rejects multihomed gateway mutations without extension support", async () => {

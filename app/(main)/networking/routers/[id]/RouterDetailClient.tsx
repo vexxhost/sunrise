@@ -27,6 +27,7 @@ import { ResourceLink } from "@/components/resources/ResourceLink";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import {
+  canRemoveRouterExternalGateway,
   routerExternalGatewayKey,
   routerExternalGateways,
 } from "@/lib/openstack/neutron-router-gateways";
@@ -232,9 +233,13 @@ export function RouterDetailClient({
             {gateways.map((gateway, index) => {
               const network = externalNetworkById.get(gateway.network_id);
               const networkLabel = network?.name || gateway.network_id;
+              const removable = canRemoveRouterExternalGateway(
+                gateway,
+                gateways,
+              );
               return (
                 <div
-                  key={routerExternalGatewayKey(gateway)}
+                  key={routerExternalGatewayKey(gateway, index)}
                   className="grid gap-3 px-3 py-3 not-last:border-b sm:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_8rem_3rem] sm:items-center"
                 >
                   <div className="min-w-0 space-y-1">
@@ -272,9 +277,15 @@ export function RouterDetailClient({
                         </p>
                       ))
                     ) : (
-                      <p className="text-xs text-muted-foreground">
-                        None reported
-                      </p>
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <p>None reported</p>
+                        {!removable ? (
+                          <p>
+                            This network has multiple unaddressed gateways, so
+                            Neutron cannot identify one gateway to remove.
+                          </p>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                   <div>
@@ -292,6 +303,7 @@ export function RouterDetailClient({
                       <RemoveRouterExternalGatewayAction
                         gateway={gateway}
                         networkLabel={networkLabel}
+                        removable={removable}
                         projectId={projectId}
                         regionId={regionId}
                         routerId={router.data.id}

@@ -9,6 +9,7 @@ export function routerExternalGateways(
 
 export function routerExternalGatewayKey(
   gateway: RouterExternalGatewayInfo,
+  unaddressedIndex = 0,
 ): string {
   const fixedIps = [...gateway.external_fixed_ips]
     .sort(
@@ -18,5 +19,16 @@ export function routerExternalGatewayKey(
     )
     .map((fixedIp) => `${fixedIp.subnet_id}:${fixedIp.ip_address}`)
     .join(",");
-  return `${gateway.network_id}|${fixedIps}`;
+  return `${gateway.network_id}|${fixedIps || `unaddressed:${unaddressedIndex}`}`;
+}
+
+export function canRemoveRouterExternalGateway(
+  gateway: RouterExternalGatewayInfo,
+  gateways: RouterExternalGatewayInfo[],
+): boolean {
+  if (gateway.external_fixed_ips.length > 0) return true;
+  return (
+    gateways.filter((candidate) => candidate.network_id === gateway.network_id)
+      .length === 1
+  );
 }
