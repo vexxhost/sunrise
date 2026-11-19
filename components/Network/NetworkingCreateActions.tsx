@@ -71,6 +71,10 @@ import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import type { ExtraDhcpOptionInput } from "@/lib/openstack/neutron-extra-dhcp-options";
+import {
+  NEUTRON_PORT_VNIC_TYPE_OPTIONS,
+  type NeutronPortVnicType,
+} from "@/lib/openstack/neutron-port-vnic-types";
 import { cn } from "@/lib/utils";
 
 interface ScopeProps {
@@ -658,6 +662,7 @@ export function CreatePortAction({
   initiallyOpen = false,
   projectId,
   regionId,
+  portBindingSupport,
   portSecuritySupport,
   qosSupport,
   securityGroupSupport,
@@ -667,6 +672,7 @@ export function CreatePortAction({
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   extraDhcpOptionsSupport: OpenStackFeatureSupport;
+  portBindingSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
@@ -681,6 +687,7 @@ export function CreatePortAction({
   const [dnsName, setDnsName] = useState("");
   const [networkId, setNetworkId] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
+  const [vnicType, setVnicType] = useState<NeutronPortVnicType>("normal");
   const [propagateUplinkStatus, setPropagateUplinkStatus] = useState(true);
   const [portSecurityEnabled, setPortSecurityEnabled] = useState(true);
   const [securityGroupIds, setSecurityGroupIds] = useState<string[]>([]);
@@ -704,6 +711,7 @@ export function CreatePortAction({
   const extraDhcpOptionsAvailable =
     extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
+  const portBindingAvailable = portBindingSupport.status !== "unsupported";
   const uplinkStatusPropagationAvailable =
     uplinkStatusPropagationSupport.status !== "unsupported";
   const quota = useProjectQuotaImpact({
@@ -736,6 +744,7 @@ export function CreatePortAction({
       setDnsName("");
       setNetworkId("");
       setAdminStateUp(true);
+      setVnicType("normal");
       setPropagateUplinkStatus(true);
       setPortSecurityEnabled(true);
       setSecurityGroupIds([]);
@@ -758,6 +767,10 @@ export function CreatePortAction({
             dnsDomainPortsAvailable && dnsDomain.trim() ? dnsDomain : undefined,
           networkId,
           adminStateUp,
+          vnicType:
+            portBindingAvailable && vnicType !== "normal"
+              ? vnicType
+              : undefined,
           propagateUplinkStatus:
             uplinkStatusPropagationAvailable && !propagateUplinkStatus
               ? false
@@ -897,6 +910,38 @@ export function CreatePortAction({
                   />
                 </div>
               ) : null}
+              {portBindingAvailable ? (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="port-vnic-type">vNIC type</Label>
+                  <Select
+                    value={vnicType}
+                    disabled={pending}
+                    onValueChange={(value) =>
+                      setVnicType(value as NeutronPortVnicType)
+                    }
+                  >
+                    <SelectTrigger id="port-vnic-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {NEUTRON_PORT_VNIC_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {
+                      NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
+                        (option) => option.value === vnicType,
+                      )?.description
+                    }
+                    . Availability depends on the network backend and compute
+                    hosts.
+                  </p>
+                </div>
+              ) : null}
               <ToggleField
                 id="port-admin-state"
                 className={portSecurityAvailable ? undefined : "sm:col-span-2"}
@@ -993,6 +1038,7 @@ export function CreatePortAction({
             !dnsIntegrationAvailable ||
             !dnsDomainPortsAvailable ||
             !qosAvailable ||
+            !portBindingAvailable ||
             !uplinkStatusPropagationAvailable ? (
               <MutationAlert
                 variant="info"
@@ -1017,6 +1063,9 @@ export function CreatePortAction({
                   <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
                 {!qosAvailable ? <p>{qosSupport.message}</p> : null}
+                {!portBindingAvailable ? (
+                  <p>{portBindingSupport.message}</p>
+                ) : null}
                 {!uplinkStatusPropagationAvailable ? (
                   <p>{uplinkStatusPropagationSupport.message}</p>
                 ) : null}

@@ -40,6 +40,7 @@ import type {
 } from "@/types/openstack";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-types";
 
 interface NetworkingTableProps {
   projectId: string;
@@ -395,6 +396,7 @@ export function PortsTableClient({
   projectId,
   regionId,
   initiallyOpen = false,
+  portBindingSupport,
   portSecuritySupport,
   qosNetworkPolicySupport,
   qosSupport,
@@ -405,6 +407,7 @@ export function PortsTableClient({
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   extraDhcpOptionsSupport: OpenStackFeatureSupport;
+  portBindingSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
@@ -420,6 +423,9 @@ export function PortsTableClient({
   const showUplinkStatusPropagation =
     uplinkStatusPropagationSupport.status !== "unsupported" ||
     ports.data.some((port) => port.propagate_uplink_status !== undefined);
+  const showPortBinding =
+    portBindingSupport.status !== "unsupported" ||
+    ports.data.some((port) => port["binding:vnic_type"] !== undefined);
   const columns = useMemo<ColumnDef<Port>[]>(
     () => [
       {
@@ -491,6 +497,18 @@ export function PortsTableClient({
         header: "MAC address",
         meta: { fieldType: "string", visible: false, monospace: true },
       },
+      ...(showPortBinding
+        ? [
+            {
+              id: "binding_vnic_type",
+              accessorFn: (port) => port["binding:vnic_type"],
+              header: "vNIC type",
+              cell: ({ row }: { row: { original: Port } }) =>
+                neutronPortVnicTypeLabel(row.original["binding:vnic_type"]),
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]
+        : []),
       ...(dnsIntegrationSupport.status === "unsupported"
         ? []
         : [
@@ -550,6 +568,7 @@ export function PortsTableClient({
       networkById,
       qosNetworkPolicySupport.status,
       qosSupport.status,
+      showPortBinding,
       showUplinkStatusPropagation,
     ],
   );
@@ -566,6 +585,7 @@ export function PortsTableClient({
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
+            portBindingSupport={portBindingSupport}
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}
             securityGroupSupport={securityGroupSupport}

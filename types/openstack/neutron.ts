@@ -196,7 +196,7 @@ export interface Port {
   }>;
   security_groups: string[];
   description: string;
-  "binding:vnic_type": string;
+  "binding:vnic_type"?: string;
   "binding:host_id"?: string;
   "binding:profile"?: Record<string, unknown>;
   dns_name: string;

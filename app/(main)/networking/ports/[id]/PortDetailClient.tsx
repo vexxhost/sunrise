@@ -16,6 +16,7 @@ import {
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-types";
 
 interface PortDetailClientProps {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
@@ -23,6 +24,7 @@ interface PortDetailClientProps {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   extraDhcpOptionsSupport: OpenStackFeatureSupport;
   id: string;
+  portBindingSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
@@ -54,6 +56,7 @@ export function PortDetailClient({
   dnsIntegrationSupport,
   extraDhcpOptionsSupport,
   id,
+  portBindingSupport,
   portSecuritySupport,
   projectId,
   qosNetworkPolicySupport,
@@ -124,6 +127,7 @@ export function PortDetailClient({
             dnsIntegrationSupport={dnsIntegrationSupport}
             extraDhcpOptionsSupport={extraDhcpOptionsSupport}
             port={port.data}
+            portBindingSupport={portBindingSupport}
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}
             groups={groups.data ?? []}
@@ -238,7 +242,7 @@ export function PortDetailClient({
           ) : null}
           <DetailRow
             label="vNIC type"
-            value={port.data["binding:vnic_type"] || "Normal"}
+            value={neutronPortVnicTypeLabel(port.data["binding:vnic_type"])}
           />
         </div>
       </section>

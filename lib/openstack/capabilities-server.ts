@@ -28,6 +28,7 @@ const logger = createLogger("openstack.capabilities");
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
 export const NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION = "allowed-address-pairs";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
+export const NEUTRON_PORT_BINDING_EXTENSION = "binding";
 export const NEUTRON_DNS_DOMAIN_PORTS_EXTENSION = "dns-domain-ports";
 export const NEUTRON_DNS_INTEGRATION_EXTENSION = "dns-integration";
 export const NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION = "extra_dhcp_opt";
