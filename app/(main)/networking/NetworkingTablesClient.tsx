@@ -40,6 +40,10 @@ import type {
 } from "@/types/openstack";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import {
+  neutronPortHardwareOffloadTypeLabel,
+  neutronPortNumaAffinityPolicyLabel,
+} from "@/lib/openstack/neutron-port-placement";
 import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-types";
 
 interface NetworkingTableProps {
@@ -393,25 +397,33 @@ export function PortsTableClient({
   dnsDomainPortsSupport,
   dnsIntegrationSupport,
   extraDhcpOptionsSupport,
+  hardwareOffloadSupport,
   projectId,
   regionId,
   initiallyOpen = false,
+  numaAffinitySupport,
+  numaSocketSupport,
   portBindingSupport,
   portSecuritySupport,
   qosNetworkPolicySupport,
   qosSupport,
   securityGroupSupport,
+  trustedVifSupport,
   uplinkStatusPropagationSupport,
 }: NetworkingTableProps & {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   extraDhcpOptionsSupport: OpenStackFeatureSupport;
+  hardwareOffloadSupport: OpenStackFeatureSupport;
+  numaAffinitySupport: OpenStackFeatureSupport;
+  numaSocketSupport: OpenStackFeatureSupport;
   portBindingSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
+  trustedVifSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationSupport: OpenStackFeatureSupport;
 }) {
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
@@ -426,6 +438,15 @@ export function PortsTableClient({
   const showPortBinding =
     portBindingSupport.status !== "unsupported" ||
     ports.data.some((port) => port["binding:vnic_type"] !== undefined);
+  const showHardwareOffload =
+    hardwareOffloadSupport.status !== "unsupported" ||
+    ports.data.some((port) => Boolean(port.hardware_offload_type));
+  const showNumaAffinity =
+    numaAffinitySupport.status !== "unsupported" ||
+    ports.data.some((port) => port.numa_affinity_policy != null);
+  const showTrustedVif =
+    trustedVifSupport.status !== "unsupported" ||
+    ports.data.some((port) => port.trusted != null);
   const columns = useMemo<ColumnDef<Port>[]>(
     () => [
       {
@@ -509,6 +530,50 @@ export function PortsTableClient({
             } satisfies ColumnDef<Port>,
           ]
         : []),
+      ...(showNumaAffinity
+        ? [
+            {
+              id: "numa_affinity_policy",
+              accessorFn: (port) => port.numa_affinity_policy,
+              header: "NUMA affinity",
+              cell: ({ row }: { row: { original: Port } }) =>
+                neutronPortNumaAffinityPolicyLabel(
+                  row.original.numa_affinity_policy,
+                ),
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]
+        : []),
+      ...(showHardwareOffload
+        ? [
+            {
+              id: "hardware_offload_type",
+              accessorFn: (port) => port.hardware_offload_type,
+              header: "Hardware offload",
+              cell: ({ row }: { row: { original: Port } }) =>
+                neutronPortHardwareOffloadTypeLabel(
+                  row.original.hardware_offload_type,
+                ),
+              meta: { fieldType: "string", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]
+        : []),
+      ...(showTrustedVif
+        ? [
+            {
+              id: "trusted",
+              accessorFn: (port) => port.trusted,
+              header: "Trusted VIF",
+              cell: ({ row }: { row: { original: Port } }) =>
+                row.original.trusted == null
+                  ? "Not reported"
+                  : row.original.trusted
+                    ? "Trusted"
+                    : "Not trusted",
+              meta: { fieldType: "boolean", visible: false },
+            } satisfies ColumnDef<Port>,
+          ]
+        : []),
       ...(dnsIntegrationSupport.status === "unsupported"
         ? []
         : [
@@ -568,7 +633,10 @@ export function PortsTableClient({
       networkById,
       qosNetworkPolicySupport.status,
       qosSupport.status,
+      showHardwareOffload,
+      showNumaAffinity,
       showPortBinding,
+      showTrustedVif,
       showUplinkStatusPropagation,
     ],
   );
@@ -582,13 +650,17 @@ export function PortsTableClient({
             dnsDomainPortsSupport={dnsDomainPortsSupport}
             dnsIntegrationSupport={dnsIntegrationSupport}
             extraDhcpOptionsSupport={extraDhcpOptionsSupport}
+            hardwareOffloadSupport={hardwareOffloadSupport}
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
+            numaAffinitySupport={numaAffinitySupport}
+            numaSocketSupport={numaSocketSupport}
             portBindingSupport={portBindingSupport}
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}
             securityGroupSupport={securityGroupSupport}
+            trustedVifSupport={trustedVifSupport}
             uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
           />
         }

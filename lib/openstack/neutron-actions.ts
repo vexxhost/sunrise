@@ -20,7 +20,11 @@ import {
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
   NEUTRON_PORT_BINDING_EXTENSION,
+  NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION,
+  NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION,
+  NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
+  NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_FLOATING_IP_EXTENSION,
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
@@ -31,6 +35,10 @@ import {
   NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
+import {
+  NEUTRON_PORT_HARDWARE_OFFLOAD_TYPES,
+  NEUTRON_PORT_NUMA_AFFINITY_POLICIES,
+} from "@/lib/openstack/neutron-port-placement";
 import { NEUTRON_PORT_VNIC_TYPES } from "@/lib/openstack/neutron-port-vnic-types";
 import {
   getIpv6ConfigurationAttributes,
@@ -473,6 +481,9 @@ const portCreateSchema = z
     networkId: resourceId,
     adminStateUp: z.boolean().default(true),
     vnicType: z.enum(NEUTRON_PORT_VNIC_TYPES).optional(),
+    hardwareOffloadType: z.enum(NEUTRON_PORT_HARDWARE_OFFLOAD_TYPES).optional(),
+    numaAffinityPolicy: z.enum(NEUTRON_PORT_NUMA_AFFINITY_POLICIES).optional(),
+    trusted: z.boolean().optional(),
     propagateUplinkStatus: z.boolean().optional(),
     extraDhcpOptions,
     qosPolicyId: resourceId.nullable().optional(),
@@ -487,6 +498,11 @@ const portUpdateSchema = z
     dnsName,
     adminStateUp: z.boolean(),
     vnicType: z.enum(NEUTRON_PORT_VNIC_TYPES).optional(),
+    numaAffinityPolicy: z
+      .enum(NEUTRON_PORT_NUMA_AFFINITY_POLICIES)
+      .nullable()
+      .optional(),
+    trusted: z.boolean().optional(),
     propagateUplinkStatus: z.boolean().optional(),
     extraDhcpOptions: extraDhcpOptionPatches,
     qosPolicyId: resourceId.nullable().optional(),
@@ -1344,6 +1360,38 @@ export async function createPortAction(
             required: NEUTRON_PORT_BINDING_EXTENSION,
           },
         ]),
+    ...(value.hardwareOffloadType === undefined
+      ? []
+      : [
+          {
+            feature: "Port hardware offload",
+            required: NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION,
+          },
+        ]),
+    ...(value.numaAffinityPolicy === undefined
+      ? []
+      : [
+          {
+            feature: "Port NUMA affinity",
+            required: NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION,
+          },
+          ...(value.numaAffinityPolicy === "socket"
+            ? [
+                {
+                  feature: "Socket-level port NUMA affinity",
+                  required: NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION,
+                },
+              ]
+            : []),
+        ]),
+    ...(value.trusted === undefined
+      ? []
+      : [
+          {
+            feature: "Trusted virtual interfaces",
+            required: NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1365,6 +1413,13 @@ export async function createPortAction(
         ...(value.vnicType === undefined
           ? {}
           : { "binding:vnic_type": value.vnicType }),
+        ...(value.hardwareOffloadType === undefined
+          ? {}
+          : { hardware_offload_type: value.hardwareOffloadType }),
+        ...(value.numaAffinityPolicy === undefined
+          ? {}
+          : { numa_affinity_policy: value.numaAffinityPolicy }),
+        ...(value.trusted === undefined ? {} : { trusted: value.trusted }),
         ...(value.propagateUplinkStatus === undefined
           ? {}
           : { propagate_uplink_status: value.propagateUplinkStatus }),
@@ -1498,6 +1553,30 @@ export async function updatePortAction(
             required: NEUTRON_PORT_BINDING_EXTENSION,
           },
         ]),
+    ...(value.numaAffinityPolicy === undefined
+      ? []
+      : [
+          {
+            feature: "Port NUMA affinity",
+            required: NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION,
+          },
+          ...(value.numaAffinityPolicy === "socket"
+            ? [
+                {
+                  feature: "Socket-level port NUMA affinity",
+                  required: NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION,
+                },
+              ]
+            : []),
+        ]),
+    ...(value.trusted === undefined
+      ? []
+      : [
+          {
+            feature: "Trusted virtual interfaces",
+            required: NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
+          },
+        ]),
   ]);
   if (unsupported) return unsupported;
   return executeOpenStackMutation({
@@ -1518,6 +1597,10 @@ export async function updatePortAction(
         ...(value.vnicType === undefined
           ? {}
           : { "binding:vnic_type": value.vnicType }),
+        ...(value.numaAffinityPolicy === undefined
+          ? {}
+          : { numa_affinity_policy: value.numaAffinityPolicy }),
+        ...(value.trusted === undefined ? {} : { trusted: value.trusted }),
         ...(value.propagateUplinkStatus === undefined
           ? {}
           : { propagate_uplink_status: value.propagateUplinkStatus }),

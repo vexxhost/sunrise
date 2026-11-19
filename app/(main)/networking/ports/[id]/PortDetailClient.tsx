@@ -17,13 +17,20 @@ import { serversQueryOptions } from "@/hooks/queries/useServers";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-types";
+import {
+  neutronPortHardwareOffloadTypeLabel,
+  neutronPortNumaAffinityPolicyLabel,
+} from "@/lib/openstack/neutron-port-placement";
 
 interface PortDetailClientProps {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
   dnsDomainPortsSupport: OpenStackFeatureSupport;
   dnsIntegrationSupport: OpenStackFeatureSupport;
   extraDhcpOptionsSupport: OpenStackFeatureSupport;
+  hardwareOffloadSupport: OpenStackFeatureSupport;
   id: string;
+  numaAffinitySupport: OpenStackFeatureSupport;
+  numaSocketSupport: OpenStackFeatureSupport;
   portBindingSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
@@ -31,6 +38,7 @@ interface PortDetailClientProps {
   projectId: string;
   regionId: string;
   securityGroupSupport: OpenStackFeatureSupport;
+  trustedVifSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationUpdateSupport: OpenStackFeatureSupport;
 }
@@ -55,7 +63,10 @@ export function PortDetailClient({
   dnsDomainPortsSupport,
   dnsIntegrationSupport,
   extraDhcpOptionsSupport,
+  hardwareOffloadSupport,
   id,
+  numaAffinitySupport,
+  numaSocketSupport,
   portBindingSupport,
   portSecuritySupport,
   projectId,
@@ -63,6 +74,7 @@ export function PortDetailClient({
   qosSupport,
   regionId,
   securityGroupSupport,
+  trustedVifSupport,
   uplinkStatusPropagationSupport,
   uplinkStatusPropagationUpdateSupport,
 }: PortDetailClientProps) {
@@ -126,6 +138,8 @@ export function PortDetailClient({
             dnsDomainPortsSupport={dnsDomainPortsSupport}
             dnsIntegrationSupport={dnsIntegrationSupport}
             extraDhcpOptionsSupport={extraDhcpOptionsSupport}
+            numaAffinitySupport={numaAffinitySupport}
+            numaSocketSupport={numaSocketSupport}
             port={port.data}
             portBindingSupport={portBindingSupport}
             portSecuritySupport={portSecuritySupport}
@@ -135,6 +149,7 @@ export function PortDetailClient({
             projectId={projectId}
             regionId={regionId}
             securityGroupSupport={securityGroupSupport}
+            trustedVifSupport={trustedVifSupport}
             uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
             uplinkStatusPropagationUpdateSupport={
               uplinkStatusPropagationUpdateSupport
@@ -244,6 +259,37 @@ export function PortDetailClient({
             label="vNIC type"
             value={neutronPortVnicTypeLabel(port.data["binding:vnic_type"])}
           />
+          {numaAffinitySupport.status !== "unsupported" ||
+          port.data.numa_affinity_policy != null ? (
+            <DetailRow
+              label="NUMA affinity"
+              value={neutronPortNumaAffinityPolicyLabel(
+                port.data.numa_affinity_policy,
+              )}
+            />
+          ) : null}
+          {hardwareOffloadSupport.status !== "unsupported" ||
+          port.data.hardware_offload_type ? (
+            <DetailRow
+              label="Hardware offload"
+              value={neutronPortHardwareOffloadTypeLabel(
+                port.data.hardware_offload_type,
+              )}
+            />
+          ) : null}
+          {trustedVifSupport.status !== "unsupported" ||
+          port.data.trusted != null ? (
+            <DetailRow
+              label="Trusted VIF"
+              value={
+                port.data.trusted == null
+                  ? "Not reported"
+                  : port.data.trusted
+                    ? "Trusted"
+                    : "Not trusted"
+              }
+            />
+          ) : null}
         </div>
       </section>
 
