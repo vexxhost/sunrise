@@ -1570,6 +1570,7 @@ export function CreateSecurityGroupAction({
   const [stateful, setStateful] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const statefulnessAvailable = statefulSupport.status !== "unsupported";
   const defaultRules = useQuery({
     ...defaultSecurityGroupRulesQueryOptions(regionId, projectId),
     enabled: open,
@@ -1612,7 +1613,7 @@ export function CreateSecurityGroupAction({
         {
           name,
           description,
-          ...(stateful ? {} : { stateful: false }),
+          ...(statefulnessAvailable ? { stateful } : {}),
         },
       );
       if (!result.ok) {

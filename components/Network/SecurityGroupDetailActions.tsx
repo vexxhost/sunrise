@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
@@ -37,6 +37,7 @@ import type { SecurityGroup, SecurityGroupRule } from "@/types/openstack";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { portsQueryOptions } from "@/hooks/queries/useNetworks";
 
 export function SecurityGroupDetailActions({
   group,
@@ -67,6 +68,16 @@ export function SecurityGroupDetailActions({
   const [ruleDescription, setRuleDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const ports = useQuery({
+    ...portsQueryOptions(regionId, projectId),
+    enabled:
+      dialog === "edit" && statefulSupport.status !== "unsupported",
+  });
+  const attachedPortCount = (ports.data ?? []).filter((port) =>
+    port.security_groups?.includes(group.id),
+  ).length;
+  const statefulChanged = stateful !== (group.stateful ?? true);
+  const statefulnessCheckPending = ports.isFetching || ports.isError;
   const ruleQuota = useProjectQuotaImpact({
     enabled: dialog === "rule",
     projectId,
@@ -104,7 +115,7 @@ export function SecurityGroupDetailActions({
         { projectId, regionId },
         group.id,
         {
-          name,
+          ...(group.name === "default" ? {} : { name }),
           description,
           ...(stateful === (group.stateful ?? true) ? {} : { stateful }),
         },
@@ -216,7 +227,11 @@ export function SecurityGroupDetailActions({
                   <Checkbox
                     id="edit-group-stateful"
                     checked={stateful}
-                    disabled={pending}
+                    disabled={
+                      pending ||
+                      statefulnessCheckPending ||
+                      attachedPortCount > 0
+                    }
                     onCheckedChange={(checked) => setStateful(checked === true)}
                   />
                   <div className="space-y-1">
@@ -224,9 +239,13 @@ export function SecurityGroupDetailActions({
                       Stateful connection tracking
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      When enabled, return traffic for an allowed connection is
-                      accepted automatically. Stateless groups require explicit
-                      rules in both directions.
+                      {ports.isFetching
+                        ? "Checking whether project ports use this group."
+                        : ports.isError
+                          ? "Port attachments could not be verified. Refresh before changing connection tracking."
+                          : attachedPortCount > 0
+                            ? `${attachedPortCount} project ${attachedPortCount === 1 ? "port uses" : "ports use"} this group. Neutron only allows changing connection tracking when no ports are attached.`
+                            : "When enabled, return traffic for an allowed connection is accepted automatically. Stateless groups require explicit rules in both directions."}
                     </p>
                     {statefulSupport.status === "unknown" ? (
                       <p className="text-xs text-muted-foreground">
@@ -247,7 +266,15 @@ export function SecurityGroupDetailActions({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
+              <Button
+                type="submit"
+                disabled={
+                  pending ||
+                  !name.trim() ||
+                  (statefulChanged &&
+                    (statefulnessCheckPending || attachedPortCount > 0))
+                }
+              >
                 {pending ? "Saving" : "Save changes"}
               </Button>
             </DialogFooter>

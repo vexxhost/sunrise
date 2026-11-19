@@ -552,6 +552,11 @@ const securityGroupCreateSchema = z.object({
   description,
   stateful: z.boolean().optional(),
 });
+const securityGroupUpdateSchema = z.object({
+  name: name.optional(),
+  description,
+  stateful: z.boolean().optional(),
+});
 const securityGroupRuleCreateSchema = z.object({
   securityGroupId: resourceId,
   description,
@@ -580,7 +585,7 @@ export type CreateSecurityGroupInput = z.input<
   typeof securityGroupCreateSchema
 >;
 export type UpdateSecurityGroupInput = z.input<
-  typeof securityGroupCreateSchema
+  typeof securityGroupUpdateSchema
 >;
 export type CreateSecurityGroupRuleInput = z.input<
   typeof securityGroupRuleCreateSchema
@@ -1824,18 +1829,29 @@ export async function createSecurityGroupAction(
 ): Promise<MutationResult<SecurityGroup>> {
   const parsed = parse(securityGroupCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
-  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
-    ...(parsed.value.stateful === undefined
-      ? []
-      : [
-          {
-            feature: "Security group connection tracking",
-            required: NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
-          },
-        ]),
-  ]);
-  if (unsupported) return unsupported;
+  const statefulSupport = scope.regionId
+    ? extensionSupport(
+        await discoverNetworkCapabilities(scope.regionId),
+        NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
+        "Security group connection tracking",
+      )
+    : null;
+  if (
+    parsed.value.stateful !== undefined &&
+    statefulSupport?.status === "unsupported"
+  ) {
+    return mutationFailure(
+      {
+        code: "service-unavailable",
+        message: statefulSupport.message,
+        retryable: false,
+      },
+      scope,
+    );
+  }
   const { stateful, ...attributes } = parsed.value;
+  const requestedStateful =
+    stateful ?? (statefulSupport?.status === "unsupported" ? undefined : true);
   return executeOpenStackMutation({
     actionLabel: "create a security group",
     scope,
@@ -1845,7 +1861,9 @@ export async function createSecurityGroupAction(
     body: {
       security_group: {
         ...attributes,
-        ...(stateful === undefined ? {} : { stateful }),
+        ...(requestedStateful === undefined
+          ? {}
+          : { stateful: requestedStateful }),
       },
     },
     invalidates: networkingInvalidates,
@@ -1861,7 +1879,7 @@ export async function updateSecurityGroupAction(
 ): Promise<MutationResult<SecurityGroup>> {
   const parsedId = parseId(scope, id);
   if (!parsedId.ok) return parsedId.result;
-  const parsed = parse(securityGroupCreateSchema, input, scope);
+  const parsed = parse(securityGroupUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
     ...(parsed.value.stateful === undefined

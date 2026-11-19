@@ -2386,7 +2386,7 @@ describe("Neutron mutation actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
-  it("preserves Neutron's default security group statefulness", async () => {
+  it("creates a stateful security group explicitly by default", async () => {
     await createSecurityGroupAction(scope, {
       name: "web",
       description: "Web access",
@@ -2400,11 +2400,12 @@ describe("Neutron mutation actions", () => {
           security_group: {
             name: "web",
             description: "Web access",
+            stateful: true,
           },
         },
       }),
     );
-    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledOnce();
   });
 
   it("omits unchanged security group statefulness during metadata updates", async () => {
@@ -2426,6 +2427,24 @@ describe("Neutron mutation actions", () => {
       }),
     );
     expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("updates a default security group without its immutable name", async () => {
+    await updateSecurityGroupAction(scope, "default-group", {
+      description: "Updated default policy",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2.0/security-groups/default-group",
+        body: {
+          security_group: {
+            description: "Updated default policy",
+          },
+        },
+      }),
+    );
   });
 
   it("maps explicit security group statefulness on create and update", async () => {
@@ -2477,6 +2496,31 @@ describe("Neutron mutation actions", () => {
       error: { message: expect.stringContaining("stateful-security-group") },
     });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("omits implicit statefulness when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["security-group"],
+      message: "",
+      serviceType: "network",
+    });
+
+    await createSecurityGroupAction(scope, {
+      name: "web",
+      description: "",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          security_group: {
+            name: "web",
+            description: "",
+          },
+        },
+      }),
+    );
   });
 
   it("defers security group statefulness validation when discovery is unavailable", async () => {
