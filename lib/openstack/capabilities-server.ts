@@ -56,6 +56,7 @@ export const NEUTRON_QOS_FLOATING_IP_NETWORK_POLICY_EXTENSION =
 export const NEUTRON_QOS_GATEWAY_IP_EXTENSION = "qos-gateway-ip";
 export const NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION =
   "qos-port-network-policy";
+export const NEUTRON_RBAC_SECURITY_GROUP_EXTENSION = "rbac-security-groups";
 export const NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION =
   "router_availability_zone";
 export const NEUTRON_SECURITY_GROUP_EXTENSION = "security-group";

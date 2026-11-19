@@ -8,6 +8,7 @@ import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availabil
 import type {
   FloatingIp,
   Network,
+  NetworkRbacPolicy,
   NeutronAvailabilityZone,
   Port,
   QosPolicy,
@@ -507,6 +508,39 @@ export function securityGroupQueryOptions(
       }
 
       return data.security_group;
+    },
+    enabled: !!id && !!regionId && !!projectId,
+  });
+}
+
+export function securityGroupRbacPoliciesQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  id: string,
+) {
+  return queryOptions({
+    queryKey: [
+      regionId,
+      projectId,
+      "security-group",
+      id,
+      "rbac-policies",
+    ],
+    queryFn: async () => {
+      const data = await openstack<{ rbac_policies: NetworkRbacPolicy[] }>({
+        regionId: regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: withQuery("/v2.0/rbac-policies", {
+          action: "access_as_shared",
+          object_id: id,
+          object_type: "security_group",
+          project_id: projectId,
+        }),
+        errorMode: "throw",
+      });
+
+      return data?.rbac_policies ?? [];
     },
     enabled: !!id && !!regionId && !!projectId,
   });

@@ -36,6 +36,22 @@ export interface SecurityGroup {
   tags: string[];
 }
 
+export interface NetworkRbacPolicy {
+  id: string;
+  action: "access_as_external" | "access_as_shared";
+  object_id: string;
+  object_type:
+    | "address_group"
+    | "address_scope"
+    | "network"
+    | "qos_policy"
+    | "security_group"
+    | "subnetpool";
+  project_id: string;
+  target_tenant: string;
+  tenant_id: string;
+}
+
 export interface AllocationPool {
   start: string;
   end: string;

@@ -21,6 +21,7 @@ type ReadRoute = {
   serviceName: string;
   pathname: RegExp;
   query?: Record<string, string | true>;
+  requiredQuery?: string[];
 };
 
 const READ_ROUTES: ReadRoute[] = [
@@ -76,6 +77,18 @@ const READ_ROUTES: ReadRoute[] = [
     serviceName: "neutron",
     pathname: /^\/v2\.0\/security-groups$/,
     query: { project_id: true },
+  },
+  {
+    serviceType: "network",
+    serviceName: "neutron",
+    pathname: /^\/v2\.0\/rbac-policies$/,
+    query: {
+      action: "access_as_shared",
+      object_id: true,
+      object_type: "security_group",
+      project_id: true,
+    },
+    requiredQuery: ["action", "object_id", "object_type", "project_id"],
   },
   {
     serviceType: "network",
@@ -154,6 +167,13 @@ function matchesReadRoute(
       ) {
         return false;
       }
+    }
+    if (
+      route.requiredQuery?.some(
+        (name) => !url.searchParams.has(name) || !url.searchParams.get(name),
+      )
+    ) {
+      return false;
     }
     return true;
   });
