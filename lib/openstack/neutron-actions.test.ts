@@ -30,6 +30,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_QOS_GATEWAY_IP_EXTENSION: "qos-gateway-ip",
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION: "router_availability_zone",
   NEUTRON_SECURITY_GROUP_EXTENSION: "security-group",
+  NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION: "stateful-security-group",
   NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION: "subnet-dns-publish-fixed-ip",
   NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION: "uplink-status-propagation",
   NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION:
@@ -45,6 +46,7 @@ import {
   createPortAction,
   createRouterAction,
   createSecurityGroupRuleAction,
+  createSecurityGroupAction,
   createSubnetAction,
   deleteFloatingIpAction,
   deleteNetworkAction,
@@ -62,6 +64,7 @@ import {
   updateFloatingIpAction,
   updatePortAction,
   updateSubnetAction,
+  updateSecurityGroupAction,
 } from "@/lib/openstack/neutron-actions";
 
 const scope = { projectId: "project-a", regionId: "RegionOne" };
@@ -92,6 +95,7 @@ describe("Neutron mutation actions", () => {
         "qos-gateway-ip",
         "router_availability_zone",
         "security-group",
+        "stateful-security-group",
         "subnet-dns-publish-fixed-ip",
         "uplink-status-propagation",
         "uplink-status-propagation-updatable",
@@ -2380,6 +2384,165 @@ describe("Neutron mutation actions", () => {
       },
     });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("creates a stateful security group explicitly by default", async () => {
+    await createSecurityGroupAction(scope, {
+      name: "web",
+      description: "Web access",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        path: "/v2.0/security-groups",
+        body: {
+          security_group: {
+            name: "web",
+            description: "Web access",
+            stateful: true,
+          },
+        },
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledOnce();
+  });
+
+  it("omits unchanged security group statefulness during metadata updates", async () => {
+    await updateSecurityGroupAction(scope, "group-a", {
+      name: "web",
+      description: "Updated description",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2.0/security-groups/group-a",
+        body: {
+          security_group: {
+            name: "web",
+            description: "Updated description",
+          },
+        },
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("updates a default security group without its immutable name", async () => {
+    await updateSecurityGroupAction(scope, "default-group", {
+      description: "Updated default policy",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2.0/security-groups/default-group",
+        body: {
+          security_group: {
+            description: "Updated default policy",
+          },
+        },
+      }),
+    );
+  });
+
+  it("maps explicit security group statefulness on create and update", async () => {
+    await createSecurityGroupAction(scope, {
+      name: "stateless-web",
+      description: "Stateless web access",
+      stateful: false,
+    });
+    await updateSecurityGroupAction(scope, "group-a", {
+      name: "web",
+      description: "Stateful web access",
+      stateful: true,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: {
+          security_group: expect.objectContaining({ stateful: false }),
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: {
+          security_group: expect.objectContaining({ stateful: true }),
+        },
+      }),
+    );
+  });
+
+  it("rejects security group statefulness when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["security-group"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createSecurityGroupAction(scope, {
+      name: "stateless-web",
+      description: "",
+      stateful: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("stateful-security-group") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("omits implicit statefulness when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["security-group"],
+      message: "",
+      serviceType: "network",
+    });
+
+    await createSecurityGroupAction(scope, {
+      name: "web",
+      description: "",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          security_group: {
+            name: "web",
+            description: "",
+          },
+        },
+      }),
+    );
+  });
+
+  it("defers security group statefulness validation when discovery is unavailable", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "Networking API extension discovery was unavailable.",
+      serviceType: "network",
+    });
+
+    await createSecurityGroupAction(scope, {
+      name: "stateless-web",
+      description: "",
+      stateful: false,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          security_group: expect.objectContaining({ stateful: false }),
+        },
+      }),
+    );
   });
 
   it("rejects reversed security group port ranges", async () => {

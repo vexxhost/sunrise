@@ -31,6 +31,7 @@ export interface SecurityGroup {
   created_at: string;
   updated_at: string;
   revision_number: number;
+  stateful?: boolean;
   security_group_rules: SecurityGroupRule[];
   tags: string[];
 }

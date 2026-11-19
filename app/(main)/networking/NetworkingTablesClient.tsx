@@ -836,9 +836,13 @@ export function SecurityGroupsTableClient({
   projectId,
   regionId,
   initiallyOpen = false,
-}: NetworkingTableProps) {
+  statefulSupport,
+}: NetworkingTableProps & { statefulSupport: OpenStackFeatureSupport }) {
   const groups = useSuspenseQuery(
     securityGroupsQueryOptions(regionId, projectId),
+  );
+  const hasReportedStateful = groups.data.some(
+    (group) => group.stateful !== undefined,
   );
   const columns = useMemo<ColumnDef<SecurityGroup>[]>(
     () => [
@@ -870,13 +874,28 @@ export function SecurityGroupsTableClient({
         header: "Rules",
         meta: { fieldType: "number", visible: true },
       },
+      ...(statefulSupport.status === "unsupported" && !hasReportedStateful
+        ? []
+        : [
+            {
+              id: "stateful",
+              accessorFn: (group: SecurityGroup) =>
+                group.stateful === undefined
+                  ? "Not reported"
+                  : group.stateful
+                    ? "Stateful"
+                    : "Stateless",
+              header: "Connection tracking",
+              meta: { fieldType: "string" as const, visible: true },
+            },
+          ]),
       {
         accessorKey: "created_at",
         header: "Age",
         meta: { fieldType: "date", dateDisplay: "age", visible: false },
       },
     ],
-    [],
+    [hasReportedStateful, statefulSupport.status],
   );
 
   return (
@@ -887,10 +906,11 @@ export function SecurityGroupsTableClient({
             projectId={projectId}
             regionId={regionId}
             initiallyOpen={initiallyOpen}
+            statefulSupport={statefulSupport}
           />
         }
       >
-        Stateful ingress and egress policy applied to project ports.
+        Ingress and egress policy applied to project ports.
       </TableIntro>
       <DataTable
         columns={columns}

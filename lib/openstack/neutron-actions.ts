@@ -31,6 +31,7 @@ import {
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
+  NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
   NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
   NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
   NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
@@ -546,7 +547,16 @@ const floatingIpUpdateSchema = z.object({
   fixedIpAddress: optionalIpAddress.nullable(),
   qosPolicyId: resourceId.nullable().optional(),
 });
-const securityGroupCreateSchema = z.object({ name, description });
+const securityGroupCreateSchema = z.object({
+  name,
+  description,
+  stateful: z.boolean().optional(),
+});
+const securityGroupUpdateSchema = z.object({
+  name: name.optional(),
+  description,
+  stateful: z.boolean().optional(),
+});
 const securityGroupRuleCreateSchema = z.object({
   securityGroupId: resourceId,
   description,
@@ -575,7 +585,7 @@ export type CreateSecurityGroupInput = z.input<
   typeof securityGroupCreateSchema
 >;
 export type UpdateSecurityGroupInput = z.input<
-  typeof securityGroupCreateSchema
+  typeof securityGroupUpdateSchema
 >;
 export type CreateSecurityGroupRuleInput = z.input<
   typeof securityGroupRuleCreateSchema
@@ -1819,13 +1829,43 @@ export async function createSecurityGroupAction(
 ): Promise<MutationResult<SecurityGroup>> {
   const parsed = parse(securityGroupCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
+  const statefulSupport = scope.regionId
+    ? extensionSupport(
+        await discoverNetworkCapabilities(scope.regionId),
+        NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
+        "Security group connection tracking",
+      )
+    : null;
+  if (
+    parsed.value.stateful !== undefined &&
+    statefulSupport?.status === "unsupported"
+  ) {
+    return mutationFailure(
+      {
+        code: "service-unavailable",
+        message: statefulSupport.message,
+        retryable: false,
+      },
+      scope,
+    );
+  }
+  const { stateful, ...attributes } = parsed.value;
+  const requestedStateful =
+    stateful ?? (statefulSupport?.status === "unsupported" ? undefined : true);
   return executeOpenStackMutation({
     actionLabel: "create a security group",
     scope,
     ...NEUTRON_SERVICE,
     path: "/v2.0/security-groups",
     method: "POST",
-    body: { security_group: parsed.value },
+    body: {
+      security_group: {
+        ...attributes,
+        ...(requestedStateful === undefined
+          ? {}
+          : { stateful: requestedStateful }),
+      },
+    },
     invalidates: networkingInvalidates,
     successMessage: `Security group ${parsed.value.name} created.`,
     transform: transformResource<SecurityGroup>("security_group"),
@@ -1839,15 +1879,32 @@ export async function updateSecurityGroupAction(
 ): Promise<MutationResult<SecurityGroup>> {
   const parsedId = parseId(scope, id);
   if (!parsedId.ok) return parsedId.result;
-  const parsed = parse(securityGroupCreateSchema, input, scope);
+  const parsed = parse(securityGroupUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(parsed.value.stateful === undefined
+      ? []
+      : [
+          {
+            feature: "Security group connection tracking",
+            required: NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
+  const { stateful, ...attributes } = parsed.value;
   return executeOpenStackMutation({
     actionLabel: "edit this security group",
     scope,
     ...NEUTRON_SERVICE,
     path: `/v2.0/security-groups/${encodeURIComponent(parsedId.value)}`,
     method: "PUT",
-    body: { security_group: parsed.value },
+    body: {
+      security_group: {
+        ...attributes,
+        ...(stateful === undefined ? {} : { stateful }),
+      },
+    },
     invalidates: networkingInvalidates,
     successMessage: "Security group updated.",
     transform: transformResource<SecurityGroup>("security_group"),

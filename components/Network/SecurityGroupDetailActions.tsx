@@ -35,23 +35,28 @@ import {
 } from "@/lib/openstack/neutron-actions";
 import type { SecurityGroup, SecurityGroupRule } from "@/types/openstack";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
+import { Checkbox } from "@/components/ui/checkbox";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 export function SecurityGroupDetailActions({
   group,
   groups,
   projectId,
   regionId,
+  statefulSupport,
 }: {
   group: SecurityGroup;
   groups: SecurityGroup[];
   projectId: string;
   regionId: string;
+  statefulSupport: OpenStackFeatureSupport;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<"delete" | "edit" | "rule" | null>(null);
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description);
+  const [stateful, setStateful] = useState(group.stateful ?? true);
   const [direction, setDirection] = useState<SecurityRuleDirection>("ingress");
   const [ethertype, setEthertype] = useState<SecurityRuleEthertype>("IPv4");
   const [protocol, setProtocol] = useState("tcp");
@@ -78,6 +83,7 @@ export function SecurityGroupDetailActions({
     if (next === "edit") {
       setName(group.name);
       setDescription(group.description);
+      setStateful(group.stateful ?? true);
     }
     if (next === "rule") {
       setDirection("ingress");
@@ -97,7 +103,11 @@ export function SecurityGroupDetailActions({
       const result = await updateSecurityGroupAction(
         { projectId, regionId },
         group.id,
-        { name, description },
+        {
+          ...(group.name === "default" ? {} : { name }),
+          description,
+          ...(stateful === (group.stateful ?? true) ? {} : { stateful }),
+        },
       );
       if (!result.ok) {
         setError(result.error.message);
@@ -178,8 +188,7 @@ export function SecurityGroupDetailActions({
             <DialogHeader>
               <DialogTitle>Edit security group</DialogTitle>
               <DialogDescription>
-                Update the policy name and description. Existing rules are
-                unchanged.
+                Update the policy settings. Existing rules are unchanged.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
@@ -202,6 +211,33 @@ export function SecurityGroupDetailActions({
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
+              {statefulSupport.status !== "unsupported" ? (
+                <div className="flex items-start gap-3 rounded-md border p-3">
+                  <Checkbox
+                    id="edit-group-stateful"
+                    checked={stateful}
+                    disabled={pending}
+                    onCheckedChange={(checked) => setStateful(checked === true)}
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-group-stateful">
+                      Stateful connection tracking
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      When enabled, return traffic for an allowed connection is
+                      accepted automatically. Stateless groups require explicit
+                      rules in both directions. Neutron accepts this change only
+                      when the group is not attached to any port and validates
+                      all projects when you save.
+                    </p>
+                    {statefulSupport.status === "unknown" ? (
+                      <p className="text-xs text-muted-foreground">
+                        {statefulSupport.message}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </div>
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             <DialogFooter>
