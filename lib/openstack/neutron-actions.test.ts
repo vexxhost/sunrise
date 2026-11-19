@@ -19,6 +19,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION: "net-mtu-writable",
   NEUTRON_PORT_BINDING_EXTENSION: "binding",
   NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION: "port-hardware-offload-type",
+  NEUTRON_PORT_MAC_ADDRESS_REGENERATE_EXTENSION: "port-mac-address-regenerate",
   NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION: "port-numa-affinity-policy",
   NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION:
     "port-numa-affinity-policy-socket",
@@ -55,6 +56,7 @@ import {
   removeRouterRouteAction,
   replaceRouterRouteAction,
   replaceSecurityGroupRuleAction,
+  regeneratePortMacAddressAction,
   setRouterGatewayAction,
   updateNetworkAction,
   updateFloatingIpAction,
@@ -80,6 +82,7 @@ describe("Neutron mutation actions", () => {
         "network_availability_zone",
         "net-mtu-writable",
         "port-hardware-offload-type",
+        "port-mac-address-regenerate",
         "port-numa-affinity-policy",
         "port-numa-affinity-policy-socket",
         "port-security",
@@ -622,6 +625,50 @@ describe("Neutron mutation actions", () => {
       }),
     );
     expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerates a port MAC address through Neutron's null contract", async () => {
+    await regeneratePortMacAddressAction(scope, "port-a");
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { port: { mac_address: null } },
+        method: "PUT",
+        path: "/v2.0/ports/port-a",
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects MAC regeneration when the extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: [],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await regeneratePortMacAddressAction(scope, "port-a");
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining("port-mac-address-regenerate"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("lets Neutron decide MAC regeneration when discovery is unavailable", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "Network capability discovery failed.",
+      serviceType: "network",
+    });
+
+    await regeneratePortMacAddressAction(scope, "port-a");
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
   });
 
   it("omits default and unchanged optional port placement fields", async () => {
@@ -1414,9 +1461,7 @@ describe("Neutron mutation actions", () => {
       description: "",
       networkId: "network-a",
       adminStateUp: true,
-      extraDhcpOptions: [
-        { ipVersion: 4, optName: "router", optValue: "" },
-      ],
+      extraDhcpOptions: [{ ipVersion: 4, optName: "router", optValue: "" }],
     });
     const rejected = await createPortAction(scope, {
       name: "application-port",

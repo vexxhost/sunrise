@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Link2Off, Trash2 } from "lucide-react";
+import { Link2, Link2Off, RefreshCw, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
@@ -41,6 +41,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   deletePortAction,
+  regeneratePortMacAddressAction,
   updatePortAction,
 } from "@/lib/openstack/neutron-actions";
 import {
@@ -64,7 +65,8 @@ import {
   NEUTRON_PORT_NUMA_AFFINITY_POLICY_OPTIONS,
 } from "@/lib/openstack/neutron-port-placement";
 
-type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
+type PortDialog =
+  "attach" | "delete" | "detach" | "edit" | "regenerate-mac" | null;
 const PORT_SETTING_DEFAULT = "__cloud_default__";
 const PORT_TRUSTED = "trusted";
 const PORT_NOT_TRUSTED = "not-trusted";
@@ -91,6 +93,7 @@ interface PortDetailActionsProps {
   numaSocketSupport: OpenStackFeatureSupport;
   port: Port;
   portBindingSupport: OpenStackFeatureSupport;
+  portMacAddressRegenerationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
@@ -112,6 +115,7 @@ export function PortDetailActions({
   numaSocketSupport,
   port,
   portBindingSupport,
+  portMacAddressRegenerationSupport,
   portSecuritySupport,
   qosSupport,
   projectId,
@@ -204,6 +208,8 @@ export function PortDetailActions({
     port.device_owner.startsWith("compute:") && Boolean(port.device_id);
   const infrastructureManaged = Boolean(port.device_owner) && !computeAttached;
   const portBound = computeAttached || Boolean(port["binding:host_id"]);
+  const macAddressRegenerationAvailable =
+    portMacAddressRegenerationSupport.status !== "unsupported";
 
   if (infrastructureManaged) {
     return <Badge variant="outline">Managed by OpenStack</Badge>;
@@ -384,6 +390,21 @@ export function PortDetailActions({
     });
   };
 
+  const confirmRegenerateMac = () => {
+    startTransition(async () => {
+      const result = await regeneratePortMacAddressAction(
+        { projectId, regionId },
+        port.id,
+      );
+      if (!result.ok) {
+        setError(result.error.message);
+        return;
+      }
+      setDialog(null);
+      await refresh();
+    });
+  };
+
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
@@ -396,6 +417,20 @@ export function PortDetailActions({
             <Link2 className="size-4" /> Attach to instance
           </Button>
         )}
+        {macAddressRegenerationAvailable ? (
+          <Button
+            variant="outline"
+            disabled={portBound}
+            title={
+              portBound
+                ? "Detach the port before regenerating its MAC address."
+                : undefined
+            }
+            onClick={() => open("regenerate-mac")}
+          >
+            <RefreshCw className="size-4" /> Regenerate MAC
+          </Button>
+        ) : null}
         <EditActionButton label="Edit port" onClick={() => open("edit")} />
         {!computeAttached ? (
           <Button
@@ -570,11 +605,11 @@ export function PortDetailActions({
                       ? "Detach this port before changing its vNIC type."
                       : trustedVifSelected
                         ? "Trusted VIF mode requires a Direct SR-IOV vNIC. Disable trusted mode to choose another type."
-                      : `${
-                          NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
-                            (option) => option.value === vnicType,
-                          )?.description ?? "Value reported by Neutron"
-                        }. Availability depends on the network backend and compute hosts.`}
+                        : `${
+                            NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
+                              (option) => option.value === vnicType,
+                            )?.description ?? "Value reported by Neutron"
+                          }. Availability depends on the network backend and compute hosts.`}
                   </p>
                 </div>
               ) : null}
@@ -829,6 +864,25 @@ export function PortDetailActions({
           </form>
         </DialogContent>
       </Dialog>
+
+      <MutationConfirmationDialog
+        open={dialog === "regenerate-mac"}
+        title="Regenerate MAC address?"
+        description={
+          <>
+            Neutron will replace{" "}
+            <span className="font-mono">{port.mac_address}</span> with a newly
+            allocated address. IPv6 addresses derived from the MAC may change as
+            part of this operation.
+          </>
+        }
+        confirmLabel="Regenerate MAC"
+        pendingLabel="Regenerating"
+        pending={pending}
+        error={error}
+        onOpenChange={(isOpen) => !isOpen && setDialog(null)}
+        onConfirm={confirmRegenerateMac}
+      />
 
       <MutationConfirmationDialog
         open={dialog === "detach"}

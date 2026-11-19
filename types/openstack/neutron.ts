@@ -213,7 +213,8 @@ export interface Port {
   qos_policy_id: string | null;
   qos_network_policy_id: string | null;
   propagate_uplink_status?: boolean;
-  ip_allocation: string;
+  ip_allocation?: string;
+  resource_request?: unknown;
   tags: string[];
   created_at: string;
   updated_at: string;

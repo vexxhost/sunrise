@@ -21,6 +21,10 @@ import {
   neutronPortHardwareOffloadTypeLabel,
   neutronPortNumaAffinityPolicyLabel,
 } from "@/lib/openstack/neutron-port-placement";
+import {
+  neutronPortIpAllocationLabel,
+  normalizeNeutronPortResourceRequest,
+} from "@/lib/openstack/neutron-port-resource-requests";
 
 interface PortDetailClientProps {
   allowedAddressPairsSupport: OpenStackFeatureSupport;
@@ -29,14 +33,17 @@ interface PortDetailClientProps {
   extraDhcpOptionsSupport: OpenStackFeatureSupport;
   hardwareOffloadSupport: OpenStackFeatureSupport;
   id: string;
+  ipAllocationSupport: OpenStackFeatureSupport;
   numaAffinitySupport: OpenStackFeatureSupport;
   numaSocketSupport: OpenStackFeatureSupport;
   portBindingSupport: OpenStackFeatureSupport;
+  portMacAddressRegenerationSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
+  resourceRequestSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
   trustedVifSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationSupport: OpenStackFeatureSupport;
@@ -65,14 +72,17 @@ export function PortDetailClient({
   extraDhcpOptionsSupport,
   hardwareOffloadSupport,
   id,
+  ipAllocationSupport,
   numaAffinitySupport,
   numaSocketSupport,
   portBindingSupport,
+  portMacAddressRegenerationSupport,
   portSecuritySupport,
   projectId,
   qosNetworkPolicySupport,
   qosSupport,
   regionId,
+  resourceRequestSupport,
   securityGroupSupport,
   trustedVifSupport,
   uplinkStatusPropagationSupport,
@@ -117,6 +127,9 @@ export function PortDetailClient({
       : port.data.device_owner || "Unattached";
   const owned =
     port.data.project_id === projectId || port.data.tenant_id === projectId;
+  const placementRequest = normalizeNeutronPortResourceRequest(
+    port.data.resource_request,
+  );
 
   return (
     <div className="space-y-6">
@@ -142,6 +155,9 @@ export function PortDetailClient({
             numaSocketSupport={numaSocketSupport}
             port={port.data}
             portBindingSupport={portBindingSupport}
+            portMacAddressRegenerationSupport={
+              portMacAddressRegenerationSupport
+            }
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}
             groups={groups.data ?? []}
@@ -194,6 +210,13 @@ export function PortDetailClient({
             />
           ) : null}
           <DetailRow label="MAC address" value={port.data.mac_address} />
+          {ipAllocationSupport.status !== "unsupported" ||
+          port.data.ip_allocation ? (
+            <DetailRow
+              label="IP allocation"
+              value={neutronPortIpAllocationLabel(port.data.ip_allocation)}
+            />
+          ) : null}
           {dnsIntegrationSupport.status !== "unsupported" ||
           port.data.dns_name ? (
             <DetailRow label="DNS name" value={port.data.dns_name || "None"} />
@@ -320,6 +343,80 @@ export function PortDetailClient({
         </section>
       ) : null}
 
+      {resourceRequestSupport.status !== "unsupported" ||
+      port.data.resource_request ? (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Placement requirements</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Resources and traits Neutron asks Nova to place with this port.
+            </p>
+          </div>
+          <div className="divide-y rounded-md border">
+            {placementRequest ? (
+              <>
+                {placementRequest.groups.map((group, index) => (
+                  <div key={group.id ?? index} className="space-y-3 px-3 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium">
+                        Request group {index + 1}
+                      </p>
+                      {group.id ? (
+                        <span className="break-all font-mono text-xs text-muted-foreground">
+                          {group.id}
+                        </span>
+                      ) : null}
+                    </div>
+                    {group.resources.length ? (
+                      <dl className="grid gap-2 text-sm">
+                        {group.resources.map((resource) => (
+                          <div
+                            key={resource.resourceClass}
+                            className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto]"
+                          >
+                            <dt className="break-all font-mono text-xs text-muted-foreground">
+                              {resource.resourceClass}
+                            </dt>
+                            <dd>{resource.amount.toLocaleString()}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
+                    {group.required.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {group.required.map((trait) => (
+                          <Badge
+                            key={trait}
+                            variant="outline"
+                            className="max-w-full break-all font-mono text-xs"
+                          >
+                            {trait}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {placementRequest.sameSubtree.length ? (
+                  <div className="space-y-2 px-3 py-3 text-sm">
+                    <p className="font-medium">
+                      Same resource-provider subtree
+                    </p>
+                    <p className="break-all font-mono text-xs text-muted-foreground">
+                      {placementRequest.sameSubtree.join(", ")}
+                    </p>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                No Placement resources requested.
+              </p>
+            )}
+          </div>
+        </section>
+      ) : null}
+
       <div
         className={
           securityGroupSupport.status === "unsupported" &&
@@ -411,9 +508,7 @@ export function PortDetailClient({
                     <span className="text-muted-foreground">
                       IPv{option.ip_version ?? 4}
                     </span>
-                    <span className="font-mono text-xs">
-                      {option.opt_name}
-                    </span>
+                    <span className="font-mono text-xs">{option.opt_name}</span>
                     <span className="break-words font-mono text-xs text-muted-foreground">
                       {option.opt_value || "Empty value"}
                     </span>
