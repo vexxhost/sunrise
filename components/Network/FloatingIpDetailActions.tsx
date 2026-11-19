@@ -50,12 +50,14 @@ import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 export function FloatingIpDetailActions({
   floatingIp,
   ports,
+  portForwardingCount,
   projectId,
   qosSupport,
   regionId,
 }: {
   floatingIp: FloatingIp;
   ports: Port[];
+  portForwardingCount: number | null;
   projectId: string;
   qosSupport: OpenStackFeatureSupport;
   regionId: string;
@@ -79,6 +81,8 @@ export function FloatingIpDetailActions({
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const forwardingRulesUnknown = portForwardingCount === null;
+  const hasForwardingRules = (portForwardingCount ?? 0) > 0;
   const qosAvailable = qosSupport.status !== "unsupported";
   const servers = useQuery({
     ...serversQueryOptions(regionId, projectId),
@@ -155,7 +159,17 @@ export function FloatingIpDetailActions({
   return (
     <>
       <div className="flex items-center gap-2">
-        <Button onClick={() => open("associate")}>
+        <Button
+          onClick={() => open("associate")}
+          disabled={forwardingRulesUnknown || hasForwardingRules}
+          title={
+            hasForwardingRules
+              ? "Delete port forwarding rules before associating this address"
+              : forwardingRulesUnknown
+                ? "Wait until port forwarding rules have been checked"
+                : undefined
+          }
+        >
           <Link2 className="size-4" />
           {floatingIp.port_id ? "Change association" : "Associate"}
         </Button>
@@ -163,7 +177,19 @@ export function FloatingIpDetailActions({
           label="Edit floating IP"
           onClick={() => open("edit")}
         />
-        <Button variant="outline" onClick={() => open("delete")} tone="danger">
+        <Button
+          variant="outline"
+          onClick={() => open("delete")}
+          tone="danger"
+          disabled={forwardingRulesUnknown || hasForwardingRules}
+          title={
+            hasForwardingRules
+              ? "Delete port forwarding rules before releasing this address"
+              : forwardingRulesUnknown
+                ? "Wait until port forwarding rules have been checked"
+                : undefined
+          }
+        >
           <Trash2 className="size-4" />
           Release
         </Button>

@@ -9,10 +9,12 @@ import {
   listProjectOwnedAddressGroups,
   listProjectVisibleAddressGroups,
 } from "@/lib/openstack/neutron-address-group-actions";
+import { listProjectFloatingIpPortForwardings } from "@/lib/openstack/neutron-port-forwarding-actions";
 import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availability-zones";
 import type {
   AddressGroup,
   FloatingIp,
+  FloatingIpPortForwarding,
   Network,
   NeutronAvailabilityZone,
   Port,
@@ -480,6 +482,24 @@ export function floatingIpQueryOptions(
       return data.floatingip;
     },
     enabled: !!regionId && !!projectId && !!id,
+  });
+}
+
+export function floatingIpPortForwardingsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  floatingIpId: string,
+) {
+  return queryOptions<FloatingIpPortForwarding[]>({
+    queryKey: [
+      regionId,
+      projectId,
+      "floating-ip-port-forwardings",
+      floatingIpId,
+    ],
+    queryFn: () =>
+      listProjectFloatingIpPortForwardings(regionId!, projectId!, floatingIpId),
+    enabled: !!regionId && !!projectId && !!floatingIpId,
   });
 }
 

@@ -3,10 +3,12 @@ import type { ReactNode } from "react";
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Globe2 } from "lucide-react";
 import { FloatingIpDetailActions } from "@/components/Network/FloatingIpDetailActions";
+import { FloatingIpPortForwardingSection } from "@/components/Network/FloatingIpPortForwardingSection";
 import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { Badge } from "@/components/ui/badge";
 import {
   floatingIpQueryOptions,
+  floatingIpPortForwardingsQueryOptions,
   portsQueryOptions,
   qosPoliciesQueryOptions,
 } from "@/hooks/queries/useNetworks";
@@ -19,6 +21,9 @@ export function FloatingIpDetailClient({
   projectId,
   qosNetworkPolicySupport,
   qosSupport,
+  portForwardingDescriptionSupport,
+  portForwardingRangeSupport,
+  portForwardingSupport,
   regionId,
 }: {
   dnsIntegrationSupport: OpenStackFeatureSupport;
@@ -26,6 +31,9 @@ export function FloatingIpDetailClient({
   projectId: string;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
+  portForwardingDescriptionSupport: OpenStackFeatureSupport;
+  portForwardingRangeSupport: OpenStackFeatureSupport;
+  portForwardingSupport: OpenStackFeatureSupport;
   regionId: string;
 }) {
   const floatingIp = useSuspenseQuery(
@@ -46,6 +54,10 @@ export function FloatingIpDetailClient({
   const owned =
     floatingIp.data.project_id === projectId ||
     floatingIp.data.tenant_id === projectId;
+  const portForwardings = useQuery({
+    ...floatingIpPortForwardingsQueryOptions(regionId, projectId, id),
+    enabled: owned && portForwardingSupport.status !== "unsupported",
+  });
   const rows: Array<[string, ReactNode]> = [
     ["ID", floatingIp.data.id],
     ["Status", floatingIp.data.status],
@@ -148,6 +160,11 @@ export function FloatingIpDetailClient({
             floatingIp={floatingIp.data}
             ports={ports.data}
             projectId={projectId}
+            portForwardingCount={
+              portForwardingSupport.status === "unsupported"
+                ? 0
+                : (portForwardings.data?.length ?? null)
+            }
             qosSupport={qosSupport}
             regionId={regionId}
           />
@@ -169,6 +186,16 @@ export function FloatingIpDetailClient({
           ))}
         </div>
       </section>
+      <FloatingIpPortForwardingSection
+        baseSupport={portForwardingSupport}
+        descriptionSupport={portForwardingDescriptionSupport}
+        floatingIp={floatingIp.data}
+        owned={owned}
+        ports={ports.data}
+        projectId={projectId}
+        rangeSupport={portForwardingRangeSupport}
+        regionId={regionId}
+      />
     </div>
   );
 }
