@@ -71,6 +71,7 @@ import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import type { ExtraDhcpOptionInput } from "@/lib/openstack/neutron-extra-dhcp-options";
+import { routerCapabilityBooleanInput } from "@/lib/openstack/neutron-router-gateways";
 import {
   isNeutronPortHardwareOffloadType,
   isNeutronPortNumaAffinityPolicy,
@@ -563,14 +564,14 @@ export function CreateRouterAction({
           name,
           description,
           adminStateUp,
-          enableDefaultRouteBfd:
-            defaultRouteBfdAvailable && enableDefaultRouteBfd
-              ? true
-              : undefined,
-          enableDefaultRouteEcmp:
-            defaultRouteEcmpAvailable && enableDefaultRouteEcmp
-              ? true
-              : undefined,
+          enableDefaultRouteBfd: routerCapabilityBooleanInput(
+            defaultRouteBfdSupport,
+            enableDefaultRouteBfd,
+          ),
+          enableDefaultRouteEcmp: routerCapabilityBooleanInput(
+            defaultRouteEcmpSupport,
+            enableDefaultRouteEcmp,
+          ),
           availabilityZoneHints: availabilityZoneHints(
             selectedAvailabilityZones,
           ),

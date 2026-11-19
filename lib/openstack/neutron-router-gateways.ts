@@ -1,4 +1,23 @@
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import type { Router, RouterExternalGatewayInfo } from "@/types/openstack";
+
+export function routerCapabilityBooleanInput(
+  support: OpenStackFeatureSupport,
+  value: boolean,
+): boolean | undefined {
+  if (support.status === "supported") return value;
+  if (support.status === "unknown" && value) return true;
+  return undefined;
+}
+
+export function routerExternalGatewayMultihomingAvailable(
+  router: Pick<Router, "external_gateways">,
+  support: OpenStackFeatureSupport,
+): boolean {
+  return (
+    support.status === "supported" || router.external_gateways !== undefined
+  );
+}
 
 export function routerExternalGateways(
   router: Pick<Router, "external_gateway_info" | "external_gateways">,

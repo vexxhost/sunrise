@@ -29,6 +29,7 @@ import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import {
   canRemoveRouterExternalGateway,
   routerExternalGatewayKey,
+  routerExternalGatewayMultihomingAvailable,
   routerExternalGateways,
 } from "@/lib/openstack/neutron-router-gateways";
 
@@ -75,6 +76,10 @@ export function RouterDetailClient({
   );
   const interfacePorts = ports.data.filter(isRouterInterfacePort);
   const gateways = routerExternalGateways(router.data);
+  const multihomingAvailable = routerExternalGatewayMultihomingAvailable(
+    router.data,
+    multihomingSupport,
+  );
   const primaryGateway = gateways[0];
   const externalNetworkById = useMemo(
     () =>
@@ -111,7 +116,7 @@ export function RouterDetailClient({
             projectId={projectId}
             defaultRouteBfdSupport={defaultRouteBfdSupport}
             defaultRouteEcmpSupport={defaultRouteEcmpSupport}
-            multihomingSupport={multihomingSupport}
+            multihomingAvailable={multihomingAvailable}
             qosGatewaySupport={qosGatewaySupport}
             regionId={regionId}
           />
@@ -299,7 +304,7 @@ export function RouterDetailClient({
                     </p>
                   </div>
                   <div>
-                    {owned && multihomingSupport.status !== "unsupported" ? (
+                    {owned && multihomingAvailable ? (
                       <RemoveRouterExternalGatewayAction
                         gateway={gateway}
                         networkLabel={networkLabel}

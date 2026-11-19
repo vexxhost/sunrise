@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   canRemoveRouterExternalGateway,
+  routerCapabilityBooleanInput,
   routerExternalGatewayKey,
+  routerExternalGatewayMultihomingAvailable,
   routerExternalGateways,
 } from "@/lib/openstack/neutron-router-gateways";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import type { RouterExternalGatewayInfo } from "@/types/openstack";
 
 function gateway(
@@ -18,6 +21,12 @@ function gateway(
       ? [{ subnet_id: "subnet-a", ip_address: ipAddress }]
       : [],
   };
+}
+
+function support(
+  status: OpenStackFeatureSupport["status"],
+): OpenStackFeatureSupport {
+  return { status, message: "" };
 }
 
 describe("router external gateway helpers", () => {
@@ -57,5 +66,46 @@ describe("router external gateway helpers", () => {
     expect(routerExternalGatewayKey(unaddressed, 0)).not.toBe(
       routerExternalGatewayKey(unaddressed, 1),
     );
+  });
+
+  it("sends explicit false only when optional routing support is confirmed", () => {
+    expect(routerCapabilityBooleanInput(support("supported"), false)).toBe(
+      false,
+    );
+    expect(routerCapabilityBooleanInput(support("supported"), true)).toBe(true);
+    expect(routerCapabilityBooleanInput(support("unknown"), false)).toBe(
+      undefined,
+    );
+    expect(routerCapabilityBooleanInput(support("unknown"), true)).toBe(true);
+    expect(routerCapabilityBooleanInput(support("unsupported"), true)).toBe(
+      undefined,
+    );
+  });
+
+  it("uses multihoming mode only when confirmed or present in router data", () => {
+    expect(
+      routerExternalGatewayMultihomingAvailable(
+        { external_gateways: undefined },
+        support("supported"),
+      ),
+    ).toBe(true);
+    expect(
+      routerExternalGatewayMultihomingAvailable(
+        { external_gateways: undefined },
+        support("unknown"),
+      ),
+    ).toBe(false);
+    expect(
+      routerExternalGatewayMultihomingAvailable(
+        { external_gateways: [] },
+        support("unknown"),
+      ),
+    ).toBe(true);
+    expect(
+      routerExternalGatewayMultihomingAvailable(
+        { external_gateways: [] },
+        support("unsupported"),
+      ),
+    ).toBe(true);
   });
 });

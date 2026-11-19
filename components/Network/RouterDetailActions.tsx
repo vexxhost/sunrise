@@ -60,7 +60,7 @@ interface RouterDetailActionsProps {
   projectId: string;
   defaultRouteBfdSupport: OpenStackFeatureSupport;
   defaultRouteEcmpSupport: OpenStackFeatureSupport;
-  multihomingSupport: OpenStackFeatureSupport;
+  multihomingAvailable: boolean;
   qosGatewaySupport: OpenStackFeatureSupport;
   regionId: string;
   routerResource: Router;
@@ -73,7 +73,7 @@ export function RouterDetailActions({
   projectId,
   defaultRouteBfdSupport,
   defaultRouteEcmpSupport,
-  multihomingSupport,
+  multihomingAvailable,
   qosGatewaySupport,
   regionId,
   routerResource,
@@ -116,7 +116,6 @@ export function RouterDetailActions({
     defaultRouteBfdSupport.status !== "unsupported";
   const defaultRouteEcmpAvailable =
     defaultRouteEcmpSupport.status !== "unsupported";
-  const multihomingAvailable = multihomingSupport.status !== "unsupported";
   const qosPolicies = useQuery({
     ...qosPoliciesQueryOptions(regionId, projectId),
     enabled: dialog === "gateway" && qosGatewayAvailable,
