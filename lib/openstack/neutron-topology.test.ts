@@ -211,6 +211,49 @@ describe("network topology", () => {
     );
   });
 
+  it("includes every multihomed gateway network without duplicate edges", () => {
+    const multihomedRouter = router("router-a");
+    multihomedRouter.external_gateways = [
+      {
+        network_id: "external-used",
+        enable_snat: true,
+        external_fixed_ips: [],
+      },
+      {
+        network_id: "external-secondary",
+        enable_snat: false,
+        external_fixed_ips: [],
+      },
+      {
+        network_id: "external-secondary",
+        enable_snat: false,
+        external_fixed_ips: [],
+      },
+    ];
+    const topology = buildNetworkTopology({
+      projectId,
+      networks: [],
+      externalNetworks: [
+        network("external-used", { "router:external": true }),
+        network("external-secondary", { "router:external": true }),
+      ],
+      subnets: [],
+      routers: [multihomedRouter],
+      ports: [],
+      floatingIps: [],
+      servers: [],
+    });
+
+    expect(
+      topology.nodes.filter((node) => node.data.kind === "external-network"),
+    ).toHaveLength(2);
+    expect(
+      topology.edges.filter(
+        (edge) => edge.target === "router:router-a" && edge.label === "Gateway",
+      ),
+    ).toHaveLength(2);
+  });
+
   it("turns router interfaces into relationships instead of duplicate nodes", () => {
     const topology = buildNetworkTopology({
       projectId,

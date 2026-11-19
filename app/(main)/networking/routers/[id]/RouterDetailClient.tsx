@@ -6,6 +6,7 @@ import { Cable, Route, Router as RouterIcon } from "lucide-react";
 
 import {
   DisconnectRouterInterfaceAction,
+  RemoveRouterExternalGatewayAction,
   RouterDetailActions,
 } from "@/components/Network/RouterDetailActions";
 import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
@@ -25,10 +26,17 @@ import { isRouterInterfacePort } from "@/lib/openstack/neutron-topology";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import {
+  routerExternalGatewayKey,
+  routerExternalGateways,
+} from "@/lib/openstack/neutron-router-gateways";
 
 interface Props {
   availabilityZoneSupport: OpenStackFeatureSupport;
+  defaultRouteBfdSupport: OpenStackFeatureSupport;
+  defaultRouteEcmpSupport: OpenStackFeatureSupport;
   id: string;
+  multihomingSupport: OpenStackFeatureSupport;
   projectId: string;
   qosGatewaySupport: OpenStackFeatureSupport;
   regionId: string;
@@ -37,7 +45,10 @@ interface Props {
 
 export function RouterDetailClient({
   availabilityZoneSupport,
+  defaultRouteBfdSupport,
+  defaultRouteEcmpSupport,
   id,
+  multihomingSupport,
   projectId,
   qosGatewaySupport,
   regionId,
@@ -62,8 +73,15 @@ export function RouterDetailClient({
     [subnets.data],
   );
   const interfacePorts = ports.data.filter(isRouterInterfacePort);
+  const gateways = routerExternalGateways(router.data);
+  const primaryGateway = gateways[0];
+  const externalNetworkById = useMemo(
+    () =>
+      new Map(externalNetworks.data.map((network) => [network.id, network])),
+    [externalNetworks.data],
+  );
   const gatewayNetwork = externalNetworks.data.find(
-    (network) => network.id === router.data.external_gateway_info?.network_id,
+    (network) => network.id === primaryGateway?.network_id,
   );
   const routes = router.data.routes ?? [];
   const owned =
@@ -90,6 +108,9 @@ export function RouterDetailClient({
             interfacePorts={interfacePorts}
             subnets={subnets.data}
             projectId={projectId}
+            defaultRouteBfdSupport={defaultRouteBfdSupport}
+            defaultRouteEcmpSupport={defaultRouteEcmpSupport}
+            multihomingSupport={multihomingSupport}
             qosGatewaySupport={qosGatewaySupport}
             regionId={regionId}
           />
@@ -112,8 +133,8 @@ export function RouterDetailClient({
             </Badge>
           </div>
           <div className="rounded-md border p-3">
-            <p className="text-xs text-muted-foreground">External gateway</p>
-            <p className="mt-2 truncate text-sm font-medium">
+            <p className="text-xs text-muted-foreground">External gateways</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm font-medium">
               {gatewayNetwork ? (
                 <ResourceLink
                   href={`/networking/networks/${encodeURIComponent(gatewayNetwork.id)}`}
@@ -123,14 +144,19 @@ export function RouterDetailClient({
               ) : (
                 "Not connected"
               )}
-            </p>
+              {gateways.length > 1 ? (
+                <Badge variant="outline">+{gateways.length - 1}</Badge>
+              ) : null}
+            </div>
           </div>
           <div className="rounded-md border p-3">
             <p className="text-xs text-muted-foreground">SNAT</p>
             <p className="mt-2 text-sm font-medium">
-              {router.data.external_gateway_info?.enable_snat
-                ? "Enabled"
-                : "Disabled"}
+              {primaryGateway
+                ? primaryGateway.enable_snat
+                  ? "Enabled"
+                  : "Disabled"
+                : "Not configured"}
             </p>
           </div>
           <div className="rounded-md border p-3">
@@ -173,7 +199,114 @@ export function RouterDetailClient({
               </div>
             </>
           )}
+          {defaultRouteEcmpSupport.status !== "unsupported" ||
+          router.data.enable_default_route_ecmp !== undefined ? (
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">
+                Default-route ECMP
+              </p>
+              <p className="mt-2 text-sm font-medium">
+                {router.data.enable_default_route_ecmp ? "Enabled" : "Disabled"}
+              </p>
+            </div>
+          ) : null}
+          {defaultRouteBfdSupport.status !== "unsupported" ||
+          router.data.enable_default_route_bfd !== undefined ? (
+            <div className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">Default-route BFD</p>
+              <p className="mt-2 text-sm font-medium">
+                {router.data.enable_default_route_bfd ? "Enabled" : "Disabled"}
+              </p>
+            </div>
+          ) : null}
         </div>
+      </section>
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Cable className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">External gateways</h3>
+          <Badge variant="outline">{gateways.length}</Badge>
+        </div>
+        {gateways.length ? (
+          <div className="overflow-hidden rounded-md border">
+            {gateways.map((gateway, index) => {
+              const network = externalNetworkById.get(gateway.network_id);
+              const networkLabel = network?.name || gateway.network_id;
+              return (
+                <div
+                  key={routerExternalGatewayKey(gateway)}
+                  className="grid gap-3 px-3 py-3 not-last:border-b sm:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_8rem_3rem] sm:items-center"
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {network ? (
+                        <ResourceLink
+                          href={`/networking/networks/${encodeURIComponent(network.id)}`}
+                        >
+                          {networkLabel}
+                        </ResourceLink>
+                      ) : (
+                        <span className="break-all font-mono text-xs">
+                          {networkLabel}
+                        </span>
+                      )}
+                      <Badge variant={index === 0 ? "secondary" : "outline"}>
+                        {index === 0 ? "Primary" : "Additional"}
+                      </Badge>
+                    </div>
+                    <p className="break-all font-mono text-xs text-muted-foreground">
+                      {gateway.network_id}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      Fixed addresses
+                    </p>
+                    {gateway.external_fixed_ips.length ? (
+                      gateway.external_fixed_ips.map((fixedIp) => (
+                        <p
+                          key={`${fixedIp.subnet_id}-${fixedIp.ip_address}`}
+                          className="font-mono text-xs"
+                        >
+                          {fixedIp.ip_address}
+                        </p>
+                      ))
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        None reported
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">SNAT</p>
+                    <p className="mt-1 text-sm">
+                      {index === 0
+                        ? gateway.enable_snat
+                          ? "Enabled"
+                          : "Disabled"
+                        : "Primary only"}
+                    </p>
+                  </div>
+                  <div>
+                    {owned && multihomingSupport.status !== "unsupported" ? (
+                      <RemoveRouterExternalGatewayAction
+                        gateway={gateway}
+                        networkLabel={networkLabel}
+                        projectId={projectId}
+                        regionId={regionId}
+                        routerId={router.data.id}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-md border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+            No external gateways are configured on this router.
+          </div>
+        )}
       </section>
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">

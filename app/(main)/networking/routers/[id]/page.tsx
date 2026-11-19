@@ -14,6 +14,9 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
+  NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION,
+  NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
+  NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -48,6 +51,29 @@ export default async function Page({
       "Router gateway QoS policies",
     ),
   );
+  const multihomingSupportPromise = capabilitiesPromise.then((capabilities) =>
+    extensionSupport(
+      capabilities,
+      NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION,
+      "Multiple router external gateways",
+    ),
+  );
+  const defaultRouteBfdSupportPromise = capabilitiesPromise.then(
+    (capabilities) =>
+      extensionSupport(
+        capabilities,
+        NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION,
+        "Router default-route BFD",
+      ),
+  );
+  const defaultRouteEcmpSupportPromise = capabilitiesPromise.then(
+    (capabilities) =>
+      extensionSupport(
+        capabilities,
+        NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
+        "Router default-route ECMP",
+      ),
+  );
   const queryClient = makeQueryClient();
   const routerQuery = routerQueryOptions(
     session.regionId,
@@ -70,17 +96,29 @@ export default async function Page({
     ),
   ]);
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
-  const [availabilityZoneSupport, qosGatewaySupport, routeSupport] =
-    await Promise.all([
-      availabilityZoneSupportPromise,
-      qosGatewaySupportPromise,
-      routeSupportPromise,
-    ]);
+  const [
+    availabilityZoneSupport,
+    defaultRouteBfdSupport,
+    defaultRouteEcmpSupport,
+    multihomingSupport,
+    qosGatewaySupport,
+    routeSupport,
+  ] = await Promise.all([
+    availabilityZoneSupportPromise,
+    defaultRouteBfdSupportPromise,
+    defaultRouteEcmpSupportPromise,
+    multihomingSupportPromise,
+    qosGatewaySupportPromise,
+    routeSupportPromise,
+  ]);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <RouterDetailClient
         id={id}
         availabilityZoneSupport={availabilityZoneSupport}
+        defaultRouteBfdSupport={defaultRouteBfdSupport}
+        defaultRouteEcmpSupport={defaultRouteEcmpSupport}
+        multihomingSupport={multihomingSupport}
         projectId={session.projectId}
         regionId={session.regionId}
         routeSupport={routeSupport}

@@ -16,6 +16,9 @@ import {
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
+  NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION,
+  NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
+  NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION,
   NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
@@ -427,6 +430,8 @@ const routerCreateSchema = z.object({
   name,
   description,
   adminStateUp: z.boolean().default(true),
+  enableDefaultRouteBfd: z.boolean().optional(),
+  enableDefaultRouteEcmp: z.boolean().optional(),
   availabilityZoneHints: z
     .array(resourceId)
     .transform((values) => [...new Set(values)])
@@ -436,12 +441,28 @@ const routerUpdateSchema = z.object({
   name,
   description,
   adminStateUp: z.boolean().default(true),
+  enableDefaultRouteBfd: z.boolean().optional(),
+  enableDefaultRouteEcmp: z.boolean().optional(),
 });
 const routerRouteSchema = routeSchema;
 const routerGatewaySchema = z.object({
   networkId: resourceId,
   enableSnat: z.boolean().default(true),
   qosPolicyId: resourceId.nullable().optional(),
+});
+const routerExternalGatewaySchema = z.object({
+  networkId: resourceId,
+});
+const routerExternalGatewayRemovalSchema = z.object({
+  networkId: resourceId,
+  externalFixedIps: z
+    .array(
+      z.object({
+        subnetId: resourceId,
+        ipAddress,
+      }),
+    )
+    .min(1),
 });
 const routerInterfaceSchema = z.object({ subnetId: resourceId });
 const portSecurityFields = {
@@ -576,6 +597,12 @@ export type UpdateSubnetInput = z.input<typeof subnetUpdateSchema>;
 export type CreateRouterInput = z.input<typeof routerCreateSchema>;
 export type UpdateRouterInput = z.input<typeof routerUpdateSchema>;
 export type SetRouterGatewayInput = z.input<typeof routerGatewaySchema>;
+export type AddRouterExternalGatewayInput = z.input<
+  typeof routerExternalGatewaySchema
+>;
+export type RemoveRouterExternalGatewayInput = z.input<
+  typeof routerExternalGatewayRemovalSchema
+>;
 export type RouterRouteInput = z.input<typeof routerRouteSchema>;
 export type CreatePortInput = z.input<typeof portCreateSchema>;
 export type UpdatePortInput = z.input<typeof portUpdateSchema>;
@@ -955,15 +982,33 @@ export async function createRouterAction(
   const parsed = parse(routerCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
-  if (value.availabilityZoneHints?.length) {
-    const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
-      {
-        feature: "Router availability-zone scheduling",
-        required: NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
-      },
-    ]);
-    if (unsupported) return unsupported;
-  }
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.availabilityZoneHints?.length
+      ? [
+          {
+            feature: "Router availability-zone scheduling",
+            required: NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
+          },
+        ]
+      : []),
+    ...(value.enableDefaultRouteBfd === undefined
+      ? []
+      : [
+          {
+            feature: "Router default-route BFD",
+            required: NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION,
+          },
+        ]),
+    ...(value.enableDefaultRouteEcmp === undefined
+      ? []
+      : [
+          {
+            feature: "Router default-route ECMP",
+            required: NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "create a router",
     scope,
@@ -975,6 +1020,12 @@ export async function createRouterAction(
         name: value.name,
         description: value.description,
         admin_state_up: value.adminStateUp,
+        ...(value.enableDefaultRouteBfd === undefined
+          ? {}
+          : { enable_default_route_bfd: value.enableDefaultRouteBfd }),
+        ...(value.enableDefaultRouteEcmp === undefined
+          ? {}
+          : { enable_default_route_ecmp: value.enableDefaultRouteEcmp }),
         ...(value.availabilityZoneHints?.length
           ? { availability_zone_hints: value.availabilityZoneHints }
           : {}),
@@ -996,6 +1047,25 @@ export async function updateRouterAction(
   const parsed = parse(routerUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    ...(value.enableDefaultRouteBfd === undefined
+      ? []
+      : [
+          {
+            feature: "Router default-route BFD",
+            required: NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION,
+          },
+        ]),
+    ...(value.enableDefaultRouteEcmp === undefined
+      ? []
+      : [
+          {
+            feature: "Router default-route ECMP",
+            required: NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
+          },
+        ]),
+  ]);
+  if (unsupported) return unsupported;
   return executeOpenStackMutation({
     actionLabel: "edit this router",
     scope,
@@ -1007,6 +1077,12 @@ export async function updateRouterAction(
         name: value.name,
         description: value.description,
         admin_state_up: value.adminStateUp,
+        ...(value.enableDefaultRouteBfd === undefined
+          ? {}
+          : { enable_default_route_bfd: value.enableDefaultRouteBfd }),
+        ...(value.enableDefaultRouteEcmp === undefined
+          ? {}
+          : { enable_default_route_ecmp: value.enableDefaultRouteEcmp }),
       },
     },
     invalidates: networkingInvalidates,
@@ -1085,6 +1161,82 @@ export async function clearRouterGatewayAction(
     body: { router: { external_gateway_info: null } },
     invalidates: networkingInvalidates,
     successMessage: "Router gateway cleared.",
+    transform: transformResource<Router>("router"),
+  });
+}
+
+export async function addRouterExternalGatewayAction(
+  scope: MutationScope,
+  routerId: string,
+  input: AddRouterExternalGatewayInput,
+): Promise<MutationResult<Router>> {
+  const parsedId = parseId(scope, routerId);
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parse(routerExternalGatewaySchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    {
+      feature: "Multiple router external gateways",
+      required: NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION,
+    },
+  ]);
+  if (unsupported) return unsupported;
+  return executeOpenStackMutation({
+    actionLabel: "add an external gateway to this router",
+    scope,
+    ...NEUTRON_SERVICE,
+    path: `/v2.0/routers/${encodeURIComponent(parsedId.value)}/add_external_gateways`,
+    method: "PUT",
+    body: {
+      router: {
+        external_gateways: [{ network_id: parsed.value.networkId }],
+      },
+    },
+    invalidates: networkingInvalidates,
+    successMessage: "Router gateway added.",
+    transform: transformResource<Router>("router"),
+  });
+}
+
+export async function removeRouterExternalGatewayAction(
+  scope: MutationScope,
+  routerId: string,
+  input: RemoveRouterExternalGatewayInput,
+): Promise<MutationResult<Router>> {
+  const parsedId = parseId(scope, routerId);
+  if (!parsedId.ok) return parsedId.result;
+  const parsed = parse(routerExternalGatewayRemovalSchema, input, scope);
+  if (!parsed.ok) return parsed.result;
+  const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
+    {
+      feature: "Multiple router external gateways",
+      required: NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION,
+    },
+  ]);
+  if (unsupported) return unsupported;
+  return executeOpenStackMutation({
+    actionLabel: "remove this router external gateway",
+    scope,
+    ...NEUTRON_SERVICE,
+    path: `/v2.0/routers/${encodeURIComponent(parsedId.value)}/remove_external_gateways`,
+    method: "PUT",
+    body: {
+      router: {
+        external_gateways: [
+          {
+            network_id: parsed.value.networkId,
+            external_fixed_ips: parsed.value.externalFixedIps.map(
+              ({ subnetId, ipAddress: address }) => ({
+                subnet_id: subnetId,
+                ip_address: address,
+              }),
+            ),
+          },
+        ],
+      },
+    },
+    invalidates: networkingInvalidates,
+    successMessage: "Router gateway removed.",
     transform: transformResource<Router>("router"),
   });
 }
