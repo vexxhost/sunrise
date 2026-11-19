@@ -28,7 +28,8 @@ import {
   validateNeutronTags,
 } from "@/lib/openstack/neutron-tags";
 
-type TaggableResourceType = "network" | "router" | "floating-ip";
+type TaggableResourceType =
+  "network" | "router" | "floating-ip" | "security-group";
 
 const RESOURCE_LABELS: Record<
   TaggableResourceType,
@@ -37,6 +38,7 @@ const RESOURCE_LABELS: Record<
   network: { label: "network", title: "Network" },
   router: { label: "router", title: "Router" },
   "floating-ip": { label: "floating IP", title: "Floating IP" },
+  "security-group": { label: "security group", title: "Security group" },
 };
 
 type TaggableResource = {

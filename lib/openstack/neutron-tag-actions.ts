@@ -34,7 +34,12 @@ const NEUTRON_SERVICE = {
   serviceName: "neutron",
 } as const;
 
-const taggableResource = z.enum(["network", "router", "floating-ip"]);
+const taggableResource = z.enum([
+  "network",
+  "router",
+  "floating-ip",
+  "security-group",
+]);
 type TaggableResource = z.infer<typeof taggableResource>;
 const TAGGABLE_RESOURCES: Record<
   TaggableResource,
@@ -70,6 +75,14 @@ const TAGGABLE_RESOURCES: Record<
     payloadKey: "floatingip",
     routeCollection: "floating-ips",
     title: "Floating IP",
+  },
+  "security-group": {
+    apiCollection: "security-groups",
+    label: "security group",
+    ownershipLabel: "security groups",
+    payloadKey: "security_group",
+    routeCollection: "security-groups",
+    title: "Security group",
   },
 };
 
