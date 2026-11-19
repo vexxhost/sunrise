@@ -16,6 +16,9 @@ describe("resource recovery", () => {
     expect(recoveryDestination({ kind: "security-group" })).toBe(
       "/networking/security-groups",
     );
+    expect(recoveryDestination({ kind: "address-group" })).toBe(
+      "/networking/address-groups",
+    );
     expect(recoveryDestination({ kind: "share-snapshot" })).toBe(
       "/shared-file-systems/snapshots",
     );

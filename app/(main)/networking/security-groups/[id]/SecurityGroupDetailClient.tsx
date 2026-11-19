@@ -1,5 +1,5 @@
 "use client";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import {
   SecurityGroupDetailActions,
@@ -7,11 +7,13 @@ import {
 } from "@/components/Network/SecurityGroupDetailActions";
 import { Badge } from "@/components/ui/badge";
 import {
+  addressGroupsQueryOptions,
   securityGroupQueryOptions,
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import type { SecurityGroupRule } from "@/types/openstack";
 
 function ports(rule: {
   port_range_min: number | null;
@@ -23,14 +25,30 @@ function ports(rule: {
   return `${rule.port_range_min ?? "Any"}-${rule.port_range_max ?? "Any"}`;
 }
 
+export function securityGroupRuleRemoteType(
+  rule: Pick<
+    SecurityGroupRule,
+    "remote_address_group_id" | "remote_group_id" | "remote_ip_prefix"
+  >,
+) {
+  if (rule.remote_address_group_id) return "Address group";
+  if (rule.remote_group_id) return "Security group";
+  if (rule.remote_ip_prefix) return "CIDR";
+  return "Unrestricted";
+}
+
 export function SecurityGroupDetailClient({
+  addressGroupSupport,
   id,
   projectId,
+  rbacSharingSupported,
   regionId,
   statefulSupport,
 }: {
+  addressGroupSupport: OpenStackFeatureSupport;
   id: string;
   projectId: string;
+  rbacSharingSupported: boolean;
   regionId: string;
   statefulSupport: OpenStackFeatureSupport;
 }) {
@@ -39,6 +57,13 @@ export function SecurityGroupDetailClient({
   );
   const groups = useSuspenseQuery(
     securityGroupsQueryOptions(regionId, projectId),
+  );
+  const addressGroups = useQuery({
+    ...addressGroupsQueryOptions(regionId, projectId, rbacSharingSupported),
+    enabled: addressGroupSupport.status !== "unsupported",
+  });
+  const addressGroupById = new Map(
+    (addressGroups.data ?? []).map((candidate) => [candidate.id, candidate]),
   );
   const groupById = new Map(
     groups.data.map((candidate) => [candidate.id, candidate]),
@@ -61,6 +86,8 @@ export function SecurityGroupDetailClient({
         </div>
         {owned ? (
           <SecurityGroupDetailActions
+            addressGroups={addressGroups.data ?? []}
+            addressGroupSupport={addressGroupSupport}
             group={group.data}
             groups={groups.data}
             projectId={projectId}
@@ -98,24 +125,40 @@ export function SecurityGroupDetailClient({
                 <span>{rule.ethertype}</span>
                 <span className="uppercase">{rule.protocol || "Any"}</span>
                 <span>{ports(rule)}</span>
-                <span className="truncate font-mono text-xs">
-                  {rule.remote_group_id ? (
+                <div className="min-w-0">
+                  <span className="block text-xs text-muted-foreground">
+                    {securityGroupRuleRemoteType(rule)}
+                  </span>
+                  {rule.remote_address_group_id ? (
                     <ResourceLink
+                      className="block truncate font-mono text-xs"
+                      href={`/networking/address-groups/${encodeURIComponent(rule.remote_address_group_id)}`}
+                    >
+                      {addressGroupById.get(rule.remote_address_group_id)
+                        ?.name || rule.remote_address_group_id}
+                    </ResourceLink>
+                  ) : rule.remote_group_id ? (
+                    <ResourceLink
+                      className="block truncate font-mono text-xs"
                       href={`/networking/security-groups/${encodeURIComponent(rule.remote_group_id)}`}
                     >
                       {groupById.get(rule.remote_group_id)?.name ||
                         rule.remote_group_id}
                     </ResourceLink>
                   ) : (
-                    rule.remote_ip_prefix || "Any"
+                    <span className="block truncate font-mono text-xs">
+                      {rule.remote_ip_prefix || "Any"}
+                    </span>
                   )}
-                </span>
+                </div>
                 <span className="truncate text-muted-foreground">
                   {rule.description || "-"}
                 </span>
                 <span>
                   {owned ? (
                     <SecurityGroupRuleActions
+                      addressGroups={addressGroups.data ?? []}
+                      addressGroupSupport={addressGroupSupport}
                       groups={groups.data}
                       projectId={projectId}
                       regionId={regionId}

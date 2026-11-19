@@ -1,4 +1,5 @@
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { hasNeutronAdministratorRole } from "@/lib/openstack/neutron-access";
 import type {
   KeystoneRole,
   Router,
@@ -8,9 +9,7 @@ import type {
 export function canManageNeutronAdminOnlyRouterSettings(
   roles: KeystoneRole[] | undefined,
 ): boolean {
-  return Boolean(
-    roles?.some((role) => role.name.trim().toLowerCase() === "admin"),
-  );
+  return hasNeutronAdministratorRole(roles);
 }
 
 export function routerCapabilityBooleanInput(

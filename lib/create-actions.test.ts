@@ -200,6 +200,10 @@ describe("create action availability", () => {
         service: "networking",
         href: "/networking/security-groups?create=security-group",
       },
+      {
+        service: "networking",
+        href: "/networking/address-groups?create=address-group",
+      },
     ]);
     expect(isCreateActionRequested("instance", "instance")).toBe(true);
     expect(isCreateActionRequested(["volume", "instance"], "volume")).toBe(

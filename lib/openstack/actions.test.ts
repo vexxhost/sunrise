@@ -126,6 +126,20 @@ describe("public OpenStack read action", () => {
     },
   );
 
+  it.each(["/v2.0/address-groups", "/v2.0/address-groups/address-group-a"])(
+    "keeps scoped address group reads out of the generic action: %s",
+    async (path) => {
+      await expect(
+        openstack({
+          regionId: "RegionOne",
+          serviceType: "network",
+          serviceName: "neutron",
+          path,
+        }),
+      ).rejects.toThrow("Invalid OpenStack request");
+    },
+  );
+
   it("rejects query parameters on the QoS policy collection", async () => {
     await expect(
       openstack({

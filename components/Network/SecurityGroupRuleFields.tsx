@@ -10,14 +10,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { SecurityGroup } from "@/types/openstack";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import type { AddressGroup, SecurityGroup } from "@/types/openstack";
 
 export type SecurityRuleDirection = "egress" | "ingress";
 export type SecurityRuleEthertype = "IPv4" | "IPv6";
-export type SecurityRuleRemoteType = "any" | "cidr" | "group";
+export type SecurityRuleRemoteType = "any" | "cidr" | "group" | "address-group";
+
+export function securityRuleProtocolUsesPorts(protocol: string) {
+  return protocol !== "any" && !protocol.includes("icmp");
+}
 
 interface SecurityGroupRuleFieldsProps {
   description: string;
+  addressGroups: AddressGroup[];
+  addressGroupSupport: OpenStackFeatureSupport;
   direction: SecurityRuleDirection;
   disabled: boolean;
   ethertype: SecurityRuleEthertype;
@@ -39,6 +46,8 @@ interface SecurityGroupRuleFieldsProps {
 }
 
 export function SecurityGroupRuleFields({
+  addressGroups,
+  addressGroupSupport,
   description,
   direction,
   disabled,
@@ -59,8 +68,7 @@ export function SecurityGroupRuleFields({
   remote,
   remoteType,
 }: SecurityGroupRuleFieldsProps) {
-  const portsDisabled =
-    disabled || protocol === "any" || protocol.includes("icmp");
+  const portsDisabled = disabled || !securityRuleProtocolUsesPorts(protocol);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -106,7 +114,13 @@ export function SecurityGroupRuleFields({
         <Select
           value={protocol}
           disabled={disabled}
-          onValueChange={onProtocolChange}
+          onValueChange={(value) => {
+            onProtocolChange(value);
+            if (!securityRuleProtocolUsesPorts(value)) {
+              onPortMinChange("");
+              onPortMaxChange("");
+            }
+          }}
         >
           <SelectTrigger id={`${idPrefix}-protocol`}>
             <SelectValue />
@@ -169,6 +183,10 @@ export function SecurityGroupRuleFields({
             <SelectItem value="any">Any source or destination</SelectItem>
             <SelectItem value="cidr">CIDR</SelectItem>
             <SelectItem value="group">Security group</SelectItem>
+            {addressGroupSupport.status !== "unsupported" ||
+            remoteType === "address-group" ? (
+              <SelectItem value="address-group">Address group</SelectItem>
+            ) : null}
           </SelectContent>
         </Select>
       </div>
@@ -188,7 +206,7 @@ export function SecurityGroupRuleFields({
               onChange={(event) => onRemoteChange(event.target.value)}
             />
           </>
-        ) : (
+        ) : remoteType === "group" ? (
           <>
             <Label htmlFor={`${idPrefix}-group`}>Security group</Label>
             <Select
@@ -207,6 +225,31 @@ export function SecurityGroupRuleFields({
                 ))}
               </SelectContent>
             </Select>
+          </>
+        ) : (
+          <>
+            <Label htmlFor={`${idPrefix}-address-group`}>Address group</Label>
+            <Select
+              value={remote}
+              disabled={disabled || addressGroups.length === 0}
+              onValueChange={onRemoteChange}
+            >
+              <SelectTrigger id={`${idPrefix}-address-group`}>
+                <SelectValue placeholder="Select an address group" />
+              </SelectTrigger>
+              <SelectContent>
+                {addressGroups.map((group) => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name || group.id} ({group.addresses.length})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {addressGroups.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No address groups are available in this project.
+              </p>
+            ) : null}
           </>
         )}
       </div>

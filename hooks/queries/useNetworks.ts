@@ -4,8 +4,14 @@
 
 import { queryOptions } from "@tanstack/react-query";
 import { openstack } from "@/lib/openstack/actions";
+import {
+  getProjectVisibleAddressGroup,
+  listProjectOwnedAddressGroups,
+  listProjectVisibleAddressGroups,
+} from "@/lib/openstack/neutron-address-group-actions";
 import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availability-zones";
 import type {
+  AddressGroup,
   FloatingIp,
   Network,
   NeutronAvailabilityZone,
@@ -44,6 +50,78 @@ function withQuery(path: string, values: Record<string, string | undefined>) {
   }
   const query = params.toString();
   return query ? `${path}?${query}` : path;
+}
+
+export function addressGroupsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  rbacSharingSupported: boolean,
+) {
+  return queryOptions({
+    queryKey: [
+      regionId,
+      projectId,
+      "network-address-groups",
+      rbacSharingSupported,
+    ],
+    queryFn: () =>
+      listProjectVisibleAddressGroups(
+        regionId!,
+        projectId!,
+        rbacSharingSupported,
+      ),
+    enabled: !!regionId && !!projectId,
+  });
+}
+
+export function projectAddressGroupsQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "project-network-address-groups"],
+    queryFn: () => listProjectOwnedAddressGroups(regionId!, projectId!),
+    enabled: !!regionId && !!projectId,
+  });
+}
+
+export function isOwnedAddressGroup(
+  group: AddressGroup,
+  projectId: string,
+  projectGroups: AddressGroup[],
+) {
+  if (group.project_id || group.tenant_id) {
+    return group.project_id === projectId || group.tenant_id === projectId;
+  }
+  return projectGroups.some((candidate) => candidate.id === group.id);
+}
+
+export function addressGroupQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  id: string,
+  rbacSharingSupported: boolean,
+) {
+  return queryOptions({
+    queryKey: [
+      regionId,
+      projectId,
+      "network-address-group",
+      id,
+      rbacSharingSupported,
+    ],
+    queryFn: async () => {
+      const group = await getProjectVisibleAddressGroup(
+        regionId!,
+        projectId!,
+        id,
+        rbacSharingSupported,
+      );
+      if (!group) throw new Error("Address group was not found");
+      return group;
+    },
+    enabled: !!regionId && !!projectId && !!id,
+  });
 }
 
 export function networkAvailabilityZonesQueryOptions(

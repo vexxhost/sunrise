@@ -47,6 +47,7 @@ const serviceNames: Record<string, string> = {
   images: "Images",
   "key-pairs": "Key Pairs",
   "security-groups": "Security Groups",
+  "address-groups": "Address Groups",
   overview: "Overview",
   "node-groups": "Node Groups",
   storage: "Storage",

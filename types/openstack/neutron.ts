@@ -12,6 +12,7 @@ export interface SecurityGroupRule {
   port_range_min: number | null;
   protocol: string | null;
   remote_group_id: string | null;
+  remote_address_group_id?: string | null;
   remote_group_name: string | null;
   remote_ip_prefix: string | null;
   tenant_id: string;
@@ -20,6 +21,19 @@ export interface SecurityGroupRule {
   updated_at: string;
   revision_number: number;
   tags: string[];
+}
+
+export interface AddressGroup {
+  id: string;
+  name: string;
+  description: string;
+  tenant_id?: string;
+  project_id?: string;
+  addresses: string[];
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+  revision_number?: number;
 }
 
 export interface SecurityGroup {
