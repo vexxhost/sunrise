@@ -21,7 +21,6 @@ import { Textarea } from "@/components/ui/textarea";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { updateNetworkTagsAction } from "@/lib/openstack/neutron-tag-actions";
 import {
-  NEUTRON_MAX_TAGS,
   decodeNeutronTagFromEditor,
   encodeNeutronTagForEditor,
   formatNeutronTag,
@@ -174,12 +173,13 @@ export function NetworkTagsSection({
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm font-medium">Tags</span>
                 <span className="text-xs text-muted-foreground">
-                  {draft.length} / {NEUTRON_MAX_TAGS}
+                  {draft.length} configured
                 </span>
               </div>
               <p className="text-xs text-muted-foreground">
                 Carriage returns are shown as <code>\r</code>; literal
-                backslashes are shown as <code>\\</code>.
+                backslashes are shown as <code>\\</code>. The Networking service
+                applies any cloud-specific tag count limit.
               </p>
               <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
                 {draft.map((tag, index) => (
@@ -236,7 +236,7 @@ export function NetworkTagsSection({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={pending || draft.length >= NEUTRON_MAX_TAGS}
+                disabled={pending}
                 onClick={() => {
                   if (submissionInFlight.current) return;
                   setError(null);

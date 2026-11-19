@@ -164,6 +164,27 @@ describe("Neutron network tag mutation", () => {
     );
   });
 
+  it("allows reducing a legacy tag set above the modern Neutron limit", async () => {
+    const legacyTags = Array.from(
+      { length: 51 },
+      (_, index) => `legacy-${index}`,
+    );
+    mocks.openstackRequest.mockResolvedValue(
+      networkPayload({ tags: legacyTags }),
+    );
+
+    await expect(
+      updateNetworkTagsAction(scope, "network-a", {
+        expectedRevisionNumber: 7,
+        expectedTags: legacyTags,
+        tags: ["retained"],
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({ body: { tags: ["retained"] } }),
+    );
+  });
+
   it("rejects a stale tag draft without revision support", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue(
       capabilities(["standard-attr-tag"]),

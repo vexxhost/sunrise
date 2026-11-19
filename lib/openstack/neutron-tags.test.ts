@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   NEUTRON_MAX_TAG_LENGTH,
-  NEUTRON_MAX_TAGS,
   decodeNeutronTagFromEditor,
   encodeNeutronTagForEditor,
   formatNeutronTag,
@@ -34,9 +33,9 @@ describe("Neutron resource tags", () => {
     ];
 
     for (const value of values) {
-      expect(
-        decodeNeutronTagFromEditor(encodeNeutronTagForEditor(value)),
-      ).toBe(value);
+      expect(decodeNeutronTagFromEditor(encodeNeutronTagForEditor(value))).toBe(
+        value,
+      );
     }
     expect(encodeNeutronTagForEditor("windows\r\nline ending")).toBe(
       "windows\\r\nline ending",
@@ -56,15 +55,18 @@ describe("Neutron resource tags", () => {
     });
   });
 
-  it("enforces Neutron's tag count and length limits", () => {
-    const tooMany = Array.from(
-      { length: NEUTRON_MAX_TAGS + 1 },
+  it("leaves version-dependent tag count limits to Neutron", () => {
+    const legacyTagSet = Array.from(
+      { length: 51 },
       (_, index) => `tag-${index}`,
     );
-    expect(validateNeutronTags(tooMany)).toEqual({
-      ok: false,
-      error: `Enter no more than ${NEUTRON_MAX_TAGS} tags.`,
+    expect(validateNeutronTags(legacyTagSet)).toEqual({
+      ok: true,
+      tags: legacyTagSet,
     });
+  });
+
+  it("enforces Neutron's universal tag length limit", () => {
     expect(
       validateNeutronTags(["x".repeat(NEUTRON_MAX_TAG_LENGTH + 1)]),
     ).toEqual({

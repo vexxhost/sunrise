@@ -1,9 +1,7 @@
-export const NEUTRON_MAX_TAGS = 50;
 export const NEUTRON_MAX_TAG_LENGTH = 255;
 
 export type NeutronTagsValidationResult =
-  | { ok: true; tags: string[] }
-  | { ok: false; error: string };
+  { ok: true; tags: string[] } | { ok: false; error: string };
 
 export function neutronTagLength(value: string) {
   return Array.from(value).length;
@@ -38,14 +36,9 @@ export function formatNeutronTag(value: string) {
     : JSON.stringify(value);
 }
 
-export function validateNeutronTags(tags: string[]): NeutronTagsValidationResult {
-  if (tags.length > NEUTRON_MAX_TAGS) {
-    return {
-      ok: false,
-      error: `Enter no more than ${NEUTRON_MAX_TAGS} tags.`,
-    };
-  }
-
+export function validateNeutronTags(
+  tags: string[],
+): NeutronTagsValidationResult {
   const seen = new Set<string>();
   for (const tag of tags) {
     if (neutronTagLength(tag) > NEUTRON_MAX_TAG_LENGTH) {

@@ -24,7 +24,6 @@ import {
 import { openstackRequest } from "@/lib/openstack/request-server";
 import {
   NEUTRON_MAX_TAG_LENGTH,
-  NEUTRON_MAX_TAGS,
   formatNeutronTag,
   neutronTagLength,
   sameNeutronTags,
@@ -42,22 +41,19 @@ const tag = z
     (value) => neutronTagLength(value) <= NEUTRON_MAX_TAG_LENGTH,
     `Each tag must be ${NEUTRON_MAX_TAG_LENGTH} characters or fewer.`,
   );
-const tags = z
-  .array(tag)
-  .max(NEUTRON_MAX_TAGS)
-  .superRefine((values, context) => {
-    const seen = new Set<string>();
-    for (const [index, value] of values.entries()) {
-      if (seen.has(value)) {
-        context.addIssue({
-          code: "custom",
-          message: `Remove the duplicate tag ${formatNeutronTag(value)}.`,
-          path: [index],
-        });
-      }
-      seen.add(value);
+const tags = z.array(tag).superRefine((values, context) => {
+  const seen = new Set<string>();
+  for (const [index, value] of values.entries()) {
+    if (seen.has(value)) {
+      context.addIssue({
+        code: "custom",
+        message: `Remove the duplicate tag ${formatNeutronTag(value)}.`,
+        path: [index],
+      });
     }
-  });
+    seen.add(value);
+  }
+});
 const networkTagsInput = z.object({
   expectedRevisionNumber: z.number().int().nonnegative().optional(),
   expectedTags: tags,
