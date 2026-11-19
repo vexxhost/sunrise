@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  inspectNeutronPortResourceRequest,
   neutronPortIpAllocationLabel,
   normalizeNeutronPortResourceRequest,
 } from "@/lib/openstack/neutron-port-resource-requests";
@@ -80,6 +81,45 @@ describe("Neutron port resource requests", () => {
         request_groups: [{ resources: { INVALID: "1" } }],
       }),
     ).toBeNull();
+  });
+
+  it("distinguishes a policy-hidden field from a reported empty request", () => {
+    expect(inspectNeutronPortResourceRequest({})).toEqual({
+      reported: false,
+      request: null,
+    });
+    expect(
+      inspectNeutronPortResourceRequest({ resource_request: null }),
+    ).toEqual({
+      reported: true,
+      request: null,
+    });
+  });
+
+  it("inspects a reported resource request", () => {
+    expect(
+      inspectNeutronPortResourceRequest({
+        resource_request: {
+          required: ["CUSTOM_PHYSNET_PUBLIC"],
+          resources: { NET_BW_EGR_KILOBIT_PER_SEC: 2_000 },
+        },
+      }),
+    ).toMatchObject({
+      reported: true,
+      request: {
+        groups: [
+          {
+            required: ["CUSTOM_PHYSNET_PUBLIC"],
+            resources: [
+              {
+                amount: 2_000,
+                resourceClass: "NET_BW_EGR_KILOBIT_PER_SEC",
+              },
+            ],
+          },
+        ],
+      },
+    });
   });
 
   it("labels known allocation states while preserving future values", () => {

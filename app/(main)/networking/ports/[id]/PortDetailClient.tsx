@@ -22,8 +22,8 @@ import {
   neutronPortNumaAffinityPolicyLabel,
 } from "@/lib/openstack/neutron-port-placement";
 import {
+  inspectNeutronPortResourceRequest,
   neutronPortIpAllocationLabel,
-  normalizeNeutronPortResourceRequest,
 } from "@/lib/openstack/neutron-port-resource-requests";
 
 interface PortDetailClientProps {
@@ -127,9 +127,8 @@ export function PortDetailClient({
       : port.data.device_owner || "Unattached";
   const owned =
     port.data.project_id === projectId || port.data.tenant_id === projectId;
-  const placementRequest = normalizeNeutronPortResourceRequest(
-    port.data.resource_request,
-  );
+  const { reported: resourceRequestReported, request: placementRequest } =
+    inspectNeutronPortResourceRequest(port.data);
 
   return (
     <div className="space-y-6">
@@ -408,9 +407,14 @@ export function PortDetailClient({
                   </div>
                 ) : null}
               </>
-            ) : (
+            ) : resourceRequestReported ? (
               <p className="px-3 py-6 text-center text-sm text-muted-foreground">
                 No Placement resources requested.
+              </p>
+            ) : (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                Placement requirements were not returned. Cloud policy may
+                restrict access to this field.
               </p>
             )}
           </div>

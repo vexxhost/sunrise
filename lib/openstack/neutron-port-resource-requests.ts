@@ -9,6 +9,11 @@ export interface NeutronPortResourceRequest {
   sameSubtree: string[];
 }
 
+export interface NeutronPortResourceRequestInspection {
+  reported: boolean;
+  request: NeutronPortResourceRequest | null;
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -66,6 +71,24 @@ export function normalizeNeutronPortResourceRequest(
   return {
     groups,
     sameSubtree: stringList(request.same_subtree),
+  };
+}
+
+export function inspectNeutronPortResourceRequest(
+  port: object,
+): NeutronPortResourceRequestInspection {
+  const reported = Object.prototype.hasOwnProperty.call(
+    port,
+    "resource_request",
+  );
+
+  return {
+    reported,
+    request: reported
+      ? normalizeNeutronPortResourceRequest(
+          (port as { resource_request?: unknown }).resource_request,
+        )
+      : null,
   };
 }
 
