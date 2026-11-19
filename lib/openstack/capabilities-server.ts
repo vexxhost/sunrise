@@ -55,6 +55,10 @@ export const NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION =
 export const NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION = "extra_dhcp_opt";
 export const NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION =
   "network_availability_zone";
+export const NEUTRON_NETWORK_IP_AVAILABILITY_EXTENSION =
+  "network-ip-availability";
+export const NEUTRON_NETWORK_IP_AVAILABILITY_DETAILS_EXTENSION =
+  "network-ip-availability-details";
 export const NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION = "net-mtu-writable";
 export const NEUTRON_PORT_SECURITY_EXTENSION = "port-security";
 export const NEUTRON_QOS_EXTENSION = "qos";

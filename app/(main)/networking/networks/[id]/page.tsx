@@ -2,6 +2,7 @@ import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
 
 import {
   networkQueryOptions,
+  networkIpAvailabilityQueryOptions,
   networkSubnetsQueryOptions,
   portsQueryOptions,
   routersQueryOptions,
@@ -16,6 +17,7 @@ import {
   discoverNetworkCapabilities,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION,
+  NEUTRON_NETWORK_IP_AVAILABILITY_EXTENSION,
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_QOS_EXTENSION,
@@ -63,6 +65,11 @@ export default async function Page({
     NEUTRON_DNS_INTEGRATION_EXTENSION,
     "Network DNS domains",
   );
+  const ipAvailabilitySupport = extensionSupport(
+    capabilities,
+    NEUTRON_NETWORK_IP_AVAILABILITY_EXTENSION,
+    "Network IP availability",
+  );
   const portSecuritySupport = extensionSupport(
     capabilities,
     NEUTRON_PORT_SECURITY_EXTENSION,
@@ -88,6 +95,15 @@ export default async function Page({
     NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
     "VLAN transparency",
   );
+  if (ipAvailabilitySupport.status !== "unsupported") {
+    await queryClient.prefetchQuery(
+      networkIpAvailabilityQueryOptions(
+        session.regionId,
+        session.projectId,
+        id,
+      ),
+    );
+  }
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
@@ -95,6 +111,7 @@ export default async function Page({
         id={id}
         availabilityZoneSupport={availabilityZoneSupport}
         dnsIntegrationSupport={dnsIntegrationSupport}
+        ipAvailabilitySupport={ipAvailabilitySupport}
         mtuSupport={mtuSupport}
         projectId={session.projectId}
         regionId={session.regionId}

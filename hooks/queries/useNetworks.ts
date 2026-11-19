@@ -10,6 +10,7 @@ import {
   listProjectVisibleAddressGroups,
 } from "@/lib/openstack/neutron-address-group-actions";
 import { listProjectFloatingIpPortForwardings } from "@/lib/openstack/neutron-port-forwarding-actions";
+import { getNetworkIpAvailability } from "@/lib/openstack/neutron-ip-availability-actions";
 import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availability-zones";
 import type {
   AddressGroup,
@@ -299,6 +300,19 @@ export function networkSubnetsQueryOptions(
 
       return data?.subnets ?? [];
     },
+    enabled: !!regionId && !!projectId && !!networkId,
+  });
+}
+
+export function networkIpAvailabilityQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  networkId: string,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "network-ip-availability", networkId],
+    queryFn: () =>
+      getNetworkIpAvailability(regionId!, projectId!, networkId),
     enabled: !!regionId && !!projectId && !!networkId,
   });
 }

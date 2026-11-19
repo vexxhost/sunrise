@@ -280,3 +280,31 @@ export interface Network {
   revision_number: number;
   project_id: string;
 }
+
+export interface NetworkIpAvailabilityDetails {
+  total_ips_in_subnet: number;
+  total_ips_in_allocation_pool: number;
+  used_ips_in_subnet: number;
+  used_ips_in_allocation_pool: number;
+}
+
+export interface SubnetIpAvailability {
+  subnet_id: string;
+  subnet_name: string;
+  ip_version: 4 | 6;
+  cidr: string;
+  total_ips: number;
+  used_ips: number;
+  ip_availability_details?: NetworkIpAvailabilityDetails;
+}
+
+export interface NetworkIpAvailability {
+  network_id: string;
+  network_name: string;
+  tenant_id?: string;
+  project_id?: string;
+  total_ips: number;
+  used_ips: number;
+  subnet_ip_availability: SubnetIpAvailability[];
+  ip_availability_details?: NetworkIpAvailabilityDetails;
+}
