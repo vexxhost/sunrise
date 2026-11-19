@@ -6,12 +6,16 @@ vi.mock("@/lib/openstack/neutron-address-group-actions", () => ({
   listProjectOwnedAddressGroups: vi.fn(),
   listProjectVisibleAddressGroups: vi.fn(),
 }));
+vi.mock("@/lib/openstack/neutron-ip-availability-actions", () => ({
+  getNetworkIpAvailability: vi.fn(),
+}));
 
 import {
   addressGroupQueryOptions,
   addressGroupsQueryOptions,
   availableNetworkZoneNames,
   isOwnedAddressGroup,
+  networkIpAvailabilityQueryOptions,
   networkAvailabilityZonesQueryOptions,
   projectAddressGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
@@ -21,6 +25,7 @@ import {
   listProjectOwnedAddressGroups,
   listProjectVisibleAddressGroups,
 } from "@/lib/openstack/neutron-address-group-actions";
+import { getNetworkIpAvailability } from "@/lib/openstack/neutron-ip-availability-actions";
 
 const mockedOpenstack = vi.mocked(openstack);
 const mockedGetProjectVisibleAddressGroup = vi.mocked(
@@ -32,6 +37,7 @@ const mockedListProjectVisibleAddressGroups = vi.mocked(
 const mockedListProjectOwnedAddressGroups = vi.mocked(
   listProjectOwnedAddressGroups,
 );
+const mockedGetNetworkIpAvailability = vi.mocked(getNetworkIpAvailability);
 
 describe("Neutron query options", () => {
   beforeEach(() => {
@@ -39,6 +45,33 @@ describe("Neutron query options", () => {
     mockedGetProjectVisibleAddressGroup.mockReset();
     mockedListProjectOwnedAddressGroups.mockReset();
     mockedListProjectVisibleAddressGroups.mockReset();
+    mockedGetNetworkIpAvailability.mockReset();
+  });
+
+  it("loads network IP availability through the scoped action", async () => {
+    mockedGetNetworkIpAvailability.mockResolvedValue({
+      status: "restricted",
+    });
+    const query = networkIpAvailabilityQueryOptions(
+      "RegionOne",
+      "project-a",
+      "network-a",
+    );
+
+    await expect((query.queryFn as () => Promise<unknown>)()).resolves.toEqual({
+      status: "restricted",
+    });
+    expect(query.queryKey).toEqual([
+      "RegionOne",
+      "project-a",
+      "network-ip-availability",
+      "network-a",
+    ]);
+    expect(mockedGetNetworkIpAvailability).toHaveBeenCalledWith(
+      "RegionOne",
+      "project-a",
+      "network-a",
+    );
   });
 
   it("loads the availability-zone catalog through the constrained read action", async () => {

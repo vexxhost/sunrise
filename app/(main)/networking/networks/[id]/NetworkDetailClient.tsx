@@ -5,11 +5,13 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { GitBranch, Network as NetworkIcon } from "lucide-react";
 
 import { NetworkDetailActions } from "@/components/Network/NetworkDetailActions";
+import { NetworkIpAvailabilitySection } from "@/components/Network/NetworkIpAvailabilitySection";
 import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { SubnetDetailActions } from "@/components/Network/SubnetDetailActions";
 import { Badge } from "@/components/ui/badge";
 import {
   networkQueryOptions,
+  networkIpAvailabilityQueryOptions,
   networkSubnetsQueryOptions,
   portsQueryOptions,
   qosPoliciesQueryOptions,
@@ -24,6 +26,7 @@ interface NetworkDetailClientProps {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   id: string;
   mtuSupport: OpenStackFeatureSupport;
+  ipAvailabilitySupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
@@ -52,6 +55,7 @@ export function NetworkDetailClient({
   availabilityZoneSupport,
   dnsIntegrationSupport,
   id,
+  ipAvailabilitySupport,
   mtuSupport,
   portSecuritySupport,
   qosSupport,
@@ -66,6 +70,10 @@ export function NetworkDetailClient({
   const subnets = useSuspenseQuery(
     networkSubnetsQueryOptions(regionId, projectId, id),
   );
+  const ipAvailability = useQuery({
+    ...networkIpAvailabilityQueryOptions(regionId, projectId, id),
+    enabled: ipAvailabilitySupport.status !== "unsupported",
+  });
   const routers = useSuspenseQuery(routersQueryOptions(regionId, projectId));
   const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
   const qosPolicies = useQuery({
@@ -202,6 +210,28 @@ export function NetworkDetailClient({
         <h3 className="text-sm font-semibold">Network details</h3>
         <DetailGrid rows={networkRows} />
       </section>
+      {ipAvailabilitySupport.status !== "unsupported" ? (
+        ipAvailability.isPending ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">IP capacity</h3>
+            <div className="rounded-md border border-dashed px-4 py-6 text-sm text-muted-foreground">
+              Loading IP availability…
+            </div>
+          </section>
+        ) : ipAvailability.isError ? (
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold">IP capacity</h3>
+            <div className="rounded-md border border-dashed px-4 py-6 text-sm text-muted-foreground">
+              IP availability could not be loaded.
+            </div>
+          </section>
+        ) : (
+          <NetworkIpAvailabilitySection
+            result={ipAvailability.data}
+            support={ipAvailabilitySupport}
+          />
+        )
+      ) : null}
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <GitBranch className="size-4 text-muted-foreground" />
