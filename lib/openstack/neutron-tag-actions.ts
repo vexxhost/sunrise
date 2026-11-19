@@ -36,28 +36,32 @@ const NEUTRON_SERVICE = {
 } as const;
 
 const resourceId = z.string().trim().min(1).max(255);
-const tag = z.string().refine(
-  (value) => neutronTagLength(value) <= NEUTRON_MAX_TAG_LENGTH,
-  `Each tag must be ${NEUTRON_MAX_TAG_LENGTH} characters or fewer.`,
-);
+const tag = z
+  .string()
+  .refine(
+    (value) => neutronTagLength(value) <= NEUTRON_MAX_TAG_LENGTH,
+    `Each tag must be ${NEUTRON_MAX_TAG_LENGTH} characters or fewer.`,
+  );
+const tags = z
+  .array(tag)
+  .max(NEUTRON_MAX_TAGS)
+  .superRefine((values, context) => {
+    const seen = new Set<string>();
+    for (const [index, value] of values.entries()) {
+      if (seen.has(value)) {
+        context.addIssue({
+          code: "custom",
+          message: `Remove the duplicate tag ${formatNeutronTag(value)}.`,
+          path: [index],
+        });
+      }
+      seen.add(value);
+    }
+  });
 const networkTagsInput = z.object({
   expectedRevisionNumber: z.number().int().nonnegative().optional(),
-  tags: z
-    .array(tag)
-    .max(NEUTRON_MAX_TAGS)
-    .superRefine((tags, context) => {
-      const seen = new Set<string>();
-      for (const [index, value] of tags.entries()) {
-        if (seen.has(value)) {
-          context.addIssue({
-            code: "custom",
-            message: `Remove the duplicate tag ${formatNeutronTag(value)}.`,
-            path: [index],
-          });
-        }
-        seen.add(value);
-      }
-    }),
+  expectedTags: tags,
+  tags,
 });
 
 type NetworkTagState = {
@@ -117,7 +121,10 @@ function parseTagsResponse(payload: unknown) {
     throw new Error("Neutron did not return network tags");
   }
   const tags = Reflect.get(payload, "tags");
-  if (!Array.isArray(tags) || !tags.every((value) => typeof value === "string")) {
+  if (
+    !Array.isArray(tags) ||
+    !tags.every((value) => typeof value === "string")
+  ) {
     throw new Error("Neutron returned invalid network tags");
   }
   return tags;
@@ -134,7 +141,8 @@ function readFailure(error: unknown, scope: MutationScope) {
     return mutationFailure(
       {
         code: "network-error",
-        message: "The Networking service could not be reached. Try again shortly.",
+        message:
+          "The Networking service could not be reached. Try again shortly.",
         retryable: true,
       },
       scope,
@@ -257,6 +265,12 @@ export async function updateNetworkTagsAction(
     parsedInput.data.expectedRevisionNumber !== undefined &&
     network.revisionNumber !== parsedInput.data.expectedRevisionNumber
   ) {
+    return mutationFailure(
+      mutationErrorForStatus(412, "save network tags"),
+      activeScope,
+    );
+  }
+  if (!sameNeutronTags(network.tags, parsedInput.data.expectedTags)) {
     return mutationFailure(
       mutationErrorForStatus(412, "save network tags"),
       activeScope,

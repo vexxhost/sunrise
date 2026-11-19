@@ -29,7 +29,9 @@ const scope = { projectId: "project-a", regionId: "RegionOne" };
 
 function capabilities(extensions?: string[]) {
   return {
-    discoveryStatus: extensions ? ("available" as const) : ("unavailable" as const),
+    discoveryStatus: extensions
+      ? ("available" as const)
+      : ("unavailable" as const),
     extensions,
     message: extensions ? "Extensions discovered." : "Discovery unavailable.",
     serviceType: "network",
@@ -76,6 +78,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["old"],
         tags: [" environment:production ", "", "line\nbreak"],
       }),
     ).resolves.toMatchObject({ ok: true });
@@ -110,6 +113,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["old"],
         tags: ["new"],
       }),
     ).resolves.toMatchObject({
@@ -125,6 +129,7 @@ describe("Neutron network tag mutation", () => {
 
     await updateNetworkTagsAction(scope, "network-a", {
       expectedRevisionNumber: 7,
+      expectedTags: ["old"],
       tags: ["new"],
     });
 
@@ -146,7 +151,10 @@ describe("Neutron network tag mutation", () => {
     });
 
     await expect(
-      updateNetworkTagsAction(scope, "network-a", { tags: ["new"] }),
+      updateNetworkTagsAction(scope, "network-a", {
+        expectedTags: ["old"],
+        tags: ["new"],
+      }),
     ).resolves.toMatchObject({ ok: true });
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -156,9 +164,36 @@ describe("Neutron network tag mutation", () => {
     );
   });
 
+  it("rejects a stale tag draft without revision support", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue(
+      capabilities(["standard-attr-tag"]),
+    );
+    mocks.openstackRequest.mockResolvedValue({
+      network: {
+        id: "network-a",
+        project_id: "project-a",
+        tags: ["changed-elsewhere"],
+      },
+    });
+
+    await expect(
+      updateNetworkTagsAction(scope, "network-a", {
+        expectedTags: ["old"],
+        tags: ["new"],
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "conflict", status: 412 },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("requires advertised and returned revision data", async () => {
     await expect(
-      updateNetworkTagsAction(scope, "network-a", { tags: ["new"] }),
+      updateNetworkTagsAction(scope, "network-a", {
+        expectedTags: ["old"],
+        tags: ["new"],
+      }),
     ).resolves.toMatchObject({
       ok: false,
       error: { code: "validation-failed" },
@@ -174,6 +209,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["old"],
         tags: ["new"],
       }),
     ).resolves.toMatchObject({
@@ -190,6 +226,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["old"],
         tags: ["new"],
       }),
     ).resolves.toMatchObject({
@@ -203,6 +240,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["old"],
         tags: ["new"],
       }),
     ).resolves.toMatchObject({
@@ -220,6 +258,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["one", "two"],
         tags: ["two", "one"],
       }),
     ).resolves.toMatchObject({
@@ -234,6 +273,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["old"],
         tags: ["duplicate", "duplicate"],
       }),
     ).resolves.toMatchObject({
@@ -246,6 +286,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["old"],
         tags: ["new"],
       }),
     ).resolves.toMatchObject({
@@ -259,6 +300,7 @@ describe("Neutron network tag mutation", () => {
     await expect(
       updateNetworkTagsAction(scope, "network-a", {
         expectedRevisionNumber: 7,
+        expectedTags: ["old"],
         tags: ["new"],
       }),
     ).resolves.toMatchObject({

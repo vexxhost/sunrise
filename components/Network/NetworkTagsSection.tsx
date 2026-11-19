@@ -35,6 +35,11 @@ type TagDraft = {
   value: string;
 };
 
+type TagDraftSource = {
+  revisionNumber?: number;
+  tags: string[];
+};
+
 export function NetworkTagsSection({
   network,
   owned,
@@ -53,15 +58,17 @@ export function NetworkTagsSection({
   const tags = network.tags ?? [];
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<TagDraft[]>([]);
+  const [draftSource, setDraftSource] = useState<TagDraftSource>({ tags: [] });
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const nextDraftId = useRef(0);
+  const submissionInFlight = useRef(false);
   const draftTags = useMemo(
     () => draft.map((tag) => decodeNeutronTagFromEditor(tag.value)),
     [draft],
   );
   const parsed = useMemo(() => validateNeutronTags(draftTags), [draftTags]);
-  const changed = parsed.ok && !sameNeutronTags(parsed.tags, tags);
+  const changed = parsed.ok && !sameNeutronTags(parsed.tags, draftSource.tags);
   const canEdit = owned && support.status !== "unsupported";
 
   if (support.status === "unsupported" && tags.length === 0) return null;
@@ -72,32 +79,48 @@ export function NetworkTagsSection({
   });
   const openEditor = () => {
     setDraft(tags.map((tag) => newDraft(encodeNeutronTagForEditor(tag))));
+    setDraftSource({
+      ...(network.revision_number !== undefined
+        ? { revisionNumber: network.revision_number }
+        : {}),
+      tags: [...tags],
+    });
     setError(null);
     setOpen(true);
   };
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!parsed.ok || !changed) return;
+    if (!parsed.ok || !changed || submissionInFlight.current) return;
 
+    submissionInFlight.current = true;
     setError(null);
     startTransition(async () => {
-      const result = await updateNetworkTagsAction(
-        { projectId, regionId },
-        network.id,
-        {
-          ...(network.revision_number !== undefined
-            ? { expectedRevisionNumber: network.revision_number }
-            : {}),
-          tags: parsed.tags,
-        },
-      );
-      if (!result.ok) {
-        setError(result.error.message);
-        return;
+      try {
+        const result = await updateNetworkTagsAction(
+          { projectId, regionId },
+          network.id,
+          {
+            ...(draftSource.revisionNumber !== undefined
+              ? { expectedRevisionNumber: draftSource.revisionNumber }
+              : {}),
+            expectedTags: draftSource.tags,
+            tags: parsed.tags,
+          },
+        );
+        if (!result.ok) {
+          setError(result.error.message);
+          return;
+        }
+        setOpen(false);
+        await queryClient.invalidateQueries({
+          queryKey: [regionId, projectId],
+        });
+        router.refresh();
+      } catch {
+        setError("The network tags could not be saved. Try again.");
+      } finally {
+        submissionInFlight.current = false;
       }
-      setOpen(false);
-      await queryClient.invalidateQueries({ queryKey: [regionId, projectId] });
-      router.refresh();
     });
   };
 
@@ -136,7 +159,7 @@ export function NetworkTagsSection({
       <Dialog
         open={open}
         onOpenChange={(next) => {
-          if (!pending) setOpen(next);
+          if (!pending && !submissionInFlight.current) setOpen(next);
         }}
       >
         <DialogContent className="max-h-[calc(100vh-2rem)] sm:max-w-2xl">
@@ -167,15 +190,18 @@ export function NetworkTagsSection({
                     <Textarea
                       aria-label={`Tag ${index + 1}`}
                       value={tag.value}
-                      onChange={(event) =>
+                      disabled={pending}
+                      onChange={(event) => {
+                        if (submissionInFlight.current) return;
+                        setError(null);
                         setDraft((current) =>
                           current.map((entry) =>
                             entry.id === tag.id
                               ? { ...entry, value: event.target.value }
                               : entry,
                           ),
-                        )
-                      }
+                        );
+                      }}
                       placeholder="environment:production"
                       rows={2}
                       className="font-mono"
@@ -188,11 +214,13 @@ export function NetworkTagsSection({
                       tone="danger"
                       aria-label={`Remove tag ${index + 1}`}
                       disabled={pending}
-                      onClick={() =>
+                      onClick={() => {
+                        if (submissionInFlight.current) return;
+                        setError(null);
                         setDraft((current) =>
                           current.filter((entry) => entry.id !== tag.id),
-                        )
-                      }
+                        );
+                      }}
                     >
                       <Trash2 className="size-4" />
                     </Button>
@@ -209,24 +237,26 @@ export function NetworkTagsSection({
                 variant="outline"
                 size="sm"
                 disabled={pending || draft.length >= NEUTRON_MAX_TAGS}
-                onClick={() =>
-                  setDraft((current) => [...current, newDraft("")])
-                }
+                onClick={() => {
+                  if (submissionInFlight.current) return;
+                  setError(null);
+                  setDraft((current) => [...current, newDraft("")]);
+                }}
               >
                 <Plus className="size-4" />
                 Add tag
               </Button>
             </div>
-            {!parsed.ok ? (
-              <MutationAlert>{parsed.error}</MutationAlert>
-            ) : null}
+            {!parsed.ok ? <MutationAlert>{parsed.error}</MutationAlert> : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
                 disabled={pending}
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  if (!submissionInFlight.current) setOpen(false);
+                }}
               >
                 Cancel
               </Button>
