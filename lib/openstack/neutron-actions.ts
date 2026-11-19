@@ -489,7 +489,19 @@ const portCreateSchema = z
     qosPolicyId: resourceId.nullable().optional(),
     ...portSecurityFields,
   })
-  .superRefine(requirePortSecurityForAddressPairs);
+  .superRefine((value, context) => {
+    requirePortSecurityForAddressPairs(value, context);
+    if (
+      value.hardwareOffloadType === "switchdev" &&
+      value.vnicType !== "direct"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Switchdev hardware offload requires a direct vNIC type.",
+        path: ["hardwareOffloadType"],
+      });
+    }
+  });
 const portUpdateSchema = z
   .object({
     name: optionalName,

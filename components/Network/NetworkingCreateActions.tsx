@@ -733,14 +733,19 @@ export function CreatePortAction({
   const extraDhcpOptionsAvailable =
     extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
+  const portBindingAvailable = portBindingSupport.status !== "unsupported";
   const hardwareOffloadAvailable =
-    hardwareOffloadSupport.status !== "unsupported";
+    hardwareOffloadSupport.status !== "unsupported" && portBindingAvailable;
   const numaAffinityAvailable = numaAffinitySupport.status !== "unsupported";
   const numaSocketAvailable = numaSocketSupport.status !== "unsupported";
-  const portBindingAvailable = portBindingSupport.status !== "unsupported";
   const trustedVifAvailable = trustedVifSupport.status !== "unsupported";
   const uplinkStatusPropagationAvailable =
     uplinkStatusPropagationSupport.status !== "unsupported";
+  const hardwareOffloadUnavailableMessage =
+    hardwareOffloadSupport.status === "unsupported"
+      ? hardwareOffloadSupport.message
+      : "Port hardware offload requires support for Neutron port bindings.";
+  const switchdevOffloadSelected = hardwareOffloadType === "switchdev";
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -962,7 +967,7 @@ export function CreatePortAction({
                   <Label htmlFor="port-vnic-type">vNIC type</Label>
                   <Select
                     value={vnicType}
-                    disabled={pending}
+                    disabled={pending || switchdevOffloadSelected}
                     onValueChange={(value) =>
                       setVnicType(value as NeutronPortVnicType)
                     }
@@ -979,13 +984,13 @@ export function CreatePortAction({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {
-                      NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
-                        (option) => option.value === vnicType,
-                      )?.description
-                    }
-                    . Availability depends on the network backend and compute
-                    hosts.
+                    {switchdevOffloadSelected
+                      ? "Switchdev hardware offload requires a Direct vNIC. Select no hardware offload to choose another type."
+                      : `${
+                          NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
+                            (option) => option.value === vnicType,
+                          )?.description
+                        }. Availability depends on the network backend and compute hosts.`}
                   </p>
                 </div>
               ) : null}
@@ -1030,7 +1035,10 @@ export function CreatePortAction({
                   <Select
                     value={hardwareOffloadType}
                     disabled={pending}
-                    onValueChange={setHardwareOffloadType}
+                    onValueChange={(value) => {
+                      setHardwareOffloadType(value);
+                      if (value === "switchdev") setVnicType("direct");
+                    }}
                   >
                     <SelectTrigger id="port-hardware-offload">
                       <SelectValue />
@@ -1041,8 +1049,8 @@ export function CreatePortAction({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Request a switchdev-offloaded data path. This setting cannot
-                    be changed after creation.
+                    Request a switchdev-offloaded data path with a Direct vNIC.
+                    This setting cannot be changed after creation.
                   </p>
                 </div>
               ) : null}
@@ -1198,7 +1206,7 @@ export function CreatePortAction({
                 ) : null}
                 {!qosAvailable ? <p>{qosSupport.message}</p> : null}
                 {!hardwareOffloadAvailable ? (
-                  <p>{hardwareOffloadSupport.message}</p>
+                  <p>{hardwareOffloadUnavailableMessage}</p>
                 ) : null}
                 {!numaAffinityAvailable ? (
                   <p>{numaAffinitySupport.message}</p>

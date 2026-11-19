@@ -741,6 +741,7 @@ describe("Neutron mutation actions", () => {
       description: "Switchdev interface",
       networkId: "network-a",
       adminStateUp: true,
+      vnicType: "direct",
       hardwareOffloadType: "switchdev",
       numaAffinityPolicy: "socket",
       trusted: true,
@@ -758,6 +759,7 @@ describe("Neutron mutation actions", () => {
       expect.objectContaining({
         body: {
           port: expect.objectContaining({
+            "binding:vnic_type": "direct",
             hardware_offload_type: "switchdev",
             numa_affinity_policy: "socket",
             trusted: true,
@@ -834,7 +836,7 @@ describe("Neutron mutation actions", () => {
   it("rejects unsupported hardware offload and trusted VIF fields", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",
-      extensions: [],
+      extensions: ["binding"],
       message: "",
       serviceType: "network",
     });
@@ -844,6 +846,7 @@ describe("Neutron mutation actions", () => {
       description: "",
       networkId: "network-a",
       adminStateUp: true,
+      vnicType: "direct",
       hardwareOffloadType: "switchdev",
     });
     const trustedResult = await updatePortAction(scope, "port-a", {
@@ -860,6 +863,30 @@ describe("Neutron mutation actions", () => {
     expect(trustedResult).toMatchObject({
       ok: false,
       error: { message: expect.stringContaining("port-trusted-vif") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("requires port binding support for switchdev hardware offload", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-hardware-offload-type"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createPortAction(scope, {
+      name: "offload-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "direct",
+      hardwareOffloadType: "switchdev",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("binding") },
     });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
@@ -882,6 +909,26 @@ describe("Neutron mutation actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
+  it("requires direct vNIC placement for switchdev hardware offload", async () => {
+    const result = await createPortAction(scope, {
+      name: "offload-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      hardwareOffloadType: "switchdev",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("direct vNIC"),
+      },
+    });
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("allows port placement fields when capability discovery is unavailable", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "unavailable",
@@ -895,6 +942,7 @@ describe("Neutron mutation actions", () => {
       description: "",
       networkId: "network-a",
       adminStateUp: true,
+      vnicType: "direct",
       hardwareOffloadType: "switchdev",
       numaAffinityPolicy: "socket",
       trusted: true,
