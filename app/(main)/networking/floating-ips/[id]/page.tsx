@@ -18,6 +18,7 @@ import {
   NEUTRON_FLOATING_IP_PORT_FORWARDING_PORT_RANGES_EXTENSION,
   NEUTRON_QOS_FLOATING_IP_EXTENSION,
   NEUTRON_QOS_FLOATING_IP_NETWORK_POLICY_EXTENSION,
+  NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
@@ -72,6 +73,11 @@ export default async function Page({
     NEUTRON_FLOATING_IP_PORT_FORWARDING_PORT_RANGES_EXTENSION,
     "Floating IP port forwarding ranges",
   );
+  const tagSupport = extensionSupport(
+    capabilities,
+    NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+    "Floating IP tags",
+  );
   const owned =
     floatingIp.project_id === session.projectId ||
     floatingIp.tenant_id === session.projectId;
@@ -94,6 +100,7 @@ export default async function Page({
         regionId={session.regionId}
         qosNetworkPolicySupport={qosNetworkPolicySupport}
         qosSupport={qosSupport}
+        tagSupport={tagSupport}
         portForwardingDescriptionSupport={portForwardingDescriptionSupport}
         portForwardingRangeSupport={portForwardingRangeSupport}
         portForwardingSupport={portForwardingSupport}

@@ -164,10 +164,10 @@ export interface FloatingIp {
   dns_domain?: string;
   dns_name?: string;
   port_details?: FloatingIpPortDetails | null;
-  tags: string[];
+  tags?: string[];
   created_at: string;
   updated_at: string;
-  revision_number: number;
+  revision_number?: number;
 }
 
 export interface FloatingIpPortForwarding {
