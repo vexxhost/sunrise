@@ -29,6 +29,7 @@ import {
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
+  NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
   NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
   NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -133,6 +134,11 @@ export default async function Page({
     NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
     "Updating port uplink-status propagation",
   );
+  const tagSupport = extensionSupport(
+    capabilities,
+    NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+    "Port tags",
+  );
   await Promise.all([
     queryClient.prefetchQuery(
       networkQueryOptions(session.regionId, session.projectId, port.network_id),
@@ -175,6 +181,7 @@ export default async function Page({
         qosSupport={qosSupport}
         resourceRequestSupport={resourceRequestSupport}
         securityGroupSupport={securityGroupSupport}
+        tagSupport={tagSupport}
         trustedVifSupport={trustedVifSupport}
         uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
         uplinkStatusPropagationUpdateSupport={

@@ -39,6 +39,7 @@ const taggableResource = z.enum([
   "router",
   "floating-ip",
   "security-group",
+  "port",
 ]);
 type TaggableResource = z.infer<typeof taggableResource>;
 const TAGGABLE_RESOURCES: Record<
@@ -83,6 +84,14 @@ const TAGGABLE_RESOURCES: Record<
     payloadKey: "security_group",
     routeCollection: "security-groups",
     title: "Security group",
+  },
+  port: {
+    apiCollection: "ports",
+    label: "port",
+    ownershipLabel: "ports",
+    payloadKey: "port",
+    routeCollection: "ports",
+    title: "Port",
   },
 };
 

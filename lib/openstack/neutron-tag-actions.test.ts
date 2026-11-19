@@ -86,6 +86,18 @@ function securityGroupPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function portPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    port: {
+      id: "port-a",
+      project_id: "project-a",
+      revision_number: 15,
+      tags: ["old"],
+      ...overrides,
+    },
+  };
+}
+
 describe("Neutron resource tag mutation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -262,6 +274,35 @@ describe("Neutron resource tag mutation", () => {
         ],
         path: "/v2.0/security-groups/security-group-a/tags",
         successMessage: "Security group tags saved.",
+      }),
+    );
+  });
+
+  it("maps port payload and route names through the guarded tag workflow", async () => {
+    mocks.openstackRequest.mockResolvedValue(portPayload());
+
+    await expect(
+      updateNeutronResourceTagsAction(scope, "port", "port-a", {
+        expectedRevisionNumber: 15,
+        expectedTags: ["old"],
+        tags: ["interface:worker"],
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/v2.0/ports/port-a" }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionLabel: "save port tags",
+        body: { tags: ["interface:worker"] },
+        invalidates: [
+          "/networking",
+          "/networking/ports",
+          "/networking/ports/port-a",
+        ],
+        path: "/v2.0/ports/port-a/tags",
+        successMessage: "Port tags saved.",
       }),
     );
   });

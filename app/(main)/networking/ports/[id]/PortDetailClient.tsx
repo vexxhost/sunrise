@@ -5,6 +5,7 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { EthernetPort } from "lucide-react";
 
 import { PortDetailActions } from "@/components/Network/PortDetailActions";
+import { NeutronResourceTagsSection } from "@/components/Network/NeutronResourceTagsSection";
 import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -45,6 +46,7 @@ interface PortDetailClientProps {
   regionId: string;
   resourceRequestSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
+  tagSupport: OpenStackFeatureSupport;
   trustedVifSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationUpdateSupport: OpenStackFeatureSupport;
@@ -84,6 +86,7 @@ export function PortDetailClient({
   regionId,
   resourceRequestSupport,
   securityGroupSupport,
+  tagSupport,
   trustedVifSupport,
   uplinkStatusPropagationSupport,
   uplinkStatusPropagationUpdateSupport,
@@ -174,6 +177,15 @@ export function PortDetailClient({
           <Badge variant="outline">Read-only context</Badge>
         )}
       </div>
+
+      <NeutronResourceTagsSection
+        owned={owned}
+        projectId={projectId}
+        regionId={regionId}
+        resource={port.data}
+        resourceType="port"
+        support={tagSupport}
+      />
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Port details</h3>
