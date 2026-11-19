@@ -30,15 +30,17 @@ export function AddressGroupDetailClient({
   id,
   owned,
   projectId,
+  rbacSharingSupported,
   regionId,
 }: {
   id: string;
   owned: boolean;
   projectId: string;
+  rbacSharingSupported: boolean;
   regionId: string;
 }) {
   const group = useSuspenseQuery(
-    addressGroupQueryOptions(regionId, projectId, id),
+    addressGroupQueryOptions(regionId, projectId, id, rbacSharingSupported),
   );
   const optionalMetadata: Array<readonly [string, string | number]> = [];
   if (group.data.created_at) {

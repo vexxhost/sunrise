@@ -19,16 +19,18 @@ import type { AddressGroup } from "@/types/openstack";
 export function AddressGroupsClient({
   initiallyOpen,
   projectId,
+  rbacSharingSupported,
   regionId,
   support,
 }: {
   initiallyOpen: boolean;
   projectId: string;
+  rbacSharingSupported: boolean;
   regionId: string;
   support: OpenStackFeatureSupport;
 }) {
   const groups = useSuspenseQuery(
-    addressGroupsQueryOptions(regionId, projectId),
+    addressGroupsQueryOptions(regionId, projectId, rbacSharingSupported),
   );
   const projectGroups = useSuspenseQuery(
     projectAddressGroupsQueryOptions(regionId, projectId),

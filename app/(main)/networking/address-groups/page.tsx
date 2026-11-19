@@ -8,6 +8,7 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ADDRESS_GROUP_EXTENSION,
+  NEUTRON_RBAC_ADDRESS_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 import { makeQueryClient } from "@/lib/query-client";
 import { dehydrateQueryClient } from "@/lib/query-hydration";
@@ -27,6 +28,12 @@ export default async function Page({
     NEUTRON_ADDRESS_GROUP_EXTENSION,
     "Network address groups",
   );
+  const rbacSharingSupported =
+    extensionSupport(
+      capabilities,
+      NEUTRON_RBAC_ADDRESS_GROUP_EXTENSION,
+      "Address group sharing",
+    ).status !== "unsupported";
 
   if (support.status === "unsupported") {
     return (
@@ -48,7 +55,11 @@ export default async function Page({
   const queryClient = makeQueryClient();
   await Promise.all([
     queryClient.prefetchQuery(
-      addressGroupsQueryOptions(session.regionId, session.projectId),
+      addressGroupsQueryOptions(
+        session.regionId,
+        session.projectId,
+        rbacSharingSupported,
+      ),
     ),
     queryClient.prefetchQuery(
       projectAddressGroupsQueryOptions(session.regionId, session.projectId),
@@ -62,6 +73,7 @@ export default async function Page({
         key={createRequested ? "create" : "idle"}
         initiallyOpen={createRequested}
         projectId={session.projectId}
+        rbacSharingSupported={rbacSharingSupported}
         regionId={session.regionId}
         support={support}
       />

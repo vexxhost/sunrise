@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/openstack/actions", () => ({ openstack: vi.fn() }));
+vi.mock("@/lib/openstack/neutron-address-group-actions", () => ({
+  getProjectVisibleAddressGroup: vi.fn(),
+  listProjectOwnedAddressGroups: vi.fn(),
+  listProjectVisibleAddressGroups: vi.fn(),
+}));
 
 import {
   addressGroupQueryOptions,
@@ -11,12 +16,29 @@ import {
   projectAddressGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { openstack } from "@/lib/openstack/actions";
+import {
+  getProjectVisibleAddressGroup,
+  listProjectOwnedAddressGroups,
+  listProjectVisibleAddressGroups,
+} from "@/lib/openstack/neutron-address-group-actions";
 
 const mockedOpenstack = vi.mocked(openstack);
+const mockedGetProjectVisibleAddressGroup = vi.mocked(
+  getProjectVisibleAddressGroup,
+);
+const mockedListProjectVisibleAddressGroups = vi.mocked(
+  listProjectVisibleAddressGroups,
+);
+const mockedListProjectOwnedAddressGroups = vi.mocked(
+  listProjectOwnedAddressGroups,
+);
 
 describe("Neutron query options", () => {
   beforeEach(() => {
     mockedOpenstack.mockReset();
+    mockedGetProjectVisibleAddressGroup.mockReset();
+    mockedListProjectOwnedAddressGroups.mockReset();
+    mockedListProjectVisibleAddressGroups.mockReset();
   });
 
   it("loads the availability-zone catalog through the constrained read action", async () => {
@@ -61,34 +83,21 @@ describe("Neutron query options", () => {
   });
 
   it("loads visible, project-owned, and individual address groups", async () => {
-    mockedOpenstack
-      .mockResolvedValueOnce({
-        address_groups: [
-          {
-            id: "address-group-a",
-            name: "trusted",
-            addresses: ["192.0.2.0/24"],
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        address_groups: [
-          {
-            id: "address-group-a",
-            name: "trusted",
-            addresses: ["192.0.2.0/24"],
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        address_group: {
-          id: "address-group-a",
-          name: "trusted",
-          addresses: ["192.0.2.0/24"],
-        },
-      });
+    const group = {
+      id: "address-group-a",
+      name: "trusted",
+      description: "",
+      addresses: ["192.0.2.0/24"],
+    };
+    mockedListProjectVisibleAddressGroups.mockResolvedValue([group]);
+    mockedListProjectOwnedAddressGroups.mockResolvedValue([group]);
+    mockedGetProjectVisibleAddressGroup.mockResolvedValue(group);
 
-    const collection = addressGroupsQueryOptions("RegionOne", "project-a");
+    const collection = addressGroupsQueryOptions(
+      "RegionOne",
+      "project-a",
+      true,
+    );
     const projectCollection = projectAddressGroupsQueryOptions(
       "RegionOne",
       "project-a",
@@ -97,6 +106,7 @@ describe("Neutron query options", () => {
       "RegionOne",
       "project-a",
       "address-group-a",
+      true,
     );
     await expect(
       (collection.queryFn as () => Promise<unknown>)(),
@@ -111,27 +121,21 @@ describe("Neutron query options", () => {
     await expect((detail.queryFn as () => Promise<unknown>)()).resolves.toEqual(
       expect.objectContaining({ id: "address-group-a", name: "trusted" }),
     );
-    expect(mockedOpenstack).toHaveBeenNthCalledWith(1, {
-      regionId: "RegionOne",
-      serviceType: "network",
-      serviceName: "neutron",
-      path: "/v2.0/address-groups",
-      errorMode: "throw",
-    });
-    expect(mockedOpenstack).toHaveBeenNthCalledWith(2, {
-      regionId: "RegionOne",
-      serviceType: "network",
-      serviceName: "neutron",
-      path: "/v2.0/address-groups?project_id=project-a",
-      errorMode: "throw",
-    });
-    expect(mockedOpenstack).toHaveBeenNthCalledWith(3, {
-      regionId: "RegionOne",
-      serviceType: "network",
-      serviceName: "neutron",
-      path: "/v2.0/address-groups/address-group-a",
-      errorMode: "throw",
-    });
+    expect(mockedListProjectVisibleAddressGroups).toHaveBeenCalledWith(
+      "RegionOne",
+      "project-a",
+      true,
+    );
+    expect(mockedListProjectOwnedAddressGroups).toHaveBeenCalledWith(
+      "RegionOne",
+      "project-a",
+    );
+    expect(mockedGetProjectVisibleAddressGroup).toHaveBeenCalledWith(
+      "RegionOne",
+      "project-a",
+      "address-group-a",
+      true,
+    );
   });
 
   it("derives ownership from the project-filtered collection when policy omits owner fields", () => {

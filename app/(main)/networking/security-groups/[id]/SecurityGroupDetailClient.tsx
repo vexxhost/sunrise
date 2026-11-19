@@ -41,12 +41,14 @@ export function SecurityGroupDetailClient({
   addressGroupSupport,
   id,
   projectId,
+  rbacSharingSupported,
   regionId,
   statefulSupport,
 }: {
   addressGroupSupport: OpenStackFeatureSupport;
   id: string;
   projectId: string;
+  rbacSharingSupported: boolean;
   regionId: string;
   statefulSupport: OpenStackFeatureSupport;
 }) {
@@ -57,7 +59,7 @@ export function SecurityGroupDetailClient({
     securityGroupsQueryOptions(regionId, projectId),
   );
   const addressGroups = useQuery({
-    ...addressGroupsQueryOptions(regionId, projectId),
+    ...addressGroupsQueryOptions(regionId, projectId, rbacSharingSupported),
     enabled: addressGroupSupport.status !== "unsupported",
   });
   const addressGroupById = new Map(

@@ -4,6 +4,11 @@
 
 import { queryOptions } from "@tanstack/react-query";
 import { openstack } from "@/lib/openstack/actions";
+import {
+  getProjectVisibleAddressGroup,
+  listProjectOwnedAddressGroups,
+  listProjectVisibleAddressGroups,
+} from "@/lib/openstack/neutron-address-group-actions";
 import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availability-zones";
 import type {
   AddressGroup,
@@ -50,20 +55,21 @@ function withQuery(path: string, values: Record<string, string | undefined>) {
 export function addressGroupsQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
+  rbacSharingSupported: boolean,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "network-address-groups"],
-    queryFn: async () => {
-      const data = await openstack<{ address_groups: AddressGroup[] }>({
-        regionId: regionId!,
-        serviceType: "network",
-        serviceName: "neutron",
-        path: "/v2.0/address-groups",
-        errorMode: "throw",
-      });
-
-      return data?.address_groups ?? [];
-    },
+    queryKey: [
+      regionId,
+      projectId,
+      "network-address-groups",
+      rbacSharingSupported,
+    ],
+    queryFn: () =>
+      listProjectVisibleAddressGroups(
+        regionId!,
+        projectId!,
+        rbacSharingSupported,
+      ),
     enabled: !!regionId && !!projectId,
   });
 }
@@ -74,17 +80,7 @@ export function projectAddressGroupsQueryOptions(
 ) {
   return queryOptions({
     queryKey: [regionId, projectId, "project-network-address-groups"],
-    queryFn: async () => {
-      const data = await openstack<{ address_groups: AddressGroup[] }>({
-        regionId: regionId!,
-        serviceType: "network",
-        serviceName: "neutron",
-        path: withQuery("/v2.0/address-groups", { project_id: projectId }),
-        errorMode: "throw",
-      });
-
-      return data?.address_groups ?? [];
-    },
+    queryFn: () => listProjectOwnedAddressGroups(regionId!, projectId!),
     enabled: !!regionId && !!projectId,
   });
 }
@@ -104,19 +100,25 @@ export function addressGroupQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
   id: string,
+  rbacSharingSupported: boolean,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "network-address-group", id],
+    queryKey: [
+      regionId,
+      projectId,
+      "network-address-group",
+      id,
+      rbacSharingSupported,
+    ],
     queryFn: async () => {
-      const data = await openstack<{ address_group: AddressGroup }>({
-        regionId: regionId!,
-        serviceType: "network",
-        serviceName: "neutron",
-        path: `/v2.0/address-groups/${encodeURIComponent(id)}`,
-        errorMode: "throw",
-      });
-      if (!data?.address_group) throw new Error("Address group was not found");
-      return data.address_group;
+      const group = await getProjectVisibleAddressGroup(
+        regionId!,
+        projectId!,
+        id,
+        rbacSharingSupported,
+      );
+      if (!group) throw new Error("Address group was not found");
+      return group;
     },
     enabled: !!regionId && !!projectId && !!id,
   });
