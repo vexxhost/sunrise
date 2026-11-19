@@ -6,6 +6,7 @@ import { GitBranch, Network as NetworkIcon } from "lucide-react";
 
 import { NetworkDetailActions } from "@/components/Network/NetworkDetailActions";
 import { NetworkIpAvailabilitySection } from "@/components/Network/NetworkIpAvailabilitySection";
+import { NetworkTagsSection } from "@/components/Network/NetworkTagsSection";
 import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { SubnetDetailActions } from "@/components/Network/SubnetDetailActions";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ interface NetworkDetailClientProps {
   ipAvailabilitySupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
+  tagSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
   subnetDnsPublishSupport: OpenStackFeatureSupport;
@@ -59,6 +61,7 @@ export function NetworkDetailClient({
   mtuSupport,
   portSecuritySupport,
   qosSupport,
+  tagSupport,
   projectId,
   regionId,
   subnetDnsPublishSupport,
@@ -210,6 +213,13 @@ export function NetworkDetailClient({
         <h3 className="text-sm font-semibold">Network details</h3>
         <DetailGrid rows={networkRows} />
       </section>
+      <NetworkTagsSection
+        network={network.data}
+        owned={owned}
+        projectId={projectId}
+        regionId={regionId}
+        support={tagSupport}
+      />
       {ipAvailabilitySupport.status !== "unsupported" ? (
         ipAvailability.isPending ? (
           <section className="space-y-3">

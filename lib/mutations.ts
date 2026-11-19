@@ -217,7 +217,7 @@ export function mutationErrorForStatus(
       retryable: false,
     };
   }
-  if (status === 409) {
+  if (status === 409 || status === 412) {
     return {
       ...base,
       code: "conflict",

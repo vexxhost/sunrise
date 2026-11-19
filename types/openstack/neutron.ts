@@ -274,10 +274,10 @@ export interface Network {
   port_security_enabled: boolean;
   qos_policy_id: string | null;
   l2_adjacency: boolean;
-  tags: string[];
+  tags?: string[];
   created_at: string;
   updated_at: string;
-  revision_number: number;
+  revision_number?: number;
   project_id: string;
 }
 

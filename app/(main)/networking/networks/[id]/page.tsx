@@ -21,6 +21,7 @@ import {
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_QOS_EXTENSION,
+  NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
   NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
@@ -90,6 +91,11 @@ export default async function Page({
     NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
     "Subnet fixed-IP DNS publication",
   );
+  const tagSupport = extensionSupport(
+    capabilities,
+    NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+    "Network tags",
+  );
   const vlanTransparencySupport = extensionSupport(
     capabilities,
     NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
@@ -117,6 +123,7 @@ export default async function Page({
         regionId={session.regionId}
         portSecuritySupport={portSecuritySupport}
         qosSupport={qosSupport}
+        tagSupport={tagSupport}
         vlanTransparencySupport={vlanTransparencySupport}
         subnetDnsPublishSupport={subnetDnsPublishSupport}
       />
