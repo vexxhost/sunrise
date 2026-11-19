@@ -209,6 +209,7 @@ export interface Port {
   port_security_enabled: boolean;
   qos_policy_id: string | null;
   qos_network_policy_id: string | null;
+  propagate_uplink_status?: boolean;
   ip_allocation: string;
   tags: string[];
   created_at: string;

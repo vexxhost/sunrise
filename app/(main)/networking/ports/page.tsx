@@ -19,6 +19,7 @@ import {
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
+  NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
 export default async function Page({
@@ -83,6 +84,11 @@ export default async function Page({
     NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
     "Inherited port QoS policies",
   );
+  const uplinkStatusPropagationSupport = extensionSupport(
+    capabilities,
+    NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
+    "Port uplink-status propagation",
+  );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
@@ -99,6 +105,7 @@ export default async function Page({
         qosNetworkPolicySupport={qosNetworkPolicySupport}
         qosSupport={qosSupport}
         securityGroupSupport={securityGroupSupport}
+        uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
       />
     </QueryHydrationBoundary>
   );

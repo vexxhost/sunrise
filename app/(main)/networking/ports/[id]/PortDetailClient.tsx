@@ -29,6 +29,8 @@ interface PortDetailClientProps {
   projectId: string;
   regionId: string;
   securityGroupSupport: OpenStackFeatureSupport;
+  uplinkStatusPropagationSupport: OpenStackFeatureSupport;
+  uplinkStatusPropagationUpdateSupport: OpenStackFeatureSupport;
 }
 
 function DetailRow({
@@ -58,6 +60,8 @@ export function PortDetailClient({
   qosSupport,
   regionId,
   securityGroupSupport,
+  uplinkStatusPropagationSupport,
+  uplinkStatusPropagationUpdateSupport,
 }: PortDetailClientProps) {
   const port = useSuspenseQuery(portQueryOptions(regionId, projectId, id));
   const network = useSuspenseQuery(
@@ -127,6 +131,10 @@ export function PortDetailClient({
             projectId={projectId}
             regionId={regionId}
             securityGroupSupport={securityGroupSupport}
+            uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
+            uplinkStatusPropagationUpdateSupport={
+              uplinkStatusPropagationUpdateSupport
+            }
           />
         ) : (
           <Badge variant="outline">Read-only context</Badge>
@@ -209,6 +217,19 @@ export function PortDetailClient({
             label="Admin state"
             value={port.data.admin_state_up ? "Up" : "Down"}
           />
+          {uplinkStatusPropagationSupport.status !== "unsupported" ||
+          port.data.propagate_uplink_status !== undefined ? (
+            <DetailRow
+              label="Uplink status propagation"
+              value={
+                port.data.propagate_uplink_status === undefined
+                  ? "Not reported"
+                  : port.data.propagate_uplink_status
+                    ? "Enabled"
+                    : "Disabled"
+              }
+            />
+          ) : null}
           {portSecuritySupport.status !== "unsupported" ? (
             <DetailRow
               label="Port security"
