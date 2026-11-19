@@ -138,6 +138,16 @@ describe("mutation outcomes", () => {
     });
   });
 
+  it("maps failed revision preconditions to a retryable conflict", () => {
+    expect(mutationErrorForStatus(412, "save network tags")).toEqual({
+      code: "conflict",
+      message:
+        "The resource changed before this action completed. Refresh and try again.",
+      retryable: true,
+      status: 412,
+    });
+  });
+
   it("represents partial batch mutations without losing successful work", () => {
     expect(
       mutationSuccess({
