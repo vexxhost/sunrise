@@ -16,7 +16,11 @@ import {
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
   NEUTRON_PORT_BINDING_EXTENSION,
+  NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION,
+  NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION,
+  NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
+  NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
@@ -80,6 +84,26 @@ export default async function Page({
     NEUTRON_PORT_BINDING_EXTENSION,
     "Port vNIC types",
   );
+  const hardwareOffloadSupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION,
+    "Port hardware offload",
+  );
+  const numaAffinitySupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION,
+    "Port NUMA affinity",
+  );
+  const numaSocketSupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION,
+    "Socket-level port NUMA affinity",
+  );
+  const trustedVifSupport = extensionSupport(
+    capabilities,
+    NEUTRON_PORT_TRUSTED_VIF_EXTENSION,
+    "Trusted virtual interfaces",
+  );
   const qosSupport = extensionSupport(
     capabilities,
     NEUTRON_QOS_EXTENSION,
@@ -107,11 +131,15 @@ export default async function Page({
         regionId={session.regionId}
         projectId={session.projectId}
         initiallyOpen={createRequested}
+        hardwareOffloadSupport={hardwareOffloadSupport}
+        numaAffinitySupport={numaAffinitySupport}
+        numaSocketSupport={numaSocketSupport}
         portSecuritySupport={portSecuritySupport}
         portBindingSupport={portBindingSupport}
         qosNetworkPolicySupport={qosNetworkPolicySupport}
         qosSupport={qosSupport}
         securityGroupSupport={securityGroupSupport}
+        trustedVifSupport={trustedVifSupport}
         uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
       />
     </QueryHydrationBoundary>

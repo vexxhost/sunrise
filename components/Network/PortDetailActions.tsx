@@ -59,8 +59,21 @@ import {
   isNeutronPortVnicType,
   NEUTRON_PORT_VNIC_TYPE_OPTIONS,
 } from "@/lib/openstack/neutron-port-vnic-types";
+import {
+  isNeutronPortNumaAffinityPolicy,
+  NEUTRON_PORT_NUMA_AFFINITY_POLICY_OPTIONS,
+} from "@/lib/openstack/neutron-port-placement";
 
 type PortDialog = "attach" | "delete" | "detach" | "edit" | null;
+const PORT_SETTING_DEFAULT = "__cloud_default__";
+const PORT_TRUSTED = "trusted";
+const PORT_NOT_TRUSTED = "not-trusted";
+
+function trustedVifSelection(value: boolean | null | undefined) {
+  if (value === true) return PORT_TRUSTED;
+  if (value === false) return PORT_NOT_TRUSTED;
+  return PORT_SETTING_DEFAULT;
+}
 
 function sameStringSet(left: string[], right: string[]) {
   return (
@@ -74,6 +87,8 @@ interface PortDetailActionsProps {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   extraDhcpOptionsSupport: OpenStackFeatureSupport;
   groups: SecurityGroup[];
+  numaAffinitySupport: OpenStackFeatureSupport;
+  numaSocketSupport: OpenStackFeatureSupport;
   port: Port;
   portBindingSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
@@ -82,6 +97,7 @@ interface PortDetailActionsProps {
   regionId: string;
   securityGroupSupport: OpenStackFeatureSupport;
   servers: Server[];
+  trustedVifSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationUpdateSupport: OpenStackFeatureSupport;
 }
@@ -92,6 +108,8 @@ export function PortDetailActions({
   dnsIntegrationSupport,
   extraDhcpOptionsSupport,
   groups,
+  numaAffinitySupport,
+  numaSocketSupport,
   port,
   portBindingSupport,
   portSecuritySupport,
@@ -100,6 +118,7 @@ export function PortDetailActions({
   regionId,
   securityGroupSupport,
   servers,
+  trustedVifSupport,
   uplinkStatusPropagationSupport,
   uplinkStatusPropagationUpdateSupport,
 }: PortDetailActionsProps) {
@@ -113,6 +132,12 @@ export function PortDetailActions({
   const [adminStateUp, setAdminStateUp] = useState(port.admin_state_up);
   const [vnicType, setVnicType] = useState(
     port["binding:vnic_type"] ?? "normal",
+  );
+  const [numaAffinityPolicy, setNumaAffinityPolicy] = useState(
+    port.numa_affinity_policy ?? PORT_SETTING_DEFAULT,
+  );
+  const [trustedVif, setTrustedVif] = useState(
+    trustedVifSelection(port.trusted),
   );
   const [propagateUplinkStatus, setPropagateUplinkStatus] = useState(
     port.propagate_uplink_status ?? true,
@@ -151,7 +176,11 @@ export function PortDetailActions({
   const extraDhcpOptionsAvailable =
     extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
+  const numaAffinityAvailable = numaAffinitySupport.status !== "unsupported";
+  const numaSocketAvailable = numaSocketSupport.status !== "unsupported";
   const portBindingAvailable = portBindingSupport.status !== "unsupported";
+  const trustedVifAvailable =
+    trustedVifSupport.status !== "unsupported" && portBindingAvailable;
   const uplinkStatusPropagationAvailable =
     uplinkStatusPropagationSupport.status !== "unsupported";
   const uplinkStatusPropagationUpdatable =
@@ -161,6 +190,11 @@ export function PortDetailActions({
     uplinkStatusPropagationAvailable
       ? uplinkStatusPropagationUpdateSupport.message
       : uplinkStatusPropagationSupport.message;
+  const trustedVifUnavailableMessage =
+    trustedVifSupport.status === "unsupported"
+      ? trustedVifSupport.message
+      : "Trusted virtual interfaces require support for Neutron port bindings.";
+  const trustedVifSelected = trustedVif === PORT_TRUSTED;
   const qosPolicies = useQuery({
     ...qosPoliciesQueryOptions(regionId, projectId),
     enabled: dialog === "edit" && qosAvailable,
@@ -184,6 +218,8 @@ export function PortDetailActions({
       setDnsName(port.dns_name ?? "");
       setAdminStateUp(port.admin_state_up);
       setVnicType(port["binding:vnic_type"] ?? "normal");
+      setNumaAffinityPolicy(port.numa_affinity_policy ?? PORT_SETTING_DEFAULT);
+      setTrustedVif(trustedVifSelection(port.trusted));
       setPropagateUplinkStatus(port.propagate_uplink_status ?? true);
       setPortSecurityEnabled(port.port_security_enabled);
       setSecurityGroupIds(port.security_groups);
@@ -240,6 +276,15 @@ export function PortDetailActions({
         portBindingAvailable &&
         !portBound &&
         vnicType !== (port["binding:vnic_type"] ?? "normal");
+      const numaAffinityChanged =
+        numaAffinityAvailable &&
+        !portBound &&
+        numaAffinityPolicy !==
+          (port.numa_affinity_policy ?? PORT_SETTING_DEFAULT);
+      const trustedVifChanged =
+        trustedVifAvailable &&
+        !portBound &&
+        trustedVif !== trustedVifSelection(port.trusted);
       const result = await updatePortAction({ projectId, regionId }, port.id, {
         name,
         description,
@@ -250,6 +295,20 @@ export function PortDetailActions({
           vnicTypeChanged && isNeutronPortVnicType(vnicType)
             ? vnicType
             : undefined,
+        numaAffinityPolicy: numaAffinityChanged
+          ? numaAffinityPolicy === PORT_SETTING_DEFAULT
+            ? null
+            : isNeutronPortNumaAffinityPolicy(numaAffinityPolicy)
+              ? numaAffinityPolicy
+              : undefined
+          : undefined,
+        trusted: trustedVifChanged
+          ? trustedVif === PORT_TRUSTED
+            ? true
+            : trustedVif === PORT_NOT_TRUSTED
+              ? false
+              : undefined
+          : undefined,
         propagateUplinkStatus: propagateUplinkStatusChanged
           ? propagateUplinkStatus
           : undefined,
@@ -487,7 +546,7 @@ export function PortDetailActions({
                   <Label htmlFor="edit-port-vnic-type">vNIC type</Label>
                   <Select
                     value={vnicType}
-                    disabled={pending || portBound}
+                    disabled={pending || portBound || trustedVifSelected}
                     onValueChange={setVnicType}
                   >
                     <SelectTrigger id="edit-port-vnic-type">
@@ -509,11 +568,89 @@ export function PortDetailActions({
                   <p className="text-xs text-muted-foreground">
                     {portBound
                       ? "Detach this port before changing its vNIC type."
+                      : trustedVifSelected
+                        ? "Trusted VIF mode requires a Direct SR-IOV vNIC. Disable trusted mode to choose another type."
                       : `${
                           NEUTRON_PORT_VNIC_TYPE_OPTIONS.find(
                             (option) => option.value === vnicType,
                           )?.description ?? "Value reported by Neutron"
                         }. Availability depends on the network backend and compute hosts.`}
+                  </p>
+                </div>
+              ) : null}
+              {numaAffinityAvailable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-port-numa-affinity">NUMA affinity</Label>
+                  <Select
+                    value={numaAffinityPolicy}
+                    disabled={pending || portBound}
+                    onValueChange={setNumaAffinityPolicy}
+                  >
+                    <SelectTrigger id="edit-port-numa-affinity">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PORT_SETTING_DEFAULT}>
+                        Cloud default
+                      </SelectItem>
+                      {numaAffinityPolicy !== PORT_SETTING_DEFAULT &&
+                      !isNeutronPortNumaAffinityPolicy(numaAffinityPolicy) ? (
+                        <SelectItem value={numaAffinityPolicy}>
+                          {numaAffinityPolicy} (reported by Neutron)
+                        </SelectItem>
+                      ) : null}
+                      {NEUTRON_PORT_NUMA_AFFINITY_POLICY_OPTIONS.filter(
+                        (option) =>
+                          option.value !== "socket" ||
+                          numaSocketAvailable ||
+                          numaAffinityPolicy === "socket",
+                      ).map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {portBound
+                      ? "Detach this port before changing its NUMA affinity policy."
+                      : (NEUTRON_PORT_NUMA_AFFINITY_POLICY_OPTIONS.find(
+                          (option) => option.value === numaAffinityPolicy,
+                        )?.description ??
+                        "Used when Nova next schedules a server with this port.")}
+                  </p>
+                </div>
+              ) : null}
+              {trustedVifAvailable ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-port-trusted-vif">Trusted VIF</Label>
+                  <Select
+                    value={trustedVif}
+                    disabled={pending || portBound}
+                    onValueChange={(value) => {
+                      setTrustedVif(value);
+                      if (value === PORT_TRUSTED) setVnicType("direct");
+                    }}
+                  >
+                    <SelectTrigger id="edit-port-trusted-vif">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {port.trusted == null ? (
+                        <SelectItem value={PORT_SETTING_DEFAULT}>
+                          Not configured
+                        </SelectItem>
+                      ) : null}
+                      <SelectItem value={PORT_TRUSTED}>Trusted</SelectItem>
+                      <SelectItem value={PORT_NOT_TRUSTED}>
+                        Not trusted
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {portBound
+                      ? "Detach this port before changing its trusted VIF state."
+                      : "Trusted mode uses a Direct SR-IOV vNIC. Neutron policy commonly restricts this setting to administrators."}
                   </p>
                 </div>
               ) : null}
@@ -634,7 +771,9 @@ export function PortDetailActions({
             !dnsIntegrationAvailable ||
             !dnsDomainPortsAvailable ||
             !qosAvailable ||
+            !numaAffinityAvailable ||
             !portBindingAvailable ||
+            !trustedVifAvailable ||
             !uplinkStatusPropagationUpdatable ? (
               <MutationAlert
                 variant="info"
@@ -659,8 +798,14 @@ export function PortDetailActions({
                   <p>{dnsDomainPortsSupport.message}</p>
                 ) : null}
                 {!qosAvailable ? <p>{qosSupport.message}</p> : null}
+                {!numaAffinityAvailable ? (
+                  <p>{numaAffinitySupport.message}</p>
+                ) : null}
                 {!portBindingAvailable ? (
                   <p>{portBindingSupport.message}</p>
+                ) : null}
+                {!trustedVifAvailable ? (
+                  <p>{trustedVifUnavailableMessage}</p>
                 ) : null}
                 {!uplinkStatusPropagationUpdatable ? (
                   <p>{uplinkStatusPropagationUnavailableMessage}</p>

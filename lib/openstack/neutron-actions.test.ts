@@ -18,7 +18,12 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   NEUTRON_NETWORK_AVAILABILITY_ZONE_EXTENSION: "network_availability_zone",
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION: "net-mtu-writable",
   NEUTRON_PORT_BINDING_EXTENSION: "binding",
+  NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION: "port-hardware-offload-type",
+  NEUTRON_PORT_NUMA_AFFINITY_POLICY_EXTENSION: "port-numa-affinity-policy",
+  NEUTRON_PORT_NUMA_AFFINITY_POLICY_SOCKET_EXTENSION:
+    "port-numa-affinity-policy-socket",
   NEUTRON_PORT_SECURITY_EXTENSION: "port-security",
+  NEUTRON_PORT_TRUSTED_VIF_EXTENSION: "port-trusted-vif",
   NEUTRON_QOS_EXTENSION: "qos",
   NEUTRON_QOS_FLOATING_IP_EXTENSION: "qos-fip",
   NEUTRON_QOS_GATEWAY_IP_EXTENSION: "qos-gateway-ip",
@@ -74,7 +79,11 @@ describe("Neutron mutation actions", () => {
         "extraroute-atomic",
         "network_availability_zone",
         "net-mtu-writable",
+        "port-hardware-offload-type",
+        "port-numa-affinity-policy",
+        "port-numa-affinity-policy-socket",
         "port-security",
+        "port-trusted-vif",
         "qos",
         "qos-fip",
         "qos-gateway-ip",
@@ -615,7 +624,7 @@ describe("Neutron mutation actions", () => {
     expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(2);
   });
 
-  it("omits default and unchanged port vNIC types", async () => {
+  it("omits default and unchanged optional port placement fields", async () => {
     await createPortAction(scope, {
       name: "application-port",
       description: "Application interface",
@@ -634,6 +643,21 @@ describe("Neutron mutation actions", () => {
     expect(
       mocks.executeOpenStackMutation.mock.calls[1]?.[0]?.body.port,
     ).not.toHaveProperty("binding:vnic_type");
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[0]?.[0]?.body.port,
+    ).not.toHaveProperty("hardware_offload_type");
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[0]?.[0]?.body.port,
+    ).not.toHaveProperty("numa_affinity_policy");
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[0]?.[0]?.body.port,
+    ).not.toHaveProperty("trusted");
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[1]?.[0]?.body.port,
+    ).not.toHaveProperty("numa_affinity_policy");
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[1]?.[0]?.body.port,
+    ).not.toHaveProperty("trusted");
     expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
   });
 
@@ -706,6 +730,271 @@ describe("Neutron mutation actions", () => {
       description: "",
       adminStateUp: true,
       vnicType: "normal",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(2);
+  });
+
+  it("maps port placement and acceleration fields", async () => {
+    await createPortAction(scope, {
+      name: "accelerated-port",
+      description: "Switchdev interface",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "direct",
+      hardwareOffloadType: "switchdev",
+      numaAffinityPolicy: "socket",
+      trusted: true,
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "accelerated-port",
+      description: "Relax placement and trust",
+      adminStateUp: true,
+      numaAffinityPolicy: null,
+      trusted: false,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            "binding:vnic_type": "direct",
+            hardware_offload_type: "switchdev",
+            numa_affinity_policy: "socket",
+            trusted: true,
+          }),
+        },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            numa_affinity_policy: null,
+            trusted: false,
+          }),
+        },
+      }),
+    );
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts base NUMA policies without socket support", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-numa-affinity-policy"],
+      message: "",
+      serviceType: "network",
+    });
+
+    await createPortAction(scope, {
+      name: "numa-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      numaAffinityPolicy: "preferred",
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          port: expect.objectContaining({
+            numa_affinity_policy: "preferred",
+          }),
+        },
+      }),
+    );
+  });
+
+  it("requires the additive extension for socket NUMA affinity", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-numa-affinity-policy"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createPortAction(scope, {
+      name: "numa-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      numaAffinityPolicy: "socket",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        message: expect.stringContaining("port-numa-affinity-policy-socket"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported hardware offload and trusted VIF fields", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["binding"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const offloadResult = await createPortAction(scope, {
+      name: "offload-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "direct",
+      hardwareOffloadType: "switchdev",
+    });
+    const trustedResult = await updatePortAction(scope, "port-a", {
+      name: "trusted-port",
+      description: "",
+      adminStateUp: true,
+      trusted: true,
+    });
+
+    expect(offloadResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("port-hardware-offload-type") },
+    });
+    expect(trustedResult).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("port-trusted-vif") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("requires port binding support for switchdev hardware offload", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-hardware-offload-type"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await createPortAction(scope, {
+      name: "offload-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "direct",
+      hardwareOffloadType: "switchdev",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("binding") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("requires port binding support for trusted VIF updates", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["port-trusted-vif"],
+      message: "",
+      serviceType: "network",
+    });
+
+    const result = await updatePortAction(scope, "port-a", {
+      name: "trusted-port",
+      description: "",
+      adminStateUp: true,
+      trusted: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("binding") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid placement values before capability discovery", async () => {
+    const result = await createPortAction(scope, {
+      name: "invalid-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      hardwareOffloadType: "future-offload",
+      numaAffinityPolicy: "same-host",
+    } as never);
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("requires direct vNIC placement for switchdev hardware offload", async () => {
+    const result = await createPortAction(scope, {
+      name: "offload-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      hardwareOffloadType: "switchdev",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("direct vNIC"),
+      },
+    });
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("requires direct vNIC placement for trusted mode", async () => {
+    const result = await createPortAction(scope, {
+      name: "trusted-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      trusted: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("direct vNIC"),
+      },
+    });
+    expect(mocks.discoverNetworkCapabilities).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("allows port placement fields when capability discovery is unavailable", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      extensions: [],
+      message: "Network capability discovery is temporarily unavailable.",
+      serviceType: "network",
+    });
+
+    await createPortAction(scope, {
+      name: "accelerated-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      vnicType: "direct",
+      hardwareOffloadType: "switchdev",
+      numaAffinityPolicy: "socket",
+      trusted: true,
+    });
+    await updatePortAction(scope, "port-a", {
+      name: "trusted-port",
+      description: "",
+      adminStateUp: true,
+      numaAffinityPolicy: "required",
+      trusted: false,
     });
 
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(2);

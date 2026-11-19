@@ -199,6 +199,9 @@ export interface Port {
   "binding:vnic_type"?: string;
   "binding:host_id"?: string;
   "binding:profile"?: Record<string, unknown>;
+  hardware_offload_type?: string | null;
+  numa_affinity_policy?: string | null;
+  trusted?: boolean | null;
   dns_name: string;
   dns_assignment: {
     ip_address: string;
