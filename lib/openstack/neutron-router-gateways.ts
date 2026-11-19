@@ -1,13 +1,33 @@
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
-import type { Router, RouterExternalGatewayInfo } from "@/types/openstack";
+import type {
+  KeystoneRole,
+  Router,
+  RouterExternalGatewayInfo,
+} from "@/types/openstack";
+
+export function canManageNeutronAdminOnlyRouterSettings(
+  roles: KeystoneRole[] | undefined,
+): boolean {
+  return Boolean(
+    roles?.some((role) => role.name.trim().toLowerCase() === "admin"),
+  );
+}
 
 export function routerCapabilityBooleanInput(
   support: OpenStackFeatureSupport,
   value: boolean,
+  writable = true,
 ): boolean | undefined {
+  if (!writable) return undefined;
   if (support.status === "supported") return value;
   if (support.status === "unknown" && value) return true;
   return undefined;
+}
+
+export function canAddRouterExternalGateway(
+  gateway: RouterExternalGatewayInfo | undefined,
+): boolean {
+  return Boolean(gateway && !gateway.enable_snat);
 }
 
 export function routerExternalGatewayMultihomingAvailable(

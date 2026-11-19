@@ -447,7 +447,7 @@ const routerUpdateSchema = z.object({
 const routerRouteSchema = routeSchema;
 const routerGatewaySchema = z.object({
   networkId: resourceId,
-  enableSnat: z.boolean().default(true),
+  enableSnat: z.boolean().optional(),
   qosPolicyId: resourceId.nullable().optional(),
 });
 const routerExternalGatewaySchema = z.object({
@@ -1133,7 +1133,9 @@ export async function setRouterGatewayAction(
       router: {
         external_gateway_info: {
           network_id: parsed.value.networkId,
-          enable_snat: parsed.value.enableSnat,
+          ...(parsed.value.enableSnat === undefined
+            ? {}
+            : { enable_snat: parsed.value.enableSnat }),
           ...(parsed.value.qosPolicyId === undefined
             ? {}
             : { qos_policy_id: parsed.value.qosPolicyId }),

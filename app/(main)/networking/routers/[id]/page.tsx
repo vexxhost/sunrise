@@ -20,6 +20,7 @@ import {
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
+import { canManageNeutronAdminOnlyRouterSettings } from "@/lib/openstack/neutron-router-gateways";
 
 export default async function Page({
   params,
@@ -111,11 +112,14 @@ export default async function Page({
     qosGatewaySupportPromise,
     routeSupportPromise,
   ]);
+  const canManageAdminOnlyRouterSettings =
+    canManageNeutronAdminOnlyRouterSettings(session.keystoneProjectRoles);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <RouterDetailClient
         id={id}
         availabilityZoneSupport={availabilityZoneSupport}
+        canManageAdminOnlyRouterSettings={canManageAdminOnlyRouterSettings}
         defaultRouteBfdSupport={defaultRouteBfdSupport}
         defaultRouteEcmpSupport={defaultRouteEcmpSupport}
         multihomingSupport={multihomingSupport}

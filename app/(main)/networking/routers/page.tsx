@@ -15,6 +15,7 @@ import {
   NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
+import { canManageNeutronAdminOnlyRouterSettings } from "@/lib/openstack/neutron-router-gateways";
 
 export default async function Page({
   searchParams,
@@ -54,6 +55,8 @@ export default async function Page({
     "Router default-route ECMP",
   );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
+  const canManageAdminOnlyRouterSettings =
+    canManageNeutronAdminOnlyRouterSettings(session.keystoneProjectRoles);
   return (
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <RoutersTableClient
@@ -64,6 +67,7 @@ export default async function Page({
         availabilityZoneSupport={availabilityZoneSupport}
         defaultRouteBfdSupport={defaultRouteBfdSupport}
         defaultRouteEcmpSupport={defaultRouteEcmpSupport}
+        canManageAdminOnlyRouterSettings={canManageAdminOnlyRouterSettings}
       />
     </QueryHydrationBoundary>
   );

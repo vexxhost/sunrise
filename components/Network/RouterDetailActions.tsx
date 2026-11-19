@@ -52,9 +52,13 @@ import type {
 } from "@/types/openstack";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { qosPoliciesQueryOptions } from "@/hooks/queries/useNetworks";
-import { routerExternalGateways } from "@/lib/openstack/neutron-router-gateways";
+import {
+  canAddRouterExternalGateway,
+  routerExternalGateways,
+} from "@/lib/openstack/neutron-router-gateways";
 
 interface RouterDetailActionsProps {
+  canManageAdminOnlyRouterSettings: boolean;
   externalNetworks: Network[];
   interfacePorts: Port[];
   projectId: string;
@@ -68,6 +72,7 @@ interface RouterDetailActionsProps {
 }
 
 export function RouterDetailActions({
+  canManageAdminOnlyRouterSettings,
   externalNetworks,
   interfacePorts,
   projectId,
@@ -113,9 +118,12 @@ export function RouterDetailActions({
   const [subnetId, setSubnetId] = useState("");
   const qosGatewayAvailable = qosGatewaySupport.status !== "unsupported";
   const defaultRouteBfdAvailable =
+    canManageAdminOnlyRouterSettings &&
     defaultRouteBfdSupport.status !== "unsupported";
   const defaultRouteEcmpAvailable =
+    canManageAdminOnlyRouterSettings &&
     defaultRouteEcmpSupport.status !== "unsupported";
+  const canAddGateway = canAddRouterExternalGateway(primaryGateway);
   const qosPolicies = useQuery({
     ...qosPoliciesQueryOptions(regionId, projectId),
     enabled: dialog === "gateway" && qosGatewayAvailable,
@@ -211,7 +219,10 @@ export function RouterDetailActions({
               routerResource.id,
               {
                 networkId: gatewayNetworkId,
-                enableSnat,
+                enableSnat:
+                  canManageAdminOnlyRouterSettings && gateways.length < 2
+                    ? enableSnat
+                    : undefined,
                 qosPolicyId: qosGatewayAvailable
                   ? changedQosPolicyIdFromSelection(
                       qosPolicySelectionValue,
@@ -290,10 +301,22 @@ export function RouterDetailActions({
           {primaryGateway ? "Primary gateway" : "Gateway"}
         </Button>
         {multihomingAvailable && primaryGateway ? (
-          <Button variant="outline" onClick={() => openDialog("addGateway")}>
-            <Cable className="size-4" />
-            Add gateway
-          </Button>
+          <span
+            title={
+              canAddGateway
+                ? undefined
+                : "Disable SNAT on the primary gateway before adding another gateway."
+            }
+          >
+            <Button
+              variant="outline"
+              disabled={!canAddGateway}
+              onClick={() => openDialog("addGateway")}
+            >
+              <Cable className="size-4" />
+              Add gateway
+            </Button>
+          </span>
         ) : null}
         <EditActionButton
           label="Edit router"
@@ -425,7 +448,9 @@ export function RouterDetailActions({
               <DialogTitle>External gateway</DialogTitle>
               <DialogDescription>
                 {multihomingAvailable
-                  ? "Configure the primary external gateway, SNAT, and gateway QoS policy."
+                  ? canManageAdminOnlyRouterSettings
+                    ? "Configure the primary external gateway, SNAT, and gateway QoS policy."
+                    : "Configure the primary external gateway and gateway QoS policy."
                   : "Connect this router to a provider network, or remove its current gateway."}
               </DialogDescription>
             </DialogHeader>
@@ -454,22 +479,37 @@ export function RouterDetailActions({
               </div>
               {gatewayNetworkId !== "none" ? (
                 <>
-                  <label className="flex items-start gap-3 rounded-md border p-3">
-                    <Checkbox
-                      checked={enableSnat}
-                      disabled={pending}
-                      onCheckedChange={(value) => setEnableSnat(value === true)}
-                    />
-                    <span>
-                      <span className="block text-sm font-medium">
-                        Enable SNAT
+                  {canManageAdminOnlyRouterSettings ? (
+                    <label className="flex items-start gap-3 rounded-md border p-3">
+                      <Checkbox
+                        checked={enableSnat}
+                        disabled={pending || gateways.length > 1}
+                        onCheckedChange={(value) =>
+                          setEnableSnat(value === true)
+                        }
+                      />
+                      <span>
+                        <span className="block text-sm font-medium">
+                          Enable SNAT
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {gateways.length > 1
+                            ? "SNAT cannot be enabled while this router has multiple external gateways."
+                            : "Allow instances to reach external networks through the router."}
+                        </span>
                       </span>
-                      <span className="block text-xs text-muted-foreground">
-                        Allow instances to reach external networks through the
-                        router.
-                      </span>
-                    </span>
-                  </label>
+                    </label>
+                  ) : (
+                    <MutationAlert
+                      variant="info"
+                      title="SNAT is controlled by cloud policy"
+                    >
+                      Neutron&apos;s default policy requires the admin role to
+                      change SNAT. Sunrise omits that field and lets Neutron
+                      apply the cloud-managed behavior when updating this
+                      gateway.
+                    </MutationAlert>
+                  )}
                   {qosGatewayAvailable ? (
                     <QosPolicySelect
                       description="Apply this policy to the router's external gateway IP traffic."

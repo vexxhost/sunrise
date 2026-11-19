@@ -273,6 +273,7 @@ export function NetworksTableClient({
 
 export function RoutersTableClient({
   availabilityZoneSupport,
+  canManageAdminOnlyRouterSettings,
   defaultRouteBfdSupport,
   defaultRouteEcmpSupport,
   projectId,
@@ -280,6 +281,7 @@ export function RoutersTableClient({
   initiallyOpen = false,
 }: NetworkingTableProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
+  canManageAdminOnlyRouterSettings: boolean;
   defaultRouteBfdSupport: OpenStackFeatureSupport;
   defaultRouteEcmpSupport: OpenStackFeatureSupport;
 }) {
@@ -388,6 +390,9 @@ export function RoutersTableClient({
             regionId={regionId}
             initiallyOpen={initiallyOpen}
             availabilityZoneSupport={availabilityZoneSupport}
+            canManageAdminOnlyRouterSettings={
+              canManageAdminOnlyRouterSettings
+            }
             defaultRouteBfdSupport={defaultRouteBfdSupport}
             defaultRouteEcmpSupport={defaultRouteEcmpSupport}
           />

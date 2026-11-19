@@ -1892,6 +1892,21 @@ describe("Neutron mutation actions", () => {
       }),
     );
 
+    await setRouterGatewayAction(scope, "router-a", {
+      networkId: "external-b",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        body: {
+          router: {
+            external_gateway_info: {
+              network_id: "external-b",
+            },
+          },
+        },
+      }),
+    );
+
     await addRouterInterfaceAction(scope, "router-a", {
       subnetId: "subnet-a",
     });

@@ -35,6 +35,7 @@ import {
 
 interface Props {
   availabilityZoneSupport: OpenStackFeatureSupport;
+  canManageAdminOnlyRouterSettings: boolean;
   defaultRouteBfdSupport: OpenStackFeatureSupport;
   defaultRouteEcmpSupport: OpenStackFeatureSupport;
   id: string;
@@ -47,6 +48,7 @@ interface Props {
 
 export function RouterDetailClient({
   availabilityZoneSupport,
+  canManageAdminOnlyRouterSettings,
   defaultRouteBfdSupport,
   defaultRouteEcmpSupport,
   id,
@@ -109,6 +111,9 @@ export function RouterDetailClient({
         </div>
         {owned ? (
           <RouterDetailActions
+            canManageAdminOnlyRouterSettings={
+              canManageAdminOnlyRouterSettings
+            }
             routerResource={router.data}
             externalNetworks={externalNetworks.data}
             interfacePorts={interfacePorts}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canAddRouterExternalGateway,
+  canManageNeutronAdminOnlyRouterSettings,
   canRemoveRouterExternalGateway,
   routerCapabilityBooleanInput,
   routerExternalGatewayKey,
@@ -30,6 +32,20 @@ function support(
 }
 
 describe("router external gateway helpers", () => {
+  it("recognizes the admin role required by Neutron's default policy", () => {
+    expect(
+      canManageNeutronAdminOnlyRouterSettings([
+        { id: "admin-id", name: " Admin " },
+      ]),
+    ).toBe(true);
+    expect(
+      canManageNeutronAdminOnlyRouterSettings([
+        { id: "member-id", name: "member" },
+      ]),
+    ).toBe(false);
+    expect(canManageNeutronAdminOnlyRouterSettings(undefined)).toBe(false);
+  });
+
   it("prefers the authoritative multihoming list over the legacy gateway", () => {
     const legacyGateway = gateway("legacy");
     const router = {
@@ -80,6 +96,20 @@ describe("router external gateway helpers", () => {
     expect(routerCapabilityBooleanInput(support("unsupported"), true)).toBe(
       undefined,
     );
+    expect(
+      routerCapabilityBooleanInput(support("supported"), true, false),
+    ).toBeUndefined();
+  });
+
+  it("requires SNAT to be disabled before adding another gateway", () => {
+    expect(canAddRouterExternalGateway(gateway("external-a"))).toBe(true);
+    expect(
+      canAddRouterExternalGateway({
+        ...gateway("external-a"),
+        enable_snat: true,
+      }),
+    ).toBe(false);
+    expect(canAddRouterExternalGateway(undefined)).toBe(false);
   });
 
   it("uses multihoming mode only when confirmed or present in router data", () => {

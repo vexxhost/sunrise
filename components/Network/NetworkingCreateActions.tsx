@@ -499,6 +499,7 @@ export function CreateNetworkAction({
 
 export function CreateRouterAction({
   availabilityZoneSupport,
+  canManageAdminOnlyRouterSettings,
   defaultRouteBfdSupport,
   defaultRouteEcmpSupport,
   initiallyOpen = false,
@@ -506,6 +507,7 @@ export function CreateRouterAction({
   regionId,
 }: ScopeProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
+  canManageAdminOnlyRouterSettings: boolean;
   defaultRouteBfdSupport: OpenStackFeatureSupport;
   defaultRouteEcmpSupport: OpenStackFeatureSupport;
 }) {
@@ -524,8 +526,10 @@ export function CreateRouterAction({
   const availabilityZonesAvailable =
     availabilityZoneSupport.status !== "unsupported";
   const defaultRouteBfdAvailable =
+    canManageAdminOnlyRouterSettings &&
     defaultRouteBfdSupport.status !== "unsupported";
   const defaultRouteEcmpAvailable =
+    canManageAdminOnlyRouterSettings &&
     defaultRouteEcmpSupport.status !== "unsupported";
   const availabilityZones = useQuery({
     ...networkAvailabilityZonesQueryOptions(regionId, projectId),
@@ -567,10 +571,12 @@ export function CreateRouterAction({
           enableDefaultRouteBfd: routerCapabilityBooleanInput(
             defaultRouteBfdSupport,
             enableDefaultRouteBfd,
+            canManageAdminOnlyRouterSettings,
           ),
           enableDefaultRouteEcmp: routerCapabilityBooleanInput(
             defaultRouteEcmpSupport,
             enableDefaultRouteEcmp,
+            canManageAdminOnlyRouterSettings,
           ),
           availabilityZoneHints: availabilityZoneHints(
             selectedAvailabilityZones,
@@ -664,6 +670,18 @@ export function CreateRouterAction({
                   disabled={pending}
                   onCheckedChange={setEnableDefaultRouteBfd}
                 />
+              ) : null}
+              {!canManageAdminOnlyRouterSettings &&
+              (defaultRouteBfdSupport.status !== "unsupported" ||
+                defaultRouteEcmpSupport.status !== "unsupported") ? (
+                <MutationAlert
+                  variant="info"
+                  title="Advanced routing settings are read-only"
+                >
+                  Neutron&apos;s default policy requires the admin role to set
+                  default-route ECMP or BFD. Sunrise omits these attributes for
+                  the current project token.
+                </MutationAlert>
               ) : null}
             </div>
             {!availabilityZonesAvailable ? (
