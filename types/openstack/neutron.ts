@@ -71,6 +71,7 @@ export interface Subnet {
   ipv6_address_mode: IPv6AddressMode | null;
   ipv6_ra_mode: IPv6AddressMode | null;
   subnetpool_id: string | null;
+  dns_publish_fixed_ip?: boolean;
   segment_id?: string | null;
   service_types?: string[];
   tags: string[];

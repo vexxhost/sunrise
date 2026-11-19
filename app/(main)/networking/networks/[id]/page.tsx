@@ -19,6 +19,7 @@ import {
   NEUTRON_NETWORK_MTU_WRITABLE_EXTENSION,
   NEUTRON_PORT_SECURITY_EXTENSION,
   NEUTRON_QOS_EXTENSION,
+  NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
@@ -77,6 +78,11 @@ export default async function Page({
     NEUTRON_QOS_EXTENSION,
     "Network QoS policies",
   );
+  const subnetDnsPublishSupport = extensionSupport(
+    capabilities,
+    NEUTRON_SUBNET_DNS_PUBLISH_FIXED_IP_EXTENSION,
+    "Subnet fixed-IP DNS publication",
+  );
   const vlanTransparencySupport = extensionSupport(
     capabilities,
     NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
@@ -95,6 +101,7 @@ export default async function Page({
         portSecuritySupport={portSecuritySupport}
         qosSupport={qosSupport}
         vlanTransparencySupport={vlanTransparencySupport}
+        subnetDnsPublishSupport={subnetDnsPublishSupport}
       />
     </QueryHydrationBoundary>
   );

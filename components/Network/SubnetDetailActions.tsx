@@ -48,6 +48,7 @@ import type {
   Router,
   Subnet,
 } from "@/types/openstack";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 export function SubnetDetailActions({
   projectId,
@@ -55,12 +56,14 @@ export function SubnetDetailActions({
   routerInterfaces,
   routers,
   subnet,
+  subnetDnsPublishSupport,
 }: {
   projectId: string;
   regionId: string;
   routerInterfaces: Port[];
   routers: Router[];
   subnet: Subnet;
+  subnetDnsPublishSupport: OpenStackFeatureSupport;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -75,6 +78,9 @@ export function SubnetDetailActions({
     subnet.gateway_ip === null,
   );
   const [enableDhcp, setEnableDhcp] = useState(subnet.enable_dhcp);
+  const [dnsPublishFixedIp, setDnsPublishFixedIp] = useState(
+    subnet.dns_publish_fixed_ip ?? false,
+  );
   const ipv6Mode = getIpv6ConfigurationMode(
     subnet.ipv6_address_mode,
     subnet.ipv6_ra_mode,
@@ -110,6 +116,8 @@ export function SubnetDetailActions({
     connectedRouters.length === 0 && availableRouters.length > 0;
   const detachRouter = routers.find((router) => router.id === detachRouterId);
   const ipv6ModeRequiresDhcp = subnet.ip_version === 6 && ipv6Mode !== "none";
+  const subnetDnsPublishAvailable =
+    subnetDnsPublishSupport.status !== "unsupported";
 
   const open = (next: typeof dialog) => {
     setError(null);
@@ -118,6 +126,7 @@ export function SubnetDetailActions({
       setGatewayIp(subnet.gateway_ip ?? "");
       setDisableGateway(subnet.gateway_ip === null);
       setEnableDhcp(subnet.enable_dhcp);
+      setDnsPublishFixedIp(subnet.dns_publish_fixed_ip ?? false);
       setAllocationPools(subnet.allocation_pools);
       setDnsNameservers(subnet.dns_nameservers);
       setHostRoutes(subnet.host_routes);
@@ -145,6 +154,11 @@ export function SubnetDetailActions({
           gatewayIp: gatewayIp || undefined,
           disableGateway,
           enableDhcp,
+          dnsPublishFixedIp:
+            subnetDnsPublishAvailable &&
+            dnsPublishFixedIp !== (subnet.dns_publish_fixed_ip ?? false)
+              ? dnsPublishFixedIp
+              : undefined,
           currentIpv6Mode: ipv6Mode,
           allocationPools,
           dnsNameservers,
@@ -318,6 +332,26 @@ export function SubnetDetailActions({
                   </span>
                 </span>
               </label>
+              {subnetDnsPublishAvailable ? (
+                <label className="flex items-start gap-3 rounded-md border p-3">
+                  <Checkbox
+                    checked={dnsPublishFixedIp}
+                    disabled={pending}
+                    onCheckedChange={(value) =>
+                      setDnsPublishFixedIp(value === true)
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">
+                      Publish fixed IP addresses to external DNS
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Publish addresses from this subnet for ports with an
+                      external DNS name and domain.
+                    </span>
+                  </span>
+                </label>
+              ) : null}
               <label className="flex items-start gap-3 rounded-md border p-3">
                 <Checkbox
                   checked={enableDhcp}
@@ -358,6 +392,14 @@ export function SubnetDetailActions({
                 onHostRoutesChange={setHostRoutes}
               />
             </div>
+            {!subnetDnsPublishAvailable ? (
+              <MutationAlert
+                variant="info"
+                title="External DNS publication unavailable"
+              >
+                {subnetDnsPublishSupport.message}
+              </MutationAlert>
+            ) : null}
             {error ? <MutationAlert>{error}</MutationAlert> : null}
             <DialogFooter>
               <Button
