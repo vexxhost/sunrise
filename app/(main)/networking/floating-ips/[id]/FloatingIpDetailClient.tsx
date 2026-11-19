@@ -4,6 +4,7 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Globe2 } from "lucide-react";
 import { FloatingIpDetailActions } from "@/components/Network/FloatingIpDetailActions";
 import { FloatingIpPortForwardingSection } from "@/components/Network/FloatingIpPortForwardingSection";
+import { NeutronResourceTagsSection } from "@/components/Network/NeutronResourceTagsSection";
 import { qosPolicyLabel } from "@/components/Network/QosPolicySelect";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -21,6 +22,7 @@ export function FloatingIpDetailClient({
   projectId,
   qosNetworkPolicySupport,
   qosSupport,
+  tagSupport,
   portForwardingDescriptionSupport,
   portForwardingRangeSupport,
   portForwardingSupport,
@@ -31,6 +33,7 @@ export function FloatingIpDetailClient({
   projectId: string;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
+  tagSupport: OpenStackFeatureSupport;
   portForwardingDescriptionSupport: OpenStackFeatureSupport;
   portForwardingRangeSupport: OpenStackFeatureSupport;
   portForwardingSupport: OpenStackFeatureSupport;
@@ -186,6 +189,14 @@ export function FloatingIpDetailClient({
           ))}
         </div>
       </section>
+      <NeutronResourceTagsSection
+        owned={owned}
+        projectId={projectId}
+        regionId={regionId}
+        resource={floatingIp.data}
+        resourceType="floating-ip"
+        support={tagSupport}
+      />
       <FloatingIpPortForwardingSection
         baseSupport={portForwardingSupport}
         descriptionSupport={portForwardingDescriptionSupport}

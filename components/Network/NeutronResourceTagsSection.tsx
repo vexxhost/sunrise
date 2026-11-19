@@ -28,7 +28,16 @@ import {
   validateNeutronTags,
 } from "@/lib/openstack/neutron-tags";
 
-type TaggableResourceType = "network" | "router";
+type TaggableResourceType = "network" | "router" | "floating-ip";
+
+const RESOURCE_LABELS: Record<
+  TaggableResourceType,
+  { label: string; title: string }
+> = {
+  network: { label: "network", title: "Network" },
+  router: { label: "router", title: "Router" },
+  "floating-ip": { label: "floating IP", title: "Floating IP" },
+};
 
 type TaggableResource = {
   id: string;
@@ -78,7 +87,7 @@ export function NeutronResourceTagsSection({
   const parsed = useMemo(() => validateNeutronTags(draftTags), [draftTags]);
   const changed = parsed.ok && !sameNeutronTags(parsed.tags, draftSource.tags);
   const canEdit = owned && support.status !== "unsupported";
-  const resourceTitle = resourceType === "network" ? "Network" : "Router";
+  const resourceLabel = RESOURCE_LABELS[resourceType];
 
   if (support.status === "unsupported" && tags.length === 0) return null;
 
@@ -127,7 +136,9 @@ export function NeutronResourceTagsSection({
         });
         router.refresh();
       } catch {
-        setError(`The ${resourceType} tags could not be saved. Try again.`);
+        setError(
+          `The ${resourceLabel.label} tags could not be saved. Try again.`,
+        );
       } finally {
         submissionInFlight.current = false;
       }
@@ -144,7 +155,7 @@ export function NeutronResourceTagsSection({
           <EditActionButton
             compact
             className="ml-auto"
-            label={`Edit ${resourceType} tags`}
+            label={`Edit ${resourceLabel.label} tags`}
             onClick={openEditor}
           />
         ) : null}
@@ -174,9 +185,9 @@ export function NeutronResourceTagsSection({
       >
         <DialogContent className="max-h-[calc(100vh-2rem)] sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit {resourceTitle} tags</DialogTitle>
+            <DialogTitle>Edit {resourceLabel.title} tags</DialogTitle>
             <DialogDescription>
-              Replace the tags associated with this {resourceType}.
+              Replace the tags associated with this {resourceLabel.label}.
             </DialogDescription>
           </DialogHeader>
           <form className="min-h-0 space-y-4 overflow-hidden" onSubmit={submit}>

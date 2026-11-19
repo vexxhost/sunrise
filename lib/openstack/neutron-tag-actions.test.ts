@@ -62,6 +62,18 @@ function routerPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function floatingIpPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    floatingip: {
+      id: "floating-ip-a",
+      project_id: "project-a",
+      revision_number: 11,
+      tags: ["old"],
+      ...overrides,
+    },
+  };
+}
+
 describe("Neutron resource tag mutation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -173,6 +185,37 @@ describe("Neutron resource tag mutation", () => {
       error: { code: "permission-denied" },
     });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("maps floating IP API and application resource names independently", async () => {
+    mocks.openstackRequest.mockResolvedValue(floatingIpPayload());
+
+    await expect(
+      updateNeutronResourceTagsAction(scope, "floating-ip", "floating-ip-a", {
+        expectedRevisionNumber: 11,
+        expectedTags: ["old"],
+        tags: ["public"],
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2.0/floatingips/floating-ip-a",
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionLabel: "save floating IP tags",
+        body: { tags: ["public"] },
+        invalidates: [
+          "/networking",
+          "/networking/floating-ips",
+          "/networking/floating-ips/floating-ip-a",
+        ],
+        path: "/v2.0/floatingips/floating-ip-a/tags",
+        successMessage: "Floating IP tags saved.",
+      }),
+    );
   });
 
   it("rejects unsupported resource kinds before authentication", async () => {

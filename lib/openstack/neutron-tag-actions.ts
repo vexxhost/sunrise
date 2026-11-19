@@ -34,14 +34,43 @@ const NEUTRON_SERVICE = {
   serviceName: "neutron",
 } as const;
 
-const taggableResource = z.enum(["network", "router"]);
+const taggableResource = z.enum(["network", "router", "floating-ip"]);
 type TaggableResource = z.infer<typeof taggableResource>;
 const TAGGABLE_RESOURCES: Record<
   TaggableResource,
-  { collection: string; label: string; title: string }
+  {
+    apiCollection: string;
+    label: string;
+    ownershipLabel: string;
+    payloadKey: string;
+    routeCollection: string;
+    title: string;
+  }
 > = {
-  network: { collection: "networks", label: "network", title: "Network" },
-  router: { collection: "routers", label: "router", title: "Router" },
+  network: {
+    apiCollection: "networks",
+    label: "network",
+    ownershipLabel: "networks",
+    payloadKey: "network",
+    routeCollection: "networks",
+    title: "Network",
+  },
+  router: {
+    apiCollection: "routers",
+    label: "router",
+    ownershipLabel: "routers",
+    payloadKey: "router",
+    routeCollection: "routers",
+    title: "Router",
+  },
+  "floating-ip": {
+    apiCollection: "floatingips",
+    label: "floating IP",
+    ownershipLabel: "floating IPs",
+    payloadKey: "floatingip",
+    routeCollection: "floating-ips",
+    title: "Floating IP",
+  },
 };
 
 const resourceId = z.string().trim().min(1).max(255);
@@ -90,11 +119,11 @@ function validationFailure(scope: MutationScope, message: string) {
 
 function parseNeutronResourceTagState(
   payload: unknown,
-  resourceType: TaggableResource,
+  payloadKey: string,
   expectedId: string,
 ): NeutronResourceTagState | null {
   if (!payload || typeof payload !== "object") return null;
-  const resource = Reflect.get(payload, resourceType);
+  const resource = Reflect.get(payload, payloadKey);
   if (!resource || typeof resource !== "object") return null;
 
   const id = Reflect.get(resource, "id");
@@ -225,7 +254,7 @@ export async function updateNeutronResourceTagsAction(
     payload = await openstackRequest<unknown>({
       ...NEUTRON_SERVICE,
       regionId: activeScope.regionId!,
-      path: `/v2.0/${resource.collection}/${encodeURIComponent(parsedId.data)}`,
+      path: `/v2.0/${resource.apiCollection}/${encodeURIComponent(parsedId.data)}`,
       errorMode: "throw",
     });
   } catch (error) {
@@ -234,7 +263,7 @@ export async function updateNeutronResourceTagsAction(
 
   const currentResource = parseNeutronResourceTagState(
     payload,
-    parsedResourceType.data,
+    resource.payloadKey,
     parsedId.data,
   );
   if (!currentResource) {
@@ -254,7 +283,7 @@ export async function updateNeutronResourceTagsAction(
     return mutationFailure(
       {
         code: "permission-denied",
-        message: `Only ${resource.collection} owned by the active project can be tagged.`,
+        message: `Only ${resource.ownershipLabel} owned by the active project can be tagged.`,
         retryable: false,
       },
       activeScope,
@@ -312,13 +341,13 @@ export async function updateNeutronResourceTagsAction(
     actionLabel: `save ${resource.label} tags`,
     scope: activeScope,
     ...NEUTRON_SERVICE,
-    path: `/v2.0/${resource.collection}/${encodeURIComponent(parsedId.data)}/tags`,
+    path: `/v2.0/${resource.apiCollection}/${encodeURIComponent(parsedId.data)}/tags`,
     method: "PUT",
     body: { tags: parsedInput.data.tags },
     invalidates: [
       "/networking",
-      `/networking/${resource.collection}`,
-      `/networking/${resource.collection}/${parsedId.data}`,
+      `/networking/${resource.routeCollection}`,
+      `/networking/${resource.routeCollection}/${parsedId.data}`,
     ],
     successMessage: `${resource.title} tags saved.`,
     transform: parseTagsResponse,
