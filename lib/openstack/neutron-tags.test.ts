@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   NEUTRON_MAX_TAG_LENGTH,
   NEUTRON_MAX_TAGS,
+  decodeNeutronTagFromEditor,
+  encodeNeutronTagForEditor,
   formatNeutronTag,
   neutronTagLength,
   sameNeutronTags,
@@ -20,6 +22,25 @@ describe("Neutron resource tags", () => {
     expect(formatNeutronTag("production")).toBe("production");
     expect(formatNeutronTag(" production ")).toBe('" production "');
     expect(formatNeutronTag("line\nbreak")).toBe('"line\\nbreak"');
+  });
+
+  it("round-trips carriage returns through the textarea-safe encoding", () => {
+    const values = [
+      "ordinary",
+      "carriage\rreturn",
+      "windows\r\nline ending",
+      String.raw`literal\rsequence`,
+      String.raw`backslash\\value`,
+    ];
+
+    for (const value of values) {
+      expect(
+        decodeNeutronTagFromEditor(encodeNeutronTagForEditor(value)),
+      ).toBe(value);
+    }
+    expect(encodeNeutronTagForEditor("windows\r\nline ending")).toBe(
+      "windows\\r\nline ending",
+    );
   });
 
   it("rejects exact duplicates while preserving case and whitespace", () => {

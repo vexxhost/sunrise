@@ -22,6 +22,8 @@ import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { updateNetworkTagsAction } from "@/lib/openstack/neutron-tag-actions";
 import {
   NEUTRON_MAX_TAGS,
+  decodeNeutronTagFromEditor,
+  encodeNeutronTagForEditor,
   formatNeutronTag,
   sameNeutronTags,
   validateNeutronTags,
@@ -54,7 +56,10 @@ export function NetworkTagsSection({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const nextDraftId = useRef(0);
-  const draftTags = useMemo(() => draft.map((tag) => tag.value), [draft]);
+  const draftTags = useMemo(
+    () => draft.map((tag) => decodeNeutronTagFromEditor(tag.value)),
+    [draft],
+  );
   const parsed = useMemo(() => validateNeutronTags(draftTags), [draftTags]);
   const changed = parsed.ok && !sameNeutronTags(parsed.tags, tags);
   const canEdit = owned && support.status !== "unsupported";
@@ -66,7 +71,7 @@ export function NetworkTagsSection({
     value,
   });
   const openEditor = () => {
-    setDraft(tags.map(newDraft));
+    setDraft(tags.map((tag) => newDraft(encodeNeutronTagForEditor(tag))));
     setError(null);
     setOpen(true);
   };
@@ -149,6 +154,10 @@ export function NetworkTagsSection({
                   {draft.length} / {NEUTRON_MAX_TAGS}
                 </span>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Carriage returns are shown as <code>\r</code>; literal
+                backslashes are shown as <code>\\</code>.
+              </p>
               <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
                 {draft.map((tag, index) => (
                   <div
