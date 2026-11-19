@@ -272,6 +272,7 @@ export function PortDetailActions({
         vnicType !== (port["binding:vnic_type"] ?? "normal");
       const numaAffinityChanged =
         numaAffinityAvailable &&
+        !portBound &&
         numaAffinityPolicy !==
           (port.numa_affinity_policy ?? PORT_SETTING_DEFAULT);
       const trustedVifChanged =
@@ -572,7 +573,7 @@ export function PortDetailActions({
                   <Label htmlFor="edit-port-numa-affinity">NUMA affinity</Label>
                   <Select
                     value={numaAffinityPolicy}
-                    disabled={pending}
+                    disabled={pending || portBound}
                     onValueChange={setNumaAffinityPolicy}
                   >
                     <SelectTrigger id="edit-port-numa-affinity">
@@ -601,10 +602,12 @@ export function PortDetailActions({
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    {NEUTRON_PORT_NUMA_AFFINITY_POLICY_OPTIONS.find(
-                      (option) => option.value === numaAffinityPolicy,
-                    )?.description ??
-                      "Used when Nova next schedules a server with this port."}
+                    {portBound
+                      ? "Detach this port before changing its NUMA affinity policy."
+                      : (NEUTRON_PORT_NUMA_AFFINITY_POLICY_OPTIONS.find(
+                          (option) => option.value === numaAffinityPolicy,
+                        )?.description ??
+                        "Used when Nova next schedules a server with this port.")}
                   </p>
                 </div>
               ) : null}
