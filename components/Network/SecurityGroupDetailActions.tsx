@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
@@ -37,24 +37,18 @@ import type { SecurityGroup, SecurityGroupRule } from "@/types/openstack";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
-import {
-  portsQueryOptions,
-  securityGroupRbacPoliciesQueryOptions,
-} from "@/hooks/queries/useNetworks";
 
 export function SecurityGroupDetailActions({
   group,
   groups,
   projectId,
   regionId,
-  rbacSecurityGroupSupport,
   statefulSupport,
 }: {
   group: SecurityGroup;
   groups: SecurityGroup[];
   projectId: string;
   regionId: string;
-  rbacSecurityGroupSupport: OpenStackFeatureSupport;
   statefulSupport: OpenStackFeatureSupport;
 }) {
   const router = useRouter();
@@ -73,30 +67,6 @@ export function SecurityGroupDetailActions({
   const [ruleDescription, setRuleDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const ports = useQuery({
-    ...portsQueryOptions(regionId, projectId),
-    enabled:
-      dialog === "edit" && statefulSupport.status !== "unsupported",
-  });
-  const rbacPolicies = useQuery({
-    ...securityGroupRbacPoliciesQueryOptions(regionId, projectId, group.id),
-    enabled:
-      dialog === "edit" &&
-      statefulSupport.status !== "unsupported" &&
-      rbacSecurityGroupSupport.status !== "unsupported",
-  });
-  const attachedPortCount = (ports.data ?? []).filter((port) =>
-    port.security_groups?.includes(group.id),
-  ).length;
-  // Neutron keeps an RBAC policy while any consumer-project port depends on it.
-  const sharedWithOtherProjects = (rbacPolicies.data ?? []).length > 0;
-  const statefulChanged = stateful !== (group.stateful ?? true);
-  const rbacCheckRequired =
-    rbacSecurityGroupSupport.status !== "unsupported";
-  const statefulnessCheckPending =
-    ports.isFetching ||
-    ports.isError ||
-    (rbacCheckRequired && (rbacPolicies.isFetching || rbacPolicies.isError));
   const ruleQuota = useProjectQuotaImpact({
     enabled: dialog === "rule",
     projectId,
@@ -246,12 +216,7 @@ export function SecurityGroupDetailActions({
                   <Checkbox
                     id="edit-group-stateful"
                     checked={stateful}
-                    disabled={
-                      pending ||
-                      statefulnessCheckPending ||
-                      sharedWithOtherProjects ||
-                      attachedPortCount > 0
-                    }
+                    disabled={pending}
                     onCheckedChange={(checked) => setStateful(checked === true)}
                   />
                   <div className="space-y-1">
@@ -259,17 +224,11 @@ export function SecurityGroupDetailActions({
                       Stateful connection tracking
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      {ports.isFetching ||
-                      (rbacCheckRequired && rbacPolicies.isFetching)
-                        ? "Checking whether ports or sharing policies use this group."
-                        : ports.isError ||
-                            (rbacCheckRequired && rbacPolicies.isError)
-                          ? "Port attachments or sharing policies could not be verified, so connection tracking cannot be changed here."
-                          : sharedWithOtherProjects
-                            ? "This group is shared with another project, whose port attachments are not visible here. Remove its sharing policies before changing connection tracking."
-                          : attachedPortCount > 0
-                            ? `${attachedPortCount} project ${attachedPortCount === 1 ? "port uses" : "ports use"} this group. Neutron only allows changing connection tracking when no ports are attached.`
-                            : "When enabled, return traffic for an allowed connection is accepted automatically. Stateless groups require explicit rules in both directions."}
+                      When enabled, return traffic for an allowed connection is
+                      accepted automatically. Stateless groups require explicit
+                      rules in both directions. Neutron accepts this change only
+                      when the group is not attached to any port and validates
+                      all projects when you save.
                     </p>
                     {statefulSupport.status === "unknown" ? (
                       <p className="text-xs text-muted-foreground">
@@ -290,17 +249,7 @@ export function SecurityGroupDetailActions({
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={
-                  pending ||
-                  !name.trim() ||
-                  (statefulChanged &&
-                    (statefulnessCheckPending ||
-                      sharedWithOtherProjects ||
-                      attachedPortCount > 0))
-                }
-              >
+              <Button type="submit" disabled={pending || !name.trim()}>
                 {pending ? "Saving" : "Save changes"}
               </Button>
             </DialogFooter>

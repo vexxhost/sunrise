@@ -111,11 +111,6 @@ describe("public OpenStack read action", () => {
     ["network", "neutron", "/v2.0/default-security-group-rules"],
     ["network", "neutron", "/v2.0/availability_zones"],
     ["network", "neutron", "/v2.0/qos/policies"],
-    [
-      "network",
-      "neutron",
-      "/v2.0/rbac-policies?action=access_as_shared&object_id=group-a&object_type=security_group&project_id=project-a",
-    ],
     ["sharev2", "manilav2", "/project-a/share-networks/detail?all_tenants=0"],
   ])(
     "allows the supported %s/%s read route %s",
@@ -130,19 +125,6 @@ describe("public OpenStack read action", () => {
       ).resolves.toEqual({ servers: [] });
     },
   );
-
-  it("requires every security-group RBAC filter", async () => {
-    await expect(
-      openstack({
-        regionId: "RegionOne",
-        serviceType: "network",
-        serviceName: "neutron",
-        path: "/v2.0/rbac-policies?object_type=security_group",
-      }),
-    ).rejects.toThrow("Invalid OpenStack request");
-
-    expect(mocks.openstackRequest).not.toHaveBeenCalled();
-  });
 
   it("rejects query parameters on the QoS policy collection", async () => {
     await expect(

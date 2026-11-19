@@ -27,13 +27,11 @@ export function SecurityGroupDetailClient({
   id,
   projectId,
   regionId,
-  rbacSecurityGroupSupport,
   statefulSupport,
 }: {
   id: string;
   projectId: string;
   regionId: string;
-  rbacSecurityGroupSupport: OpenStackFeatureSupport;
   statefulSupport: OpenStackFeatureSupport;
 }) {
   const group = useSuspenseQuery(
@@ -67,7 +65,6 @@ export function SecurityGroupDetailClient({
             groups={groups.data}
             projectId={projectId}
             regionId={regionId}
-            rbacSecurityGroupSupport={rbacSecurityGroupSupport}
             statefulSupport={statefulSupport}
           />
         ) : (

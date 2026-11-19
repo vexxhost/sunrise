@@ -11,7 +11,6 @@ import { fetchOpenStackResourceOrRecover } from "@/lib/resource-recovery-server"
 import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
-  NEUTRON_RBAC_SECURITY_GROUP_EXTENSION,
   NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
 
@@ -36,16 +35,10 @@ export default async function Page({
   await queryClient.prefetchQuery(
     securityGroupsQueryOptions(session.regionId, session.projectId),
   );
-  const capabilities = await capabilitiesPromise;
   const statefulSupport = extensionSupport(
-    capabilities,
+    await capabilitiesPromise,
     NEUTRON_STATEFUL_SECURITY_GROUP_EXTENSION,
     "Security group connection tracking",
-  );
-  const rbacSecurityGroupSupport = extensionSupport(
-    capabilities,
-    NEUTRON_RBAC_SECURITY_GROUP_EXTENSION,
-    "Security group sharing",
   );
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   return (
@@ -54,7 +47,6 @@ export default async function Page({
         id={id}
         projectId={session.projectId}
         regionId={session.regionId}
-        rbacSecurityGroupSupport={rbacSecurityGroupSupport}
         statefulSupport={statefulSupport}
       />
     </QueryHydrationBoundary>
