@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Tags, Trash2 } from "lucide-react";
+import { ListFilter, Plus, Tags, Trash2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { EditActionButton } from "@/components/resources/EditActionButton";
@@ -21,6 +22,11 @@ import { Textarea } from "@/components/ui/textarea";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { updateNeutronResourceTagsAction } from "@/lib/openstack/neutron-tag-actions";
 import {
+  neutronTagFilterError,
+  neutronTagFilterHref,
+  type NeutronTagFilter,
+} from "@/lib/openstack/neutron-tag-filters";
+import {
   decodeNeutronTagFromEditor,
   encodeNeutronTagForEditor,
   formatNeutronTag,
@@ -33,13 +39,38 @@ type TaggableResourceType =
 
 const RESOURCE_LABELS: Record<
   TaggableResourceType,
-  { label: string; title: string }
+  { collectionPath: string; label: string; pluralLabel: string; title: string }
 > = {
-  network: { label: "network", title: "Network" },
-  router: { label: "router", title: "Router" },
-  "floating-ip": { label: "floating IP", title: "Floating IP" },
-  "security-group": { label: "security group", title: "Security group" },
-  port: { label: "port", title: "Port" },
+  network: {
+    collectionPath: "/networking/networks",
+    label: "network",
+    pluralLabel: "networks",
+    title: "Network",
+  },
+  router: {
+    collectionPath: "/networking/routers",
+    label: "router",
+    pluralLabel: "routers",
+    title: "Router",
+  },
+  "floating-ip": {
+    collectionPath: "/networking/floating-ips",
+    label: "floating IP",
+    pluralLabel: "floating IPs",
+    title: "Floating IP",
+  },
+  "security-group": {
+    collectionPath: "/networking/security-groups",
+    label: "security group",
+    pluralLabel: "security groups",
+    title: "Security group",
+  },
+  port: {
+    collectionPath: "/networking/ports",
+    label: "port",
+    pluralLabel: "ports",
+    title: "Port",
+  },
 };
 
 type TaggableResource = {
@@ -167,11 +198,12 @@ export function NeutronResourceTagsSection({
       {tags.length ? (
         <div className="flex flex-wrap gap-2 rounded-md border px-3 py-2.5">
           {tags.map((tag) => (
-            <Badge key={tag} variant="secondary" className="max-w-full">
-              <span className="break-all whitespace-pre-wrap font-mono">
-                {formatNeutronTag(tag)}
-              </span>
-            </Badge>
+            <ResourceTag
+              key={tag}
+              resourceType={resourceType}
+              support={support}
+              tag={tag}
+            />
           ))}
         </div>
       ) : (
@@ -293,5 +325,56 @@ export function NeutronResourceTagsSection({
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+export function ResourceTag({
+  resourceType,
+  support,
+  tag,
+}: {
+  resourceType: TaggableResourceType;
+  support: OpenStackFeatureSupport;
+  tag: string;
+}) {
+  const label = formatNeutronTag(tag);
+  const resourceLabel = RESOURCE_LABELS[resourceType];
+  const filter: NeutronTagFilter = { mode: "all", tags: [tag] };
+  const filterError = neutronTagFilterError(filter);
+  const content = (
+    <span className="break-all whitespace-pre-wrap font-mono">{label}</span>
+  );
+
+  const filteringUnavailable = support.status === "unsupported";
+
+  if (filteringUnavailable || filterError) {
+    return (
+      <Badge
+        variant="secondary"
+        className="max-w-full"
+        title={
+          filteringUnavailable
+            ? support.message || "Tag filtering is unavailable in this cloud."
+            : "This tag cannot be represented exactly in a list filter."
+        }
+      >
+        {content}
+      </Badge>
+    );
+  }
+
+  const actionLabel = `Show ${resourceLabel.pluralLabel} tagged ${label}`;
+  return (
+    <Badge asChild variant="secondary" className="max-w-full">
+      <Link
+        href={neutronTagFilterHref(resourceLabel.collectionPath, filter)}
+        aria-label={actionLabel}
+        title={actionLabel}
+        prefetch={false}
+      >
+        <ListFilter aria-hidden="true" />
+        {content}
+      </Link>
+    </Badge>
   );
 }

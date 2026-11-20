@@ -16,12 +16,11 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import {
-  NEUTRON_TAG_FILTER_MODE_PARAM,
-  NEUTRON_TAG_FILTER_PARAM,
   neutronTagFilterError,
   neutronTagFilterShareUrl,
   type NeutronTagFilter,
   type NeutronTagFilterMode,
+  withNeutronTagFilter,
 } from "@/lib/openstack/neutron-tag-filters";
 import {
   decodeNeutronTagFromEditor,
@@ -53,17 +52,7 @@ export function NeutronTagFilterControl({
   if (filteringUnavailable && !initialError) return null;
 
   const navigate = (nextFilter?: NeutronTagFilter) => {
-    const next = new URLSearchParams(searchParams.toString());
-    next.delete(NEUTRON_TAG_FILTER_PARAM);
-    next.delete(NEUTRON_TAG_FILTER_MODE_PARAM);
-    if (nextFilter) {
-      for (const tag of nextFilter.tags) {
-        next.append(NEUTRON_TAG_FILTER_PARAM, tag);
-      }
-      if (nextFilter.mode === "any") {
-        next.set(NEUTRON_TAG_FILTER_MODE_PARAM, "any");
-      }
-    }
+    const next = withNeutronTagFilter(searchParams.toString(), nextFilter);
     const query = next.toString();
     startTransition(() => {
       router.replace(query ? `${pathname}?${query}` : pathname, {
