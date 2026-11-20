@@ -9,6 +9,9 @@ vi.mock("@/lib/openstack/neutron-address-group-actions", () => ({
 vi.mock("@/lib/openstack/neutron-ip-availability-actions", () => ({
   getNetworkIpAvailability: vi.fn(),
 }));
+vi.mock("@/lib/openstack/neutron-tag-filter-actions", () => ({
+  listProjectNeutronResourcesByTags: vi.fn(),
+}));
 
 import {
   addressGroupQueryOptions,
@@ -17,6 +20,8 @@ import {
   isOwnedAddressGroup,
   networkIpAvailabilityQueryOptions,
   networkAvailabilityZonesQueryOptions,
+  portsQueryOptions,
+  projectNetworksQueryOptions,
   projectAddressGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { openstack } from "@/lib/openstack/actions";
@@ -26,6 +31,7 @@ import {
   listProjectVisibleAddressGroups,
 } from "@/lib/openstack/neutron-address-group-actions";
 import { getNetworkIpAvailability } from "@/lib/openstack/neutron-ip-availability-actions";
+import { listProjectNeutronResourcesByTags } from "@/lib/openstack/neutron-tag-filter-actions";
 
 const mockedOpenstack = vi.mocked(openstack);
 const mockedGetProjectVisibleAddressGroup = vi.mocked(
@@ -38,6 +44,9 @@ const mockedListProjectOwnedAddressGroups = vi.mocked(
   listProjectOwnedAddressGroups,
 );
 const mockedGetNetworkIpAvailability = vi.mocked(getNetworkIpAvailability);
+const mockedListProjectNeutronResourcesByTags = vi.mocked(
+  listProjectNeutronResourcesByTags,
+);
 
 describe("Neutron query options", () => {
   beforeEach(() => {
@@ -46,6 +55,7 @@ describe("Neutron query options", () => {
     mockedListProjectOwnedAddressGroups.mockReset();
     mockedListProjectVisibleAddressGroups.mockReset();
     mockedGetNetworkIpAvailability.mockReset();
+    mockedListProjectNeutronResourcesByTags.mockReset();
   });
 
   it("loads network IP availability through the scoped action", async () => {
@@ -194,5 +204,53 @@ describe("Neutron query options", () => {
         owned,
       ]),
     ).toBe(false);
+  });
+
+  it("loads filtered collections through the scoped tag action", async () => {
+    const filter = { mode: "all" as const, tags: ["env:test"] };
+    mockedListProjectNeutronResourcesByTags.mockResolvedValue([
+      { id: "network-a", project_id: "project-a", name: "private" },
+    ]);
+
+    const networks = projectNetworksQueryOptions(
+      "RegionOne",
+      "project-a",
+      filter,
+    );
+    await expect(
+      (networks.queryFn as () => Promise<unknown>)(),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "network-a", name: "private" }),
+    ]);
+    expect(networks.queryKey).toEqual([
+      "RegionOne",
+      "project-a",
+      "project-networks",
+      "all",
+      "env:test",
+    ]);
+    expect(mockedListProjectNeutronResourcesByTags).toHaveBeenCalledWith(
+      "RegionOne",
+      "project-a",
+      "network",
+      filter,
+    );
+    expect(mockedOpenstack).not.toHaveBeenCalled();
+  });
+
+  it("keeps unfiltered collection query keys and reads unchanged", async () => {
+    mockedOpenstack.mockResolvedValue({ ports: [] });
+    const ports = portsQueryOptions("RegionOne", "project-a");
+
+    await expect((ports.queryFn as () => Promise<unknown>)()).resolves.toEqual(
+      [],
+    );
+    expect(ports.queryKey).toEqual(["RegionOne", "project-a", "ports"]);
+    expect(mockedListProjectNeutronResourcesByTags).not.toHaveBeenCalled();
+    expect(mockedOpenstack).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2.0/ports?project_id=project-a",
+      }),
+    );
   });
 });

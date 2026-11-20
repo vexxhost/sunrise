@@ -46,12 +46,20 @@ import {
 } from "@/lib/openstack/neutron-port-placement";
 import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-types";
 import { routerExternalGateways } from "@/lib/openstack/neutron-router-gateways";
+import { NeutronTagFilterControl } from "@/components/Network/NeutronTagFilter";
+import type { NeutronTagFilter } from "@/lib/openstack/neutron-tag-filters";
+import { formatNeutronTag } from "@/lib/openstack/neutron-tags";
 
 interface NetworkingTableProps {
   projectId: string;
   regionId: string;
   initiallyOpen?: boolean;
+  tagFilter?: NeutronTagFilter;
+  tagFilterError?: string;
+  tagSupport: OpenStackFeatureSupport;
 }
+
+const TAG_FILTER_VISIBLE_COLUMNS = ["tags"];
 
 function NameLink({
   href,
@@ -67,6 +75,35 @@ function NameLink({
 
 function StateBadge({ active, label }: { active: boolean; label: string }) {
   return <Badge variant={active ? "secondary" : "outline"}>{label}</Badge>;
+}
+
+function neutronTagColumn<T extends { tags?: string[] }>() {
+  return {
+    id: "tags",
+    accessorFn: (resource) => (resource.tags ?? []).join("\n"),
+    header: "Tags",
+    cell: ({ row }) => {
+      const tags = row.original.tags ?? [];
+      if (tags.length === 0) {
+        return <span className="text-muted-foreground">None</span>;
+      }
+      return (
+        <div className="flex max-w-64 flex-wrap gap-1">
+          {tags.slice(0, 2).map((tag) => (
+            <Badge key={tag} variant="secondary" className="max-w-48">
+              <span className="truncate font-mono">
+                {formatNeutronTag(tag)}
+              </span>
+            </Badge>
+          ))}
+          {tags.length > 2 ? (
+            <Badge variant="outline">+{tags.length - 2}</Badge>
+          ) : null}
+        </div>
+      );
+    },
+    meta: { fieldType: "string", visible: false },
+  } satisfies ColumnDef<T>;
 }
 
 function TableIntro({
@@ -93,6 +130,9 @@ export function NetworksTableClient({
   initiallyOpen = false,
   portSecuritySupport,
   qosSupport,
+  tagFilter,
+  tagFilterError,
+  tagSupport,
   vlanTransparencySupport,
 }: NetworkingTableProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
@@ -103,7 +143,7 @@ export function NetworksTableClient({
   vlanTransparencySupport: OpenStackFeatureSupport;
 }) {
   const networks = useSuspenseQuery(
-    projectNetworksQueryOptions(regionId, projectId),
+    projectNetworksQueryOptions(regionId, projectId, tagFilter),
   );
   const subnets = useSuspenseQuery(subnetsQueryOptions(regionId, projectId));
   const subnetById = useMemo(
@@ -228,12 +268,16 @@ export function NetworksTableClient({
         header: "Description",
         meta: { fieldType: "string", visible: false },
       },
+      ...(tagSupport.status === "unsupported"
+        ? []
+        : [neutronTagColumn<Network>()]),
     ],
     [
       dnsIntegrationSupport.status,
       portSecuritySupport.status,
       qosSupport.status,
       subnetById,
+      tagSupport.status,
       vlanTransparencySupport.status,
     ],
   );
@@ -258,9 +302,19 @@ export function NetworksTableClient({
         Project-owned layer 2 networks and their address spaces.
       </TableIntro>
       <DataTable
+        additionalFilters={
+          <NeutronTagFilterControl
+            filter={tagFilter}
+            initialError={tagFilterError}
+            support={tagSupport}
+          />
+        }
         columns={columns}
         data={networks.data}
         emptyIcon={NetworkIcon}
+        forceVisibleColumnIds={
+          tagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         isRefetching={networks.isRefetching || subnets.isRefetching}
         refetch={() => {
           void Promise.all([networks.refetch(), subnets.refetch()]);
@@ -279,13 +333,18 @@ export function RoutersTableClient({
   projectId,
   regionId,
   initiallyOpen = false,
+  tagFilter,
+  tagFilterError,
+  tagSupport,
 }: NetworkingTableProps & {
   availabilityZoneSupport: OpenStackFeatureSupport;
   canManageAdminOnlyRouterSettings: boolean;
   defaultRouteBfdSupport: OpenStackFeatureSupport;
   defaultRouteEcmpSupport: OpenStackFeatureSupport;
 }) {
-  const routers = useSuspenseQuery(routersQueryOptions(regionId, projectId));
+  const routers = useSuspenseQuery(
+    routersQueryOptions(regionId, projectId, tagFilter),
+  );
   const externalNetworks = useSuspenseQuery(
     externalNetworksQueryOptions(regionId, projectId),
   );
@@ -377,8 +436,11 @@ export function RoutersTableClient({
         header: "Description",
         meta: { fieldType: "string", visible: false },
       },
+      ...(tagSupport.status === "unsupported"
+        ? []
+        : [neutronTagColumn<Router>()]),
     ],
-    [externalById],
+    [externalById, tagSupport.status],
   );
 
   return (
@@ -390,9 +452,7 @@ export function RoutersTableClient({
             regionId={regionId}
             initiallyOpen={initiallyOpen}
             availabilityZoneSupport={availabilityZoneSupport}
-            canManageAdminOnlyRouterSettings={
-              canManageAdminOnlyRouterSettings
-            }
+            canManageAdminOnlyRouterSettings={canManageAdminOnlyRouterSettings}
             defaultRouteBfdSupport={defaultRouteBfdSupport}
             defaultRouteEcmpSupport={defaultRouteEcmpSupport}
           />
@@ -401,9 +461,19 @@ export function RoutersTableClient({
         Layer 3 routing, subnet interfaces, and external gateways.
       </TableIntro>
       <DataTable
+        additionalFilters={
+          <NeutronTagFilterControl
+            filter={tagFilter}
+            initialError={tagFilterError}
+            support={tagSupport}
+          />
+        }
         columns={columns}
         data={routers.data}
         emptyIcon={RouterIcon}
+        forceVisibleColumnIds={
+          tagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         isRefetching={routers.isRefetching || externalNetworks.isRefetching}
         refetch={() => {
           void Promise.all([routers.refetch(), externalNetworks.refetch()]);
@@ -431,6 +501,9 @@ export function PortsTableClient({
   qosSupport,
   rejectMulticastAddressPairs,
   securityGroupSupport,
+  tagFilter,
+  tagFilterError,
+  tagSupport,
   trustedVifSupport,
   uplinkStatusPropagationSupport,
 }: NetworkingTableProps & {
@@ -450,7 +523,9 @@ export function PortsTableClient({
   trustedVifSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationSupport: OpenStackFeatureSupport;
 }) {
-  const ports = useSuspenseQuery(portsQueryOptions(regionId, projectId));
+  const ports = useSuspenseQuery(
+    portsQueryOptions(regionId, projectId, tagFilter),
+  );
   const networks = useSuspenseQuery(networksQueryOptions(regionId, projectId));
   const networkById = useMemo(
     () => new Map(networks.data.map((network) => [network.id, network])),
@@ -650,6 +725,9 @@ export function PortsTableClient({
             } satisfies ColumnDef<Port>,
           ]
         : []),
+      ...(tagSupport.status === "unsupported"
+        ? []
+        : [neutronTagColumn<Port>()]),
     ],
     [
       dnsDomainPortsSupport.status,
@@ -660,6 +738,7 @@ export function PortsTableClient({
       showHardwareOffload,
       showNumaAffinity,
       showPortBinding,
+      tagSupport.status,
       showTrustedVif,
       showUplinkStatusPropagation,
     ],
@@ -693,9 +772,19 @@ export function PortsTableClient({
         Virtual interfaces connecting project resources to networks.
       </TableIntro>
       <DataTable
+        additionalFilters={
+          <NeutronTagFilterControl
+            filter={tagFilter}
+            initialError={tagFilterError}
+            support={tagSupport}
+          />
+        }
         columns={columns}
         data={ports.data}
         emptyIcon={EthernetPort}
+        forceVisibleColumnIds={
+          tagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         isRefetching={ports.isRefetching || networks.isRefetching}
         refetch={() => {
           void Promise.all([ports.refetch(), networks.refetch()]);
@@ -713,13 +802,16 @@ export function FloatingIpsTableClient({
   initiallyOpen = false,
   qosNetworkPolicySupport,
   qosSupport,
+  tagFilter,
+  tagFilterError,
+  tagSupport,
 }: NetworkingTableProps & {
   dnsIntegrationSupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
 }) {
   const floatingIps = useSuspenseQuery(
-    floatingIpsQueryOptions(regionId, projectId),
+    floatingIpsQueryOptions(regionId, projectId, tagFilter),
   );
   const columns = useMemo<ColumnDef<FloatingIp>[]>(
     () => [
@@ -820,11 +912,15 @@ export function FloatingIpsTableClient({
               meta: { fieldType: "string", visible: false },
             } satisfies ColumnDef<FloatingIp>,
           ]),
+      ...(tagSupport.status === "unsupported"
+        ? []
+        : [neutronTagColumn<FloatingIp>()]),
     ],
     [
       dnsIntegrationSupport.status,
       qosNetworkPolicySupport.status,
       qosSupport.status,
+      tagSupport.status,
     ],
   );
 
@@ -844,9 +940,19 @@ export function FloatingIpsTableClient({
         Public addresses allocated to the active project.
       </TableIntro>
       <DataTable
+        additionalFilters={
+          <NeutronTagFilterControl
+            filter={tagFilter}
+            initialError={tagFilterError}
+            support={tagSupport}
+          />
+        }
         columns={columns}
         data={floatingIps.data}
         emptyIcon={Globe2}
+        forceVisibleColumnIds={
+          tagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         isRefetching={floatingIps.isRefetching}
         refetch={() => {
           void floatingIps.refetch();
@@ -862,9 +968,12 @@ export function SecurityGroupsTableClient({
   regionId,
   initiallyOpen = false,
   statefulSupport,
+  tagFilter,
+  tagFilterError,
+  tagSupport,
 }: NetworkingTableProps & { statefulSupport: OpenStackFeatureSupport }) {
   const groups = useSuspenseQuery(
-    securityGroupsQueryOptions(regionId, projectId),
+    securityGroupsQueryOptions(regionId, projectId, tagFilter),
   );
   const hasReportedStateful = groups.data.some(
     (group) => group.stateful !== undefined,
@@ -919,8 +1028,11 @@ export function SecurityGroupsTableClient({
         header: "Age",
         meta: { fieldType: "date", dateDisplay: "age", visible: false },
       },
+      ...(tagSupport.status === "unsupported"
+        ? []
+        : [neutronTagColumn<SecurityGroup>()]),
     ],
-    [hasReportedStateful, statefulSupport.status],
+    [hasReportedStateful, statefulSupport.status, tagSupport.status],
   );
 
   return (
@@ -938,9 +1050,19 @@ export function SecurityGroupsTableClient({
         Ingress and egress policy applied to project ports.
       </TableIntro>
       <DataTable
+        additionalFilters={
+          <NeutronTagFilterControl
+            filter={tagFilter}
+            initialError={tagFilterError}
+            support={tagSupport}
+          />
+        }
         columns={columns}
         data={groups.data}
         emptyIcon={ShieldCheck}
+        forceVisibleColumnIds={
+          tagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         isRefetching={groups.isRefetching}
         refetch={() => {
           void groups.refetch();

@@ -80,6 +80,7 @@ function getColumnLabel<TData, TValue>(column: any): string {
 interface DataTableDialogProps<TData> {
   table: Table<TData>;
   resourceName?: string;
+  forceVisibleColumnIds?: string[];
 }
 
 interface SortableColumnItemProps<TData> {
@@ -133,7 +134,9 @@ function SortableColumnItem<TData>({
       </button>
       <Checkbox
         id={`dialog-${column.id}`}
-        aria-label={isRequired ? `${label} is always shown` : undefined}
+        aria-label={
+          isRequired ? `${label} cannot be hidden in this view` : undefined
+        }
         checked={column.getIsVisible()}
         disabled={isRequired}
         onCheckedChange={(checked) => column.toggleVisibility(!!checked)}
@@ -173,6 +176,7 @@ function SortableColumnItem<TData>({
 export function DataTableDialog<TData>({
   table,
   resourceName,
+  forceVisibleColumnIds = [],
 }: DataTableDialogProps<TData>) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [columnSearch, setColumnSearch] = useState("");
@@ -319,7 +323,9 @@ export function DataTableDialog<TData>({
                     const label = getColumnLabel(column);
                     const currentOrder = getCurrentColumnOrder();
                     const orderIndex = currentOrder.indexOf(column.id);
-                    const isRequired = !column.getCanHide();
+                    const isRequired =
+                      !column.getCanHide() ||
+                      forceVisibleColumnIds.includes(column.id);
                     return (
                       <SortableColumnItem
                         key={column.id}
