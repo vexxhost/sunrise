@@ -25,31 +25,66 @@ import {
   NEUTRON_QOS_EXTENSION,
   NEUTRON_QOS_PORT_NETWORK_POLICY_EXTENSION,
   NEUTRON_SECURITY_GROUP_EXTENSION,
+  NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
   NEUTRON_UPLINK_STATUS_PROPAGATION_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
+import {
+  parseNeutronTagFilterSearchParams,
+  type NeutronTagFilterSearchParams,
+} from "@/lib/openstack/neutron-tag-filters";
+
+type PortSearchParams = NeutronTagFilterSearchParams & {
+  create?: string | string[];
+};
 
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ create?: string | string[] }>;
+  searchParams: Promise<PortSearchParams>;
 }) {
   const session = await getSession();
   if (!session.projectId || !session.regionId) return null;
+  const pageSearchParams = await searchParams;
   const createRequested = isCreateActionRequested(
-    (await searchParams).create,
+    pageSearchParams.create,
     "port",
   );
+  const parsedTagFilter = parseNeutronTagFilterSearchParams(pageSearchParams);
   const capabilitiesPromise = discoverNetworkCapabilities(session.regionId);
+  const tagFilterPromise = parsedTagFilter.filter
+    ? capabilitiesPromise.then((capabilities) =>
+        extensionSupport(
+          capabilities,
+          NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+          "Port tag filters",
+        ).status === "unsupported"
+          ? undefined
+          : parsedTagFilter.filter,
+      )
+    : Promise.resolve(undefined);
   const queryClient = makeQueryClient();
   await Promise.all([
-    queryClient.prefetchQuery(
-      portsQueryOptions(session.regionId, session.projectId),
+    tagFilterPromise.then((tagFilter) =>
+      queryClient.prefetchQuery(
+        portsQueryOptions(session.regionId, session.projectId, tagFilter),
+      ),
     ),
     queryClient.prefetchQuery(
       networksQueryOptions(session.regionId, session.projectId),
     ),
   ]);
   const capabilities = await capabilitiesPromise;
+  const tagFilter = await tagFilterPromise;
+  const tagSupport = extensionSupport(
+    capabilities,
+    NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+    "Port tag filters",
+  );
+  const tagFilterError =
+    parsedTagFilter.error ??
+    (parsedTagFilter.filter && tagSupport.status === "unsupported"
+      ? tagSupport.message
+      : undefined);
   const portSecuritySupport = extensionSupport(
     capabilities,
     NEUTRON_PORT_SECURITY_EXTENSION,
@@ -148,6 +183,9 @@ export default async function Page({
         qosNetworkPolicySupport={qosNetworkPolicySupport}
         qosSupport={qosSupport}
         securityGroupSupport={securityGroupSupport}
+        tagFilter={tagFilter}
+        tagFilterError={tagFilterError}
+        tagSupport={tagSupport}
         trustedVifSupport={trustedVifSupport}
         uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
       />

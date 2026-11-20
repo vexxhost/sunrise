@@ -31,6 +31,9 @@ import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter";
 import { ensureRequiredDataTableColumn } from "@/lib/data-table-columns";
 import { formatAge } from "@/lib/openstack/time";
 import { DataTableToolbar } from "./DataTable/Toolbar";
+
+const NO_FORCED_VISIBLE_COLUMNS: string[] = [];
+
 declare module "@tanstack/react-table" {
   interface ColumnMeta<TData extends RowData, TValue> {
     label?: string;
@@ -54,6 +57,8 @@ export interface DataTableRowAction<TData> {
 interface DataTableBaseProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
+  additionalFilters?: React.ReactNode;
+  forceVisibleColumnIds?: string[];
   isRefetching?: boolean;
   refetch?: () => void;
   resourceName: string;
@@ -77,6 +82,8 @@ type DataTableProps<TData, TValue> = DataTableBaseProps<TData, TValue> &
 export function DataTable<TData, TValue>({
   columns,
   data,
+  additionalFilters,
+  forceVisibleColumnIds = NO_FORCED_VISIBLE_COLUMNS,
   isRefetching = false,
   refetch,
   resourceName,
@@ -130,6 +137,7 @@ export function DataTable<TData, TValue>({
   const { columnVisibility, setColumnVisibility } = useColumnVisibility(
     tableColumns,
     resourceName,
+    forceVisibleColumnIds,
   );
   const { columnOrder, setColumnOrder } = useColumnOrder(
     tableColumns,
@@ -178,6 +186,8 @@ export function DataTable<TData, TValue>({
       <DataTableToolbar
         table={table}
         data={data}
+        additionalFilters={additionalFilters}
+        forceVisibleColumnIds={forceVisibleColumnIds}
         resourceName={resourceName}
         rowActions={rowActions}
         isRefetching={isRefetching}

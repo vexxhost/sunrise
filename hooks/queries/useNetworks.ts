@@ -12,6 +12,11 @@ import {
 import { listProjectFloatingIpPortForwardings } from "@/lib/openstack/neutron-port-forwarding-actions";
 import { listProjectRouterConntrackHelpers } from "@/lib/openstack/neutron-router-conntrack-helper-actions";
 import { getNetworkIpAvailability } from "@/lib/openstack/neutron-ip-availability-actions";
+import { listProjectNeutronResourcesByTags } from "@/lib/openstack/neutron-tag-filter-actions";
+import {
+  neutronTagFilterQueryKey,
+  type NeutronTagFilter,
+} from "@/lib/openstack/neutron-tag-filters";
 import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availability-zones";
 import type {
   AddressGroup,
@@ -199,10 +204,24 @@ export function qosPoliciesQueryOptions(
 export function projectNetworksQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
+  tagFilter?: NeutronTagFilter,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "project-networks"],
+    queryKey: [
+      regionId,
+      projectId,
+      "project-networks",
+      ...neutronTagFilterQueryKey(tagFilter),
+    ],
     queryFn: async () => {
+      if (tagFilter) {
+        return (await listProjectNeutronResourcesByTags(
+          regionId!,
+          projectId!,
+          "network",
+          tagFilter,
+        )) as Network[];
+      }
       const data = await openstack<{ networks: Network[] }>({
         regionId: regionId!,
         serviceType: "network",
@@ -312,8 +331,7 @@ export function networkIpAvailabilityQueryOptions(
 ) {
   return queryOptions({
     queryKey: [regionId, projectId, "network-ip-availability", networkId],
-    queryFn: () =>
-      getNetworkIpAvailability(regionId!, projectId!, networkId),
+    queryFn: () => getNetworkIpAvailability(regionId!, projectId!, networkId),
     enabled: !!regionId && !!projectId && !!networkId,
   });
 }
@@ -343,10 +361,24 @@ export function subnetQueryOptions(
 export function routersQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
+  tagFilter?: NeutronTagFilter,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "routers"],
+    queryKey: [
+      regionId,
+      projectId,
+      "routers",
+      ...neutronTagFilterQueryKey(tagFilter),
+    ],
     queryFn: async () => {
+      if (tagFilter) {
+        return (await listProjectNeutronResourcesByTags(
+          regionId!,
+          projectId!,
+          "router",
+          tagFilter,
+        )) as Router[];
+      }
       const data = await openstack<{ routers: Router[] }>({
         regionId: regionId!,
         serviceType: "network",
@@ -450,10 +482,24 @@ export function networkQueryOptions(
 export function portsQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
+  tagFilter?: NeutronTagFilter,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "ports"],
+    queryKey: [
+      regionId,
+      projectId,
+      "ports",
+      ...neutronTagFilterQueryKey(tagFilter),
+    ],
     queryFn: async () => {
+      if (tagFilter) {
+        return (await listProjectNeutronResourcesByTags(
+          regionId!,
+          projectId!,
+          "port",
+          tagFilter,
+        )) as Port[];
+      }
       const data = await openstack<{ ports: Port[] }>({
         regionId: regionId!,
         serviceType: "network",
@@ -474,10 +520,24 @@ export function portsQueryOptions(
 export function floatingIpsQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
+  tagFilter?: NeutronTagFilter,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "floating-ips"],
+    queryKey: [
+      regionId,
+      projectId,
+      "floating-ips",
+      ...neutronTagFilterQueryKey(tagFilter),
+    ],
     queryFn: async () => {
+      if (tagFilter) {
+        return (await listProjectNeutronResourcesByTags(
+          regionId!,
+          projectId!,
+          "floating-ip",
+          tagFilter,
+        )) as FloatingIp[];
+      }
       const data = await openstack<{ floatingips: FloatingIp[] }>({
         regionId: regionId!,
         serviceType: "network",
@@ -566,10 +626,24 @@ export function portQueryOptions(
 export function securityGroupsQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
+  tagFilter?: NeutronTagFilter,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "security-groups"],
+    queryKey: [
+      regionId,
+      projectId,
+      "security-groups",
+      ...neutronTagFilterQueryKey(tagFilter),
+    ],
     queryFn: async () => {
+      if (tagFilter) {
+        return (await listProjectNeutronResourcesByTags(
+          regionId!,
+          projectId!,
+          "security-group",
+          tagFilter,
+        )) as SecurityGroup[];
+      }
       const data = await openstack<{ security_groups: SecurityGroup[] }>({
         regionId: regionId!,
         serviceType: "network",

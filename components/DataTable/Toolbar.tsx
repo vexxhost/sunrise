@@ -27,6 +27,8 @@ import { useIsHydrated } from "@/hooks/useIsHydrated";
 interface DataTableToolbarProps<TData> {
   table?: Table<TData>;
   data?: TData[];
+  additionalFilters?: React.ReactNode;
+  forceVisibleColumnIds?: string[];
   resourceName: string;
   rowActions?: DataTableRowAction<TData>[];
   isRefetching?: boolean;
@@ -37,6 +39,8 @@ interface DataTableToolbarProps<TData> {
 export function DataTableToolbar<TData>({
   table,
   data = [],
+  additionalFilters,
+  forceVisibleColumnIds = [],
   resourceName,
   rowActions = [],
   isRefetching = false,
@@ -48,8 +52,8 @@ export function DataTableToolbar<TData>({
   const showRefetching = isHydrated && isRefetching;
 
   return (
-    <div className="flex items-center justify-between pb-2">
-      <div className="inline-flex rounded-md shadow-sm">
+    <div className="flex flex-wrap items-center justify-between gap-2 pb-2">
+      <div className="flex flex-wrap items-center gap-2">
         {hasTable && onFiltersChange ? (
           <FilterBuilder
             columns={table.getAllColumns()}
@@ -57,21 +61,16 @@ export function DataTableToolbar<TData>({
             data={data}
           />
         ) : (
-          <Button
-            variant="outline"
-            disabled
-            size="lg"
-          >
+          <Button variant="outline" disabled size="lg">
             <FilterIcon className="mr-1 h-3 w-3" />
             Filter
           </Button>
         )}
+        {additionalFilters}
       </div>
 
       <div className="flex items-center gap-2">
-        {hasTable && (
-          <DataTablePagination table={table} />
-        )}
+        {hasTable && <DataTablePagination table={table} />}
 
         {rowActions.length > 0 && (
           <DropdownMenu>
@@ -79,7 +78,11 @@ export function DataTableToolbar<TData>({
               <Button
                 variant="outline"
                 size="lg"
-                disabled={!hasTable || (hasTable && table.getFilteredSelectedRowModel().rows.length === 0)}
+                disabled={
+                  !hasTable ||
+                  (hasTable &&
+                    table.getFilteredSelectedRowModel().rows.length === 0)
+                }
               >
                 Actions
                 <ChevronDown className="h-4 w-4" />
@@ -89,12 +92,18 @@ export function DataTableToolbar<TData>({
               {rowActions.map((action, index) => {
                 const Icon = action.icon;
                 const selectedRows = hasTable
-                  ? table.getFilteredSelectedRowModel().rows.map((row) => row.original)
+                  ? table
+                      .getFilteredSelectedRowModel()
+                      .rows.map((row) => row.original)
                   : [];
                 return (
                   <DropdownMenuItem
                     key={index}
-                    variant={action.variant === 'destructive' ? 'destructive' : 'default'}
+                    variant={
+                      action.variant === "destructive"
+                        ? "destructive"
+                        : "default"
+                    }
                     disabled={action.isDisabled?.(selectedRows) ?? false}
                     onClick={() => {
                       if (hasTable) {
@@ -124,7 +133,11 @@ export function DataTableToolbar<TData>({
             Refresh
           </Button>
           {table ? (
-            <DataTableDialog table={table} resourceName={resourceName} />
+            <DataTableDialog
+              table={table}
+              resourceName={resourceName}
+              forceVisibleColumnIds={forceVisibleColumnIds}
+            />
           ) : (
             <DataTableDialogButton disabled={true} />
           )}

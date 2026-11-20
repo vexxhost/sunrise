@@ -1,14 +1,17 @@
-import { ColumnDef } from '@tanstack/react-table';
-import { useLocalStorage } from 'usehooks-ts';
-import { useEffect, useMemo } from 'react';
+import { ColumnDef } from "@tanstack/react-table";
+import { useLocalStorage } from "usehooks-ts";
+import { useEffect, useMemo } from "react";
 import {
   getDataTableColumnId,
   isRequiredDataTableColumn,
-} from '@/lib/data-table-columns';
+} from "@/lib/data-table-columns";
 
 const LOCAL_STORAGE_OPTIONS = { initializeWithValue: false };
 
-function recordsEqual(left: Record<string, boolean>, right: Record<string, boolean>) {
+function recordsEqual(
+  left: Record<string, boolean>,
+  right: Record<string, boolean>,
+) {
   const leftKeys = Object.keys(left);
   const rightKeys = Object.keys(right);
 
@@ -24,7 +27,8 @@ function recordsEqual(left: Record<string, boolean>, right: Record<string, boole
  */
 export function useColumnVisibility<TData, TValue>(
   columns: ColumnDef<TData, TValue>[],
-  resourceName?: string
+  resourceName?: string,
+  forceVisibleColumnIds: string[] = [],
 ) {
   const defaultVisibility = useMemo(() => {
     const visibility: Record<string, boolean> = {};
@@ -34,7 +38,7 @@ export function useColumnVisibility<TData, TValue>(
       if (id) {
         visibility[id] = isRequiredDataTableColumn(column)
           ? true
-          : column.meta?.visible ?? true;
+          : (column.meta?.visible ?? true);
       }
     });
 
@@ -53,22 +57,35 @@ export function useColumnVisibility<TData, TValue>(
     return visibility;
   }, [columns]);
 
-  const [columnVisibility, setColumnVisibility] = useLocalStorage<Record<string, boolean>>(
+  const [columnVisibility, setColumnVisibility] = useLocalStorage<
+    Record<string, boolean>
+  >(
     `${resourceName}dataTableColumnVisibility`,
     () => defaultVisibility,
     LOCAL_STORAGE_OPTIONS,
   );
 
-  const effectiveColumnVisibility = useMemo(
-    () => ({ ...defaultVisibility, ...columnVisibility, ...requiredVisibility }),
+  const persistedColumnVisibility = useMemo(
+    () => ({
+      ...defaultVisibility,
+      ...columnVisibility,
+      ...requiredVisibility,
+    }),
     [columnVisibility, defaultVisibility, requiredVisibility],
+  );
+  const effectiveColumnVisibility = useMemo(
+    () => ({
+      ...persistedColumnVisibility,
+      ...Object.fromEntries(forceVisibleColumnIds.map((id) => [id, true])),
+    }),
+    [forceVisibleColumnIds, persistedColumnVisibility],
   );
 
   useEffect(() => {
-    if (!recordsEqual(effectiveColumnVisibility, columnVisibility)) {
-      setColumnVisibility(effectiveColumnVisibility);
+    if (!recordsEqual(persistedColumnVisibility, columnVisibility)) {
+      setColumnVisibility(persistedColumnVisibility);
     }
-  }, [columnVisibility, effectiveColumnVisibility, setColumnVisibility]);
+  }, [columnVisibility, persistedColumnVisibility, setColumnVisibility]);
 
   return {
     columnVisibility: effectiveColumnVisibility,

@@ -11,25 +11,60 @@ import {
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_QOS_FLOATING_IP_EXTENSION,
   NEUTRON_QOS_FLOATING_IP_NETWORK_POLICY_EXTENSION,
+  NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
+import {
+  parseNeutronTagFilterSearchParams,
+  type NeutronTagFilterSearchParams,
+} from "@/lib/openstack/neutron-tag-filters";
+
+type FloatingIpSearchParams = NeutronTagFilterSearchParams & {
+  create?: string | string[];
+};
 
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ create?: string | string[] }>;
+  searchParams: Promise<FloatingIpSearchParams>;
 }) {
   const session = await getSession();
   if (!session.projectId || !session.regionId) return null;
+  const pageSearchParams = await searchParams;
   const createRequested = isCreateActionRequested(
-    (await searchParams).create,
+    pageSearchParams.create,
     "floating-ip",
   );
+  const parsedTagFilter = parseNeutronTagFilterSearchParams(pageSearchParams);
   const capabilitiesPromise = discoverNetworkCapabilities(session.regionId);
+  const tagFilterPromise = parsedTagFilter.filter
+    ? capabilitiesPromise.then((capabilities) =>
+        extensionSupport(
+          capabilities,
+          NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+          "Floating IP tag filters",
+        ).status === "unsupported"
+          ? undefined
+          : parsedTagFilter.filter,
+      )
+    : Promise.resolve(undefined);
   const queryClient = makeQueryClient();
-  await queryClient.prefetchQuery(
-    floatingIpsQueryOptions(session.regionId, session.projectId),
+  await tagFilterPromise.then((tagFilter) =>
+    queryClient.prefetchQuery(
+      floatingIpsQueryOptions(session.regionId, session.projectId, tagFilter),
+    ),
   );
   const capabilities = await capabilitiesPromise;
+  const tagFilter = await tagFilterPromise;
+  const tagSupport = extensionSupport(
+    capabilities,
+    NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+    "Floating IP tag filters",
+  );
+  const tagFilterError =
+    parsedTagFilter.error ??
+    (parsedTagFilter.filter && tagSupport.status === "unsupported"
+      ? tagSupport.message
+      : undefined);
   const dnsIntegrationSupport = extensionSupport(
     capabilities,
     NEUTRON_DNS_INTEGRATION_EXTENSION,
@@ -56,6 +91,9 @@ export default async function Page({
         initiallyOpen={createRequested}
         qosNetworkPolicySupport={qosNetworkPolicySupport}
         qosSupport={qosSupport}
+        tagFilter={tagFilter}
+        tagFilterError={tagFilterError}
+        tagSupport={tagSupport}
       />
     </QueryHydrationBoundary>
   );
