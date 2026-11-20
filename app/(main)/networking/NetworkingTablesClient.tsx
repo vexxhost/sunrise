@@ -47,8 +47,11 @@ import {
 import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-types";
 import { routerExternalGateways } from "@/lib/openstack/neutron-router-gateways";
 import { NeutronTagFilterControl } from "@/components/Network/NeutronTagFilter";
+import {
+  NeutronResourceTag,
+  type NeutronTaggableResourceType,
+} from "@/components/Network/NeutronResourceTag";
 import type { NeutronTagFilter } from "@/lib/openstack/neutron-tag-filters";
-import { formatNeutronTag } from "@/lib/openstack/neutron-tags";
 
 interface NetworkingTableProps {
   projectId: string;
@@ -77,7 +80,10 @@ function StateBadge({ active, label }: { active: boolean; label: string }) {
   return <Badge variant={active ? "secondary" : "outline"}>{label}</Badge>;
 }
 
-function neutronTagColumn<T extends { tags?: string[] }>() {
+function neutronTagColumn<T extends { tags?: string[] }>(
+  resourceType: NeutronTaggableResourceType,
+  support: OpenStackFeatureSupport,
+) {
   return {
     id: "tags",
     accessorFn: (resource) => (resource.tags ?? []).join("\n"),
@@ -90,11 +96,14 @@ function neutronTagColumn<T extends { tags?: string[] }>() {
       return (
         <div className="flex max-w-64 flex-wrap gap-1">
           {tags.slice(0, 2).map((tag) => (
-            <Badge key={tag} variant="secondary" className="max-w-48">
-              <span className="truncate font-mono">
-                {formatNeutronTag(tag)}
-              </span>
-            </Badge>
+            <NeutronResourceTag
+              key={tag}
+              className="max-w-48"
+              resourceType={resourceType}
+              support={support}
+              tag={tag}
+              truncate
+            />
           ))}
           {tags.length > 2 ? (
             <Badge variant="outline">+{tags.length - 2}</Badge>
@@ -270,14 +279,14 @@ export function NetworksTableClient({
       },
       ...(tagSupport.status === "unsupported"
         ? []
-        : [neutronTagColumn<Network>()]),
+        : [neutronTagColumn<Network>("network", tagSupport)]),
     ],
     [
       dnsIntegrationSupport.status,
       portSecuritySupport.status,
       qosSupport.status,
       subnetById,
-      tagSupport.status,
+      tagSupport,
       vlanTransparencySupport.status,
     ],
   );
@@ -438,9 +447,9 @@ export function RoutersTableClient({
       },
       ...(tagSupport.status === "unsupported"
         ? []
-        : [neutronTagColumn<Router>()]),
+        : [neutronTagColumn<Router>("router", tagSupport)]),
     ],
-    [externalById, tagSupport.status],
+    [externalById, tagSupport],
   );
 
   return (
@@ -727,7 +736,7 @@ export function PortsTableClient({
         : []),
       ...(tagSupport.status === "unsupported"
         ? []
-        : [neutronTagColumn<Port>()]),
+        : [neutronTagColumn<Port>("port", tagSupport)]),
     ],
     [
       dnsDomainPortsSupport.status,
@@ -738,7 +747,7 @@ export function PortsTableClient({
       showHardwareOffload,
       showNumaAffinity,
       showPortBinding,
-      tagSupport.status,
+      tagSupport,
       showTrustedVif,
       showUplinkStatusPropagation,
     ],
@@ -914,13 +923,13 @@ export function FloatingIpsTableClient({
           ]),
       ...(tagSupport.status === "unsupported"
         ? []
-        : [neutronTagColumn<FloatingIp>()]),
+        : [neutronTagColumn<FloatingIp>("floating-ip", tagSupport)]),
     ],
     [
       dnsIntegrationSupport.status,
       qosNetworkPolicySupport.status,
       qosSupport.status,
-      tagSupport.status,
+      tagSupport,
     ],
   );
 
@@ -1030,9 +1039,9 @@ export function SecurityGroupsTableClient({
       },
       ...(tagSupport.status === "unsupported"
         ? []
-        : [neutronTagColumn<SecurityGroup>()]),
+        : [neutronTagColumn<SecurityGroup>("security-group", tagSupport)]),
     ],
-    [hasReportedStateful, statefulSupport.status, tagSupport.status],
+    [hasReportedStateful, statefulSupport.status, tagSupport],
   );
 
   return (

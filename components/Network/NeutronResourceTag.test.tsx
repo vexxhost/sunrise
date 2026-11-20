@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ResourceTag } from "@/components/Network/NeutronResourceTagsSection";
+import { NeutronResourceTag } from "@/components/Network/NeutronResourceTag";
 
 describe("Neutron resource tag navigation", () => {
   it.each([
@@ -14,16 +14,14 @@ describe("Neutron resource tag navigation", () => {
     "links a representable %s tag to its filtered collection",
     (resourceType, collectionPath, pluralLabel) => {
       const markup = renderToStaticMarkup(
-        <ResourceTag
+        <NeutronResourceTag
           resourceType={resourceType}
           support={{ message: "Supported", status: "supported" }}
           tag="env:test"
         />,
       );
 
-      expect(markup).toContain(
-        `href="${collectionPath}?tag=env%3Atest"`,
-      );
+      expect(markup).toContain(`href="${collectionPath}?tag=env%3Atest"`);
       expect(markup).toContain(
         `aria-label="Show ${pluralLabel} tagged env:test"`,
       );
@@ -32,21 +30,19 @@ describe("Neutron resource tag navigation", () => {
 
   it("keeps links available while capability support is unknown", () => {
     const markup = renderToStaticMarkup(
-      <ResourceTag
+      <NeutronResourceTag
         resourceType="network"
         support={{ message: "Support is unknown", status: "unknown" }}
         tag="env:test"
       />,
     );
 
-    expect(markup).toContain(
-      'href="/networking/networks?tag=env%3Atest"',
-    );
+    expect(markup).toContain('href="/networking/networks?tag=env%3Atest"');
   });
 
   it("does not link tags when collection filtering is unsupported", () => {
     const markup = renderToStaticMarkup(
-      <ResourceTag
+      <NeutronResourceTag
         resourceType="network"
         support={{
           message: "",
@@ -65,7 +61,7 @@ describe("Neutron resource tag navigation", () => {
 
   it("does not link a tag that cannot be represented exactly", () => {
     const markup = renderToStaticMarkup(
-      <ResourceTag
+      <NeutronResourceTag
         resourceType="network"
         support={{ message: "Supported", status: "supported" }}
         tag="team:a,b"
