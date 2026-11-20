@@ -300,6 +300,34 @@ describe("Neutron floating IP port forwarding actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
+  it("keeps an unavailable membership lookup retryable", async () => {
+    mocks.openstackRequest.mockImplementation(async ({ path }) =>
+      path === "/v2.0/floatingips/floating-a" ? floatingIpPayload() : null,
+    );
+
+    const result = await updateFloatingIpPortForwardingAction(
+      scope,
+      "floating-a",
+      "rule-a",
+      {
+        externalPortStart: 80,
+        internalIpAddress: "10.0.0.5",
+        internalPortId: "port-a",
+        internalPortStart: 80,
+        protocol: "tcp",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "service-error", retryable: true },
+    });
+    expect(mocks.openstackRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/v2.0/ports/port-a" }),
+    );
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("updates external and internal ranges allowed by Neutron", async () => {
     await updateFloatingIpPortForwardingAction(scope, "floating-a", "rule-a", {
       externalPortEnd: 8_010,

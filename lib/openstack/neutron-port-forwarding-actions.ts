@@ -173,7 +173,7 @@ async function floatingIpContainsPortForwarding(
   portForwardingId: string,
 ) {
   const rules = await requestPortForwardings(regionId, floatingIpId);
-  return rules?.some((rule) => rule.id === portForwardingId) ?? false;
+  return rules ? rules.some((rule) => rule.id === portForwardingId) : null;
 }
 
 async function requestFloatingIp(regionId: string, floatingIpId: string) {
@@ -459,21 +459,30 @@ async function prepareMutation(
     scope,
   );
   if (!parent.ok) return { ok: false as const, result: parent.result };
-  if (
-    parsedRuleId &&
-    !(await floatingIpContainsPortForwarding(
+  if (parsedRuleId) {
+    const ruleBelongsToFloatingIp = await floatingIpContainsPortForwarding(
       scope.regionId!,
       parsedId.data,
       parsedRuleId.data,
-    ))
-  ) {
-    return {
-      ok: false as const,
-      result: permissionFailure(
-        "The port forwarding rule does not belong to this floating IP.",
-        scope,
-      ),
-    };
+    );
+    if (ruleBelongsToFloatingIp === null) {
+      return {
+        ok: false as const,
+        result: serviceFailure(
+          "Sunrise could not verify the port forwarding rule before changing it.",
+          scope,
+        ),
+      };
+    }
+    if (!ruleBelongsToFloatingIp) {
+      return {
+        ok: false as const,
+        result: permissionFailure(
+          "The port forwarding rule does not belong to this floating IP.",
+          scope,
+        ),
+      };
+    }
   }
   const target = await validateTarget(
     scope.regionId!,

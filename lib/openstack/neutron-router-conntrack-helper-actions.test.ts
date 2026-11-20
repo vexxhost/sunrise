@@ -230,7 +230,10 @@ describe("Neutron router conntrack helper actions", () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: false,
-        error: expect.objectContaining({ code: "service-error" }),
+        error: expect.objectContaining({
+          code: "service-error",
+          retryable: true,
+        }),
       }),
     );
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
@@ -259,7 +262,7 @@ describe("Neutron router conntrack helper actions", () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: false,
-        error: expect.objectContaining({ code: "service-error" }),
+        error: expect.objectContaining({ code: "permission-denied" }),
       }),
     );
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
@@ -290,7 +293,7 @@ describe("Neutron router conntrack helper actions", () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: false,
-        error: expect.objectContaining({ code: "service-error" }),
+        error: expect.objectContaining({ code: "permission-denied" }),
       }),
     );
     expect(mocks.openstackRequest).not.toHaveBeenCalledWith(
@@ -325,7 +328,7 @@ describe("Neutron router conntrack helper actions", () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: false,
-        error: expect.objectContaining({ code: "service-error" }),
+        error: expect.objectContaining({ code: "permission-denied" }),
       }),
     );
     expect(mocks.openstackRequest).not.toHaveBeenCalledWith(

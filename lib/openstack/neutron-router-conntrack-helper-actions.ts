@@ -172,7 +172,7 @@ async function routerContainsConntrackHelper(
   helperId: string,
 ) {
   const helpers = await requestConntrackHelpers(regionId, routerId);
-  return helpers?.some((helper) => helper.id === helperId) ?? false;
+  return helpers ? helpers.some((helper) => helper.id === helperId) : null;
 }
 
 async function validateParent(
@@ -309,11 +309,20 @@ async function prepareMutation(
       parsedRouterId.data,
       parsedHelperId.data,
     );
-    if (!helperBelongsToRouter) {
+    if (helperBelongsToRouter === null) {
       return {
         ok: false as const,
         result: serviceFailure(
           "Sunrise could not verify the conntrack helper before changing it.",
+          scope,
+        ),
+      };
+    }
+    if (!helperBelongsToRouter) {
+      return {
+        ok: false as const,
+        result: permissionFailure(
+          "The conntrack helper does not belong to this router.",
           scope,
         ),
       };
@@ -432,9 +441,15 @@ export async function deleteRouterConntrackHelperAction(
     parsedRouterId.data,
     parsedHelperId.data,
   );
-  if (!helperBelongsToRouter) {
+  if (helperBelongsToRouter === null) {
     return serviceFailure(
       "Sunrise could not verify the conntrack helper before deleting it.",
+      activeScope,
+    );
+  }
+  if (!helperBelongsToRouter) {
+    return permissionFailure(
+      "The conntrack helper does not belong to this router.",
       activeScope,
     );
   }
