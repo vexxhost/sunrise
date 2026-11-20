@@ -10,6 +10,7 @@ export const GLOBAL_SEARCH_RESOURCE_LIMIT = 100;
 export type GlobalSearchResource = ResourcePreferenceInput & {
   href: string;
   status?: string;
+  tags?: string[];
 };
 
 export type GlobalSearchIndex = {
@@ -39,6 +40,7 @@ const resourceSearchTerms: Record<ResourceKind, string[]> = {
 type ResourceSource = {
   kind: ResourceKind;
   items: unknown;
+  searchTags?: boolean;
 };
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -50,9 +52,21 @@ function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function stringList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.filter(
+        (item): item is string => typeof item === "string" && item.length > 0,
+      ),
+    ),
+  ];
+}
+
 function resourceFromRecord(
   kind: ResourceKind,
   value: unknown,
+  searchTags: boolean,
 ): GlobalSearchResource | null {
   const record = recordValue(value);
   if (!record) return null;
@@ -64,6 +78,7 @@ function resourceFromRecord(
 
   const name = stringValue(record.name) ?? id;
   const status = stringValue(record.status) ?? undefined;
+  const tags = searchTags ? stringList(record.tags) : [];
 
   return {
     kind,
@@ -71,6 +86,7 @@ function resourceFromRecord(
     name,
     href: resourcePreferenceHref({ kind, id }),
     status,
+    ...(tags.length ? { tags } : {}),
   };
 }
 
@@ -85,7 +101,11 @@ export function buildGlobalSearchResources(
     if (!Array.isArray(source.items)) continue;
 
     for (const item of source.items.slice(0, boundedLimit)) {
-      const resource = resourceFromRecord(source.kind, item);
+      const resource = resourceFromRecord(
+        source.kind,
+        item,
+        source.searchTags === true,
+      );
       if (resource) resources.push(resource);
     }
   }
@@ -108,6 +128,19 @@ export function resourcePreferenceToSearchResource(
     ...resource,
     href: resourcePreferenceHref(resource),
   };
+}
+
+export function enrichGlobalSearchResources(
+  resources: ResourcePreferenceInput[],
+  fetched: GlobalSearchResource[],
+) {
+  const fetchedByKey = new Map(
+    fetched.map((resource) => [globalSearchResourceKey(resource), resource]),
+  );
+  return resources.map((resource) => {
+    const fetchedResource = fetchedByKey.get(globalSearchResourceKey(resource));
+    return fetchedResource ?? resourcePreferenceToSearchResource(resource);
+  });
 }
 
 export function excludeKnownGlobalSearchResources(
@@ -135,6 +168,8 @@ export function globalSearchResourceValue(resource: GlobalSearchResource) {
     resource.kind,
     resource.id,
     resource.status,
+    ...(resource.tags ?? []),
+    ...(resource.tags ?? []).map((tag) => `tag:${tag}`),
     ...resourceSearchTerms[resource.kind],
   ]
     .filter(Boolean)
