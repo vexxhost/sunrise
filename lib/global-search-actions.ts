@@ -52,8 +52,22 @@ type OpenStackSearchSource = {
   apiVersion?: string;
   apiVersionHeader?: string;
   projectIdField?: string;
+  projectIdRequired?: boolean;
   normalize?: (item: unknown) => unknown;
 };
+
+function neutronSearchPath(
+  collection: string,
+  projectId: string,
+  fields: string[],
+) {
+  const params = new URLSearchParams({
+    project_id: projectId,
+    limit: String(GLOBAL_SEARCH_RESOURCE_LIMIT),
+  });
+  for (const field of fields) params.append("fields", field);
+  return `/v2.0/${collection}?${params.toString()}`;
+}
 
 const openStackSources: OpenStackSearchSource[] = [
   {
@@ -95,6 +109,121 @@ const openStackSources: OpenStackSearchSource[] = [
       `/v2/lbaas/loadbalancers?project_id=${encodeURIComponent(projectId)}&limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
     responseKey: "loadbalancers",
     projectIdField: "project_id",
+  },
+  {
+    kind: "network",
+    service: "network",
+    label: "Networks",
+    serviceType: "network",
+    serviceName: "neutron",
+    path: (projectId) =>
+      neutronSearchPath("networks", projectId, [
+        "id",
+        "name",
+        "status",
+        "project_id",
+      ]),
+    responseKey: "networks",
+    projectIdField: "project_id",
+    projectIdRequired: true,
+  },
+  {
+    kind: "router",
+    service: "network",
+    label: "Routers",
+    serviceType: "network",
+    serviceName: "neutron",
+    path: (projectId) =>
+      neutronSearchPath("routers", projectId, [
+        "id",
+        "name",
+        "status",
+        "project_id",
+      ]),
+    responseKey: "routers",
+    projectIdField: "project_id",
+    projectIdRequired: true,
+  },
+  {
+    kind: "floating-ip",
+    service: "network",
+    label: "Floating IPs",
+    serviceType: "network",
+    serviceName: "neutron",
+    path: (projectId) =>
+      neutronSearchPath("floatingips", projectId, [
+        "id",
+        "floating_ip_address",
+        "status",
+        "project_id",
+      ]),
+    responseKey: "floatingips",
+    projectIdField: "project_id",
+    projectIdRequired: true,
+    normalize: (item) => {
+      const record = asRecord(item, "Neutron floating IP");
+      return {
+        id: record.id,
+        name: record.floating_ip_address,
+        status: record.status,
+      };
+    },
+  },
+  {
+    kind: "security-group",
+    service: "network",
+    label: "Security groups",
+    serviceType: "network",
+    serviceName: "neutron",
+    path: (projectId) =>
+      neutronSearchPath("security-groups", projectId, [
+        "id",
+        "name",
+        "project_id",
+      ]),
+    responseKey: "security_groups",
+    projectIdField: "project_id",
+    projectIdRequired: true,
+  },
+  {
+    kind: "port",
+    service: "network",
+    label: "Ports",
+    serviceType: "network",
+    serviceName: "neutron",
+    path: (projectId) =>
+      neutronSearchPath("ports", projectId, [
+        "id",
+        "name",
+        "status",
+        "fixed_ips",
+        "mac_address",
+        "project_id",
+      ]),
+    responseKey: "ports",
+    projectIdField: "project_id",
+    projectIdRequired: true,
+    normalize: (item) => {
+      const record = asRecord(item, "Neutron port");
+      const fixedIps = Array.isArray(record.fixed_ips)
+        ? record.fixed_ips
+            .map((fixedIp) => asRecord(fixedIp, "Neutron port fixed IP"))
+            .map((fixedIp) => fixedIp.ip_address)
+            .filter(
+              (address): address is string =>
+                typeof address === "string" && Boolean(address.trim()),
+            )
+        : [];
+      const name =
+        typeof record.name === "string" && record.name.trim()
+          ? record.name
+          : (fixedIps[0] ?? record.mac_address ?? record.id);
+      return {
+        id: record.id,
+        name,
+        status: record.status,
+      };
+    },
   },
   {
     kind: "share",
@@ -235,9 +364,10 @@ async function loadOpenStackSource({
           const record = asRecord(item, `${source.label} item`);
           const owner = record[source.projectIdField as string];
           return (
-            typeof owner !== "string" ||
-            owner.replace(/-/g, "").toLowerCase() ===
-              projectId.replace(/-/g, "").toLowerCase()
+            (typeof owner !== "string" && !source.projectIdRequired) ||
+            (typeof owner === "string" &&
+              owner.replace(/-/g, "").toLowerCase() ===
+                projectId.replace(/-/g, "").toLowerCase())
           );
         })
       : responseItems;

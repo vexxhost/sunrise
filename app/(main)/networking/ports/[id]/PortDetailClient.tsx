@@ -16,6 +16,7 @@ import {
 } from "@/hooks/queries/useNetworks";
 import { serversQueryOptions } from "@/hooks/queries/useServers";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-types";
 import {
@@ -132,18 +133,26 @@ export function PortDetailClient({
       : port.data.device_owner || "Unattached";
   const owned =
     port.data.project_id === projectId || port.data.tenant_id === projectId;
+  const portDisplayName =
+    port.data.name ||
+    port.data.fixed_ips[0]?.ip_address ||
+    port.data.mac_address ||
+    port.data.id;
   const { reported: resourceRequestReported, request: placementRequest } =
     inspectNeutronPortResourceRequest(port.data);
 
   return (
     <div className="space-y-6">
+      <RecentResourceTracker
+        kind="port"
+        id={port.data.id}
+        name={portDisplayName}
+      />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
             <EthernetPort className="size-5 text-muted-foreground" />
-            <h2 className="text-xl font-semibold">
-              {port.data.name || port.data.id}
-            </h2>
+            <h2 className="text-xl font-semibold">{portDisplayName}</h2>
           </div>
           <p className="mt-1 font-mono text-xs text-muted-foreground">
             {port.data.id}

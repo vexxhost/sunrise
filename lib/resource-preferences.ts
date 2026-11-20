@@ -6,6 +6,11 @@ export const resourceKinds = [
   "image",
   "cluster",
   "load-balancer",
+  "network",
+  "router",
+  "port",
+  "floating-ip",
+  "security-group",
   "bucket",
   "share",
   "share-snapshot",
@@ -287,6 +292,16 @@ export function resourcePreferenceHref(
       return `/kubernetes/clusters/${id}/overview`;
     case "load-balancer":
       return `/networking/load-balancers/${id}`;
+    case "network":
+      return `/networking/networks/${id}`;
+    case "router":
+      return `/networking/routers/${id}`;
+    case "port":
+      return `/networking/ports/${id}`;
+    case "floating-ip":
+      return `/networking/floating-ips/${id}`;
+    case "security-group":
+      return `/networking/security-groups/${id}`;
     case "bucket":
       return `/object-storage/buckets/${id}`;
     case "share":
@@ -309,6 +324,11 @@ export function resourceKindLabel(kind: ResourceKind) {
     image: "Image",
     cluster: "Kubernetes cluster",
     "load-balancer": "Load balancer",
+    network: "Network",
+    router: "Router",
+    port: "Port",
+    "floating-ip": "Floating IP",
+    "security-group": "Security group",
     bucket: "Bucket",
     share: "Share",
     "share-snapshot": "Share snapshot",
