@@ -102,6 +102,7 @@ const openStackSources: OpenStackSearchSource[] = [
     serviceName: "glance",
     path: `/v2/images?limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
     responseKey: "images",
+    searchTags: true,
   },
   {
     kind: "load-balancer",

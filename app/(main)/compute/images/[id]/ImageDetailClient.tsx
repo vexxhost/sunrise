@@ -170,6 +170,23 @@ export function ImageDetailClient({
           </DetailField>
           <DetailField label="Protected">{renderValue(image.protected)}</DetailField>
           <DetailField label="Hidden">{renderValue(image.os_hidden)}</DetailField>
+          <DetailField label="Tags">
+            {image.tags.length ? (
+              <span className="flex flex-wrap gap-1">
+                {image.tags.map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="secondary"
+                    className="max-w-full break-all font-mono"
+                  >
+                    {tag}
+                  </Badge>
+                ))}
+              </span>
+            ) : (
+              "-"
+            )}
+          </DetailField>
           <DetailField label="Created">{image.created_at}</DetailField>
           <DetailField label="Updated">{image.updated_at}</DetailField>
         </DetailSection>

@@ -244,4 +244,51 @@ describe("global search actions", () => {
       expect(url).not.toContain("fields=tags");
     }
   });
+
+  it("indexes exact Glance image tags", async () => {
+    mocks.getServiceCatalog.mockResolvedValue([
+      {
+        name: "glance",
+        type: "image",
+        endpoints: [
+          {
+            interface: "public",
+            region: "RegionOne",
+            url: "https://glance.example.test",
+          },
+        ],
+      },
+    ]);
+    mocks.isServiceEnabled.mockImplementation(
+      (_policy: unknown, service: string) => service === "image",
+    );
+    mocks.requestJson.mockResolvedValue({
+      images: [
+        {
+          id: "image-a",
+          name: "application image",
+          status: "active",
+          tags: ["env:test", "team:platform"],
+        },
+      ],
+    });
+
+    const result = await loadGlobalSearchIndex();
+
+    expect(mocks.requestJson).toHaveBeenCalledOnce();
+    expect(mocks.requestJson.mock.calls[0]?.[0]).toBe(
+      "https://glance.example.test/v2/images?limit=100",
+    );
+    expect(result).toEqual({
+      resources: [
+        expect.objectContaining({
+          kind: "image",
+          id: "image-a",
+          name: "application image",
+          tags: ["env:test", "team:platform"],
+        }),
+      ],
+      unavailableSources: [],
+    });
+  });
 });
