@@ -26,6 +26,7 @@ import {
 } from "@/hooks/queries/useNetworks";
 import { isRouterInterfacePort } from "@/lib/openstack/neutron-topology";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import {
@@ -103,6 +104,11 @@ export function RouterDetailClient({
 
   return (
     <div className="space-y-6">
+      <RecentResourceTracker
+        kind="router"
+        id={router.data.id}
+        name={router.data.name || router.data.id}
+      />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">

@@ -20,6 +20,7 @@ import {
 } from "@/hooks/queries/useNetworks";
 import { isRouterInterfacePort } from "@/lib/openstack/neutron-topology";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 interface NetworkDetailClientProps {
@@ -181,6 +182,11 @@ export function NetworkDetailClient({
 
   return (
     <div className="space-y-6">
+      <RecentResourceTracker
+        kind="network"
+        id={network.data.id}
+        name={network.data.name || network.data.id}
+      />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

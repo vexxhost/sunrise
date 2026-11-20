@@ -65,7 +65,12 @@ describe("resource recovery", () => {
 
   it("limits cookie cleanup to preference-backed resource kinds", () => {
     expect(recoveryPreferenceKind("cluster")).toBe("cluster");
-    expect(recoveryPreferenceKind("router")).toBeUndefined();
+    expect(recoveryPreferenceKind("network")).toBe("network");
+    expect(recoveryPreferenceKind("router")).toBe("router");
+    expect(recoveryPreferenceKind("port")).toBe("port");
+    expect(recoveryPreferenceKind("floating-ip")).toBe("floating-ip");
+    expect(recoveryPreferenceKind("security-group")).toBe("security-group");
+    expect(recoveryPreferenceKind("address-group")).toBeUndefined();
   });
 
   it("provides safe labels and rejects unknown kinds", () => {

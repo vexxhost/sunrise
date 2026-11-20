@@ -13,6 +13,7 @@ import {
   securityGroupsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import type { SecurityGroupRule } from "@/types/openstack";
 
@@ -75,6 +76,11 @@ export function SecurityGroupDetailClient({
     group.data.project_id === projectId || group.data.tenant_id === projectId;
   return (
     <div className="space-y-6">
+      <RecentResourceTracker
+        kind="security-group"
+        id={group.data.id}
+        name={group.data.name || group.data.id}
+      />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
