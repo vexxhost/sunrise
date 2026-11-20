@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   neutronTagFilterApiQuery,
   neutronTagFilterError,
+  neutronTagFilterHref,
   neutronTagFilterQueryKey,
   neutronTagFilterShareUrl,
   parseNeutronTagFilterInput,
   parseNeutronTagFilterSearchParams,
+  withNeutronTagFilter,
 } from "@/lib/openstack/neutron-tag-filters";
 
 describe("Neutron tag filters", () => {
@@ -83,6 +85,23 @@ describe("Neutron tag filters", () => {
       ),
     ).toBe(
       "https://sunrise.example/networking/networks?tag=env%3Atest&tag=team%3Aplatform&tag-mode=any",
+    );
+  });
+
+  it("builds exact collection links and replaces stale filter state", () => {
+    expect(
+      withNeutronTagFilter("create=network&tag=old&tag-mode=any", {
+        mode: "all",
+        tags: ["env:test", " team:platform "],
+      }).toString(),
+    ).toBe("create=network&tag=env%3Atest&tag=+team%3Aplatform+");
+    expect(
+      neutronTagFilterHref("/networking/networks", {
+        mode: "any",
+        tags: ["env:test", "env:staging"],
+      }),
+    ).toBe(
+      "/networking/networks?tag=env%3Atest&tag=env%3Astaging&tag-mode=any",
     );
   });
 });

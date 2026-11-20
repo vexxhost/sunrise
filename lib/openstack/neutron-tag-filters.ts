@@ -115,6 +115,34 @@ export function neutronTagFilterQueryKey(filter?: NeutronTagFilter) {
   return filter ? [filter.mode, ...filter.tags] : [];
 }
 
+export function withNeutronTagFilter(
+  searchParams: URLSearchParams | string,
+  filter?: NeutronTagFilter,
+) {
+  const next = new URLSearchParams(searchParams);
+  next.delete(NEUTRON_TAG_FILTER_PARAM);
+  next.delete(NEUTRON_TAG_FILTER_MODE_PARAM);
+  if (!filter) return next;
+
+  const error = neutronTagFilterError(filter);
+  if (error) throw new Error(error);
+  for (const tag of filter.tags) {
+    next.append(NEUTRON_TAG_FILTER_PARAM, tag);
+  }
+  if (filter.mode === "any") {
+    next.set(NEUTRON_TAG_FILTER_MODE_PARAM, "any");
+  }
+  return next;
+}
+
+export function neutronTagFilterHref(
+  pathname: string,
+  filter: NeutronTagFilter,
+) {
+  const query = withNeutronTagFilter("", filter).toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 export function neutronTagFilterShareUrl(currentUrl: string) {
   const url = new URL(currentUrl);
   url.searchParams.delete("create");
