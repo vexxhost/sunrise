@@ -74,6 +74,9 @@ describe("global search actions", () => {
 
   it("loads project-scoped Neutron resources with useful display names", async () => {
     mocks.requestJson.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v2.0/extensions")) {
+        return { extensions: [{ alias: "standard-attr-tag" }] };
+      }
       if (url.includes("/networks?")) {
         return {
           networks: [
@@ -82,6 +85,7 @@ describe("global search actions", () => {
               name: "private",
               project_id: "project-a",
               status: "ACTIVE",
+              tags: ["env:test"],
             },
             {
               id: "network-other",
@@ -159,6 +163,7 @@ describe("global search actions", () => {
           id: "network-a",
           name: "private",
           href: "/networking/networks/network-a",
+          tags: ["env:test"],
         }),
         expect.objectContaining({
           kind: "router",
@@ -187,12 +192,56 @@ describe("global search actions", () => {
       ]),
     );
     expect(result.resources).toHaveLength(5);
-    expect(mocks.requestJson).toHaveBeenCalledTimes(5);
-    for (const [url] of mocks.requestJson.mock.calls) {
+    expect(mocks.requestJson).toHaveBeenCalledTimes(6);
+    const listCalls = mocks.requestJson.mock.calls.filter(([url]) =>
+      String(url).includes("project_id=project-a"),
+    );
+    expect(listCalls).toHaveLength(5);
+    for (const [url] of listCalls) {
       expect(url).toContain("project_id=project-a");
       expect(url).toContain("limit=100");
       expect(url).toContain("fields=id");
       expect(url).toContain("fields=project_id");
+      expect(url).toContain("fields=tags");
+    }
+  });
+
+  it("keeps Neutron resources searchable when tag support is absent", async () => {
+    mocks.requestJson.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v2.0/extensions")) return { extensions: [] };
+      if (url.includes("/networks?")) {
+        return {
+          networks: [
+            {
+              id: "network-a",
+              name: "private",
+              project_id: "project-a",
+              tags: ["env:test"],
+            },
+          ],
+        };
+      }
+      if (url.includes("/routers?")) return { routers: [] };
+      if (url.includes("/floatingips?")) return { floatingips: [] };
+      if (url.includes("/security-groups?")) {
+        return { security_groups: [] };
+      }
+      if (url.includes("/ports?")) return { ports: [] };
+      throw new Error(`Unexpected URL: ${url}`);
+    });
+
+    const result = await loadGlobalSearchIndex();
+    const listCalls = mocks.requestJson.mock.calls.filter(([url]) =>
+      String(url).includes("project_id=project-a"),
+    );
+
+    expect(result.resources).toEqual([
+      expect.objectContaining({ kind: "network" }),
+    ]);
+    expect(result.resources[0].tags).toBeUndefined();
+    expect(listCalls).toHaveLength(5);
+    for (const [url] of listCalls) {
+      expect(url).not.toContain("fields=tags");
     }
   });
 });

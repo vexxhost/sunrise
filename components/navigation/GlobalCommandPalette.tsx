@@ -33,6 +33,7 @@ import {
   Share2,
   Shield,
   Star,
+  Tag,
   Vault,
   Warehouse,
   Package,
@@ -59,10 +60,10 @@ import {
 import { GLOBAL_SEARCH_EVENT } from "@/components/navigation/global-search-events";
 import { createActionIcons } from "@/components/resources/CreateResourceMenu";
 import {
+  enrichGlobalSearchResources,
   excludeKnownGlobalSearchResources,
   globalSearchResourceDescription,
   globalSearchResourceValue,
-  resourcePreferenceToSearchResource,
   type GlobalSearchResource,
 } from "@/lib/global-search";
 import { loadGlobalSearchIndex } from "@/lib/global-search-actions";
@@ -166,6 +167,15 @@ function ResourceItem({
         <span className="block truncate text-xs text-muted-foreground">
           {globalSearchResourceDescription(resource)}
         </span>
+        {resource.tags?.length ? (
+          <span
+            className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
+            title={resource.tags.join(", ")}
+          >
+            <Tag className="size-3 shrink-0" aria-hidden="true" />
+            <span className="truncate">{resource.tags.join(", ")}</span>
+          </span>
+        ) : null}
       </span>
     </CommandItem>
   );
@@ -287,16 +297,17 @@ export function GlobalCommandPalette() {
     };
   }, []);
 
+  const indexedResources = searchIndex.data?.resources;
   const pinned = useMemo(
-    () => pinnedResources.map(resourcePreferenceToSearchResource),
-    [pinnedResources],
+    () => enrichGlobalSearchResources(pinnedResources, indexedResources ?? []),
+    [indexedResources, pinnedResources],
   );
   const recent = useMemo(
-    () => recentResources.map(resourcePreferenceToSearchResource),
-    [recentResources],
+    () => enrichGlobalSearchResources(recentResources, indexedResources ?? []),
+    [indexedResources, recentResources],
   );
   const fetchedResources = excludeKnownGlobalSearchResources(
-    searchIndex.data?.resources ?? [],
+    indexedResources ?? [],
     [...pinned, ...recent],
   );
   const favoriteDestinationSet = useMemo(

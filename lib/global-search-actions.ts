@@ -17,6 +17,8 @@ import {
   requestJson,
   serviceUrl,
 } from "@/lib/openstack/request";
+import { parseExtensionAliases } from "@/lib/openstack/capabilities";
+import { NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION } from "@/lib/openstack/capabilities-server";
 import type { ResourceKind } from "@/lib/resource-preferences";
 import { barbicanIdFromRef } from "@/lib/openstack/barbican-schema";
 import { getServicePolicy } from "@/lib/deployment-config";
@@ -38,6 +40,7 @@ const logger = createLogger("global-search");
 type LoadedSource = {
   kind: ResourceKind;
   items: unknown[];
+  searchTags?: boolean;
   unavailableSource?: string;
 };
 
@@ -47,12 +50,13 @@ type OpenStackSearchSource = {
   label: string;
   serviceType: string;
   serviceName: string;
-  path: string | ((projectId: string) => string);
+  path: string | ((projectId: string, searchTags: boolean) => string);
   responseKey: string;
   apiVersion?: string;
   apiVersionHeader?: string;
   projectIdField?: string;
   projectIdRequired?: boolean;
+  searchTags?: boolean;
   normalize?: (item: unknown) => unknown;
 };
 
@@ -116,16 +120,18 @@ const openStackSources: OpenStackSearchSource[] = [
     label: "Networks",
     serviceType: "network",
     serviceName: "neutron",
-    path: (projectId) =>
+    path: (projectId, searchTags) =>
       neutronSearchPath("networks", projectId, [
         "id",
         "name",
         "status",
         "project_id",
+        ...(searchTags ? ["tags"] : []),
       ]),
     responseKey: "networks",
     projectIdField: "project_id",
     projectIdRequired: true,
+    searchTags: true,
   },
   {
     kind: "router",
@@ -133,16 +139,18 @@ const openStackSources: OpenStackSearchSource[] = [
     label: "Routers",
     serviceType: "network",
     serviceName: "neutron",
-    path: (projectId) =>
+    path: (projectId, searchTags) =>
       neutronSearchPath("routers", projectId, [
         "id",
         "name",
         "status",
         "project_id",
+        ...(searchTags ? ["tags"] : []),
       ]),
     responseKey: "routers",
     projectIdField: "project_id",
     projectIdRequired: true,
+    searchTags: true,
   },
   {
     kind: "floating-ip",
@@ -150,22 +158,25 @@ const openStackSources: OpenStackSearchSource[] = [
     label: "Floating IPs",
     serviceType: "network",
     serviceName: "neutron",
-    path: (projectId) =>
+    path: (projectId, searchTags) =>
       neutronSearchPath("floatingips", projectId, [
         "id",
         "floating_ip_address",
         "status",
         "project_id",
+        ...(searchTags ? ["tags"] : []),
       ]),
     responseKey: "floatingips",
     projectIdField: "project_id",
     projectIdRequired: true,
+    searchTags: true,
     normalize: (item) => {
       const record = asRecord(item, "Neutron floating IP");
       return {
         id: record.id,
         name: record.floating_ip_address,
         status: record.status,
+        tags: record.tags,
       };
     },
   },
@@ -175,15 +186,17 @@ const openStackSources: OpenStackSearchSource[] = [
     label: "Security groups",
     serviceType: "network",
     serviceName: "neutron",
-    path: (projectId) =>
+    path: (projectId, searchTags) =>
       neutronSearchPath("security-groups", projectId, [
         "id",
         "name",
         "project_id",
+        ...(searchTags ? ["tags"] : []),
       ]),
     responseKey: "security_groups",
     projectIdField: "project_id",
     projectIdRequired: true,
+    searchTags: true,
   },
   {
     kind: "port",
@@ -191,7 +204,7 @@ const openStackSources: OpenStackSearchSource[] = [
     label: "Ports",
     serviceType: "network",
     serviceName: "neutron",
-    path: (projectId) =>
+    path: (projectId, searchTags) =>
       neutronSearchPath("ports", projectId, [
         "id",
         "name",
@@ -199,10 +212,12 @@ const openStackSources: OpenStackSearchSource[] = [
         "fixed_ips",
         "mac_address",
         "project_id",
+        ...(searchTags ? ["tags"] : []),
       ]),
     responseKey: "ports",
     projectIdField: "project_id",
     projectIdRequired: true,
+    searchTags: true,
     normalize: (item) => {
       const record = asRecord(item, "Neutron port");
       const fixedIps = Array.isArray(record.fixed_ips)
@@ -222,6 +237,7 @@ const openStackSources: OpenStackSearchSource[] = [
         id: record.id,
         name,
         status: record.status,
+        tags: record.tags,
       };
     },
   },
@@ -317,12 +333,14 @@ async function loadOpenStackSource({
   regionId,
   token,
   projectId,
+  searchTags,
 }: {
   source: OpenStackSearchSource;
   catalog: NonNullable<Awaited<ReturnType<typeof getServiceCatalog>>>;
   regionId: string;
   token: string;
   projectId: string;
+  searchTags: boolean;
 }): Promise<LoadedSource> {
   const endpoint = resolveServiceEndpoint(
     catalog,
@@ -350,7 +368,7 @@ async function loadOpenStackSource({
         serviceUrl(
           endpoint,
           typeof source.path === "function"
-            ? source.path(projectId)
+            ? source.path(projectId, searchTags)
             : source.path,
         ),
         headers,
@@ -374,6 +392,7 @@ async function loadOpenStackSource({
     return {
       kind: source.kind,
       items: source.normalize ? items.map(source.normalize) : items,
+      searchTags,
     };
   } catch (error) {
     if (error instanceof OpenStackRequestError && error.status === 401) {
@@ -388,6 +407,42 @@ async function loadOpenStackSource({
       items: [],
       unavailableSource: source.label,
     };
+  }
+}
+
+async function discoverNetworkTagSearchSupport({
+  catalog,
+  regionId,
+  token,
+}: {
+  catalog: NonNullable<Awaited<ReturnType<typeof getServiceCatalog>>>;
+  regionId: string;
+  token: string;
+}) {
+  const endpoint = resolveServiceEndpoint(
+    catalog,
+    regionId,
+    "network",
+    "neutron",
+  );
+  if (!endpoint) return false;
+
+  try {
+    const payload = await requestJson(
+      serviceUrl(endpoint, "/v2.0/extensions"),
+      { "X-Auth-Token": token },
+    );
+    return Boolean(
+      parseExtensionAliases(payload)?.includes(
+        NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
+      ),
+    );
+  } catch (error) {
+    if (error instanceof OpenStackRequestError && error.status === 401) {
+      redirect("/auth/refresh");
+    }
+    logger.warn("network-tag-search-unavailable", { error });
+    return false;
   }
 }
 
@@ -420,19 +475,29 @@ export async function loadGlobalSearchIndex(): Promise<GlobalSearchIndex> {
   const enabledOpenStackSources = openStackSources.filter((source) =>
     isServiceEnabled(policy, source.service, regionId),
   );
+  const networkTagSearchSupport =
+    catalog &&
+    enabledOpenStackSources.some(
+      (source) => source.service === "network" && source.searchTags,
+    )
+      ? discoverNetworkTagSearchSupport({ catalog, regionId, token })
+      : Promise.resolve(false);
   const objectStorageResolution =
     catalog && isSunriseServiceEnabled(policy, "object-storage", regionId)
       ? resolveObjectStorageBackend(catalog, regionId, policy)
       : null;
   const loadedSources = await Promise.all([
     ...(catalog
-      ? enabledOpenStackSources.map((source) =>
+      ? enabledOpenStackSources.map(async (source) =>
           loadOpenStackSource({
             source,
             catalog,
             regionId,
             token,
             projectId,
+            searchTags:
+              source.searchTags === true &&
+              (source.service !== "network" || (await networkTagSearchSupport)),
           }),
         )
       : enabledOpenStackSources.map((source): LoadedSource => ({

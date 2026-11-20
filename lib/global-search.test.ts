@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGlobalSearchResources,
+  enrichGlobalSearchResources,
   excludeKnownGlobalSearchResources,
   globalSearchResourceDescription,
   globalSearchResourceValue,
@@ -145,5 +146,68 @@ describe("global search resources", () => {
 
     expect(globalSearchResourceValue(resources[0])).toContain("public ip");
     expect(globalSearchResourceValue(resources[1])).toContain("firewall");
+  });
+
+  it("indexes exact tags only for sources that opt in", () => {
+    const resources = buildGlobalSearchResources([
+      {
+        kind: "network",
+        items: [
+          {
+            id: "network-id",
+            name: "private",
+            tags: ["env:test", "Team:Platform", "env:test"],
+          },
+        ],
+        searchTags: true,
+      },
+      {
+        kind: "image",
+        items: [{ id: "image-id", name: "tagged image", tags: ["env:test"] }],
+      },
+    ]);
+
+    const network = resources.find((resource) => resource.kind === "network");
+    const image = resources.find((resource) => resource.kind === "image");
+
+    expect(network?.tags).toEqual(["env:test", "Team:Platform"]);
+    expect(globalSearchResourceValue(network!)).toContain("env:test");
+    expect(globalSearchResourceValue(network!)).toContain("tag:env:test");
+    expect(image?.tags).toBeUndefined();
+  });
+
+  it("enriches recent resources with fetched status and tags", () => {
+    const [fetched] = buildGlobalSearchResources([
+      {
+        kind: "network",
+        items: [
+          {
+            id: "network-id",
+            name: "renamed network",
+            status: "ACTIVE",
+            tags: ["env:test"],
+          },
+        ],
+        searchTags: true,
+      },
+    ]);
+
+    expect(
+      enrichGlobalSearchResources(
+        [
+          { kind: "network", id: "network-id", name: "old name" },
+          { kind: "router", id: "missing", name: "cached router" },
+        ],
+        [fetched],
+      ),
+    ).toEqual([
+      fetched,
+      {
+        kind: "router",
+        id: "missing",
+        name: "cached router",
+        href: "/networking/routers/missing",
+      },
+    ]);
   });
 });
