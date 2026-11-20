@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { NeutronResourceTag } from "@/components/Network/NeutronResourceTag";
+import {
+  NeutronResourceTag,
+  NeutronResourceTagList,
+} from "@/components/Network/NeutronResourceTag";
 
 describe("Neutron resource tag navigation", () => {
   it.each([
@@ -72,5 +75,18 @@ describe("Neutron resource tag navigation", () => {
     expect(markup).toContain(
       'title="This tag cannot be represented exactly in a list filter."',
     );
+  });
+
+  it("uses an accessible overflow trigger for additional table tags", () => {
+    const markup = renderToStaticMarkup(
+      <NeutronResourceTagList
+        resourceType="network"
+        support={{ message: "Supported", status: "supported" }}
+        tags={["env:test", "team:platform", "owner:cloud"]}
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Show 1 more tag"');
+    expect(markup).toContain(">+1</button>");
   });
 });
