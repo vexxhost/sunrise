@@ -12,6 +12,8 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverNetworkCapabilities: mocks.discoverNetworkCapabilities,
   NEUTRON_ADDRESS_GROUP_EXTENSION: "address-group",
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION: "allowed-address-pairs",
+  NEUTRON_ALLOWED_ADDRESS_PAIRS_REJECT_MULTICAST_EXTENSION:
+    "aap-reject-multicast",
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION: "extraroute-atomic",
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION: "dns-domain-ports",
   NEUTRON_DNS_INTEGRATION_EXTENSION: "dns-integration",
@@ -90,6 +92,7 @@ describe("Neutron mutation actions", () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",
       extensions: [
+        "aap-reject-multicast",
         "address-group",
         "allowed-address-pairs",
         "binding",
@@ -1446,6 +1449,77 @@ describe("Neutron mutation actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
+  it("rejects multicast address pairs when the cloud advertises that contract", async () => {
+    const ipResult = await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      portSecurityEnabled: true,
+      allowedAddressPairs: [{ ipAddress: "192.0.0.0/2", macAddress: "" }],
+    });
+    const macResult = await updatePortAction(scope, "port-a", {
+      name: "application-port",
+      description: "",
+      adminStateUp: true,
+      allowedAddressPairs: [
+        { ipAddress: "192.0.2.10", macAddress: "01:00:5e:00:00:01" },
+      ],
+    });
+
+    expect(ipResult).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("Multicast IP"),
+      },
+    });
+    expect(macResult).toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("Multicast MAC"),
+      },
+    });
+    expect(mocks.discoverNetworkCapabilities).toHaveBeenCalledTimes(2);
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("preserves Neutron's documented IPv4 /0 exception", async () => {
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      portSecurityEnabled: true,
+      allowedAddressPairs: [{ ipAddress: "0.0.0.0/0", macAddress: "" }],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+  });
+
+  it("defers multicast validation when the rejection extension is absent", async () => {
+    mocks.discoverNetworkCapabilities.mockResolvedValue({
+      discoveryStatus: "available",
+      extensions: ["allowed-address-pairs", "port-security"],
+      message: "",
+      serviceType: "network",
+    });
+
+    await createPortAction(scope, {
+      name: "application-port",
+      description: "",
+      networkId: "network-a",
+      adminStateUp: true,
+      portSecurityEnabled: true,
+      allowedAddressPairs: [
+        { ipAddress: "ff02::1", macAddress: "33:33:00:00:00:01" },
+      ],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects allowed address pairs when the extension is absent", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "available",
@@ -1473,7 +1547,7 @@ describe("Neutron mutation actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
-  it("lets Neutron validate address pairs when discovery is unavailable", async () => {
+  it("lets Neutron validate multicast address pairs when discovery is unavailable", async () => {
     mocks.discoverNetworkCapabilities.mockResolvedValue({
       discoveryStatus: "unavailable",
       message: "",
@@ -1485,7 +1559,9 @@ describe("Neutron mutation actions", () => {
       description: "",
       networkId: "network-a",
       adminStateUp: true,
-      allowedAddressPairs: [{ ipAddress: "192.0.2.10", macAddress: "" }],
+      allowedAddressPairs: [
+        { ipAddress: "ff02::1", macAddress: "33:33:00:00:00:01" },
+      ],
     });
 
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);

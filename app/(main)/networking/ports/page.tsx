@@ -12,6 +12,7 @@ import { extensionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
+  NEUTRON_ALLOWED_ADDRESS_PAIRS_REJECT_MULTICAST_EXTENSION,
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
   NEUTRON_EXTRA_DHCP_OPTIONS_EXTENSION,
@@ -58,6 +59,11 @@ export default async function Page({
     capabilities,
     NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
     "Allowed address pairs",
+  );
+  const allowedAddressPairsRejectMulticastSupport = extensionSupport(
+    capabilities,
+    NEUTRON_ALLOWED_ADDRESS_PAIRS_REJECT_MULTICAST_EXTENSION,
+    "Multicast allowed-address-pair rejection",
   );
   const securityGroupSupport = extensionSupport(
     capabilities,
@@ -124,6 +130,9 @@ export default async function Page({
     <QueryHydrationBoundary key={cacheIdentity} state={state}>
       <PortsTableClient
         allowedAddressPairsSupport={allowedAddressPairsSupport}
+        rejectMulticastAddressPairs={
+          allowedAddressPairsRejectMulticastSupport.status === "supported"
+        }
         dnsDomainPortsSupport={dnsDomainPortsSupport}
         dnsIntegrationSupport={dnsIntegrationSupport}
         extraDhcpOptionsSupport={extraDhcpOptionsSupport}

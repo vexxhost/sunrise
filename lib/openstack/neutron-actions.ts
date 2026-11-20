@@ -9,11 +9,15 @@ import {
   type MutationScope,
 } from "@/lib/mutations";
 import { getCidrPrefixLength } from "@/lib/network-address";
-import { extensionSupport } from "@/lib/openstack/capabilities";
+import {
+  extensionSupport,
+  type OpenStackServiceCapabilities,
+} from "@/lib/openstack/capabilities";
 import {
   discoverNetworkCapabilities,
   NEUTRON_ADDRESS_GROUP_EXTENSION,
   NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION,
+  NEUTRON_ALLOWED_ADDRESS_PAIRS_REJECT_MULTICAST_EXTENSION,
   NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION,
   NEUTRON_DNS_DOMAIN_PORTS_EXTENSION,
   NEUTRON_DNS_INTEGRATION_EXTENSION,
@@ -42,6 +46,7 @@ import {
   NEUTRON_UPLINK_STATUS_PROPAGATION_UPDATABLE_EXTENSION,
   NEUTRON_VLAN_TRANSPARENCY_EXTENSION,
 } from "@/lib/openstack/capabilities-server";
+import { getAllowedAddressPairMulticastErrors } from "@/lib/openstack/neutron-allowed-address-pairs";
 import {
   NEUTRON_PORT_HARDWARE_OFFLOAD_TYPES,
   NEUTRON_PORT_NUMA_AFFINITY_POLICIES,
@@ -715,9 +720,12 @@ const addressGroupInvalidates = [
 async function unsupportedNetworkExtensionsFailure(
   scope: MutationScope,
   requirements: Array<{ feature: string; required: string }>,
+  discoveredCapabilities?: OpenStackServiceCapabilities,
 ) {
   if (!scope.regionId || requirements.length === 0) return null;
-  const capabilities = await discoverNetworkCapabilities(scope.regionId);
+  const capabilities =
+    discoveredCapabilities ??
+    (await discoverNetworkCapabilities(scope.regionId));
   const unsupported = requirements
     .map(({ feature, required }) =>
       extensionSupport(capabilities, required, feature),
@@ -733,6 +741,40 @@ async function unsupportedNetworkExtensionsFailure(
     },
     scope,
   );
+}
+
+function rejectedMulticastAllowedAddressPairFailure(
+  scope: MutationScope,
+  pairs: Array<{ ipAddress: string; macAddress: string }> | undefined,
+  capabilities: OpenStackServiceCapabilities | undefined,
+) {
+  if (
+    !pairs?.length ||
+    !capabilities ||
+    extensionSupport(
+      capabilities,
+      NEUTRON_ALLOWED_ADDRESS_PAIRS_REJECT_MULTICAST_EXTENSION,
+      "Multicast allowed-address-pair rejection",
+    ).status !== "supported"
+  ) {
+    return null;
+  }
+
+  for (const [index, pair] of pairs.entries()) {
+    const errors = getAllowedAddressPairMulticastErrors(pair);
+    const message = errors.ipAddress ?? errors.macAddress;
+    if (message) {
+      return mutationFailure(
+        {
+          code: "validation-failed",
+          message: `Allowed address pair ${index + 1}: ${message}`,
+          retryable: false,
+        },
+        scope,
+      );
+    }
+  }
+  return null;
 }
 
 export async function createNetworkAction(
@@ -1522,6 +1564,10 @@ export async function createPortAction(
   const parsed = parse(portCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const discoveredCapabilities =
+    value.allowedAddressPairs === undefined || !scope.regionId
+      ? undefined
+      : await discoverNetworkCapabilities(scope.regionId);
   const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
     ...(value.dnsName === undefined
       ? []
@@ -1635,8 +1681,14 @@ export async function createPortAction(
             required: NEUTRON_PORT_BINDING_EXTENSION,
           },
         ]),
-  ]);
+  ], discoveredCapabilities);
   if (unsupported) return unsupported;
+  const multicastFailure = rejectedMulticastAllowedAddressPairFailure(
+    scope,
+    value.allowedAddressPairs,
+    discoveredCapabilities,
+  );
+  if (multicastFailure) return multicastFailure;
   return executeOpenStackMutation({
     actionLabel: "create a port",
     scope,
@@ -1715,6 +1767,10 @@ export async function updatePortAction(
   const parsed = parse(portUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
+  const discoveredCapabilities =
+    value.allowedAddressPairs === undefined || !scope.regionId
+      ? undefined
+      : await discoverNetworkCapabilities(scope.regionId);
   const unsupported = await unsupportedNetworkExtensionsFailure(scope, [
     ...(value.dnsName === undefined
       ? []
@@ -1824,8 +1880,14 @@ export async function updatePortAction(
             required: NEUTRON_PORT_BINDING_EXTENSION,
           },
         ]),
-  ]);
+  ], discoveredCapabilities);
   if (unsupported) return unsupported;
+  const multicastFailure = rejectedMulticastAllowedAddressPairFailure(
+    scope,
+    value.allowedAddressPairs,
+    discoveredCapabilities,
+  );
+  if (multicastFailure) return multicastFailure;
   return executeOpenStackMutation({
     actionLabel: "edit this port",
     scope,

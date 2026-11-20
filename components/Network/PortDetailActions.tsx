@@ -50,6 +50,7 @@ import {
 } from "@/lib/openstack/nova-actions";
 import type { Port, SecurityGroup, Server } from "@/types/openstack";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { hasRejectedMulticastAllowedAddressPair } from "@/lib/openstack/neutron-allowed-address-pairs";
 import { qosPoliciesQueryOptions } from "@/hooks/queries/useNetworks";
 import {
   diffExtraDhcpOptions,
@@ -98,6 +99,7 @@ interface PortDetailActionsProps {
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
+  rejectMulticastAddressPairs: boolean;
   securityGroupSupport: OpenStackFeatureSupport;
   servers: Server[];
   trustedVifSupport: OpenStackFeatureSupport;
@@ -120,6 +122,7 @@ export function PortDetailActions({
   qosSupport,
   projectId,
   regionId,
+  rejectMulticastAddressPairs,
   securityGroupSupport,
   servers,
   trustedVifSupport,
@@ -177,6 +180,19 @@ export function PortDetailActions({
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const allowedAddressPairsAvailable =
     allowedAddressPairsSupport.status !== "unsupported";
+  const originalAllowedAddressPairs = (port.allowed_address_pairs ?? []).map(
+    (pair) => ({
+      ipAddress: pair.ip_address,
+      macAddress: pair.mac_address ?? "",
+    }),
+  );
+  const allowedAddressPairsChanged =
+    JSON.stringify(allowedAddressPairs) !==
+    JSON.stringify(originalAllowedAddressPairs);
+  const hasRejectedMulticastPair =
+    rejectMulticastAddressPairs &&
+    allowedAddressPairsChanged &&
+    hasRejectedMulticastAllowedAddressPair(allowedAddressPairs);
   const extraDhcpOptionsAvailable =
     extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
@@ -250,15 +266,6 @@ export function PortDetailActions({
   const submitEdit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     startTransition(async () => {
-      const originalAllowedAddressPairs = (
-        port.allowed_address_pairs ?? []
-      ).map((pair) => ({
-        ipAddress: pair.ip_address,
-        macAddress: pair.mac_address ?? "",
-      }));
-      const allowedAddressPairsChanged =
-        JSON.stringify(allowedAddressPairs) !==
-        JSON.stringify(originalAllowedAddressPairs);
       const extraDhcpOptionsPatch = extraDhcpOptionsAvailable
         ? diffExtraDhcpOptions(
             extraDhcpOptions,
@@ -787,6 +794,7 @@ export function PortDetailActions({
                   portSecurityEnabled={
                     !portSecurityAvailable || portSecurityEnabled
                   }
+                  rejectMulticast={rejectMulticastAddressPairs}
                   value={allowedAddressPairs}
                 />
               ) : null}
@@ -857,7 +865,10 @@ export function PortDetailActions({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending}>
+              <Button
+                type="submit"
+                disabled={pending || hasRejectedMulticastPair}
+              >
                 {pending ? "Saving" : "Save changes"}
               </Button>
             </DialogFooter>

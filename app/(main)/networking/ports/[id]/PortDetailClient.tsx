@@ -44,6 +44,7 @@ interface PortDetailClientProps {
   qosSupport: OpenStackFeatureSupport;
   projectId: string;
   regionId: string;
+  rejectMulticastAddressPairs: boolean;
   resourceRequestSupport: OpenStackFeatureSupport;
   securityGroupSupport: OpenStackFeatureSupport;
   tagSupport: OpenStackFeatureSupport;
@@ -84,6 +85,7 @@ export function PortDetailClient({
   qosNetworkPolicySupport,
   qosSupport,
   regionId,
+  rejectMulticastAddressPairs,
   resourceRequestSupport,
   securityGroupSupport,
   tagSupport,
@@ -166,6 +168,7 @@ export function PortDetailClient({
             servers={servers.data}
             projectId={projectId}
             regionId={regionId}
+            rejectMulticastAddressPairs={rejectMulticastAddressPairs}
             securityGroupSupport={securityGroupSupport}
             trustedVifSupport={trustedVifSupport}
             uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}

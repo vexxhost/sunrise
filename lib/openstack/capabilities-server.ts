@@ -26,6 +26,8 @@ import {
 const logger = createLogger("openstack.capabilities");
 
 export const NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION = "2.85";
+export const NEUTRON_ALLOWED_ADDRESS_PAIRS_REJECT_MULTICAST_EXTENSION =
+  "aap-reject-multicast";
 export const NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION = "allowed-address-pairs";
 export const NEUTRON_ADDRESS_GROUP_EXTENSION = "address-group";
 export const NEUTRON_RBAC_ADDRESS_GROUP_EXTENSION = "rbac-address-group";

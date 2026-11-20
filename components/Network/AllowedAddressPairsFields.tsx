@@ -6,7 +6,10 @@ import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { isEntireIpv4AddressSpace } from "@/lib/openstack/neutron-allowed-address-pairs";
+import {
+  getAllowedAddressPairMulticastErrors,
+  isEntireIpv4AddressSpace,
+} from "@/lib/openstack/neutron-allowed-address-pairs";
 
 export interface AllowedAddressPairInput {
   ipAddress: string;
@@ -18,6 +21,7 @@ interface AllowedAddressPairsFieldsProps {
   idPrefix: string;
   onValueChange: (value: AllowedAddressPairInput[]) => void;
   portSecurityEnabled: boolean;
+  rejectMulticast: boolean;
   value: AllowedAddressPairInput[];
 }
 
@@ -26,6 +30,7 @@ export function AllowedAddressPairsFields({
   idPrefix,
   onValueChange,
   portSecurityEnabled,
+  rejectMulticast,
   value,
 }: AllowedAddressPairsFieldsProps) {
   const updatePair = (
@@ -52,6 +57,9 @@ export function AllowedAddressPairsFields({
             Additional IP or CIDR and MAC combinations that may send traffic
             through this port. An empty MAC uses the port MAC. Cloud policy may
             require the values to match another port you own on this network.
+            {rejectMulticast
+              ? " This cloud rejects multicast IP and MAC addresses, plus CIDRs that overlap multicast ranges."
+              : ""}
           </p>
         </div>
         <Button
@@ -76,57 +84,89 @@ export function AllowedAddressPairsFields({
 
       {value.length ? (
         <div className="space-y-2">
-          {value.map((pair, index) => (
-            <div
-              key={`${idPrefix}-pair-${index}`}
-              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] items-end gap-2"
-            >
-              <div className="space-y-1.5">
-                <Label htmlFor={`${idPrefix}-pair-ip-${index}`}>
-                  IP address or CIDR
-                </Label>
-                <Input
-                  id={`${idPrefix}-pair-ip-${index}`}
-                  required
-                  placeholder="192.0.2.10 or 192.0.2.0/24"
-                  value={pair.ipAddress}
-                  disabled={disabled || !portSecurityEnabled}
-                  onChange={(event) =>
-                    updatePair(index, "ipAddress", event.target.value)
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor={`${idPrefix}-pair-mac-${index}`}>
-                  MAC address (optional)
-                </Label>
-                <Input
-                  id={`${idPrefix}-pair-mac-${index}`}
-                  placeholder="fa:16:3e:00:00:01"
-                  value={pair.macAddress}
-                  disabled={disabled || !portSecurityEnabled}
-                  onChange={(event) =>
-                    updatePair(index, "macAddress", event.target.value)
-                  }
-                />
-              </div>
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`Remove allowed address pair ${index + 1}`}
-                disabled={disabled}
-                onClick={() =>
-                  onValueChange(
-                    value.filter((_, pairIndex) => pairIndex !== index),
-                  )
-                }
-                tone="danger"
+          {value.map((pair, index) => {
+            const errors = rejectMulticast
+              ? getAllowedAddressPairMulticastErrors(pair)
+              : {};
+            const ipErrorId = `${idPrefix}-pair-ip-${index}-error`;
+            const macErrorId = `${idPrefix}-pair-mac-${index}-error`;
+            return (
+              <div
+                key={`${idPrefix}-pair-${index}`}
+                className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] items-start gap-2"
               >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          ))}
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${idPrefix}-pair-ip-${index}`}>
+                    IP address or CIDR
+                  </Label>
+                  <Input
+                    id={`${idPrefix}-pair-ip-${index}`}
+                    required
+                    placeholder="192.0.2.10 or 192.0.2.0/24"
+                    value={pair.ipAddress}
+                    disabled={disabled || !portSecurityEnabled}
+                    aria-invalid={Boolean(errors.ipAddress)}
+                    aria-describedby={errors.ipAddress ? ipErrorId : undefined}
+                    onChange={(event) =>
+                      updatePair(index, "ipAddress", event.target.value)
+                    }
+                  />
+                  {errors.ipAddress ? (
+                    <p
+                      id={ipErrorId}
+                      className="text-xs text-destructive"
+                      role="alert"
+                    >
+                      {errors.ipAddress}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${idPrefix}-pair-mac-${index}`}>
+                    MAC address (optional)
+                  </Label>
+                  <Input
+                    id={`${idPrefix}-pair-mac-${index}`}
+                    placeholder="fa:16:3e:00:00:01"
+                    value={pair.macAddress}
+                    disabled={disabled || !portSecurityEnabled}
+                    aria-invalid={Boolean(errors.macAddress)}
+                    aria-describedby={
+                      errors.macAddress ? macErrorId : undefined
+                    }
+                    onChange={(event) =>
+                      updatePair(index, "macAddress", event.target.value)
+                    }
+                  />
+                  {errors.macAddress ? (
+                    <p
+                      id={macErrorId}
+                      className="text-xs text-destructive"
+                      role="alert"
+                    >
+                      {errors.macAddress}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className="mt-6"
+                  aria-label={`Remove allowed address pair ${index + 1}`}
+                  disabled={disabled}
+                  onClick={() =>
+                    onValueChange(
+                      value.filter((_, pairIndex) => pairIndex !== index),
+                    )
+                  }
+                  tone="danger"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            );
+          })}
         </div>
       ) : null}
 

@@ -429,6 +429,7 @@ export function PortsTableClient({
   portSecuritySupport,
   qosNetworkPolicySupport,
   qosSupport,
+  rejectMulticastAddressPairs,
   securityGroupSupport,
   trustedVifSupport,
   uplinkStatusPropagationSupport,
@@ -444,6 +445,7 @@ export function PortsTableClient({
   portSecuritySupport: OpenStackFeatureSupport;
   qosNetworkPolicySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
+  rejectMulticastAddressPairs: boolean;
   securityGroupSupport: OpenStackFeatureSupport;
   trustedVifSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationSupport: OpenStackFeatureSupport;
@@ -681,6 +683,7 @@ export function PortsTableClient({
             portBindingSupport={portBindingSupport}
             portSecuritySupport={portSecuritySupport}
             qosSupport={qosSupport}
+            rejectMulticastAddressPairs={rejectMulticastAddressPairs}
             securityGroupSupport={securityGroupSupport}
             trustedVifSupport={trustedVifSupport}
             uplinkStatusPropagationSupport={uplinkStatusPropagationSupport}
