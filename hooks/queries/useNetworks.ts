@@ -10,6 +10,7 @@ import {
   listProjectVisibleAddressGroups,
 } from "@/lib/openstack/neutron-address-group-actions";
 import { listProjectFloatingIpPortForwardings } from "@/lib/openstack/neutron-port-forwarding-actions";
+import { listProjectRouterConntrackHelpers } from "@/lib/openstack/neutron-router-conntrack-helper-actions";
 import { getNetworkIpAvailability } from "@/lib/openstack/neutron-ip-availability-actions";
 import { parseNeutronAvailabilityZones } from "@/lib/openstack/neutron-availability-zones";
 import type {
@@ -397,6 +398,19 @@ export function routerPortsQueryOptions(
       });
       return data?.ports ?? [];
     },
+    enabled: !!regionId && !!projectId && !!routerId,
+  });
+}
+
+export function routerConntrackHelpersQueryOptions(
+  regionId: string | undefined,
+  projectId: string | undefined,
+  routerId: string,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "router-conntrack-helpers", routerId],
+    queryFn: () =>
+      listProjectRouterConntrackHelpers(regionId!, projectId!, routerId),
     enabled: !!regionId && !!projectId && !!routerId,
   });
 }

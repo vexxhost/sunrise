@@ -138,6 +138,13 @@ export interface Router {
   revision_number?: number;
 }
 
+export interface RouterConntrackHelper {
+  id: string;
+  helper: string;
+  port: number;
+  protocol: "dccp" | "icmp" | "ipv6-icmp" | "sctp" | "tcp" | "udp";
+}
+
 export interface FloatingIpPortDetails {
   name: string;
   network_id: string;

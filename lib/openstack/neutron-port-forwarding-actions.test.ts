@@ -242,6 +242,90 @@ describe("Neutron floating IP port forwarding actions", () => {
         path: "/v2.0/floatingips/floating-a/port_forwardings/rule-a",
       }),
     );
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2.0/floatingips/floating-a/port_forwardings",
+      }),
+    );
+  });
+
+  it("does not trust the vulnerable individual forwarding endpoint for ownership", async () => {
+    mocks.openstackRequest.mockImplementation(async ({ path }) => {
+      if (path === "/v2.0/floatingips/floating-a") {
+        return floatingIpPayload();
+      }
+      if (path === "/v2.0/floatingips/floating-a/port_forwardings") {
+        return { port_forwardings: [] };
+      }
+      if (
+        path ===
+        "/v2.0/floatingips/floating-a/port_forwardings/rule-from-another-floating-ip"
+      ) {
+        return {
+          port_forwarding: {
+            id: "rule-from-another-floating-ip",
+            internal_ip_address: "10.0.0.5",
+            internal_port: 80,
+            internal_port_id: "port-a",
+            external_port: 8080,
+            protocol: "tcp",
+          },
+        };
+      }
+      return null;
+    });
+
+    const result = await updateFloatingIpPortForwardingAction(
+      scope,
+      "floating-a",
+      "rule-from-another-floating-ip",
+      {
+        externalPortStart: 80,
+        internalIpAddress: "10.0.0.5",
+        internalPortId: "port-a",
+        internalPortStart: 80,
+        protocol: "tcp",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "permission-denied" },
+    });
+    expect(mocks.openstackRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2.0/floatingips/floating-a/port_forwardings/rule-from-another-floating-ip",
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unavailable membership lookup retryable", async () => {
+    mocks.openstackRequest.mockImplementation(async ({ path }) =>
+      path === "/v2.0/floatingips/floating-a" ? floatingIpPayload() : null,
+    );
+
+    const result = await updateFloatingIpPortForwardingAction(
+      scope,
+      "floating-a",
+      "rule-a",
+      {
+        externalPortStart: 80,
+        internalIpAddress: "10.0.0.5",
+        internalPortId: "port-a",
+        internalPortStart: 80,
+        protocol: "tcp",
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "service-error", retryable: true },
+    });
+    expect(mocks.openstackRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({ path: "/v2.0/ports/port-a" }),
+    );
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it("updates external and internal ranges allowed by Neutron", async () => {

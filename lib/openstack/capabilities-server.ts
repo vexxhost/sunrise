@@ -32,6 +32,7 @@ export const NEUTRON_ALLOWED_ADDRESS_PAIRS_EXTENSION = "allowed-address-pairs";
 export const NEUTRON_ADDRESS_GROUP_EXTENSION = "address-group";
 export const NEUTRON_RBAC_ADDRESS_GROUP_EXTENSION = "rbac-address-group";
 export const NEUTRON_ATOMIC_EXTRA_ROUTE_EXTENSION = "extraroute-atomic";
+export const NEUTRON_L3_CONNTRACK_HELPER_EXTENSION = "l3-conntrack-helper";
 export const NEUTRON_PORT_BINDING_EXTENSION = "binding";
 export const NEUTRON_PORT_HARDWARE_OFFLOAD_TYPE_EXTENSION =
   "port-hardware-offload-type";

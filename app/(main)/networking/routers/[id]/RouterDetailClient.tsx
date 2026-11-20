@@ -15,6 +15,7 @@ import {
   AddRouterRouteAction,
   RouterRouteRowActions,
 } from "@/components/Network/RouterRouteActions";
+import { RouterConntrackHelperSection } from "@/components/Network/RouterConntrackHelperSection";
 import { Badge } from "@/components/ui/badge";
 import {
   externalNetworksQueryOptions,
@@ -37,6 +38,7 @@ import {
 interface Props {
   availabilityZoneSupport: OpenStackFeatureSupport;
   canManageAdminOnlyRouterSettings: boolean;
+  conntrackHelperSupport: OpenStackFeatureSupport;
   defaultRouteBfdSupport: OpenStackFeatureSupport;
   defaultRouteEcmpSupport: OpenStackFeatureSupport;
   id: string;
@@ -51,6 +53,7 @@ interface Props {
 export function RouterDetailClient({
   availabilityZoneSupport,
   canManageAdminOnlyRouterSettings,
+  conntrackHelperSupport,
   defaultRouteBfdSupport,
   defaultRouteEcmpSupport,
   id,
@@ -339,6 +342,13 @@ export function RouterDetailClient({
           </div>
         )}
       </section>
+      <RouterConntrackHelperSection
+        owned={owned}
+        projectId={projectId}
+        regionId={regionId}
+        routerId={router.data.id}
+        support={conntrackHelperSupport}
+      />
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">

@@ -157,6 +157,25 @@ function parsePortForwardingCollection(payload: unknown) {
   return values.map(parsePortForwarding);
 }
 
+async function requestPortForwardings(regionId: string, floatingIpId: string) {
+  const payload = await openstackRequest<unknown>({
+    regionId,
+    serviceType: SERVICE_TYPE,
+    serviceName: SERVICE_NAME,
+    path: `/v2.0/floatingips/${encodeURIComponent(floatingIpId)}/port_forwardings`,
+  });
+  return payload ? parsePortForwardingCollection(payload) : null;
+}
+
+async function floatingIpContainsPortForwarding(
+  regionId: string,
+  floatingIpId: string,
+  portForwardingId: string,
+) {
+  const rules = await requestPortForwardings(regionId, floatingIpId);
+  return rules ? rules.some((rule) => rule.id === portForwardingId) : null;
+}
+
 async function requestFloatingIp(regionId: string, floatingIpId: string) {
   const payload = await openstackRequest<unknown>({
     regionId,
@@ -440,6 +459,31 @@ async function prepareMutation(
     scope,
   );
   if (!parent.ok) return { ok: false as const, result: parent.result };
+  if (parsedRuleId) {
+    const ruleBelongsToFloatingIp = await floatingIpContainsPortForwarding(
+      scope.regionId!,
+      parsedId.data,
+      parsedRuleId.data,
+    );
+    if (ruleBelongsToFloatingIp === null) {
+      return {
+        ok: false as const,
+        result: serviceFailure(
+          "Sunrise could not verify the port forwarding rule before changing it.",
+          scope,
+        ),
+      };
+    }
+    if (!ruleBelongsToFloatingIp) {
+      return {
+        ok: false as const,
+        result: permissionFailure(
+          "The port forwarding rule does not belong to this floating IP.",
+          scope,
+        ),
+      };
+    }
+  }
   const target = await validateTarget(
     scope.regionId!,
     scope.projectId,

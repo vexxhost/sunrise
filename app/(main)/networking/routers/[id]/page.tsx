@@ -1,6 +1,7 @@
 import { QueryHydrationBoundary } from "@/components/QueryHydrationBoundary";
 import {
   externalNetworksQueryOptions,
+  routerConntrackHelpersQueryOptions,
   routerPortsQueryOptions,
   routerQueryOptions,
   subnetsQueryOptions,
@@ -17,6 +18,7 @@ import {
   NEUTRON_ENABLE_DEFAULT_ROUTE_BFD_EXTENSION,
   NEUTRON_ENABLE_DEFAULT_ROUTE_ECMP_EXTENSION,
   NEUTRON_EXTERNAL_GATEWAY_MULTIHOMING_EXTENSION,
+  NEUTRON_L3_CONNTRACK_HELPER_EXTENSION,
   NEUTRON_ROUTER_AVAILABILITY_ZONE_EXTENSION,
   NEUTRON_QOS_GATEWAY_IP_EXTENSION,
   NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION,
@@ -83,17 +85,28 @@ export default async function Page({
       "Router tags",
     ),
   );
+  const conntrackHelperSupportPromise = capabilitiesPromise.then(
+    (capabilities) =>
+      extensionSupport(
+        capabilities,
+        NEUTRON_L3_CONNTRACK_HELPER_EXTENSION,
+        "Router conntrack helpers",
+      ),
+  );
   const queryClient = makeQueryClient();
   const routerQuery = routerQueryOptions(
     session.regionId,
     session.projectId,
     id,
   );
-  await fetchOpenStackResourceOrRecover(queryClient.fetchQuery(routerQuery), {
-    kind: "router",
-    id,
-  });
-  await Promise.all([
+  const router = await fetchOpenStackResourceOrRecover(
+    queryClient.fetchQuery(routerQuery),
+    {
+      kind: "router",
+      id,
+    },
+  );
+  const unconditionalPrefetchesPromise = Promise.all([
     queryClient.prefetchQuery(
       routerPortsQueryOptions(session.regionId, session.projectId, id),
     ),
@@ -103,6 +116,22 @@ export default async function Page({
     queryClient.prefetchQuery(
       externalNetworksQueryOptions(session.regionId, session.projectId),
     ),
+  ]);
+  const conntrackHelperSupport = await conntrackHelperSupportPromise;
+  const owned =
+    router.project_id === session.projectId ||
+    router.tenant_id === session.projectId;
+  await Promise.all([
+    unconditionalPrefetchesPromise,
+    owned && conntrackHelperSupport.status !== "unsupported"
+      ? queryClient.prefetchQuery(
+          routerConntrackHelpersQueryOptions(
+            session.regionId,
+            session.projectId,
+            id,
+          ),
+        )
+      : Promise.resolve(),
   ]);
   const { cacheIdentity, state } = dehydrateQueryClient(queryClient);
   const [
@@ -130,6 +159,7 @@ export default async function Page({
         id={id}
         availabilityZoneSupport={availabilityZoneSupport}
         canManageAdminOnlyRouterSettings={canManageAdminOnlyRouterSettings}
+        conntrackHelperSupport={conntrackHelperSupport}
         defaultRouteBfdSupport={defaultRouteBfdSupport}
         defaultRouteEcmpSupport={defaultRouteEcmpSupport}
         multihomingSupport={multihomingSupport}
