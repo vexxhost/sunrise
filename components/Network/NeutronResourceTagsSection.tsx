@@ -201,6 +201,7 @@ export function NeutronResourceTagsSection({
             <ResourceTag
               key={tag}
               resourceType={resourceType}
+              support={support}
               tag={tag}
             />
           ))}
@@ -327,11 +328,13 @@ export function NeutronResourceTagsSection({
   );
 }
 
-function ResourceTag({
+export function ResourceTag({
   resourceType,
+  support,
   tag,
 }: {
   resourceType: TaggableResourceType;
+  support: OpenStackFeatureSupport;
   tag: string;
 }) {
   const label = formatNeutronTag(tag);
@@ -342,12 +345,18 @@ function ResourceTag({
     <span className="break-all whitespace-pre-wrap font-mono">{label}</span>
   );
 
-  if (filterError) {
+  const filteringUnavailable = support.status === "unsupported";
+
+  if (filteringUnavailable || filterError) {
     return (
       <Badge
         variant="secondary"
         className="max-w-full"
-        title="This tag cannot be represented exactly in a list filter."
+        title={
+          filteringUnavailable
+            ? support.message || "Tag filtering is unavailable in this cloud."
+            : "This tag cannot be represented exactly in a list filter."
+        }
       >
         {content}
       </Badge>
