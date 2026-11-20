@@ -114,3 +114,9 @@ export function neutronTagFilterApiQuery(filter: NeutronTagFilter) {
 export function neutronTagFilterQueryKey(filter?: NeutronTagFilter) {
   return filter ? [filter.mode, ...filter.tags] : [];
 }
+
+export function neutronTagFilterShareUrl(currentUrl: string) {
+  const url = new URL(currentUrl);
+  url.searchParams.delete("create");
+  return url.toString();
+}

@@ -6,6 +6,7 @@ import { Plus, Tags, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
 import {
   Popover,
   PopoverContent,
@@ -18,6 +19,7 @@ import {
   NEUTRON_TAG_FILTER_MODE_PARAM,
   NEUTRON_TAG_FILTER_PARAM,
   neutronTagFilterError,
+  neutronTagFilterShareUrl,
   type NeutronTagFilter,
   type NeutronTagFilterMode,
 } from "@/lib/openstack/neutron-tag-filters";
@@ -43,6 +45,8 @@ export function NeutronTagFilterControl({
   const [tags, setTags] = useState(filter?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
   const [error, setError] = useState<string | null>(initialError ?? null);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareError, setShareError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const filteringUnavailable = support.status === "unsupported";
@@ -106,6 +110,8 @@ export function NeutronTagFilterControl({
           setTags(filter?.tags ?? []);
           setTagInput("");
           setError(initialError ?? null);
+          setShareUrl(neutronTagFilterShareUrl(window.location.href));
+          setShareError(null);
         }
         setOpen(nextOpen);
       }}
@@ -226,7 +232,7 @@ export function NeutronTagFilterControl({
             ) : null}
           </div>
 
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -235,14 +241,35 @@ export function NeutronTagFilterControl({
             >
               Clear
             </Button>
-            <Button
-              type="submit"
-              loading={pending}
-              disabled={filteringUnavailable}
-            >
-              Apply
-            </Button>
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              {filter ? (
+                <CopyButton
+                  value={shareUrl}
+                  label="Copy filtered view"
+                  copiedLabel="Link copied"
+                  showLabel
+                  variant="outline"
+                  disabled={!shareUrl || pending}
+                  onCopy={() => setShareError(null)}
+                  onError={() =>
+                    setShareError("Could not copy the filtered view link.")
+                  }
+                />
+              ) : null}
+              <Button
+                type="submit"
+                loading={pending}
+                disabled={filteringUnavailable}
+              >
+                Apply
+              </Button>
+            </div>
           </div>
+          {shareError ? (
+            <p className="text-xs text-destructive" role="alert">
+              {shareError}
+            </p>
+          ) : null}
         </form>
       </PopoverContent>
     </Popover>

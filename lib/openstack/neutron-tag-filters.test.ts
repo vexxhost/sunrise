@@ -4,6 +4,7 @@ import {
   neutronTagFilterApiQuery,
   neutronTagFilterError,
   neutronTagFilterQueryKey,
+  neutronTagFilterShareUrl,
   parseNeutronTagFilterInput,
   parseNeutronTagFilterSearchParams,
 } from "@/lib/openstack/neutron-tag-filters";
@@ -73,5 +74,15 @@ describe("Neutron tag filters", () => {
     expect(parseNeutronTagFilterInput({ mode: "all", tags: [7] })).toEqual({
       error: "Add a valid tag filter.",
     });
+  });
+
+  it("keeps exact filters in shared URLs without transient create actions", () => {
+    expect(
+      neutronTagFilterShareUrl(
+        "https://sunrise.example/networking/networks?tag=env%3Atest&tag=team%3Aplatform&tag-mode=any&create=network",
+      ),
+    ).toBe(
+      "https://sunrise.example/networking/networks?tag=env%3Atest&tag=team%3Aplatform&tag-mode=any",
+    );
   });
 });
