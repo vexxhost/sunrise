@@ -27,6 +27,10 @@ describe("global search resources", () => {
           kind: "bucket",
           items: [{ name: "artifacts" }],
         },
+        {
+          kind: "network",
+          items: [{ id: "network-1", name: "private", status: "ACTIVE" }],
+        },
       ]),
     ).toEqual([
       {
@@ -56,6 +60,13 @@ describe("global search resources", () => {
         name: "image-1",
         href: "/compute/images/image-1",
         status: "active",
+      },
+      {
+        kind: "network",
+        id: "network-1",
+        name: "private",
+        href: "/networking/networks/network-1",
+        status: "ACTIVE",
       },
     ]);
   });
@@ -116,5 +127,23 @@ describe("global search resources", () => {
       "Kubernetes cluster · cluster-id",
     );
     expect(globalSearchResourceValue(resource)).toContain("k8s");
+  });
+
+  it("includes networking aliases in resource search values", () => {
+    const resources = buildGlobalSearchResources([
+      {
+        kind: "floating-ip",
+        items: [
+          { id: "floating-ip-id", name: "203.0.113.10", status: "ACTIVE" },
+        ],
+      },
+      {
+        kind: "security-group",
+        items: [{ id: "security-group-id", name: "web" }],
+      },
+    ]);
+
+    expect(globalSearchResourceValue(resources[0])).toContain("public ip");
+    expect(globalSearchResourceValue(resources[1])).toContain("firewall");
   });
 });

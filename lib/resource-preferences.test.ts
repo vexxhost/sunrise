@@ -141,6 +141,21 @@ describe("resource preferences", () => {
     expect(
       resourcePreferenceHref(resource("share snapshot", 1, "share-snapshot")),
     ).toBe("/shared-file-systems/snapshots/share%20snapshot");
+    expect(
+      resourcePreferenceHref(resource("floating ip", 1, "floating-ip")),
+    ).toBe("/networking/floating-ips/floating%20ip");
+    expect(
+      resourcePreferenceHref(resource("security/group", 1, "security-group")),
+    ).toBe("/networking/security-groups/security%2Fgroup");
+    expect(resourcePreferenceHref(resource("network", 1, "network"))).toBe(
+      "/networking/networks/network",
+    );
+    expect(resourcePreferenceHref(resource("router", 1, "router"))).toBe(
+      "/networking/routers/router",
+    );
+    expect(resourcePreferenceHref(resource("port", 1, "port"))).toBe(
+      "/networking/ports/port",
+    );
   });
 
   it("round-trips compact cookie tuples", () => {
