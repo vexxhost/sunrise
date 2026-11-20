@@ -70,6 +70,7 @@ import {
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import { hasRejectedMulticastAllowedAddressPair } from "@/lib/openstack/neutron-allowed-address-pairs";
 import type { ExtraDhcpOptionInput } from "@/lib/openstack/neutron-extra-dhcp-options";
 import { routerCapabilityBooleanInput } from "@/lib/openstack/neutron-router-gateways";
 import {
@@ -738,6 +739,7 @@ export function CreatePortAction({
   portBindingSupport,
   portSecuritySupport,
   qosSupport,
+  rejectMulticastAddressPairs,
   securityGroupSupport,
   trustedVifSupport,
   uplinkStatusPropagationSupport,
@@ -752,6 +754,7 @@ export function CreatePortAction({
   portBindingSupport: OpenStackFeatureSupport;
   portSecuritySupport: OpenStackFeatureSupport;
   qosSupport: OpenStackFeatureSupport;
+  rejectMulticastAddressPairs: boolean;
   securityGroupSupport: OpenStackFeatureSupport;
   trustedVifSupport: OpenStackFeatureSupport;
   uplinkStatusPropagationSupport: OpenStackFeatureSupport;
@@ -791,6 +794,9 @@ export function CreatePortAction({
   const securityGroupsAvailable = securityGroupSupport.status !== "unsupported";
   const allowedAddressPairsAvailable =
     allowedAddressPairsSupport.status !== "unsupported";
+  const hasRejectedMulticastPair =
+    rejectMulticastAddressPairs &&
+    hasRejectedMulticastAllowedAddressPair(allowedAddressPairs);
   const extraDhcpOptionsAvailable =
     extraDhcpOptionsSupport.status !== "unsupported";
   const qosAvailable = qosSupport.status !== "unsupported";
@@ -1232,6 +1238,7 @@ export function CreatePortAction({
                   portSecurityEnabled={
                     !portSecurityAvailable || portSecurityEnabled
                   }
+                  rejectMulticast={rejectMulticastAddressPairs}
                   value={allowedAddressPairs}
                 />
               ) : null}
@@ -1320,6 +1327,7 @@ export function CreatePortAction({
                   pending ||
                   !name.trim() ||
                   !networkId ||
+                  hasRejectedMulticastPair ||
                   quota.issues.length > 0
                 }
               >
