@@ -79,9 +79,6 @@ describe("Neutron router conntrack helper actions", () => {
       if (path === "/v2.0/routers/router-a/conntrack_helpers") {
         return { conntrack_helpers: [helperPayload().conntrack_helper] };
       }
-      if (path === "/v2.0/routers/router-a/conntrack_helpers/helper-a") {
-        return helperPayload();
-      }
       return null;
     });
     mocks.executeOpenStackMutation.mockImplementation(async (options) => ({
@@ -175,7 +172,7 @@ describe("Neutron router conntrack helper actions", () => {
     );
   });
 
-  it("re-reads the nested helper before updating it", async () => {
+  it("verifies helper membership through the router collection before updating it", async () => {
     await updateRouterConntrackHelperAction(scope, "router-a", "helper-a", {
       helper: "sip",
       port: 5060,
@@ -184,7 +181,7 @@ describe("Neutron router conntrack helper actions", () => {
 
     expect(mocks.openstackRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: "/v2.0/routers/router-a/conntrack_helpers/helper-a",
+        path: "/v2.0/routers/router-a/conntrack_helpers",
       }),
     );
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
@@ -202,12 +199,12 @@ describe("Neutron router conntrack helper actions", () => {
     );
   });
 
-  it("re-reads the nested helper before deleting it", async () => {
+  it("verifies helper membership through the router collection before deleting it", async () => {
     await deleteRouterConntrackHelperAction(scope, "router-a", "helper-a");
 
     expect(mocks.openstackRequest).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: "/v2.0/routers/router-a/conntrack_helpers/helper-a",
+        path: "/v2.0/routers/router-a/conntrack_helpers",
       }),
     );
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
@@ -218,7 +215,7 @@ describe("Neutron router conntrack helper actions", () => {
     );
   });
 
-  it("stops updates when the nested helper cannot be verified", async () => {
+  it("stops updates when the scoped collection cannot be verified", async () => {
     mocks.openstackRequest.mockImplementation(async ({ path }) =>
       path === "/v2.0/routers/router-a" ? routerPayload() : null,
     );
@@ -239,10 +236,17 @@ describe("Neutron router conntrack helper actions", () => {
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
-  it("stops updates when the nested response has another ID", async () => {
+  it("stops updates when the scoped collection does not contain the helper", async () => {
     mocks.openstackRequest.mockImplementation(async ({ path }) => {
       if (path === "/v2.0/routers/router-a") return routerPayload();
-      return helperPayload({ id: "helper-b" });
+      if (path === "/v2.0/routers/router-a/conntrack_helpers") {
+        return {
+          conntrack_helpers: [
+            helperPayload({ id: "helper-b" }).conntrack_helper,
+          ],
+        };
+      }
+      return null;
     });
 
     const result = await updateRouterConntrackHelperAction(
@@ -256,6 +260,77 @@ describe("Neutron router conntrack helper actions", () => {
       expect.objectContaining({
         ok: false,
         error: expect.objectContaining({ code: "service-error" }),
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not trust the vulnerable individual helper endpoint for ownership", async () => {
+    mocks.openstackRequest.mockImplementation(async ({ path }) => {
+      if (path === "/v2.0/routers/router-a") return routerPayload();
+      if (path === "/v2.0/routers/router-a/conntrack_helpers") {
+        return { conntrack_helpers: [] };
+      }
+      if (
+        path ===
+        "/v2.0/routers/router-a/conntrack_helpers/helper-from-another-router"
+      ) {
+        return helperPayload({ id: "helper-from-another-router" });
+      }
+      return null;
+    });
+
+    const result = await updateRouterConntrackHelperAction(
+      scope,
+      "router-a",
+      "helper-from-another-router",
+      { helper: "ftp", port: 21, protocol: "tcp" },
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "service-error" }),
+      }),
+    );
+    expect(mocks.openstackRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2.0/routers/router-a/conntrack_helpers/helper-from-another-router",
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("blocks deleting a helper that is absent from the router collection", async () => {
+    mocks.openstackRequest.mockImplementation(async ({ path }) => {
+      if (path === "/v2.0/routers/router-a") return routerPayload();
+      if (path === "/v2.0/routers/router-a/conntrack_helpers") {
+        return { conntrack_helpers: [] };
+      }
+      if (
+        path ===
+        "/v2.0/routers/router-a/conntrack_helpers/helper-from-another-router"
+      ) {
+        return helperPayload({ id: "helper-from-another-router" });
+      }
+      return null;
+    });
+
+    const result = await deleteRouterConntrackHelperAction(
+      scope,
+      "router-a",
+      "helper-from-another-router",
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "service-error" }),
+      }),
+    );
+    expect(mocks.openstackRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2.0/routers/router-a/conntrack_helpers/helper-from-another-router",
       }),
     );
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
@@ -343,8 +418,12 @@ describe("Neutron router conntrack helper actions", () => {
       if (path === "/v2.0/routers/router%2Fa") {
         return routerPayload({ id: "router/a" });
       }
-      if (path === "/v2.0/routers/router%2Fa/conntrack_helpers/helper%2Fa") {
-        return helperPayload({ id: "helper/a" });
+      if (path === "/v2.0/routers/router%2Fa/conntrack_helpers") {
+        return {
+          conntrack_helpers: [
+            helperPayload({ id: "helper/a" }).conntrack_helper,
+          ],
+        };
       }
       return null;
     });

@@ -156,19 +156,23 @@ async function requestRouter(regionId: string, routerId: string) {
   return router?.id === routerId ? router : null;
 }
 
-async function requestConntrackHelper(
-  regionId: string,
-  routerId: string,
-  helperId: string,
-) {
+async function requestConntrackHelpers(regionId: string, routerId: string) {
   const payload = await openstackRequest<unknown>({
     regionId,
     serviceType: SERVICE_TYPE,
     serviceName: SERVICE_NAME,
-    path: `/v2.0/routers/${encodeURIComponent(routerId)}/conntrack_helpers/${encodeURIComponent(helperId)}`,
+    path: `/v2.0/routers/${encodeURIComponent(routerId)}/conntrack_helpers`,
   });
-  const helper = payload ? parseConntrackHelperResponse(payload) : null;
-  return helper?.id === helperId ? helper : null;
+  return payload ? parseConntrackHelperCollection(payload) : null;
+}
+
+async function routerContainsConntrackHelper(
+  regionId: string,
+  routerId: string,
+  helperId: string,
+) {
+  const helpers = await requestConntrackHelpers(regionId, routerId);
+  return helpers?.some((helper) => helper.id === helperId) ?? false;
 }
 
 async function validateParent(
@@ -300,12 +304,12 @@ async function prepareMutation(
   if (!parent.ok) return { ok: false as const, result: parent.result };
 
   if (parsedHelperId) {
-    const existing = await requestConntrackHelper(
+    const helperBelongsToRouter = await routerContainsConntrackHelper(
       scope.regionId!,
       parsedRouterId.data,
       parsedHelperId.data,
     );
-    if (!existing) {
+    if (!helperBelongsToRouter) {
       return {
         ok: false as const,
         result: serviceFailure(
@@ -423,12 +427,12 @@ export async function deleteRouterConntrackHelperAction(
     activeScope,
   );
   if (!parent.ok) return parent.result;
-  const existing = await requestConntrackHelper(
+  const helperBelongsToRouter = await routerContainsConntrackHelper(
     activeScope.regionId!,
     parsedRouterId.data,
     parsedHelperId.data,
   );
-  if (!existing) {
+  if (!helperBelongsToRouter) {
     return serviceFailure(
       "Sunrise could not verify the conntrack helper before deleting it.",
       activeScope,
