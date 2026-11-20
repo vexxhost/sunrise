@@ -1,7 +1,14 @@
+"use client";
+
 import Link from "next/link";
 import { ListFilter } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import {
   neutronTagFilterError,
@@ -99,5 +106,75 @@ export function NeutronResourceTag({
         {content}
       </Link>
     </Badge>
+  );
+}
+
+export function NeutronResourceTagList({
+  resourceType,
+  support,
+  tags,
+  visibleCount = 2,
+}: {
+  resourceType: NeutronTaggableResourceType;
+  support: OpenStackFeatureSupport;
+  tags: string[];
+  visibleCount?: number;
+}) {
+  const visibleTags = tags.slice(0, visibleCount);
+  const additionalTags = tags.slice(visibleCount);
+  const additionalCount = additionalTags.length;
+
+  return (
+    <div className="flex max-w-64 flex-wrap gap-1">
+      {visibleTags.map((tag) => (
+        <NeutronResourceTag
+          key={tag}
+          className="max-w-48"
+          resourceType={resourceType}
+          support={support}
+          tag={tag}
+          truncate
+        />
+      ))}
+      {additionalCount ? (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Badge
+              asChild
+              variant="outline"
+              className="cursor-pointer hover:bg-accent hover:text-accent-foreground"
+            >
+              <button
+                type="button"
+                aria-label={`Show ${additionalCount} more ${additionalCount === 1 ? "tag" : "tags"}`}
+              >
+                +{additionalCount}
+              </button>
+            </Badge>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="w-[min(24rem,calc(100vw-2rem))] space-y-3"
+          >
+            <div>
+              <p className="text-sm font-medium">Additional tags</p>
+              <p className="text-xs text-muted-foreground">
+                Select a tag to show matching resources.
+              </p>
+            </div>
+            <div className="flex max-h-56 flex-wrap gap-2 overflow-y-auto">
+              {additionalTags.map((tag) => (
+                <NeutronResourceTag
+                  key={tag}
+                  resourceType={resourceType}
+                  support={support}
+                  tag={tag}
+                />
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+      ) : null}
+    </div>
   );
 }

@@ -48,7 +48,7 @@ import { neutronPortVnicTypeLabel } from "@/lib/openstack/neutron-port-vnic-type
 import { routerExternalGateways } from "@/lib/openstack/neutron-router-gateways";
 import { NeutronTagFilterControl } from "@/components/Network/NeutronTagFilter";
 import {
-  NeutronResourceTag,
+  NeutronResourceTagList,
   type NeutronTaggableResourceType,
 } from "@/components/Network/NeutronResourceTag";
 import type { NeutronTagFilter } from "@/lib/openstack/neutron-tag-filters";
@@ -94,21 +94,11 @@ function neutronTagColumn<T extends { tags?: string[] }>(
         return <span className="text-muted-foreground">None</span>;
       }
       return (
-        <div className="flex max-w-64 flex-wrap gap-1">
-          {tags.slice(0, 2).map((tag) => (
-            <NeutronResourceTag
-              key={tag}
-              className="max-w-48"
-              resourceType={resourceType}
-              support={support}
-              tag={tag}
-              truncate
-            />
-          ))}
-          {tags.length > 2 ? (
-            <Badge variant="outline">+{tags.length - 2}</Badge>
-          ) : null}
-        </div>
+        <NeutronResourceTagList
+          resourceType={resourceType}
+          support={support}
+          tags={tags}
+        />
       );
     },
     meta: { fieldType: "string", visible: false },
