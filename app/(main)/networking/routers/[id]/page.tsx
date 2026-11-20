@@ -106,11 +106,7 @@ export default async function Page({
       id,
     },
   );
-  const conntrackHelperSupport = await conntrackHelperSupportPromise;
-  const owned =
-    router.project_id === session.projectId ||
-    router.tenant_id === session.projectId;
-  await Promise.all([
+  const unconditionalPrefetchesPromise = Promise.all([
     queryClient.prefetchQuery(
       routerPortsQueryOptions(session.regionId, session.projectId, id),
     ),
@@ -120,6 +116,13 @@ export default async function Page({
     queryClient.prefetchQuery(
       externalNetworksQueryOptions(session.regionId, session.projectId),
     ),
+  ]);
+  const conntrackHelperSupport = await conntrackHelperSupportPromise;
+  const owned =
+    router.project_id === session.projectId ||
+    router.tenant_id === session.projectId;
+  await Promise.all([
+    unconditionalPrefetchesPromise,
     owned && conntrackHelperSupport.status !== "unsupported"
       ? queryClient.prefetchQuery(
           routerConntrackHelpersQueryOptions(
