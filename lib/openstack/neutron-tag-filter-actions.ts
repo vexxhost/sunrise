@@ -27,7 +27,12 @@ const TAGGABLE_COLLECTIONS = {
   port: { collection: "ports", payloadKey: "ports" },
 } as const;
 
+const MAX_COLLECTION_PAGES = 100;
+
 export type NeutronTagFilterResource = keyof typeof TAGGABLE_COLLECTIONS;
+
+type TaggableCollection =
+  (typeof TAGGABLE_COLLECTIONS)[NeutronTagFilterResource];
 
 function validScopeValue(value: unknown): value is string {
   return (
@@ -95,6 +100,68 @@ function parseOwnedItems(
   });
 }
 
+function collectionPath(
+  definition: TaggableCollection,
+  projectId: string,
+  filter: NeutronTagFilter,
+  marker?: string,
+) {
+  const query = new URLSearchParams({
+    project_id: projectId,
+    ...neutronTagFilterApiQuery(filter),
+  });
+  if (marker) query.set("marker", marker);
+  return `/v2.0/${definition.collection}?${query}`;
+}
+
+function nextCollectionPath(
+  payload: unknown,
+  definition: TaggableCollection,
+  projectId: string,
+  filter: NeutronTagFilter,
+) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Invalid Networking list response");
+  }
+  const links = Reflect.get(payload, `${definition.payloadKey}_links`);
+  if (links === undefined || links === null) return null;
+  if (!Array.isArray(links)) {
+    throw new Error("Invalid Networking pagination links");
+  }
+
+  const nextLinks = links.filter(
+    (link) =>
+      link &&
+      typeof link === "object" &&
+      Reflect.get(link, "rel") === "next",
+  );
+  if (nextLinks.length === 0) return null;
+  if (nextLinks.length !== 1) {
+    throw new Error("Invalid Networking pagination links");
+  }
+  const href = Reflect.get(nextLinks[0], "href");
+  if (typeof href !== "string" || href.length === 0) {
+    throw new Error("Invalid Networking pagination links");
+  }
+
+  const expectedPath = `/v2.0/${definition.collection}`;
+  let url: URL;
+  try {
+    url = new URL(href, `https://neutron.invalid${expectedPath}`);
+  } catch {
+    throw new Error("Invalid Networking pagination target");
+  }
+  if (!url.pathname.endsWith(expectedPath)) {
+    throw new Error("Invalid Networking pagination target");
+  }
+
+  const marker = url.searchParams.get("marker");
+  if (!validScopeValue(marker)) {
+    throw new Error("Invalid Networking pagination marker");
+  }
+  return collectionPath(definition, projectId, filter, marker);
+}
+
 export async function listProjectNeutronResourcesByTags(
   regionId: unknown,
   projectId: unknown,
@@ -122,21 +189,42 @@ export async function listProjectNeutronResourcesByTags(
 
   const definition =
     TAGGABLE_COLLECTIONS[resourceType as NeutronTagFilterResource];
-  const query = new URLSearchParams({
-    project_id: scope.projectId,
-    ...neutronTagFilterApiQuery(parsed.filter),
-  });
-  const payload = await openstackRequest<unknown>({
-    regionId: scope.regionId,
-    serviceType: "network",
-    serviceName: "neutron",
-    path: `/v2.0/${definition.collection}?${query}`,
-    errorMode: "throw",
-  });
-  return parseOwnedItems(
-    payload,
-    definition.payloadKey,
+  const items: unknown[] = [];
+  const visited = new Set<string>();
+  let path: string | null = collectionPath(
+    definition,
     scope.projectId,
     parsed.filter,
   );
+
+  while (path) {
+    if (visited.has(path) || visited.size >= MAX_COLLECTION_PAGES) {
+      throw new Error("Invalid Networking pagination");
+    }
+    visited.add(path);
+
+    const payload = await openstackRequest<unknown>({
+      regionId: scope.regionId,
+      serviceType: "network",
+      serviceName: "neutron",
+      path,
+      errorMode: "throw",
+    });
+    items.push(
+      ...parseOwnedItems(
+        payload,
+        definition.payloadKey,
+        scope.projectId,
+        parsed.filter,
+      ),
+    );
+    path = nextCollectionPath(
+      payload,
+      definition,
+      scope.projectId,
+      parsed.filter,
+    );
+  }
+
+  return items;
 }

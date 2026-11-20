@@ -93,6 +93,114 @@ describe("Neutron tag filter actions", () => {
     );
   });
 
+  it("follows and validates every page of a filtered collection", async () => {
+    mockedRequest
+      .mockResolvedValueOnce({
+        security_groups: [
+          {
+            id: "security-group-a",
+            project_id: "project-a",
+            tags: ["env:test"],
+          },
+        ],
+        security_groups_links: [
+          {
+            href: "https://neutron.example/network/v2.0/security-groups?project_id=project-a&tags=changed&marker=security-group-a",
+            rel: "next",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        security_groups: [
+          {
+            id: "security-group-b",
+            project_id: "project-a",
+            tags: ["env:test"],
+          },
+          {
+            id: "security-group-c",
+            project_id: "project-b",
+            tags: ["env:test"],
+          },
+          {
+            id: "security-group-d",
+            project_id: "project-a",
+            tags: ["env:prod"],
+          },
+        ],
+        security_groups_links: [],
+      });
+
+    await expect(
+      listProjectNeutronResourcesByTags(
+        "RegionOne",
+        "project-a",
+        "security-group",
+        { mode: "all", tags: ["env:test"] },
+      ),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "security-group-a" }),
+      expect.objectContaining({ id: "security-group-b" }),
+    ]);
+    expect(mockedRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        path: "/v2.0/security-groups?project_id=project-a&tags=env%3Atest&marker=security-group-a",
+      }),
+    );
+  });
+
+  it("rejects pagination that leaves or repeats the filtered collection", async () => {
+    mockedRequest.mockResolvedValue({
+      ports: [],
+      ports_links: [
+        {
+          href: "https://neutron.example/v2.0/networks?marker=port-a",
+          rel: "next",
+        },
+      ],
+    });
+
+    await expect(
+      listProjectNeutronResourcesByTags("RegionOne", "project-a", "port", {
+        mode: "all",
+        tags: ["env:test"],
+      }),
+    ).rejects.toThrow("Invalid Networking pagination target");
+
+    mockedRequest.mockResolvedValue({
+      ports: [],
+      ports_links: [
+        {
+          href: "/v2.0/ports?marker=port-a",
+          rel: "next",
+        },
+      ],
+    });
+    await expect(
+      listProjectNeutronResourcesByTags("RegionOne", "project-a", "port", {
+        mode: "all",
+        tags: ["env:test"],
+      }),
+    ).rejects.toThrow("Invalid Networking pagination");
+  });
+
+  it("rejects malformed next links instead of silently truncating", async () => {
+    mockedRequest.mockResolvedValue({
+      networks: [],
+      networks_links: [{ href: null, rel: "next" }],
+    });
+
+    await expect(
+      listProjectNeutronResourcesByTags(
+        "RegionOne",
+        "project-a",
+        "network",
+        { mode: "all", tags: ["env:test"] },
+      ),
+    ).rejects.toThrow("Invalid Networking pagination links");
+  });
+
   it("rejects mismatched scope and unknown resources before requesting", async () => {
     await expect(
       listProjectNeutronResourcesByTags("RegionTwo", "project-a", "network", {
