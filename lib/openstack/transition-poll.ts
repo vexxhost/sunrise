@@ -10,6 +10,7 @@ export function collectTransitionUpdates<T extends { id: string }>(
     hasErrors: results.some((result) => result.isError),
     updates: new Map(
       results
+        .filter((result) => !result.isError)
         .map((result) => result.data)
         .filter((resource): resource is T => Boolean(resource))
         .map((resource) => [resource.id, resource]),

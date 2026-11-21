@@ -21,4 +21,14 @@ describe("transition polling", () => {
     expect(result.hasErrors).toBe(true);
     expect(result.updates.size).toBe(0);
   });
+
+  it("does not merge stale data retained by a failed detail poll", () => {
+    const stale = { id: "resource-a", status: "creating" };
+    const result = collectTransitionUpdates([
+      { data: stale, isError: true },
+    ]);
+
+    expect(result.hasErrors).toBe(true);
+    expect(result.updates.size).toBe(0);
+  });
 });
