@@ -34,6 +34,9 @@ export function glanceTagFilterError(filter: GlanceTagFilter) {
     if (tag.length > GLANCE_TAG_FILTER_MAX_TAG_LENGTH) {
       return `Each tag filter must be ${GLANCE_TAG_FILTER_MAX_TAG_LENGTH} characters or fewer.`;
     }
+    if (tag !== tag.trim()) {
+      return "Tags with leading or trailing whitespace cannot be filtered exactly by the Image service.";
+    }
     if (seen.has(tag)) {
       return `Remove the duplicate tag ${JSON.stringify(tag)}.`;
     }

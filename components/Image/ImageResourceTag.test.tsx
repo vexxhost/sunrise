@@ -25,6 +25,15 @@ describe("Image resource tag navigation", () => {
     );
   });
 
+  it("does not link a whitespace-padded tag that Glance would trim", () => {
+    const markup = renderToStaticMarkup(<ImageResourceTag tag=" env:test " />);
+
+    expect(markup).not.toContain("<a");
+    expect(markup).toContain(
+      'title="This tag cannot be represented exactly in an image list filter."',
+    );
+  });
+
   it("uses an accessible overflow trigger for additional table tags", () => {
     const markup = renderToStaticMarkup(
       <ImageResourceTagList

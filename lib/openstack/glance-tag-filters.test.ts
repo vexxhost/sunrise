@@ -14,10 +14,8 @@ import {
 describe("Glance tag filters", () => {
   it("parses repeated exact tags with all-tag semantics", () => {
     expect(
-      parseGlanceTagFilterSearchParams({
-        tag: ["env:test", " team:api "],
-      }),
-    ).toEqual({ filter: { tags: ["env:test", " team:api "] } });
+      parseGlanceTagFilterSearchParams({ tag: ["env:test", "team:api"] }),
+    ).toEqual({ filter: { tags: ["env:test", "team:api"] } });
   });
 
   it("rejects empty, duplicate, and oversized filters", () => {
@@ -29,6 +27,16 @@ describe("Glance tag filters", () => {
     expect(glanceTagFilterError({ tags: ["a".repeat(256)] })).toContain(
       "255 characters",
     );
+    expect(glanceTagFilterError({ tags: [" team:api "] })).toContain(
+      "leading or trailing whitespace",
+    );
+  });
+
+  it("rejects URL filters Glance would silently trim", () => {
+    expect(parseGlanceTagFilterSearchParams({ tag: " env:test" })).toEqual({
+      error:
+        "Tags with leading or trailing whitespace cannot be filtered exactly by the Image service.",
+    });
   });
 
   it("preserves unrelated parameters while replacing tag filters", () => {
