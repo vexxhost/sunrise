@@ -5,29 +5,47 @@
 import { queryOptions } from '@tanstack/react-query';
 import { openstack } from '@/lib/openstack/actions';
 import type { Image, ImageListResponse } from '@/types/openstack';
+import {
+  glanceTagFilterApiPath,
+  glanceTagFilterQueryKey,
+  imageMatchesGlanceTagFilter,
+  type GlanceTagFilter,
+} from '@/lib/openstack/glance-tag-filters';
 
 /**
  * Query options for fetching list of images
  */
 export function imagesQueryOptions(
   regionId: string | undefined,
-  projectId: string | undefined
+  projectId: string | undefined,
+  tagFilter?: GlanceTagFilter,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, 'images'],
+    queryKey: [
+      regionId,
+      projectId,
+      'images',
+      ...glanceTagFilterQueryKey(tagFilter),
+    ],
     queryFn: async () => {
       const data = await openstack<ImageListResponse>({
         regionId: regionId!,
         serviceType: 'image',
         serviceName: 'glance',
-        path: '/v2/images',
+        path: glanceTagFilterApiPath('/v2/images', tagFilter),
       });
 
       if (!data) {
         return [];
       }
 
-      return data.images;
+      if (!tagFilter) return data.images;
+
+      // Keep exact all-tag semantics even if an older Glance deployment
+      // accepts but ignores one of the repeated tag query parameters.
+      return data.images.filter((image) =>
+        imageMatchesGlanceTagFilter(image.tags ?? [], tagFilter),
+      );
     },
     enabled: !!regionId,
   });

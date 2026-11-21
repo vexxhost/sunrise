@@ -26,8 +26,12 @@ import {
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { canDeleteImage, canEditImage } from "@/lib/openstack/image-lifecycle";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ImageTagFilterControl } from "@/components/Image/ImageTagFilter";
+import { ImageResourceTagList } from "@/components/Image/ImageResourceTag";
+import type { GlanceTagFilter } from "@/lib/openstack/glance-tag-filters";
 
 const ACTIVE_IMAGE_REFETCH_INTERVAL_MS = 5000;
+const TAG_FILTER_VISIBLE_COLUMNS = ["tags"];
 
 const ACTIVE_IMAGE_STATUSES: Image["status"][] = [
   "queued",
@@ -343,20 +347,7 @@ const columns: ColumnDef<Image>[] = [
       if (!tags || tags.length === 0) {
         return "-";
       }
-      return (
-        <div className="flex flex-wrap gap-1">
-          {tags.slice(0, 3).map((tag, index) => (
-            <Badge key={index} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-          {tags.length > 3 && (
-            <Badge variant="outline" className="text-xs">
-              +{tags.length - 3}
-            </Badge>
-          )}
-        </div>
-      );
+      return <ImageResourceTagList tags={tags} />;
     },
     meta: {
       fieldType: "string",
@@ -368,13 +359,20 @@ const columns: ColumnDef<Image>[] = [
 interface ImagesClientProps {
   regionId?: string;
   projectId?: string;
+  tagFilter?: GlanceTagFilter;
+  tagFilterError?: string;
 }
 
-export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
+export function ImagesClient({
+  regionId,
+  projectId,
+  tagFilter,
+  tagFilterError,
+}: ImagesClientProps) {
   const queryClient = useQueryClient();
   const imageListOptions = useMemo(
-    () => imagesQueryOptions(regionId, projectId),
-    [projectId, regionId],
+    () => imagesQueryOptions(regionId, projectId, tagFilter),
+    [projectId, regionId, tagFilter],
   );
   const { data, isRefetching, refetch } = useSuspenseQuery({
     ...imageListOptions,
@@ -485,7 +483,16 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
   return (
     <>
       <DataTable
+        additionalFilters={
+          <ImageTagFilterControl
+            filter={tagFilter}
+            initialError={tagFilterError}
+          />
+        }
         data={data}
+        forceVisibleColumnIds={
+          tagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         isRefetching={isRefetching}
         refetch={refetch}
         columns={columns}

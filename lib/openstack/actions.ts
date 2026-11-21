@@ -33,7 +33,13 @@ const READ_ROUTES: ReadRoute[] = [
   {
     serviceType: "image",
     serviceName: "glance",
-    pathname: /^\/v2\/images(?:\/[^/]+)?$/,
+    pathname: /^\/v2\/images$/,
+    query: { tag: true },
+  },
+  {
+    serviceType: "image",
+    serviceName: "glance",
+    pathname: /^\/v2\/images\/[^/]+$/,
   },
   {
     serviceType: "volumev3",

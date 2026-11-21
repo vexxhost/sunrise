@@ -11,6 +11,7 @@ import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
+import { ImageResourceTag } from "@/components/Image/ImageResourceTag";
 import { Badge } from "@/components/ui/badge";
 import { imageOperatingSystem } from "@/lib/openstack/image-metadata";
 import { Button } from "@/components/ui/button";
@@ -174,13 +175,7 @@ export function ImageDetailClient({
             {image.tags.length ? (
               <span className="flex flex-wrap gap-1">
                 {image.tags.map((tag) => (
-                  <Badge
-                    key={tag}
-                    variant="secondary"
-                    className="max-w-full break-all font-mono"
-                  >
-                    {tag}
-                  </Badge>
+                  <ImageResourceTag key={tag} tag={tag} />
                 ))}
               </span>
             ) : (
