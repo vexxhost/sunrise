@@ -13,6 +13,7 @@ import {
   glanceTagFilterError,
   glanceTagFilterHref,
 } from "@/lib/openstack/glance-tag-filters";
+import { formatGlanceTag } from "@/lib/openstack/glance-tags";
 import { cn } from "@/lib/utils";
 
 export function ImageResourceTag({
@@ -25,6 +26,7 @@ export function ImageResourceTag({
   truncate?: boolean;
 }) {
   const filterError = glanceTagFilterError({ tags: [tag] });
+  const label = formatGlanceTag(tag);
   const content = (
     <span
       className={
@@ -33,7 +35,7 @@ export function ImageResourceTag({
           : "break-all whitespace-pre-wrap font-mono"
       }
     >
-      {tag}
+      {label}
     </span>
   );
 
@@ -49,7 +51,7 @@ export function ImageResourceTag({
     );
   }
 
-  const actionLabel = `Show images tagged ${tag}`;
+  const actionLabel = `Show images tagged ${label}`;
   return (
     <Badge asChild variant="secondary" className={cn("max-w-full", className)}>
       <Link

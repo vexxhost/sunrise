@@ -1,6 +1,13 @@
+import {
+  GLANCE_MAX_TAG_LENGTH,
+  formatGlanceTag,
+  glanceRequestTrimsTag,
+  glanceTagLength,
+} from "@/lib/openstack/glance-tags";
+
 export const GLANCE_TAG_FILTER_PARAM = "tag";
 export const GLANCE_TAG_FILTER_MAX_TAGS = 128;
-export const GLANCE_TAG_FILTER_MAX_TAG_LENGTH = 255;
+export const GLANCE_TAG_FILTER_MAX_TAG_LENGTH = GLANCE_MAX_TAG_LENGTH;
 
 export type GlanceTagFilter = {
   tags: string[];
@@ -31,14 +38,14 @@ export function glanceTagFilterError(filter: GlanceTagFilter) {
     if (tag.length === 0) {
       return "Empty tags cannot be used in an image list filter.";
     }
-    if (tag.length > GLANCE_TAG_FILTER_MAX_TAG_LENGTH) {
+    if (glanceTagLength(tag) > GLANCE_TAG_FILTER_MAX_TAG_LENGTH) {
       return `Each tag filter must be ${GLANCE_TAG_FILTER_MAX_TAG_LENGTH} characters or fewer.`;
     }
-    if (tag !== tag.trim()) {
+    if (glanceRequestTrimsTag(tag)) {
       return "Tags with leading or trailing whitespace cannot be filtered exactly by the Image service.";
     }
     if (seen.has(tag)) {
-      return `Remove the duplicate tag ${JSON.stringify(tag)}.`;
+      return `Remove the duplicate tag ${formatGlanceTag(tag)}.`;
     }
     seen.add(tag);
   }

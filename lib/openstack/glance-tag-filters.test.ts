@@ -37,6 +37,25 @@ describe("Glance tag filters", () => {
       error:
         "Tags with leading or trailing whitespace cannot be filtered exactly by the Image service.",
     });
+    expect(parseGlanceTagFilterSearchParams({ tag: "\u0085env:test" })).toEqual(
+      {
+        error:
+          "Tags with leading or trailing whitespace cannot be filtered exactly by the Image service.",
+      },
+    );
+    expect(parseGlanceTagFilterSearchParams({ tag: "\u001cenv:test" })).toEqual(
+      {
+        error:
+          "Tags with leading or trailing whitespace cannot be filtered exactly by the Image service.",
+      },
+    );
+  });
+
+  it("counts tag length in Unicode code points", () => {
+    expect(glanceTagFilterError({ tags: ["😀".repeat(255)] })).toBeNull();
+    expect(glanceTagFilterError({ tags: ["😀".repeat(256)] })).toContain(
+      "255 characters",
+    );
   });
 
   it("preserves unrelated parameters while replacing tag filters", () => {

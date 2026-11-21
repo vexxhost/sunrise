@@ -34,6 +34,15 @@ describe("Image resource tag navigation", () => {
     );
   });
 
+  it("quotes Python-only edge whitespace and does not link it", () => {
+    const markup = renderToStaticMarkup(
+      <ImageResourceTag tag={"\u0085env:test"} />,
+    );
+
+    expect(markup).not.toContain("<a");
+    expect(markup).toContain("&quot;\\u0085env:test&quot;");
+  });
+
   it("uses an accessible overflow trigger for additional table tags", () => {
     const markup = renderToStaticMarkup(
       <ImageResourceTagList
