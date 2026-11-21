@@ -291,4 +291,54 @@ describe("global search actions", () => {
       unavailableSources: [],
     });
   });
+
+  it("indexes exact Nova instance tags from the existing detail response", async () => {
+    mocks.getServiceCatalog.mockResolvedValue([
+      {
+        name: "nova",
+        type: "compute",
+        endpoints: [
+          {
+            interface: "public",
+            region: "RegionOne",
+            url: "https://nova.example.test",
+          },
+        ],
+      },
+    ]);
+    mocks.isServiceEnabled.mockImplementation(
+      (_policy: unknown, service: string) => service === "compute",
+    );
+    mocks.requestJson.mockResolvedValue({
+      servers: [
+        {
+          id: "server-a",
+          name: "application server",
+          status: "ACTIVE",
+          tags: ["env:test", "team:platform"],
+        },
+      ],
+    });
+
+    const result = await loadGlobalSearchIndex();
+
+    expect(mocks.requestJson).toHaveBeenCalledOnce();
+    expect(mocks.requestJson.mock.calls[0]?.[0]).toBe(
+      "https://nova.example.test/servers/detail?limit=100",
+    );
+    expect(mocks.requestJson.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ "OpenStack-API-Version": "compute 2.79" }),
+    );
+    expect(result).toEqual({
+      resources: [
+        expect.objectContaining({
+          kind: "instance",
+          id: "server-a",
+          name: "application server",
+          tags: ["env:test", "team:platform"],
+        }),
+      ],
+      unavailableSources: [],
+    });
+  });
 });

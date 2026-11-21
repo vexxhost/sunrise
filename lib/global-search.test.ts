@@ -165,15 +165,31 @@ describe("global search resources", () => {
         kind: "image",
         items: [{ id: "image-id", name: "tagged image", tags: ["env:test"] }],
       },
+      {
+        kind: "instance",
+        items: [
+          {
+            id: "server-id",
+            name: "tagged instance",
+            tags: ["env:test", "Team:Platform", "env:test"],
+          },
+        ],
+        searchTags: true,
+      },
     ]);
 
     const network = resources.find((resource) => resource.kind === "network");
     const image = resources.find((resource) => resource.kind === "image");
+    const instance = resources.find(
+      (resource) => resource.kind === "instance",
+    );
 
     expect(network?.tags).toEqual(["env:test", "Team:Platform"]);
     expect(globalSearchResourceValue(network!)).toContain("env:test");
     expect(globalSearchResourceValue(network!)).toContain("tag:env:test");
     expect(image?.tags).toBeUndefined();
+    expect(instance?.tags).toEqual(["env:test", "Team:Platform"]);
+    expect(globalSearchResourceValue(instance!)).toContain("tag:env:test");
   });
 
   it("enriches recent resources with fetched status and tags", () => {

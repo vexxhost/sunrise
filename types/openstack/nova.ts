@@ -135,6 +135,7 @@ export interface Server {
   tenant_id: string;
   user_id: string;
   metadata: Record<string, string>;
+  tags?: string[];
   hostId: string;
   image: { id: string } | "";
   flavor: {

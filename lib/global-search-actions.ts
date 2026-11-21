@@ -83,6 +83,7 @@ const openStackSources: OpenStackSearchSource[] = [
     path: `/servers/detail?limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
     responseKey: "servers",
     apiVersion: "compute 2.79",
+    searchTags: true,
   },
   {
     kind: "volume",

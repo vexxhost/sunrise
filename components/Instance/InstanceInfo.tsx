@@ -8,6 +8,7 @@ import {
 } from "@/lib/openstack/server-state";
 import { normalizeOpenStackTimestamp } from "@/lib/openstack/time";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { Badge } from "@/components/ui/badge";
 
 export function InstanceInfo({ server }: { server: Server }) {
   const metadata = Object.entries(server.metadata ?? {});
@@ -30,6 +31,23 @@ export function InstanceInfo({ server }: { server: Server }) {
             </ResourceLink>
           ) : (
             "No key pair"
+          )}
+        </DetailField>
+        <DetailField label="Tags">
+          {server.tags?.length ? (
+            <span className="flex flex-wrap gap-1">
+              {server.tags.map((tag) => (
+                <Badge
+                  key={tag}
+                  variant="secondary"
+                  className="max-w-full break-all whitespace-pre-wrap font-mono"
+                >
+                  {tag}
+                </Badge>
+              ))}
+            </span>
+          ) : (
+            "-"
           )}
         </DetailField>
         <DetailField label="Created">{server.created}</DetailField>
