@@ -1,4 +1,8 @@
 import { normalizeMutationProjectId } from "@/lib/mutations";
+import {
+  imageMatchesGlanceTagFilter,
+  type GlanceTagFilter,
+} from "@/lib/openstack/glance-tag-filters";
 import type { Image } from "@/types/openstack";
 
 const TRANSITION_STATUSES: Image["status"][] = [
@@ -31,4 +35,29 @@ export function canEditImage(image: Image, projectId?: string) {
 
 export function canDeleteImage(image: Image, projectId?: string) {
   return canEditImage(image, projectId) && !image.protected;
+}
+
+export function mergeImageUpdates(
+  current: Image[],
+  updates: ReadonlyMap<string, Image>,
+  tagFilter?: GlanceTagFilter,
+) {
+  let changed = false;
+  const next: Image[] = [];
+
+  for (const image of current) {
+    const updated = updates.get(image.id) ?? image;
+    if (
+      tagFilter &&
+      !imageMatchesGlanceTagFilter(updated.tags ?? [], tagFilter)
+    ) {
+      changed = true;
+      continue;
+    }
+
+    changed = changed || updated !== image;
+    next.push(updated);
+  }
+
+  return changed ? next : current;
 }

@@ -102,6 +102,35 @@ describe("public OpenStack read action", () => {
     ).rejects.toThrow("Invalid OpenStack request");
   });
 
+  it("allows repeated Glance tag filters but rejects other image queries", async () => {
+    await expect(
+      openstack({
+        regionId: "RegionOne",
+        serviceType: "image",
+        serviceName: "glance",
+        path: "/v2/images?tag=env%3Atest&tag=team%3Aapi",
+      }),
+    ).resolves.toEqual({ servers: [] });
+
+    await expect(
+      openstack({
+        regionId: "RegionOne",
+        serviceType: "image",
+        serviceName: "glance",
+        path: "/v2/images?owner=project-a",
+      }),
+    ).rejects.toThrow("Invalid OpenStack request");
+
+    await expect(
+      openstack({
+        regionId: "RegionOne",
+        serviceType: "image",
+        serviceName: "glance",
+        path: "/v2/images/image-a?tag=env%3Atest",
+      }),
+    ).rejects.toThrow("Invalid OpenStack request");
+  });
+
   it.each([
     ["compute", "nova", "/servers/server-a/os-interface"],
     ["compute", "nova", "/os-keypairs/operator-key"],

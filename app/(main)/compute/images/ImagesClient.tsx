@@ -24,31 +24,20 @@ import {
   type ImageMutationKind,
 } from "@/components/Image/ImageMutationDialog";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
-import { canDeleteImage, canEditImage } from "@/lib/openstack/image-lifecycle";
+import {
+  canDeleteImage,
+  canEditImage,
+  isImageTransitioning,
+  mergeImageUpdates,
+} from "@/lib/openstack/image-lifecycle";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ImageTagFilterControl } from "@/components/Image/ImageTagFilter";
+import { ImageResourceTagList } from "@/components/Image/ImageResourceTag";
+import type { GlanceTagFilter } from "@/lib/openstack/glance-tag-filters";
+import { collectTransitionUpdates } from "@/lib/openstack/transition-poll";
 
 const ACTIVE_IMAGE_REFETCH_INTERVAL_MS = 5000;
-
-const ACTIVE_IMAGE_STATUSES: Image["status"][] = [
-  "queued",
-  "saving",
-  "uploading",
-  "importing",
-  "pending_delete",
-];
-
-function isActiveImageStatus(status: Image["status"]) {
-  return ACTIVE_IMAGE_STATUSES.includes(status);
-}
-
-function collectImageUpdates(results: readonly { data?: Image }[]) {
-  return new Map(
-    results
-      .map((result) => result.data)
-      .filter((image): image is Image => Boolean(image))
-      .map((image) => [image.id, image]),
-  );
-}
+const TAG_FILTER_VISIBLE_COLUMNS = ["tags"];
 
 function formatImageStatus(status: Image["status"]) {
   return titleCase(status.replace(/_/g, " "));
@@ -105,7 +94,7 @@ const columns: ColumnDef<Image>[] = [
     header: "Status",
     cell: ({ row }: { row: { original: Image } }) => {
       const status = formatImageStatus(row.original.status);
-      const active = isActiveImageStatus(row.original.status);
+      const active = isImageTransitioning(row.original);
       let variant: "default" | "secondary" | "destructive" | "outline";
 
       // Determine the badge variant based on the status value
@@ -343,20 +332,7 @@ const columns: ColumnDef<Image>[] = [
       if (!tags || tags.length === 0) {
         return "-";
       }
-      return (
-        <div className="flex flex-wrap gap-1">
-          {tags.slice(0, 3).map((tag, index) => (
-            <Badge key={index} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-          {tags.length > 3 && (
-            <Badge variant="outline" className="text-xs">
-              +{tags.length - 3}
-            </Badge>
-          )}
-        </div>
-      );
+      return <ImageResourceTagList tags={tags} />;
     },
     meta: {
       fieldType: "string",
@@ -368,13 +344,20 @@ const columns: ColumnDef<Image>[] = [
 interface ImagesClientProps {
   regionId?: string;
   projectId?: string;
+  tagFilter?: GlanceTagFilter;
+  tagFilterError?: string;
 }
 
-export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
+export function ImagesClient({
+  regionId,
+  projectId,
+  tagFilter,
+  tagFilterError,
+}: ImagesClientProps) {
   const queryClient = useQueryClient();
   const imageListOptions = useMemo(
-    () => imagesQueryOptions(regionId, projectId),
-    [projectId, regionId],
+    () => imagesQueryOptions(regionId, projectId, tagFilter),
+    [projectId, regionId, tagFilter],
   );
   const { data, isRefetching, refetch } = useSuspenseQuery({
     ...imageListOptions,
@@ -387,8 +370,7 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
   );
   const [actionTargets, setActionTargets] = useState<Image[]>([]);
   const activeVisibleImages = useMemo(
-    () =>
-      visiblePageImages.filter((image) => isActiveImageStatus(image.status)),
+    () => visiblePageImages.filter(isImageTransitioning),
     [visiblePageImages],
   );
   const activeVisibleImageUpdates = useQueries({
@@ -398,7 +380,7 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
       refetchOnReconnect: false,
       refetchOnWindowFocus: false,
     })),
-    combine: collectImageUpdates,
+    combine: collectTransitionUpdates<Image>,
   });
 
   const handlePageRowsChange = useCallback((images: Image[]) => {
@@ -420,7 +402,7 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
 
   const refreshAfterAction = useCallback(async () => {
     await queryClient.invalidateQueries({
-      queryKey: imageListOptions.queryKey,
+      queryKey: [regionId, projectId, "images"],
     });
     for (const image of actionTargets) {
       await queryClient.invalidateQueries({
@@ -429,7 +411,6 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
     }
   }, [
     actionTargets,
-    imageListOptions.queryKey,
     projectId,
     queryClient,
     regionId,
@@ -458,34 +439,44 @@ export function ImagesClient({ regionId, projectId }: ImagesClientProps) {
   );
 
   useEffect(() => {
-    if (activeVisibleImageUpdates.size === 0) {
-      return;
-    }
-
-    queryClient.setQueryData<Image[]>(imageListOptions.queryKey, (existing) => {
-      if (!existing) {
-        return existing;
-      }
-
-      let changed = false;
-      const nextImages = existing.map((image) => {
-        const updated = activeVisibleImageUpdates.get(image.id);
-        if (!updated) {
-          return image;
-        }
-
-        changed = changed || updated !== image;
-        return updated;
+    if (activeVisibleImageUpdates.hasErrors) {
+      void queryClient.invalidateQueries({
+        queryKey: imageListOptions.queryKey,
       });
-
-      return changed ? nextImages : existing;
-    });
-  }, [activeVisibleImageUpdates, imageListOptions.queryKey, queryClient]);
+    }
+    if (activeVisibleImageUpdates.updates.size) {
+      queryClient.setQueryData<Image[]>(
+        imageListOptions.queryKey,
+        (existing) =>
+          existing
+            ? mergeImageUpdates(
+                existing,
+                activeVisibleImageUpdates.updates,
+                tagFilter,
+              )
+            : existing,
+      );
+    }
+  }, [
+    activeVisibleImageUpdates,
+    imageListOptions.queryKey,
+    queryClient,
+    tagFilter,
+  ]);
 
   return (
     <>
       <DataTable
+        additionalFilters={
+          <ImageTagFilterControl
+            filter={tagFilter}
+            initialError={tagFilterError}
+          />
+        }
         data={data}
+        forceVisibleColumnIds={
+          tagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         isRefetching={isRefetching}
         refetch={refetch}
         columns={columns}
