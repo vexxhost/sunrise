@@ -165,6 +165,9 @@ export function InstanceDetailActions({
         queryKey: [regionId, projectId, "servers"],
       }),
       queryClient.invalidateQueries({
+        queryKey: ["global-search-index", regionId, projectId],
+      }),
+      queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "server-actions", server.id],
       }),
       queryClient.invalidateQueries({
