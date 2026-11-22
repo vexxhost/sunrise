@@ -26,14 +26,13 @@ function server(overrides: Partial<Server> = {}) {
 describe("instance information", () => {
   it("renders Nova tags as exact opaque values", () => {
     const markup = renderToStaticMarkup(
-      <InstanceInfo
-        server={server({ tags: ["env:test", "Team:Platform"] })}
-      />,
+      <InstanceInfo server={server({ tags: ["env:test", "Team:Platform"] })} />,
     );
 
     expect(markup).toContain("env:test");
     expect(markup).toContain("Team:Platform");
-    expect(markup).not.toContain("tag%3Aenv");
+    expect(markup).toContain('href="/compute/instances?tag=env%3Atest"');
+    expect(markup).toContain('href="/compute/instances?tag=Team%3APlatform"');
   });
 
   it("renders a stable empty state when tags are absent", () => {

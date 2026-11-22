@@ -5,6 +5,11 @@
 import { queryOptions } from "@tanstack/react-query";
 import { openstack } from "@/lib/openstack/actions";
 import { getServerConsoleOutputAction } from "@/lib/openstack/nova-actions";
+import { listProjectNovaServersByTags } from "@/lib/openstack/nova-tag-filter-actions";
+import {
+  novaTagFilterQueryKey,
+  type NovaTagFilter,
+} from "@/lib/openstack/nova-tag-filters";
 import type {
   ServerListResponse,
   ServerResponse,
@@ -47,10 +52,20 @@ export function serverAvailabilityZonesQueryOptions(
 export function serversQueryOptions(
   regionId: string | undefined,
   projectId: string | undefined,
+  tagFilter?: NovaTagFilter,
 ) {
   return queryOptions({
-    queryKey: [regionId, projectId, "servers"],
+    queryKey: [
+      regionId,
+      projectId,
+      "servers",
+      ...novaTagFilterQueryKey(tagFilter),
+    ],
     queryFn: async () => {
+      if (tagFilter) {
+        return listProjectNovaServersByTags(regionId, projectId, tagFilter);
+      }
+
       const data = await openstack<ServerListResponse>({
         regionId: regionId!,
         serviceType: "compute",

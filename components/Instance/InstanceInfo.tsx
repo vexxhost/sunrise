@@ -1,4 +1,4 @@
-import { formatDistanceToNow, parseISO } from 'date-fns';
+import { formatDistanceToNow, parseISO } from "date-fns";
 import { Server } from "@/types/openstack";
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import {
@@ -8,7 +8,7 @@ import {
 } from "@/lib/openstack/server-state";
 import { normalizeOpenStackTimestamp } from "@/lib/openstack/time";
 import { ResourceLink } from "@/components/resources/ResourceLink";
-import { Badge } from "@/components/ui/badge";
+import { InstanceResourceTag } from "@/components/Instance/InstanceResourceTag";
 
 export function InstanceInfo({ server }: { server: Server }) {
   const metadata = Object.entries(server.metadata ?? {});
@@ -37,13 +37,7 @@ export function InstanceInfo({ server }: { server: Server }) {
           {server.tags?.length ? (
             <span className="flex flex-wrap gap-1">
               {server.tags.map((tag) => (
-                <Badge
-                  key={tag}
-                  variant="secondary"
-                  className="max-w-full break-all whitespace-pre-wrap font-mono"
-                >
-                  {tag}
-                </Badge>
+                <InstanceResourceTag key={tag} tag={tag} />
               ))}
             </span>
           ) : (
@@ -52,7 +46,9 @@ export function InstanceInfo({ server }: { server: Server }) {
         </DetailField>
         <DetailField label="Created">{server.created}</DetailField>
         <DetailField label="Age">
-          {formatDistanceToNow(parseISO(normalizeOpenStackTimestamp(server.created)))}
+          {formatDistanceToNow(
+            parseISO(normalizeOpenStackTimestamp(server.created)),
+          )}
         </DetailField>
       </DetailSection>
       <details className="group">
@@ -66,26 +62,34 @@ export function InstanceInfo({ server }: { server: Server }) {
           <DetailField label="Project ID" className="font-mono text-xs">
             {server.tenant_id}
           </DetailField>
-          <DetailField label="Status">{formatServerStatus(server.status)}</DetailField>
+          <DetailField label="Status">
+            {formatServerStatus(server.status)}
+          </DetailField>
           <DetailField label="Task State">
             {formatServerTaskState(server["OS-EXT-STS:task_state"])}
           </DetailField>
           <DetailField label="Power State">
             {formatServerPowerState(server["OS-EXT-STS:power_state"])}
           </DetailField>
-          <DetailField label="Disk configuration">{server["OS-DCF:diskConfig"]}</DetailField>
-          <DetailField label="Config drive">{server.config_drive || "Disabled"}</DetailField>
+          <DetailField label="Disk configuration">
+            {server["OS-DCF:diskConfig"]}
+          </DetailField>
+          <DetailField label="Config drive">
+            {server.config_drive || "Disabled"}
+          </DetailField>
         </div>
       </details>
       <DetailSection title="Metadata">
         {metadata.length ? (
           metadata.map(([key, value]) => (
-            <DetailField key={key} label={key}>{value}</DetailField>
+            <DetailField key={key} label={key}>
+              {value}
+            </DetailField>
           ))
         ) : (
           <DetailField label="Metadata">No metadata configured</DetailField>
         )}
       </DetailSection>
     </>
-  )
+  );
 }
