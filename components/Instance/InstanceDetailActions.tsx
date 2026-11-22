@@ -16,6 +16,7 @@ import {
   RotateCw,
   Scaling,
   ShieldCheck,
+  Tags,
   Trash2,
   Undo2,
   Zap,
@@ -29,6 +30,7 @@ import { ImagePicker } from "@/components/Image/ImageSelectOption";
 import { InstanceAttachVolumeDialog } from "@/components/Instance/InstanceAttachVolumeDialog";
 import { InstanceResizeDialog } from "@/components/Instance/InstanceResizeDialog";
 import { InstanceSecurityGroupsDialog } from "@/components/Instance/InstanceSecurityGroupsDialog";
+import { InstanceTagsDialog } from "@/components/Instance/InstanceTagsDialog";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -105,6 +107,7 @@ export function InstanceDetailActions({
   const [resizeOpen, setResizeOpen] = useState(false);
   const [attachVolumeOpen, setAttachVolumeOpen] = useState(false);
   const [securityGroupsOpen, setSecurityGroupsOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [resizeDecision, setResizeDecision] = useState<
     "confirm" | "revert" | null
   >(null);
@@ -160,6 +163,9 @@ export function InstanceDetailActions({
       }),
       queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "servers"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["global-search-index", regionId, projectId],
       }),
       queryClient.invalidateQueries({
         queryKey: [regionId, projectId, "server-actions", server.id],
@@ -441,6 +447,13 @@ export function InstanceDetailActions({
               <Pencil className="size-4" />
               Edit metadata
             </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!projectId || !regionId}
+              onClick={() => setTagsOpen(true)}
+            >
+              <Tags className="size-4" />
+              Edit tags
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               Danger zone
@@ -495,6 +508,17 @@ export function InstanceDetailActions({
         regionId={regionId}
         server={server}
       />
+
+      {tagsOpen ? (
+        <InstanceTagsDialog
+          open
+          onOpenChange={setTagsOpen}
+          onComplete={refresh}
+          projectId={projectId}
+          regionId={regionId}
+          server={server}
+        />
+      ) : null}
 
       <MutationConfirmationDialog
         open={resizeDecision !== null}
