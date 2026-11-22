@@ -14,14 +14,17 @@ describe("instance resource tag navigation", () => {
     expect(markup).toContain('aria-label="Show instances tagged env:test"');
   });
 
-  it("does not link a tag that cannot be represented exactly", () => {
-    const markup = renderToStaticMarkup(<InstanceResourceTag tag="" />);
+  it.each(["", "[", "*", "[]", "\\c", "(?<name>x)"])(
+    "does not link a tag that cannot be represented exactly: %s",
+    (tag) => {
+      const markup = renderToStaticMarkup(<InstanceResourceTag tag={tag} />);
 
-    expect(markup).not.toContain("<a");
-    expect(markup).toContain(
-      'title="This tag cannot be represented exactly in an instance list filter."',
-    );
-  });
+      expect(markup).not.toContain("<a");
+      expect(markup).toContain(
+        'title="This tag cannot be represented exactly in an instance list filter."',
+      );
+    },
+  );
 
   it("uses an accessible overflow trigger for additional table tags", () => {
     const markup = renderToStaticMarkup(

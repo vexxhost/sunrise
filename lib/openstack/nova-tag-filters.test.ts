@@ -45,8 +45,26 @@ describe("Nova tag filters", () => {
     [{ mode: "all", tags: ["same", "same"] }, "duplicate"],
     [{ mode: "all", tags: ["path/value"] }, "slash"],
     [{ mode: "all", tags: ["one,two"] }, "comma"],
+    [{ mode: "all", tags: ["["] }, "cannot be represented"],
+    [{ mode: "any", tags: ["*"] }, "cannot be represented"],
+    [{ mode: "all", tags: ["[]"] }, "cannot be represented"],
+    [{ mode: "all", tags: ["\\c"] }, "cannot be represented"],
+    [{ mode: "all", tags: ["(?<name>x)"] }, "cannot be represented"],
   ] as const)("rejects invalid filters", (filter, message) => {
     expect(novaTagFilterError(filter)).toContain(message);
+  });
+
+  it.each(["[ab]", "(env:test)?", "\\d+"])(
+    "accepts syntax shared by Nova and the browser runtime: %s",
+    (tag) => {
+      expect(novaTagFilterError({ mode: "all", tags: [tag] })).toBeNull();
+    },
+  );
+
+  it("does not apply the per-server tag limit to query alternatives", () => {
+    const tags = Array.from({ length: 51 }, (_, index) => `team:${index}`);
+
+    expect(novaTagFilterError({ mode: "any", tags })).toBeNull();
   });
 
   it("validates untrusted action input", () => {

@@ -46,6 +46,12 @@ export function validateNovaTags(tags: string[]): NovaTagsValidationResult {
     };
   }
 
+  return validateNovaTagValues(tags);
+}
+
+export function validateNovaTagValues(
+  tags: string[],
+): NovaTagsValidationResult {
   const seen = new Set<string>();
   for (const tag of tags) {
     if (tag.length === 0) {
