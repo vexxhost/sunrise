@@ -53,6 +53,17 @@ const catalog: OpenStackCatalogService[] = [
       },
     ],
   },
+  {
+    name: "octavia",
+    type: "load-balancer",
+    endpoints: [
+      {
+        interface: "public",
+        region: "RegionOne",
+        url: "https://octavia.example.test",
+      },
+    ],
+  },
 ];
 
 function build(
@@ -138,7 +149,9 @@ describe("create action availability", () => {
     expect(
       actions.find(({ id }) => id === "share-network")?.capability.status,
     ).toBe("available");
-    expect(build().map(({ id }) => id)).not.toContain("load-balancer");
+    expect(
+      actions.find(({ id }) => id === "load-balancer")?.capability.status,
+    ).toBe("available");
   });
 
   it("omits disabled services and S3-only actions in Swift mode", () => {
@@ -203,6 +216,10 @@ describe("create action availability", () => {
       {
         service: "networking",
         href: "/networking/address-groups?create=address-group",
+      },
+      {
+        service: "networking",
+        href: "/networking/load-balancers?create=load-balancer",
       },
     ]);
     expect(isCreateActionRequested("instance", "instance")).toBe(true);

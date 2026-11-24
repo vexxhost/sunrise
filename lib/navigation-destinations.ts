@@ -514,6 +514,7 @@ export const createActionSearchTerms: Record<CreateActionId, string[]> = {
   "floating-ip": ["neutron", "public ip", "elastic ip", "eip"],
   "security-group": ["neutron", "firewall", "rules"],
   "address-group": ["neutron", "firewall", "cidr", "ip set"],
+  "load-balancer": ["octavia", "virtual ip", "vip", "traffic delivery"],
   "key-pair": ["ssh", "public key"],
   cluster: ["magnum", "kubernetes", "k8s", "capi"],
   "cluster-template": ["magnum", "kubernetes", "k8s", "capi"],

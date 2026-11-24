@@ -236,8 +236,9 @@ export default async function NetworkingPage() {
                 href: "/networking/load-balancers",
                 icon: Waypoints,
                 description:
-                  "Inspect Octavia virtual IPs, listeners, pools, members, and health.",
+                  "Create and inspect Octavia virtual IPs, listeners, pools, members, and health.",
                 meta: currentMeta(loadBalancers),
+                createAction: createById.get("load-balancer"),
               },
             ]}
           />

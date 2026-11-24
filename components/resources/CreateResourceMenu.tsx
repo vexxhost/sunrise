@@ -24,6 +24,7 @@ import {
   PackagePlus,
   ScrollText,
   Share2,
+  Waypoints,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ export const createActionIcons: Record<
   "floating-ip": Globe2,
   "security-group": ShieldCheck,
   "address-group": ListTree,
+  "load-balancer": Waypoints,
   "key-pair": KeyRound,
   cluster: Boxes,
   "cluster-template": Settings,

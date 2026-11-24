@@ -14,6 +14,7 @@ const supportedServices = new Set<OverviewServiceId>([
   "network",
   "shared-file-system",
   "container-infra",
+  "load-balancing",
   "key-manager",
 ]);
 
