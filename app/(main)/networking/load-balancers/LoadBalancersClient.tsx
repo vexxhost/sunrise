@@ -5,6 +5,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Waypoints } from "lucide-react";
 
+import { LoadBalancerCreateAction } from "@/components/LoadBalancer/LoadBalancerCreateAction";
 import { DataTable } from "@/components/DataTable";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { ResourceLink } from "@/components/resources/ResourceLink";
@@ -15,6 +16,7 @@ import {
   isOctaviaProvisioning,
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import type { OctaviaLoadBalancer } from "@/types/openstack";
 
 const columns: ColumnDef<OctaviaLoadBalancer>[] = [
@@ -96,11 +98,17 @@ const columns: ColumnDef<OctaviaLoadBalancer>[] = [
 ];
 
 export function LoadBalancersClient({
+  availabilityZoneSupport,
+  initiallyOpen,
   projectId,
   regionId,
+  tagSupport,
 }: {
-  projectId?: string;
-  regionId?: string;
+  availabilityZoneSupport: OpenStackFeatureSupport;
+  initiallyOpen: boolean;
+  projectId: string;
+  regionId: string;
+  tagSupport: OpenStackFeatureSupport;
 }) {
   const query = useMemo(
     () => loadBalancersQueryOptions(regionId, projectId),
@@ -115,14 +123,29 @@ export function LoadBalancersClient({
   });
 
   return (
-    <DataTable
-      columns={columns}
-      data={data}
-      emptyIcon={Waypoints}
-      getRowId={(loadBalancer) => loadBalancer.id}
-      isRefetching={isRefetching}
-      refetch={refetch}
-      resourceName="load balancer"
-    />
+    <>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          Octavia virtual IPs and their listener, pool, member, and health
+          topology.
+        </p>
+        <LoadBalancerCreateAction
+          availabilityZoneSupport={availabilityZoneSupport}
+          initiallyOpen={initiallyOpen}
+          projectId={projectId}
+          regionId={regionId}
+          tagSupport={tagSupport}
+        />
+      </div>
+      <DataTable
+        columns={columns}
+        data={data}
+        emptyIcon={Waypoints}
+        getRowId={(loadBalancer) => loadBalancer.id}
+        isRefetching={isRefetching}
+        refetch={refetch}
+        resourceName="load balancer"
+      />
+    </>
   );
 }

@@ -24,6 +24,7 @@ export type CreateActionId =
   | "floating-ip"
   | "security-group"
   | "address-group"
+  | "load-balancer"
   | "key-pair"
   | "cluster"
   | "cluster-template"
@@ -185,6 +186,18 @@ const definitions: CreateActionDefinition[] = [
     policyService: "network",
     group: "Networking",
     catalogIdentities: [{ serviceType: "network", serviceName: "neutron" }],
+  },
+  {
+    id: "load-balancer",
+    label: "Create load balancer",
+    description: "Provision an Octavia virtual IP for application traffic.",
+    href: "/networking/load-balancers?create=load-balancer",
+    service: "networking",
+    policyService: "load-balancer",
+    group: "Traffic delivery",
+    catalogIdentities: [
+      { serviceType: "load-balancer", serviceName: "octavia" },
+    ],
   },
   {
     id: "cluster",
