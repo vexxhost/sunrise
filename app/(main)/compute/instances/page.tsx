@@ -9,17 +9,25 @@ import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { DataTableHydrationBoundary } from "@/components/DataTable/HydrationBoundary";
 import { InstanceActions } from "@/components/Instance/InstanceActions";
 import { isCreateActionRequested } from "@/lib/create-actions";
+import {
+  parseNovaTagFilterSearchParams,
+  type NovaTagFilterSearchParams,
+} from "@/lib/openstack/nova-tag-filters";
 
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{
-    create?: string | string[];
-    deleting?: string | string[];
-  }>;
+  searchParams: Promise<
+    NovaTagFilterSearchParams & {
+      create?: string | string[];
+      deleting?: string | string[];
+    }
+  >;
 }) {
   const session = await getSession();
   const params = await searchParams;
+  const { filter: tagFilter, error: tagFilterError } =
+    parseNovaTagFilterSearchParams(params);
   const deleting = params.deleting;
   const createRequested = isCreateActionRequested(params.create, "instance");
   const pendingDeletionIds = (Array.isArray(deleting) ? deleting : [deleting])
@@ -38,7 +46,7 @@ export default async function Page({
         />
       }
       queries={[
-        serversQueryOptions(session.regionId, session.projectId),
+        serversQueryOptions(session.regionId, session.projectId, tagFilter),
         volumesQueryOptions(session.regionId, session.projectId),
         imagesQueryOptions(session.regionId, session.projectId),
         flavorsQueryOptions(session.regionId, session.projectId),
@@ -48,6 +56,8 @@ export default async function Page({
         regionId={session.regionId}
         projectId={session.projectId}
         initialPendingDeletionIds={pendingDeletionIds}
+        tagFilter={tagFilter}
+        tagFilterError={tagFilterError}
       />
     </DataTableHydrationBoundary>
   );

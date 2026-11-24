@@ -52,8 +52,15 @@ import {
 import { collectTransitionUpdates } from "@/lib/openstack/transition-poll";
 import { resolveServerFlavor } from "@/lib/openstack/server-flavor";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { InstanceTagFilterControl } from "@/components/Instance/InstanceTagFilter";
+import { InstanceResourceTagList } from "@/components/Instance/InstanceResourceTag";
+import {
+  serverMatchesNovaTagFilter,
+  type NovaTagFilter,
+} from "@/lib/openstack/nova-tag-filters";
 
 const TRANSITION_REFETCH_INTERVAL_MS = 5_000;
+const TAG_FILTER_VISIBLE_COLUMNS = ["tags"];
 
 const IpAddress = ({
   addresses,
@@ -85,6 +92,8 @@ interface InstancesClientProps {
   regionId?: string;
   projectId?: string;
   initialPendingDeletionIds?: string[];
+  tagFilter?: NovaTagFilter;
+  tagFilterError?: string;
 }
 
 function getServerImageId(
@@ -145,11 +154,13 @@ export function InstancesClient({
   initialPendingDeletionIds = [],
   regionId,
   projectId,
+  tagFilter,
+  tagFilterError,
 }: InstancesClientProps) {
   const queryClient = useQueryClient();
   const listOptions = useMemo(
-    () => serversQueryOptions(regionId, projectId),
-    [projectId, regionId],
+    () => serversQueryOptions(regionId, projectId, tagFilter),
+    [projectId, regionId, tagFilter],
   );
   // Fetch servers
   const {
@@ -202,11 +213,15 @@ export function InstancesClient({
     if (transitioningUpdates.updates.size) {
       queryClient.setQueryData<Server[]>(listOptions.queryKey, (current) =>
         current
-          ? mergeServerUpdates(current, transitioningUpdates.updates)
+          ? mergeServerUpdates(current, transitioningUpdates.updates).filter(
+              (server) =>
+                !tagFilter ||
+                serverMatchesNovaTagFilter(server.tags ?? [], tagFilter),
+            )
           : current,
       );
     }
-  }, [listOptions.queryKey, queryClient, transitioningUpdates]);
+  }, [listOptions.queryKey, queryClient, tagFilter, transitioningUpdates]);
 
   const handlePageRowsChange = useCallback((rows: ServerTableRow[]) => {
     setVisiblePageServers(rows);
@@ -418,6 +433,20 @@ export function InstancesClient({
         },
       },
       {
+        accessorKey: "tags",
+        header: "Tags",
+        cell: ({ row }) =>
+          row.original.tags?.length ? (
+            <InstanceResourceTagList tags={row.original.tags} />
+          ) : (
+            "-"
+          ),
+        meta: {
+          fieldType: "string",
+          visible: false,
+        },
+      },
+      {
         accessorKey: "status",
         header: "Status",
         cell: ({ row }) => {
@@ -501,6 +530,12 @@ export function InstancesClient({
   return (
     <>
       <DataTable
+        additionalFilters={
+          <InstanceTagFilterControl
+            filter={tagFilter}
+            initialError={tagFilterError}
+          />
+        }
         data={servers}
         getRowId={(server) => server.id}
         isRefetching={isRefetchingServers}
@@ -508,6 +543,9 @@ export function InstancesClient({
         columns={columns}
         resourceName="instance"
         emptyIcon={ServerIcon}
+        forceVisibleColumnIds={
+          tagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         onPageRowsChange={handlePageRowsChange}
         rowActions={[
           {
