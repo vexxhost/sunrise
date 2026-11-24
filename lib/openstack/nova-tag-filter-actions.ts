@@ -6,6 +6,7 @@ import {
   serverMatchesNovaTagFilter,
   type NovaTagFilter,
 } from "@/lib/openstack/nova-tag-filters";
+import { OpenStackRequestError } from "@/lib/openstack/request";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import { getSession, normalizeProjectId } from "@/lib/session";
 import type { Server } from "@/types/openstack";
@@ -41,8 +42,10 @@ async function resolveScope(regionId: unknown, projectId: unknown) {
   return { regionId: session.regionId, projectId: session.projectId };
 }
 
-function collectionPath(filter: NovaTagFilter, marker?: string) {
-  const query = new URLSearchParams(novaTagFilterApiQuery(filter));
+function collectionPath(filter: NovaTagFilter | undefined, marker?: string) {
+  const query = new URLSearchParams(
+    filter ? novaTagFilterApiQuery(filter) : undefined,
+  );
   query.set("limit", COLLECTION_PAGE_LIMIT);
   if (marker) query.set("marker", marker);
   return `${COLLECTION_PATH}?${query}`;
@@ -82,7 +85,7 @@ function parseOwnedServers(
   });
 }
 
-function nextCollectionPath(payload: unknown, filter: NovaTagFilter) {
+function nextCollectionPath(payload: unknown, filter?: NovaTagFilter) {
   if (!payload || typeof payload !== "object") {
     throw new Error("Invalid Compute server list response");
   }
@@ -121,20 +124,16 @@ function nextCollectionPath(payload: unknown, filter: NovaTagFilter) {
   return collectionPath(filter, marker);
 }
 
-export async function listProjectNovaServersByTags(
-  regionId: unknown,
-  projectId: unknown,
-  input: unknown,
-): Promise<Server[]> {
-  const parsed = parseNovaTagFilterInput(input);
-  if (!parsed.filter)
-    throw new Error(parsed.error ?? "Add a valid tag filter.");
-
-  const scope = await resolveScope(regionId, projectId);
+async function collectProjectServers(
+  scope: { regionId: string; projectId: string },
+  filter: NovaTagFilter,
+  useNovaFilter: boolean,
+) {
   const servers: Server[] = [];
   const serverIds = new Set<string>();
   const visited = new Set<string>();
-  let path: string | null = collectionPath(parsed.filter);
+  const apiFilter = useNovaFilter ? filter : undefined;
+  let path: string | null = collectionPath(apiFilter);
 
   while (path) {
     if (visited.has(path) || visited.size >= MAX_COLLECTION_PAGES) {
@@ -150,7 +149,7 @@ export async function listProjectNovaServersByTags(
       apiVersion: NOVA_API_VERSION,
       errorMode: "throw",
     });
-    const page = parseOwnedServers(payload, scope.projectId, parsed.filter);
+    const page = parseOwnedServers(payload, scope.projectId, filter);
     for (const server of page) {
       if (serverIds.has(server.id)) {
         throw new Error("Invalid Compute pagination");
@@ -158,8 +157,28 @@ export async function listProjectNovaServersByTags(
       serverIds.add(server.id);
       servers.push(server);
     }
-    path = nextCollectionPath(payload, parsed.filter);
+    path = nextCollectionPath(payload, apiFilter);
   }
 
   return servers;
+}
+
+export async function listProjectNovaServersByTags(
+  regionId: unknown,
+  projectId: unknown,
+  input: unknown,
+): Promise<Server[]> {
+  const parsed = parseNovaTagFilterInput(input);
+  if (!parsed.filter)
+    throw new Error(parsed.error ?? "Add a valid tag filter.");
+
+  const scope = await resolveScope(regionId, projectId);
+  try {
+    return await collectProjectServers(scope, parsed.filter, true);
+  } catch (error) {
+    if (!(error instanceof OpenStackRequestError) || error.status !== 400) {
+      throw error;
+    }
+  }
+  return collectProjectServers(scope, parsed.filter, false);
 }

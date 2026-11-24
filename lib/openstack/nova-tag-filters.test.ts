@@ -45,17 +45,12 @@ describe("Nova tag filters", () => {
     [{ mode: "all", tags: ["same", "same"] }, "duplicate"],
     [{ mode: "all", tags: ["path/value"] }, "slash"],
     [{ mode: "all", tags: ["one,two"] }, "comma"],
-    [{ mode: "all", tags: ["["] }, "cannot be represented"],
-    [{ mode: "any", tags: ["*"] }, "cannot be represented"],
-    [{ mode: "all", tags: ["[]"] }, "cannot be represented"],
-    [{ mode: "all", tags: ["\\c"] }, "cannot be represented"],
-    [{ mode: "all", tags: ["(?<name>x)"] }, "cannot be represented"],
   ] as const)("rejects invalid filters", (filter, message) => {
     expect(novaTagFilterError(filter)).toContain(message);
   });
 
-  it.each(["[ab]", "(env:test)?", "\\d+"])(
-    "accepts syntax shared by Nova and the browser runtime: %s",
+  it.each(["[", "*", "(?i)env", "(?P<name>x)"])(
+    "accepts opaque tags without parsing Python regex syntax: %s",
     (tag) => {
       expect(novaTagFilterError({ mode: "all", tags: [tag] })).toBeNull();
     },

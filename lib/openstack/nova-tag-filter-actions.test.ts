@@ -9,6 +9,7 @@ vi.mock("@/lib/session", async (importOriginal) => {
 });
 
 import { listProjectNovaServersByTags } from "@/lib/openstack/nova-tag-filter-actions";
+import { OpenStackRequestError } from "@/lib/openstack/request";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import { getSession } from "@/lib/session";
 
@@ -77,6 +78,81 @@ describe("Nova tag filter actions", () => {
         path: "/servers/detail?tags-any=env%3Atest%2Cenv%3Astage&limit=1000",
       }),
     );
+  });
+
+  it("lets Nova validate Python-only regex syntax", async () => {
+    mockedRequest.mockResolvedValue({
+      servers: [server("server-a", ["(?i)env"])],
+    });
+
+    await expect(
+      listProjectNovaServersByTags("RegionOne", "project-a", {
+        mode: "all",
+        tags: ["(?i)env"],
+      }),
+    ).resolves.toEqual([expect.objectContaining({ id: "server-a" })]);
+    expect(mockedRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/servers/detail?tags=%28%3Fi%29env&limit=1000",
+      }),
+    );
+  });
+
+  it("falls back to exact local matching when Nova rejects tag query syntax", async () => {
+    mockedRequest
+      .mockRejectedValueOnce(new OpenStackRequestError(400, "Bad Request"))
+      .mockResolvedValueOnce({
+        servers: [
+          server("server-a", ["["]),
+          server("server-b", ["env:test"]),
+        ],
+        servers_links: [
+          { rel: "next", href: "/servers/detail?marker=server-b" },
+        ],
+      })
+      .mockResolvedValueOnce({
+        servers: [server("server-c", ["["])],
+        servers_links: [],
+      });
+
+    await expect(
+      listProjectNovaServersByTags("RegionOne", "project-a", {
+        mode: "all",
+        tags: ["["],
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "server-a" }),
+      expect.objectContaining({ id: "server-c" }),
+    ]);
+    expect(mockedRequest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        path: "/servers/detail?tags=%5B&limit=1000",
+      }),
+    );
+    expect(mockedRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ path: "/servers/detail?limit=1000" }),
+    );
+    expect(mockedRequest).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        path: "/servers/detail?limit=1000&marker=server-b",
+      }),
+    );
+  });
+
+  it("does not hide non-validation failures behind an unfiltered retry", async () => {
+    const failure = new OpenStackRequestError(503, "Unavailable");
+    mockedRequest.mockRejectedValue(failure);
+
+    await expect(
+      listProjectNovaServersByTags("RegionOne", "project-a", {
+        mode: "all",
+        tags: ["env:test"],
+      }),
+    ).rejects.toBe(failure);
+    expect(mockedRequest).toHaveBeenCalledOnce();
   });
 
   it("follows validated pagination while preserving the original filter", async () => {

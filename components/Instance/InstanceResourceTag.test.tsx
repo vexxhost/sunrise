@@ -14,15 +14,22 @@ describe("instance resource tag navigation", () => {
     expect(markup).toContain('aria-label="Show instances tagged env:test"');
   });
 
-  it.each(["", "[", "*", "[]", "\\c", "(?<name>x)"])(
-    "does not link a tag that cannot be represented exactly: %s",
+  it("does not link an invalid empty tag", () => {
+    const markup = renderToStaticMarkup(<InstanceResourceTag tag="" />);
+
+    expect(markup).not.toContain("<a");
+    expect(markup).toContain(
+      'title="This tag cannot be represented exactly in an instance list filter."',
+    );
+  });
+
+  it.each(["[", "*", "(?i)env", "(?P<name>x)"])(
+    "links every legal opaque tag without browser regex parsing: %s",
     (tag) => {
       const markup = renderToStaticMarkup(<InstanceResourceTag tag={tag} />);
 
-      expect(markup).not.toContain("<a");
-      expect(markup).toContain(
-        'title="This tag cannot be represented exactly in an instance list filter."',
-      );
+      expect(markup).toContain("<a");
+      expect(markup).toContain("/compute/instances?tag=");
     },
   );
 
