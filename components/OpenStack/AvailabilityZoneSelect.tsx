@@ -18,6 +18,17 @@ import {
 } from "@/components/ui/select";
 
 const CLOUD_DEFAULT = "cloud-default";
+const AVAILABILITY_ZONE_VALUE_PREFIX = "availability-zone:";
+
+export function availabilityZoneSelectValue(zone: string) {
+  return zone ? `${AVAILABILITY_ZONE_VALUE_PREFIX}${zone}` : CLOUD_DEFAULT;
+}
+
+export function availabilityZoneFromSelectValue(value: string) {
+  return value.startsWith(AVAILABILITY_ZONE_VALUE_PREFIX)
+    ? value.slice(AVAILABILITY_ZONE_VALUE_PREFIX.length)
+    : "";
+}
 
 function uniqueZones(zones: string[], selected: string[] = []) {
   return [...new Set([...selected, ...zones].filter(Boolean))].sort((a, b) =>
@@ -27,11 +38,15 @@ function uniqueZones(zones: string[], selected: string[] = []) {
 
 export function AvailabilityZoneSelect({
   defaultLabel = "Cloud default",
+  disabled = false,
+  id,
   onValueChange,
   value,
   zones,
 }: {
   defaultLabel?: string;
+  disabled?: boolean;
+  id?: string;
   onValueChange: (value: string) => void;
   value: string;
   zones: string[];
@@ -39,18 +54,19 @@ export function AvailabilityZoneSelect({
   const options = uniqueZones(zones, value ? [value] : []);
   return (
     <Select
-      value={value || CLOUD_DEFAULT}
+      disabled={disabled}
+      value={availabilityZoneSelectValue(value)}
       onValueChange={(next) =>
-        onValueChange(next === CLOUD_DEFAULT ? "" : next)
+        onValueChange(availabilityZoneFromSelectValue(next))
       }
     >
-      <SelectTrigger className="w-full">
+      <SelectTrigger className="w-full" id={id}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={CLOUD_DEFAULT}>{defaultLabel}</SelectItem>
         {options.map((zone) => (
-          <SelectItem key={zone} value={zone}>
+          <SelectItem key={zone} value={availabilityZoneSelectValue(zone)}>
             {zone}
           </SelectItem>
         ))}

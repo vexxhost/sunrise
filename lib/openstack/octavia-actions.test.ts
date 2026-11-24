@@ -125,6 +125,39 @@ describe("Octavia load balancer mutation actions", () => {
     );
   });
 
+  it("preserves operator-defined availability-zone names", async () => {
+    await createLoadBalancerAction(scope, {
+      availabilityZone: " edge zone ",
+      name: "zoned",
+      vipSubnetId,
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          loadbalancer: expect.objectContaining({
+            availability_zone: " edge zone ",
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("rejects whitespace-only availability-zone names", async () => {
+    const result = await createLoadBalancerAction(scope, {
+      availabilityZone: "   ",
+      name: "zoned",
+      vipSubnetId,
+    });
+
+    expect(result).toMatchObject({
+      error: { code: "validation-failed" },
+      ok: false,
+    });
+    expect(mocks.guardMutationContext).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid tags before reading mutation context", async () => {
     const result = await createLoadBalancerAction(scope, {
       name: "invalid",

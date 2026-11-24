@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  limitOctaviaTagInput,
   OCTAVIA_MAX_RESOURCE_TAGS,
   validateOctaviaTags,
 } from "@/lib/openstack/octavia-tags";
@@ -10,6 +11,15 @@ describe("Octavia resource tags", () => {
     const tags = ["env:test", "Team:Platform", " leading space"];
 
     expect(validateOctaviaTags(tags)).toEqual({ ok: true, tags });
+  });
+
+  it("limits editor input by Unicode code points", () => {
+    expect(limitOctaviaTagInput("😀".repeat(61))).toBe("😀".repeat(60));
+    expect(limitOctaviaTagInput("a".repeat(61))).toBe("a".repeat(60));
+    expect(validateOctaviaTags(["😀".repeat(60)])).toEqual({
+      ok: true,
+      tags: ["😀".repeat(60)],
+    });
   });
 
   it.each([

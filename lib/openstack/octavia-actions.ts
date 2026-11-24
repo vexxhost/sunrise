@@ -38,7 +38,12 @@ const createLoadBalancerSchema = z.object({
   name: z.string().trim().min(1).max(255),
   description: z.string().trim().max(255).optional(),
   vipSubnetId: uuidSchema,
-  availabilityZone: z.string().trim().min(1).max(255).optional(),
+  availabilityZone: z
+    .string()
+    .min(1)
+    .max(255)
+    .refine((value) => value.trim().length > 0, "Select an availability zone.")
+    .optional(),
   adminStateUp: z.boolean().default(true),
   tags: z.array(z.string()).default([]),
 });

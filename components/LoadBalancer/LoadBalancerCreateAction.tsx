@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Waypoints } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { AvailabilityZoneSelect } from "@/components/OpenStack/AvailabilityZoneSelect";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,6 +37,7 @@ import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { createLoadBalancerAction } from "@/lib/openstack/octavia-actions";
 import {
+  limitOctaviaTagInput,
   OCTAVIA_MAX_RESOURCE_TAG_LENGTH,
   OCTAVIA_MAX_RESOURCE_TAGS,
 } from "@/lib/openstack/octavia-tags";
@@ -71,7 +73,7 @@ export function LoadBalancerCreateAction({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const tagsAvailable = tagSupport.status !== "unsupported";
-  const availabilityZonesAvailable =
+  const availabilityZoneLookupEnabled =
     availabilityZoneSupport.status !== "unsupported";
   const networks = useQuery({
     ...networksQueryOptions(regionId, projectId),
@@ -83,8 +85,12 @@ export function LoadBalancerCreateAction({
   });
   const zones = useQuery({
     ...loadBalancerAvailabilityZonesQueryOptions(regionId, projectId),
-    enabled: open && availabilityZonesAvailable,
+    enabled: open && availabilityZoneLookupEnabled,
   });
+  const effectiveAvailabilityZoneSupport =
+    zones.data?.support ?? availabilityZoneSupport;
+  const availabilityZonesAvailable =
+    effectiveAvailabilityZoneSupport.status !== "unsupported";
   const quota = useProjectQuotaImpact({
     enabled: open,
     projectId,
@@ -123,7 +129,13 @@ export function LoadBalancerCreateAction({
   const submittedTags = tags
     .map((tag) => tag.value)
     .filter((tag) => tag.length > 0);
-  const resourceQueriesFailed = networks.isError || subnets.isError;
+  const subnetQueryFailed = subnets.isError;
+  const noVisibleSubnets = subnets.isSuccess && subnetOptions.length === 0;
+  const zoneLookupMessage = zones.isError
+    ? "The cloud scheduler can still choose placement."
+    : zones.data?.support.status === "unknown"
+      ? zones.data.support.message
+      : null;
 
   const reset = () => {
     setName("");
@@ -146,7 +158,7 @@ export function LoadBalancerCreateAction({
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!name.trim() || !vipSubnetId || resourceQueriesFailed) return;
+    if (!name.trim() || !vipSubnetId || subnetQueryFailed) return;
 
     startTransition(async () => {
       setError(null);
@@ -225,14 +237,14 @@ export function LoadBalancerCreateAction({
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="load-balancer-subnet">VIP subnet</Label>
                 <Select
-                  disabled={pending || subnets.isLoading || networks.isLoading}
+                  disabled={pending || subnets.isLoading || noVisibleSubnets}
                   onValueChange={setVipSubnetId}
                   value={vipSubnetId}
                 >
                   <SelectTrigger id="load-balancer-subnet" className="w-full">
                     <SelectValue
                       placeholder={
-                        subnets.isLoading || networks.isLoading
+                        subnets.isLoading
                           ? "Loading subnets"
                           : "Select a subnet"
                       }
@@ -261,32 +273,14 @@ export function LoadBalancerCreateAction({
                   <Label htmlFor="load-balancer-availability-zone">
                     Availability zone
                   </Label>
-                  <Select
+                  <AvailabilityZoneSelect
+                    defaultLabel="Cloud scheduler"
                     disabled={pending || zones.isLoading}
-                    onValueChange={(value) =>
-                      setAvailabilityZone(
-                        value === "cloud-default" ? "" : value,
-                      )
-                    }
-                    value={availabilityZone || "cloud-default"}
-                  >
-                    <SelectTrigger
-                      id="load-balancer-availability-zone"
-                      className="w-full"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cloud-default">
-                        Cloud scheduler
-                      </SelectItem>
-                      {zoneOptions.map((zone) => (
-                        <SelectItem key={zone} value={zone}>
-                          {zone}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    id="load-balancer-availability-zone"
+                    onValueChange={setAvailabilityZone}
+                    value={availabilityZone}
+                    zones={zoneOptions}
+                  />
                 </div>
               ) : null}
               <div
@@ -353,12 +347,16 @@ export function LoadBalancerCreateAction({
                         <Input
                           id={`load-balancer-tag-${tag.id}`}
                           disabled={pending}
-                          maxLength={OCTAVIA_MAX_RESOURCE_TAG_LENGTH}
                           onChange={(event) =>
                             setTags((current) =>
                               current.map((currentTag) =>
                                 currentTag.id === tag.id
-                                  ? { ...currentTag, value: event.target.value }
+                                  ? {
+                                      ...currentTag,
+                                      value: limitOctaviaTagInput(
+                                        event.target.value,
+                                      ),
+                                    }
                                   : currentTag,
                               ),
                             )
@@ -404,20 +402,31 @@ export function LoadBalancerCreateAction({
                 variant="info"
                 title="Availability-zone placement unavailable"
               >
-                {availabilityZoneSupport.message}
+                {effectiveAvailabilityZoneSupport.message}
               </MutationAlert>
             ) : null}
-            {zones.isError ? (
+            {zoneLookupMessage ? (
               <MutationAlert
                 variant="info"
                 title="Availability zones unavailable"
               >
-                The cloud scheduler can still choose placement.
+                {zoneLookupMessage}
               </MutationAlert>
             ) : null}
-            {resourceQueriesFailed ? (
+            {networks.isError && subnetOptions.length > 0 ? (
+              <MutationAlert variant="info" title="Network names unavailable">
+                Subnets can still be selected by network ID.
+              </MutationAlert>
+            ) : null}
+            {subnetQueryFailed ? (
               <MutationAlert>
-                Network choices could not be loaded. Refresh and try again.
+                Subnet choices could not be loaded. Refresh and try again.
+              </MutationAlert>
+            ) : null}
+            {noVisibleSubnets ? (
+              <MutationAlert variant="info" title="No subnets available">
+                Create or share a subnet with this project before provisioning a
+                load balancer.
               </MutationAlert>
             ) : null}
             <QuotaImpactPreview
@@ -443,7 +452,7 @@ export function LoadBalancerCreateAction({
                 disabled={
                   !name.trim() ||
                   !vipSubnetId ||
-                  resourceQueriesFailed ||
+                  subnetQueryFailed ||
                   quota.issues.length > 0
                 }
                 loading={pending}
