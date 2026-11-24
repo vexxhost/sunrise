@@ -1,6 +1,6 @@
 services:
   redis-certificates:
-    image: ${SUNRISE_REDIS_IMAGE:-valkey/valkey:9.1.4-alpine}
+    image: ${SUNRISE_REDIS_IMAGE:-valkey/valkey:9.2.0-alpine}
     user: "0:0"
     entrypoint: ["/bin/sh", "-ec"]
     command:
