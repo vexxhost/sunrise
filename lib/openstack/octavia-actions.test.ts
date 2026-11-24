@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   discoverLoadBalancerCapabilities: vi.fn(),
   executeOpenStackMutation: vi.fn(),
+  getLoadBalancer: vi.fn(),
   guardMutationContext: vi.fn(),
 }));
 
@@ -18,8 +19,18 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
 vi.mock("@/lib/openstack/mutations", () => ({
   executeOpenStackMutation: mocks.executeOpenStackMutation,
 }));
+vi.mock("@/lib/openstack/octavia-server", () => ({
+  getLoadBalancer: mocks.getLoadBalancer,
+  getLoadBalancerDetails: vi.fn(),
+  listLoadBalancerAvailabilityZones: vi.fn(),
+  listLoadBalancers: vi.fn(),
+}));
 
-import { createLoadBalancerAction } from "@/lib/openstack/octavia-actions";
+import {
+  createLoadBalancerAction,
+  deleteLoadBalancerAction,
+  updateLoadBalancerAction,
+} from "@/lib/openstack/octavia-actions";
 
 const scope = {
   projectId: "297c1aa4-ef4f-42bf-9fdb-6a7c6ced78b2",
@@ -27,6 +38,22 @@ const scope = {
 };
 const vipSubnetId = "2217ca4f-3722-40ae-88cc-20fb92f21395";
 const loadBalancerId = "4ed3f70c-5126-470d-be60-3710d8682220";
+
+function existingLoadBalancer(overrides: Record<string, unknown> = {}) {
+  return {
+    admin_state_up: true,
+    description: "Current description",
+    id: loadBalancerId,
+    listeners: [],
+    name: "application",
+    operating_status: "ONLINE",
+    pools: [],
+    project_id: scope.projectId,
+    provisioning_status: "ACTIVE",
+    tags: ["env:test"],
+    ...overrides,
+  };
+}
 
 function capabilities(maximum = "2.30") {
   return {
@@ -45,6 +72,7 @@ describe("Octavia load balancer mutation actions", () => {
       context: { projectToken: "project-token", scope },
     });
     mocks.discoverLoadBalancerCapabilities.mockResolvedValue(capabilities());
+    mocks.getLoadBalancer.mockResolvedValue(existingLoadBalancer());
     mocks.executeOpenStackMutation.mockImplementation(async (options) => ({
       data: null,
       message: options.successMessage,
@@ -241,5 +269,252 @@ describe("Octavia load balancer mutation actions", () => {
     expect(() => transform({ loadbalancer: null })).toThrow(
       "invalid load balancer",
     );
+  });
+
+  it("updates baseline properties without requiring tag support", async () => {
+    await expect(
+      updateLoadBalancerAction(scope, loadBalancerId, {
+        adminStateUp: false,
+        description: "Updated",
+        name: "application-new",
+        source: {
+          adminStateUp: true,
+          description: "Current description",
+          name: "application",
+          tags: ["env:test"],
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.getLoadBalancer).toHaveBeenCalledWith(
+      loadBalancerId,
+      scope.regionId,
+      scope.projectId,
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.0",
+        body: {
+          loadbalancer: {
+            admin_state_up: false,
+            description: "Updated",
+            name: "application-new",
+          },
+        },
+        method: "PUT",
+        path: `/v2/lbaas/loadbalancers/${loadBalancerId}`,
+      }),
+    );
+  });
+
+  it("allows an optional load balancer name to be cleared", async () => {
+    await updateLoadBalancerAction(scope, loadBalancerId, {
+      adminStateUp: true,
+      description: "Current description",
+      name: "",
+      source: {
+        adminStateUp: true,
+        description: "Current description",
+        name: "application",
+      },
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          loadbalancer: expect.objectContaining({ name: "" }),
+        },
+      }),
+    );
+  });
+
+  it("uses microversion 2.5 for exact tag replacement", async () => {
+    await updateLoadBalancerAction(scope, loadBalancerId, {
+      adminStateUp: true,
+      description: "Current description",
+      name: "application",
+      source: {
+        adminStateUp: true,
+        description: "Current description",
+        name: "application",
+        tags: ["env:test"],
+      },
+      tags: [" Team A ", "env:prod"],
+    });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.5",
+        body: {
+          loadbalancer: expect.objectContaining({
+            tags: [" Team A ", "env:prod"],
+          }),
+        },
+      }),
+    );
+  });
+
+  it("rejects stale property and tag snapshots before mutation", async () => {
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({ name: "changed-remotely" }),
+    );
+
+    const result = await updateLoadBalancerAction(scope, loadBalancerId, {
+      adminStateUp: true,
+      description: "Current description",
+      name: "new-name",
+      source: {
+        adminStateUp: true,
+        description: "Current description",
+        name: "application",
+        tags: ["env:test"],
+      },
+      tags: ["env:prod"],
+    });
+
+    expect(result).toMatchObject({
+      error: { code: "conflict", retryable: true },
+      ok: false,
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects mutations while Octavia is already provisioning", async () => {
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({ provisioning_status: "pending_update" }),
+    );
+
+    const result = await deleteLoadBalancerAction(scope, loadBalancerId);
+
+    expect(result).toMatchObject({
+      error: { code: "conflict", retryable: true },
+      ok: false,
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("deletes an empty project-owned load balancer", async () => {
+    await expect(
+      deleteLoadBalancerAction(scope, loadBalancerId),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.0",
+        method: "DELETE",
+        path: `/v2/lbaas/loadbalancers/${loadBalancerId}`,
+        removedResource: { id: loadBalancerId, kind: "load-balancer" },
+      }),
+    );
+  });
+
+  it("refuses non-cascade deletion when topology remains", async () => {
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({ listeners: [{ id: "listener-id" }] }),
+    );
+
+    const result = await deleteLoadBalancerAction(scope, loadBalancerId);
+
+    expect(result).toMatchObject({
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("listeners and pools"),
+      },
+      ok: false,
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not send tag updates to an older Octavia API", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue(
+      capabilities("2.4"),
+    );
+
+    const result = await updateLoadBalancerAction(scope, loadBalancerId, {
+      adminStateUp: true,
+      description: "Current description",
+      name: "application",
+      source: {
+        adminStateUp: true,
+        description: "Current description",
+        name: "application",
+        tags: ["env:test"],
+      },
+      tags: ["env:prod"],
+    });
+
+    expect(result).toMatchObject({
+      error: { code: "service-unavailable", retryable: false },
+      ok: false,
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not replace tags if the preflight response omitted them", async () => {
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({ tags: undefined }),
+    );
+
+    const result = await updateLoadBalancerAction(scope, loadBalancerId, {
+      adminStateUp: true,
+      description: "Current description",
+      name: "application",
+      source: {
+        adminStateUp: true,
+        description: "Current description",
+        name: "application",
+        tags: [],
+      },
+      tags: ["env:prod"],
+    });
+
+    expect(result).toMatchObject({
+      error: {
+        code: "service-error",
+        message: expect.stringContaining("did not return the existing tags"),
+      },
+      ok: false,
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("maps mutation preflight failures before capability discovery", async () => {
+    mocks.getLoadBalancer.mockRejectedValue({
+      name: "OpenStackRequestError",
+      status: 404,
+    });
+
+    const result = await deleteLoadBalancerAction(scope, loadBalancerId);
+
+    expect(result).toMatchObject({
+      error: { code: "not-found", retryable: false },
+      ok: false,
+    });
+    expect(mocks.discoverLoadBalancerCapabilities).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("accepts only the updated active-project load balancer", async () => {
+    await updateLoadBalancerAction(scope, loadBalancerId, {
+      adminStateUp: true,
+      description: "Current description",
+      name: "updated",
+      source: {
+        adminStateUp: true,
+        description: "Current description",
+        name: "application",
+      },
+    });
+    const transform = mocks.executeOpenStackMutation.mock.calls[0][0]
+      .transform as (payload: unknown) => unknown;
+    const updated = existingLoadBalancer({ name: "updated" });
+
+    expect(transform({ loadbalancer: updated })).toBe(updated);
+    expect(() =>
+      transform({ loadbalancer: { ...updated, id: vipSubnetId } }),
+    ).toThrow("invalid load balancer");
+    expect(() =>
+      transform({ loadbalancer: { ...updated, project_id: "project-b" } }),
+    ).toThrow("invalid load balancer");
   });
 });

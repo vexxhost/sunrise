@@ -15,6 +15,25 @@ export function isOctaviaProvisioning(
   return resource.provisioning_status.toUpperCase().startsWith("PENDING_");
 }
 
+export function canUpdateLoadBalancer(
+  loadBalancer: Pick<OctaviaLoadBalancer, "provisioning_status">,
+) {
+  return !isOctaviaProvisioning(loadBalancer);
+}
+
+export function canDeleteLoadBalancer(
+  loadBalancer: Pick<
+    OctaviaLoadBalancer,
+    "listeners" | "pools" | "provisioning_status"
+  >,
+) {
+  return (
+    !isOctaviaProvisioning(loadBalancer) &&
+    (loadBalancer.listeners?.length ?? 0) === 0 &&
+    (loadBalancer.pools?.length ?? 0) === 0
+  );
+}
+
 export function octaviaStatusVariant(
   status: string | null | undefined,
 ): "secondary" | "destructive" | "outline" {

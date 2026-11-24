@@ -1,17 +1,29 @@
 "use client";
 
-import { useMemo } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useCallback, useMemo, useState } from "react";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Waypoints } from "lucide-react";
+import { Pencil, Trash2, Waypoints } from "lucide-react";
 
 import { LoadBalancerCreateAction } from "@/components/LoadBalancer/LoadBalancerCreateAction";
+import {
+  LoadBalancerMutationDialog,
+  type LoadBalancerMutationKind,
+} from "@/components/LoadBalancer/LoadBalancerMutationDialog";
+import { OctaviaTagList } from "@/components/LoadBalancer/OctaviaTags";
 import { DataTable } from "@/components/DataTable";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { Badge } from "@/components/ui/badge";
-import { loadBalancersQueryOptions } from "@/hooks/queries/useLoadBalancers";
+import { Button } from "@/components/ui/button";
 import {
+  loadBalancerDetailsQueryOptions,
+  loadBalancersQueryOptions,
+} from "@/hooks/queries/useLoadBalancers";
+import {
+  canDeleteLoadBalancer,
+  canUpdateLoadBalancer,
   formatOctaviaStatus,
   isOctaviaProvisioning,
   octaviaStatusVariant,
@@ -19,7 +31,7 @@ import {
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import type { OctaviaLoadBalancer } from "@/types/openstack";
 
-const columns: ColumnDef<OctaviaLoadBalancer>[] = [
+const baseColumns: ColumnDef<OctaviaLoadBalancer>[] = [
   {
     accessorKey: "name",
     header: "Name",
@@ -110,6 +122,7 @@ export function LoadBalancersClient({
   regionId: string;
   tagSupport: OpenStackFeatureSupport;
 }) {
+  const queryClient = useQueryClient();
   const query = useMemo(
     () => loadBalancersQueryOptions(regionId, projectId),
     [projectId, regionId],
@@ -121,6 +134,106 @@ export function LoadBalancersClient({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+  const [action, setAction] = useState<LoadBalancerMutationKind | null>(null);
+  const [target, setTarget] = useState<OctaviaLoadBalancer | null>(null);
+  const openAction = useCallback(
+    (
+      nextAction: LoadBalancerMutationKind,
+      loadBalancers: OctaviaLoadBalancer[],
+    ) => {
+      setTarget(loadBalancers[0] ?? null);
+      setAction(nextAction);
+    },
+    [],
+  );
+  const closeAction = useCallback(() => {
+    setAction(null);
+    setTarget(null);
+  }, []);
+  const columns = useMemo<ColumnDef<OctaviaLoadBalancer>[]>(
+    () => [
+      ...baseColumns,
+      ...(tagSupport.status !== "unsupported"
+        ? [
+            {
+              id: "tags",
+              accessorFn: (loadBalancer: OctaviaLoadBalancer) =>
+                (loadBalancer.tags ?? []).join("\n"),
+              header: "Tags",
+              cell: ({ row }: { row: { original: OctaviaLoadBalancer } }) => (
+                <OctaviaTagList tags={row.original.tags} />
+              ),
+              meta: { fieldType: "string" as const, visible: false },
+            },
+          ]
+        : []),
+      {
+        id: "actions",
+        header: "Actions",
+        enableHiding: false,
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <EditActionButton
+              compact
+              disabled={!canUpdateLoadBalancer(row.original)}
+              label={`Edit ${row.original.name || row.original.id}`}
+              onClick={() => openAction("edit", [row.original])}
+            />
+            <Button
+              aria-label={`Delete ${row.original.name || row.original.id}`}
+              disabled={isOctaviaProvisioning(row.original)}
+              onClick={() => openAction("delete", [row.original])}
+              size="icon-sm"
+              title={`Delete ${row.original.name || row.original.id}`}
+              tone="danger"
+              variant="ghost"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        ),
+        meta: { fieldType: "string", visible: true },
+      },
+    ],
+    [openAction, tagSupport.status],
+  );
+  const rowActions = useMemo(
+    () => [
+      {
+        label: "Edit",
+        icon: Pencil,
+        onClick: (rows: OctaviaLoadBalancer[]) => openAction("edit", rows),
+        isDisabled: (rows: OctaviaLoadBalancer[]) =>
+          rows.length !== 1 || !canUpdateLoadBalancer(rows[0]),
+      },
+      {
+        label: "Delete",
+        icon: Trash2,
+        variant: "destructive" as const,
+        onClick: (rows: OctaviaLoadBalancer[]) => openAction("delete", rows),
+        isDisabled: (rows: OctaviaLoadBalancer[]) =>
+          rows.length !== 1 || !canDeleteLoadBalancer(rows[0]),
+      },
+    ],
+    [openAction],
+  );
+  const refreshAfterAction = useCallback(
+    async (deleted: boolean) => {
+      await queryClient.invalidateQueries({ queryKey: query.queryKey });
+      if (target) {
+        await queryClient.invalidateQueries({
+          queryKey: loadBalancerDetailsQueryOptions(
+            regionId,
+            projectId,
+            target.id,
+          ).queryKey,
+          refetchType: deleted ? "none" : "active",
+        });
+      }
+    },
+    [projectId, query.queryKey, queryClient, regionId, target],
+  );
 
   return (
     <>
@@ -145,7 +258,19 @@ export function LoadBalancersClient({
         isRefetching={isRefetching}
         refetch={refetch}
         resourceName="load balancer"
+        rowActions={rowActions}
       />
+      {action && target ? (
+        <LoadBalancerMutationDialog
+          action={action}
+          key={`${action}-${target.id}`}
+          loadBalancer={target}
+          onComplete={refreshAfterAction}
+          onOpenChange={closeAction}
+          scope={{ projectId, regionId }}
+          tagSupport={tagSupport}
+        />
+      ) : null}
     </>
   );
 }

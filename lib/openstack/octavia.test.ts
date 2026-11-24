@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canDeleteLoadBalancer,
+  canUpdateLoadBalancer,
   clusterApiHostsNeedingFloatingIps,
   formatOctaviaStatus,
   indexFloatingIpAddressesByPort,
@@ -12,6 +14,27 @@ describe("Octavia presentation helpers", () => {
   it("formats API status values for display", () => {
     expect(formatOctaviaStatus("PENDING_UPDATE")).toBe("Pending Update");
     expect(formatOctaviaStatus(undefined)).toBe("Unknown");
+  });
+
+  it("permits mutations only when Octavia is idle and dependencies allow it", () => {
+    expect(canUpdateLoadBalancer({ provisioning_status: "ACTIVE" })).toBe(true);
+    expect(
+      canUpdateLoadBalancer({ provisioning_status: "PENDING_UPDATE" }),
+    ).toBe(false);
+    expect(
+      canDeleteLoadBalancer({
+        listeners: [],
+        pools: [],
+        provisioning_status: "ERROR",
+      }),
+    ).toBe(true);
+    expect(
+      canDeleteLoadBalancer({
+        listeners: [{ id: "listener" }],
+        pools: [],
+        provisioning_status: "ACTIVE",
+      }),
+    ).toBe(false);
   });
 
   it("extracts IPv4 and IPv6 hosts from API endpoints", () => {

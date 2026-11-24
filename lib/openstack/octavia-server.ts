@@ -5,6 +5,7 @@ import { OpenStackRequestError } from "@/lib/openstack/request";
 import {
   discoverLoadBalancerCapabilities,
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION,
+  OCTAVIA_TAGS_MICROVERSION,
 } from "@/lib/openstack/capabilities-server";
 import {
   microversionSupport,
@@ -234,6 +235,7 @@ async function listCollection<T>(
   scope: OctaviaScope,
   collection: string,
   initialPath: string,
+  apiVersion?: string,
 ): Promise<T[]> {
   const items: T[] = [];
   const visited = new Set<string>();
@@ -249,6 +251,7 @@ async function listCollection<T>(
       scope,
       path,
       "throw",
+      apiVersion,
     );
     const page = payload?.[collection];
     if (!Array.isArray(page)) {
@@ -309,6 +312,7 @@ async function getProjectResource<T extends { project_id: string }>(
   collection: string,
   responseKey: string,
   id: string,
+  apiVersion?: string,
 ): Promise<T> {
   if (!UUID_PATTERN.test(id)) {
     throw new Error(`Invalid Octavia ${collection} reference`);
@@ -317,6 +321,7 @@ async function getProjectResource<T extends { project_id: string }>(
     scope,
     `/v2/lbaas/${collection}/${encodeURIComponent(id)}`,
     "throw",
+    apiVersion,
   );
   const resource = payload?.[responseKey];
   if (!resource || !belongsToProject(resource.project_id, scope.projectId)) {
@@ -325,15 +330,87 @@ async function getProjectResource<T extends { project_id: string }>(
   return resource;
 }
 
+async function loadBalancerTagsApiVersion(scope: OctaviaScope) {
+  const capabilities = await discoverLoadBalancerCapabilities(scope.regionId);
+  const support = microversionSupport(
+    capabilities,
+    OCTAVIA_TAGS_MICROVERSION,
+    "Load balancer tags",
+  );
+  return {
+    apiVersion:
+      support.status === "unsupported"
+        ? undefined
+        : `load-balancer ${support.requestedMicroversion ?? OCTAVIA_TAGS_MICROVERSION}`,
+    fallbackAllowed: support.status === "unknown",
+  };
+}
+
+function isUnsupportedMicroversion(error: unknown) {
+  return (
+    error instanceof OpenStackRequestError &&
+    (error.status === 400 || error.status === 406)
+  );
+}
+
+async function listLoadBalancersWithTags(
+  scope: OctaviaScope,
+  apiVersion?: string,
+  fallbackAllowed = false,
+) {
+  const path = collectionPath("loadbalancers", scope.projectId);
+  try {
+    return await listCollection<OctaviaLoadBalancer>(
+      scope,
+      "loadbalancers",
+      path,
+      apiVersion,
+    );
+  } catch (error) {
+    if (!fallbackAllowed || !apiVersion || !isUnsupportedMicroversion(error)) {
+      throw error;
+    }
+    return listCollection<OctaviaLoadBalancer>(scope, "loadbalancers", path);
+  }
+}
+
+async function getLoadBalancerWithTags(
+  scope: OctaviaScope,
+  id: string,
+  apiVersion?: string,
+  fallbackAllowed = false,
+) {
+  try {
+    return await getProjectResource<OctaviaLoadBalancer>(
+      scope,
+      "loadbalancers",
+      "loadbalancer",
+      id,
+      apiVersion,
+    );
+  } catch (error) {
+    if (!fallbackAllowed || !apiVersion || !isUnsupportedMicroversion(error)) {
+      throw error;
+    }
+    return getProjectResource<OctaviaLoadBalancer>(
+      scope,
+      "loadbalancers",
+      "loadbalancer",
+      id,
+    );
+  }
+}
+
 export async function listLoadBalancers(
   regionId?: string,
   projectId?: string,
 ): Promise<OctaviaLoadBalancer[]> {
   const scope = await resolveScope(regionId, projectId);
-  const loadBalancers = await listCollection<OctaviaLoadBalancer>(
+  const tagsRead = await loadBalancerTagsApiVersion(scope);
+  const loadBalancers = await listLoadBalancersWithTags(
     scope,
-    "loadbalancers",
-    collectionPath("loadbalancers", scope.projectId),
+    tagsRead.apiVersion,
+    tagsRead.fallbackAllowed,
   );
 
   return loadBalancers
@@ -345,6 +422,22 @@ export async function listLoadBalancers(
     );
 }
 
+export async function getLoadBalancer(
+  id: string,
+  regionId?: string,
+  projectId?: string,
+): Promise<OctaviaLoadBalancer> {
+  const loadBalancerId = requireUuid(id, "load balancer ID");
+  const scope = await resolveScope(regionId, projectId);
+  const tagsRead = await loadBalancerTagsApiVersion(scope);
+  return getLoadBalancerWithTags(
+    scope,
+    loadBalancerId,
+    tagsRead.apiVersion,
+    tagsRead.fallbackAllowed,
+  );
+}
+
 export async function getLoadBalancerDetails(
   id: string,
   regionId?: string,
@@ -352,20 +445,13 @@ export async function getLoadBalancerDetails(
 ): Promise<OctaviaLoadBalancerDetails> {
   const loadBalancerId = requireUuid(id, "load balancer ID");
   const scope = await resolveScope(regionId, projectId);
-  const loadBalancerPayload = await octaviaGet<{
-    loadbalancer: OctaviaLoadBalancer;
-  }>(
+  const tagsRead = await loadBalancerTagsApiVersion(scope);
+  const loadBalancer = await getLoadBalancerWithTags(
     scope,
-    `/v2/lbaas/loadbalancers/${encodeURIComponent(loadBalancerId)}`,
-    "throw",
+    loadBalancerId,
+    tagsRead.apiVersion,
+    tagsRead.fallbackAllowed,
   );
-  const loadBalancer = loadBalancerPayload?.loadbalancer;
-  if (
-    !loadBalancer ||
-    !belongsToProject(loadBalancer.project_id, scope.projectId)
-  ) {
-    throw new OpenStackRequestError(404, "Load balancer not found");
-  }
 
   const listenerIds = referenceIds(loadBalancer.listeners, "listener");
   const loadBalancerPoolIds = referenceIds(loadBalancer.pools, "pool");

@@ -8,7 +8,7 @@ export function limitOctaviaTagInput(value: string) {
   return Array.from(value).slice(0, OCTAVIA_MAX_RESOURCE_TAG_LENGTH).join("");
 }
 
-function displayTag(tag: string) {
+export function formatOctaviaTag(tag: string) {
   return tag.length > 0 &&
     tag === tag.trim() &&
     !/[\u0000-\u001f\u007f]/.test(tag)
@@ -46,11 +46,17 @@ export function validateOctaviaTags(
     if (seen.has(tag)) {
       return {
         ok: false,
-        error: `Remove the duplicate tag ${displayTag(tag)}.`,
+        error: `Remove the duplicate tag ${formatOctaviaTag(tag)}.`,
       };
     }
     seen.add(tag);
   }
 
   return { ok: true, tags };
+}
+
+export function sameOctaviaTags(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const sortedRight = [...right].sort();
+  return [...left].sort().every((tag, index) => tag === sortedRight[index]);
 }
