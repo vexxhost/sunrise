@@ -42,6 +42,7 @@ export default async function LoadBalancerPage({
     <PrefetchHydrationBoundary queries={[query]} queryClient={queryClient}>
       <LoadBalancerDetailClient
         id={id}
+        octaviaCapabilities={capabilities}
         neutronAvailable={neutronAvailable}
         projectId={projectId}
         regionId={regionId}

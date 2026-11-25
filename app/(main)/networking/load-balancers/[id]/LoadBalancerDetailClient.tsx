@@ -7,14 +7,19 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Activity, Network, Trash2, Waypoints } from "lucide-react";
+import { Activity, Network, Plus, Trash2, Waypoints } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import {
+  ListenerMutationDialog,
+  type ListenerDialogAction,
+} from "@/components/LoadBalancer/ListenerMutationDialog";
 import {
   LoadBalancerMutationDialog,
   type LoadBalancerMutationKind,
 } from "@/components/LoadBalancer/LoadBalancerMutationDialog";
 import { OctaviaTagList } from "@/components/LoadBalancer/OctaviaTags";
+import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
@@ -41,12 +46,17 @@ import {
   subnetQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import {
+  canChangeOctaviaListener,
+  canChangeOctaviaListeners,
   formatOctaviaStatus,
   isOctaviaProvisioning,
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
-import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import type {
+  OpenStackFeatureSupport,
+  OpenStackServiceCapabilities,
+} from "@/lib/openstack/capabilities";
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
   return (
@@ -73,12 +83,14 @@ function nameOrId(name: string | undefined, id: string) {
 
 export function LoadBalancerDetailClient({
   id,
+  octaviaCapabilities,
   neutronAvailable,
   projectId,
   regionId,
   tagSupport,
 }: {
   id: string;
+  octaviaCapabilities: OpenStackServiceCapabilities;
   neutronAvailable: boolean;
   projectId: string;
   regionId: string;
@@ -87,6 +99,12 @@ export function LoadBalancerDetailClient({
   const queryClient = useQueryClient();
   const router = useRouter();
   const [action, setAction] = useState<LoadBalancerMutationKind | null>(null);
+  const [listenerAction, setListenerAction] =
+    useState<ListenerDialogAction | null>(null);
+  const [listenerNotice, setListenerNotice] = useState<{
+    message: string;
+    at: number;
+  } | null>(null);
   const detailsQuery = useMemo(
     () => loadBalancerDetailsQueryOptions(regionId, projectId, id),
     [id, projectId, regionId],
@@ -94,13 +112,21 @@ export function LoadBalancerDetailClient({
   const { data } = useSuspenseQuery({
     ...detailsQuery,
     refetchInterval: ({ state }) =>
-      state.data && isOctaviaProvisioning(state.data.loadBalancer)
+      (listenerNotice && Date.now() - listenerNotice.at < 20_000) ||
+      (state.data &&
+        (isOctaviaProvisioning(state.data.loadBalancer) ||
+          state.data.listeners.some(isOctaviaProvisioning)))
         ? 5_000
         : false,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
   const { loadBalancer } = data;
+  const listenerChangesAvailable = canChangeOctaviaListeners(loadBalancer);
+  const openListenerAction = (target: ListenerDialogAction) => {
+    setListenerNotice(null);
+    setListenerAction(target);
+  };
   const neutronLookupAvailable = Boolean(
     neutronAvailable && regionId && projectId,
   );
@@ -398,11 +424,28 @@ export function LoadBalancerDetailClient({
       ) : null}
 
       <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Network className="size-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">Listeners</h2>
-          <Badge variant="outline">{data.listeners.length}</Badge>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Network className="size-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">Listeners</h2>
+            <Badge variant="outline">{data.listeners.length}</Badge>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!listenerChangesAvailable}
+            onClick={() => openListenerAction({ action: "create" })}
+          >
+            <Plus className="size-4" />
+            Create listener
+          </Button>
         </div>
+        {listenerNotice ? (
+          <MutationAlert variant="success">
+            {listenerNotice.message}
+          </MutationAlert>
+        ) : null}
         <div className="overflow-hidden rounded-md border">
           <Table>
             <TableHeader>
@@ -413,6 +456,9 @@ export function LoadBalancerDetailClient({
                 <TableHead>Default pool</TableHead>
                 <TableHead>Operating</TableHead>
                 <TableHead>Provisioning</TableHead>
+                <TableHead>
+                  <span className="sr-only">Listener actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -439,7 +485,52 @@ export function LoadBalancerDetailClient({
                       <StatusBadge status={listener.operating_status} />
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={listener.provisioning_status} />
+                      {isOctaviaProvisioning(listener) ? (
+                        <ProgressStatusBadge
+                          label={formatOctaviaStatus(
+                            listener.provisioning_status,
+                          )}
+                        />
+                      ) : (
+                        <StatusBadge status={listener.provisioning_status} />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        <EditActionButton
+                          type="button"
+                          compact
+                          label={
+                            "Edit listener " + (listener.name || listener.id)
+                          }
+                          disabled={
+                            !listenerChangesAvailable ||
+                            !canChangeOctaviaListener(listener)
+                          }
+                          onClick={() =>
+                            openListenerAction({ action: "edit", listener })
+                          }
+                        />
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          tone="danger"
+                          aria-label={
+                            "Delete listener " + (listener.name || listener.id)
+                          }
+                          title="Delete listener"
+                          disabled={
+                            !listenerChangesAvailable ||
+                            !canChangeOctaviaListener(listener)
+                          }
+                          onClick={() =>
+                            openListenerAction({ action: "delete", listener })
+                          }
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -447,7 +538,7 @@ export function LoadBalancerDetailClient({
                 <TableRow>
                   <TableCell
                     className="py-8 text-center text-muted-foreground"
-                    colSpan={6}
+                    colSpan={7}
                   >
                     No listeners are configured.
                   </TableCell>
@@ -644,6 +735,34 @@ export function LoadBalancerDetailClient({
             </Table>
           </div>
         </section>
+      ) : null}
+
+      {listenerAction ? (
+        <ListenerMutationDialog
+          target={listenerAction}
+          loadBalancer={loadBalancer}
+          capabilities={octaviaCapabilities}
+          scope={{ projectId, regionId }}
+          onClose={() => setListenerAction(null)}
+          onSuccess={(message) => {
+            setListenerNotice({ message, at: Date.now() });
+            setListenerAction(null);
+            void queryClient.invalidateQueries({
+              queryKey: detailsQuery.queryKey,
+            });
+            void queryClient.invalidateQueries({
+              queryKey: loadBalancersQueryOptions(regionId, projectId).queryKey,
+            });
+            void queryClient.invalidateQueries({
+              queryKey: [
+                regionId,
+                projectId,
+                "project-quotas",
+                "load-balancing",
+              ],
+            });
+          }}
+        />
       ) : null}
 
       {action ? (

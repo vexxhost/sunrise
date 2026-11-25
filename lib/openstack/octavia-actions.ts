@@ -2,7 +2,10 @@
 
 import { z } from "zod";
 
-import { microversionSupport } from "@/lib/openstack/capabilities";
+import {
+  microversionSupport,
+  type OpenStackServiceCapabilities,
+} from "@/lib/openstack/capabilities";
 import {
   discoverLoadBalancerCapabilities,
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION,
@@ -17,10 +20,32 @@ import {
   type MutationScope,
 } from "@/lib/mutations";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
-import { isOctaviaProvisioning } from "@/lib/openstack/octavia";
+import {
+  canChangeOctaviaListener,
+  canChangeOctaviaListeners,
+  isOctaviaProvisioning,
+  octaviaListenerDeletionBlock,
+} from "@/lib/openstack/octavia";
+import {
+  availableListenerProtocols,
+  LISTENER_CIDR_LENGTH_MAX,
+  LISTENER_CIDR_MAX,
+  LISTENER_NUMERIC_FIELDS,
+  LISTENER_NUMERIC_KEYS,
+  LISTENER_SETTING_KEYS,
+  listenerCidrError,
+  listenerReadApiVersion,
+  listenerSettingUnavailable,
+  OCTAVIA_LISTENER_PROTOCOLS,
+  requiredListenerWriteVersion,
+  sameListenerCidrs,
+  type ListenerNumericField,
+  type ListenerSettingKey,
+} from "@/lib/openstack/octavia-listener-settings";
 import {
   getLoadBalancer,
   getLoadBalancerDetails,
+  getLoadBalancerListener,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
 } from "@/lib/openstack/octavia-server";
@@ -33,6 +58,7 @@ import type { NeutronFloatingIpReference } from "@/lib/openstack/neutron-floatin
 import type {
   OctaviaLoadBalancer,
   OctaviaLoadBalancerDetails,
+  OctaviaListener,
 } from "@/types/openstack";
 
 const OCTAVIA_SERVICE = {
@@ -77,6 +103,48 @@ const updateLoadBalancerSchema = z
 
 export type CreateLoadBalancerInput = z.input<typeof createLoadBalancerSchema>;
 export type UpdateLoadBalancerInput = z.input<typeof updateLoadBalancerSchema>;
+
+const listenerFields = z.object({
+  name: z.string().max(255),
+  description: z.string().max(255),
+  adminStateUp: z.boolean(),
+});
+const listenerSettingsSchema = z.object({
+  ...(Object.fromEntries(
+    LISTENER_NUMERIC_KEYS.map((key) => [
+      key,
+      z
+        .number()
+        .int()
+        .min(LISTENER_NUMERIC_FIELDS[key].min)
+        .max(LISTENER_NUMERIC_FIELDS[key].max)
+        .nullable()
+        .optional(),
+    ]),
+  ) as Record<ListenerNumericField, z.ZodOptional<z.ZodNullable<z.ZodNumber>>>),
+  allowed_cidrs: z
+    .array(z.string().trim().min(1).max(LISTENER_CIDR_LENGTH_MAX))
+    .max(LISTENER_CIDR_MAX)
+    .optional(),
+});
+const listenerFieldsWithSettings = listenerFields.extend({
+  settings: listenerSettingsSchema.optional(),
+});
+const listenerMutationSchema = z.discriminatedUnion("action", [
+  listenerFieldsWithSettings.extend({
+    action: z.literal("create"),
+    protocol: z.enum(OCTAVIA_LISTENER_PROTOCOLS),
+    port: z.number().int().min(1).max(65535),
+  }),
+  listenerFieldsWithSettings.extend({
+    action: z.literal("edit"),
+    id: uuidSchema,
+    source: listenerFieldsWithSettings,
+  }),
+  z.object({ action: z.literal("delete"), id: uuidSchema }),
+]);
+
+export type OctaviaListenerMutation = z.input<typeof listenerMutationSchema>;
 
 function validationFailure(scope: MutationScope, message: string) {
   return mutationFailure(
@@ -125,6 +193,7 @@ function loadBalancerFromPayload(
 function preflightFailure(
   error: unknown,
   scope: MutationScope,
+  resource = "load balancer",
 ): MutationResult<never> {
   const record =
     error && typeof error === "object"
@@ -135,7 +204,7 @@ function preflightFailure(
     typeof record.status === "number"
   ) {
     return mutationFailure(
-      mutationErrorForStatus(record.status, "read this load balancer"),
+      mutationErrorForStatus(record.status, "read this " + resource),
       scope,
     );
   }
@@ -153,18 +222,29 @@ function preflightFailure(
     {
       code: "service-error",
       message:
-        "The load balancer could not be read before applying this change. Try again shortly.",
+        "The " +
+        resource +
+        " could not be read before applying this change. Try again shortly.",
       retryable: true,
     },
     scope,
   );
 }
 
-async function readLoadBalancerForMutation(scope: MutationScope, id: string) {
+async function readLoadBalancerForMutation(
+  scope: MutationScope,
+  id: string,
+  listenerCapabilities?: OpenStackServiceCapabilities,
+) {
   try {
     return {
       ok: true,
-      value: await getLoadBalancer(id, scope.regionId, scope.projectId),
+      value: await getLoadBalancer(
+        id,
+        scope.regionId,
+        scope.projectId,
+        ...(listenerCapabilities ? ([listenerCapabilities] as const) : []),
+      ),
     } as const;
   } catch (error) {
     return { ok: false, result: preflightFailure(error, scope) } as const;
@@ -187,8 +267,11 @@ async function supportedMutationMicroversion(
   scope: MutationScope,
   requiredMicroversion: string,
   actionLabel: string,
+  knownCapabilities?: OpenStackServiceCapabilities,
 ) {
-  const capabilities = await discoverLoadBalancerCapabilities(scope.regionId!);
+  const capabilities =
+    knownCapabilities ??
+    (await discoverLoadBalancerCapabilities(scope.regionId!));
   const support = microversionSupport(
     capabilities,
     requiredMicroversion,
@@ -428,6 +511,265 @@ export async function deleteLoadBalancerAction(
     ],
     removedResource: { kind: "load-balancer", id: parsedId.data },
     successMessage: "Load balancer deletion requested.",
+  });
+}
+
+export async function mutateLoadBalancerListenerAction(
+  scope: MutationScope,
+  loadBalancerId: string,
+  input: OctaviaListenerMutation,
+): Promise<MutationResult<null>> {
+  const parent = uuidSchema.safeParse(loadBalancerId);
+  if (!parent.success)
+    return validationFailure(scope, "Select a valid load balancer.");
+  const parsed = listenerMutationSchema.safeParse(input);
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.path[0];
+    return validationFailure(
+      scope,
+      field === "port"
+        ? "Enter a whole port number from 1 to 65535."
+        : "Review the listener settings and try again.",
+    );
+  }
+  const value = parsed.data;
+  const guarded = await guardMutationContext(scope);
+  if (!guarded.ok) return guarded.result;
+  const activeScope = guarded.context.scope;
+  const parentId = parent.data.toLowerCase();
+  const capabilities = await discoverLoadBalancerCapabilities(
+    activeScope.regionId!,
+  );
+  const existing = await readLoadBalancerForMutation(
+    activeScope,
+    parentId,
+    capabilities,
+  );
+  if (!existing.ok) return existing.result;
+  if (existing.value.id !== parentId) {
+    return mutationFailure(
+      mutationErrorForStatus(404, "read this load balancer"),
+      activeScope,
+    );
+  }
+  if (!canChangeOctaviaListeners(existing.value)) {
+    return mutationFailure(
+      {
+        code: "conflict",
+        message: "The load balancer must be Active to change its listeners.",
+        retryable: true,
+      },
+      activeScope,
+    );
+  }
+
+  const collection = "/v2/lbaas/listeners";
+  const listenerId = value.action === "create" ? null : value.id.toLowerCase();
+  const path = listenerId ? `${collection}/${listenerId}` : collection;
+  let body: Record<string, unknown> | undefined;
+  let listener: OctaviaListener | undefined;
+  if (value.action === "create") {
+    if (
+      !availableListenerProtocols(
+        existing.value.provider,
+        capabilities,
+      ).includes(value.protocol)
+    ) {
+      return validationFailure(
+        activeScope,
+        "This listener protocol is not available for the load balancer provider and API version.",
+      );
+    }
+    body = {
+      name: value.name,
+      description: value.description,
+      admin_state_up: value.adminStateUp,
+      protocol: value.protocol,
+      protocol_port: value.port,
+      loadbalancer_id: parentId,
+    };
+  } else {
+    if (
+      !Array.isArray(existing.value.listeners) ||
+      !existing.value.listeners.some(
+        (reference) => reference?.id === listenerId,
+      )
+    ) {
+      return mutationFailure(
+        mutationErrorForStatus(404, "read this listener"),
+        activeScope,
+      );
+    }
+    try {
+      listener = await getLoadBalancerListener(
+        parentId,
+        value.id.toLowerCase(),
+        activeScope.regionId,
+        activeScope.projectId,
+        value.action === "edit" && value.settings
+          ? listenerReadApiVersion(capabilities)
+          : undefined,
+      );
+    } catch (error) {
+      return preflightFailure(error, activeScope, "listener");
+    }
+    if (!canChangeOctaviaListener(listener)) {
+      return pendingMutationFailure(activeScope);
+    }
+    if (value.action === "delete") {
+      const blocked = octaviaListenerDeletionBlock(listener);
+      if (blocked) return validationFailure(activeScope, blocked);
+    } else {
+      const currentDescription = listener.description ?? "";
+      if (
+        value.source.name !== listener.name ||
+        value.source.description !== currentDescription ||
+        value.source.adminStateUp !== listener.admin_state_up
+      ) {
+        return mutationFailure(
+          {
+            code: "conflict",
+            message:
+              "The listener changed while this form was open. Refresh and try again.",
+            retryable: true,
+          },
+          activeScope,
+        );
+      }
+      body = {
+        ...(value.name !== listener.name ? { name: value.name } : {}),
+        ...(value.description !== currentDescription
+          ? { description: value.description }
+          : {}),
+        ...(value.adminStateUp !== listener.admin_state_up
+          ? { admin_state_up: value.adminStateUp }
+          : {}),
+      };
+    }
+  }
+
+  const settingsKeys: ListenerSettingKey[] = [];
+  if (value.action !== "delete" && body) {
+    for (const key of LISTENER_SETTING_KEYS) {
+      const next = value.settings?.[key];
+      if (next === undefined) continue;
+      if (
+        value.action === "create" &&
+        (next === null || (Array.isArray(next) && !next.length))
+      )
+        continue;
+      const protocol =
+        value.action === "create" ? value.protocol : listener!.protocol;
+      const unavailable = listenerSettingUnavailable(
+        key,
+        existing.value,
+        protocol,
+        capabilities,
+        next,
+      );
+      if (unavailable) return validationFailure(activeScope, unavailable);
+      if (key === "allowed_cidrs" && Array.isArray(next)) {
+        const error = listenerCidrError(next, existing.value);
+        if (error) return validationFailure(activeScope, error);
+      }
+      if (value.action === "edit") {
+        const current =
+          key === "allowed_cidrs" && listener![key] === null
+            ? []
+            : listener![key];
+        const expected = value.source.settings?.[key];
+        if (
+          current === undefined ||
+          expected === undefined ||
+          (Array.isArray(current) && Array.isArray(expected)
+            ? !sameListenerCidrs(current, expected)
+            : current !== expected)
+        ) {
+          return mutationFailure(
+            {
+              code: "conflict",
+              message:
+                "The listener's advanced settings changed or could not be verified. Refresh and try again.",
+              retryable: true,
+            },
+            activeScope,
+          );
+        }
+        if (
+          Array.isArray(current) && Array.isArray(next)
+            ? sameListenerCidrs(current, next)
+            : current === next
+        )
+          continue;
+      }
+      body[key] = next;
+      settingsKeys.push(key);
+    }
+    if (Object.keys(body).length === 0)
+      return validationFailure(activeScope, "No listener settings changed.");
+  }
+
+  const labels = {
+    create: "create a listener",
+    edit: "update this listener",
+    delete: "delete this listener",
+  } as const;
+  const supported = await supportedMutationMicroversion(
+    activeScope,
+    requiredListenerWriteVersion(
+      settingsKeys,
+      value.action === "create" ? value.protocol : undefined,
+    ),
+    "Changing load balancer listeners",
+    capabilities,
+  );
+  if (!supported.ok) return supported.result;
+
+  return executeOpenStackMutation<null>({
+    actionLabel: labels[value.action],
+    scope: activeScope,
+    ...OCTAVIA_SERVICE,
+    path,
+    method:
+      value.action === "create"
+        ? "POST"
+        : value.action === "edit"
+          ? "PUT"
+          : "DELETE",
+    apiVersion: `load-balancer ${supported.version}`,
+    ...(body ? { body: { listener: body } } : {}),
+    invalidates: [
+      "/networking/load-balancers",
+      `/networking/load-balancers/${parentId}`,
+      "/quotas",
+    ],
+    successMessage: {
+      create: "Listener creation requested.",
+      edit: "Listener update requested.",
+      delete: "Listener deletion requested.",
+    }[value.action],
+    transform: (payload) => {
+      if (value.action === "delete") return null;
+      const response = z
+        .object({
+          listener: z.object({
+            id: uuidSchema,
+            project_id: z.string(),
+            loadbalancers: z.tuple([z.object({ id: uuidSchema })]),
+          }),
+        })
+        .safeParse(payload);
+      if (
+        !response.success ||
+        (listenerId && response.data.listener.id !== listenerId) ||
+        response.data.listener.loadbalancers[0].id !== parentId ||
+        normalizeProjectId(response.data.listener.project_id) !==
+          normalizeProjectId(activeScope.projectId)
+      ) {
+        throw new Error("Octavia returned an invalid listener");
+      }
+      return null;
+    },
   });
 }
 
