@@ -24,6 +24,7 @@ vi.mock("@/lib/openstack/octavia-server", () => ({
   getLoadBalancer: mocks.getLoadBalancer,
   getLoadBalancerDetails: vi.fn(),
   getLoadBalancerListener: mocks.getLoadBalancerListener,
+  getLoadBalancerListenerDetails: vi.fn(),
   listLoadBalancerAvailabilityZones: vi.fn(),
   listLoadBalancers: vi.fn(),
 }));
@@ -219,6 +220,141 @@ describe("Octavia listener actions", () => {
     ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
+
+  it("changes only selected inserted headers and preserves fresh unmanaged values", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue({
+      ...listener,
+      protocol: "TERMINATED_HTTPS",
+      insert_headers: {
+        "X-Forwarded-For": "true",
+        "X-Forwarded-Port": "false",
+        "X-SSL-Client-Verify": "true",
+      },
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...edit,
+      name: current.name,
+      insertHeaders: {
+        "X-Forwarded-For": { before: "true", enabled: false },
+        "X-Forwarded-Proto": { before: null, enabled: true },
+      },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.1",
+        body: {
+          listener: {
+            insert_headers: {
+              "X-Forwarded-Port": "false",
+              "X-Forwarded-Proto": "True",
+              "X-SSL-Client-Verify": "true",
+            },
+          },
+        },
+      }),
+    );
+  });
+
+  it("uses Horizon-compatible values for all enabled forwarded headers", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue({
+      ...listener,
+      protocol: "HTTP",
+      insert_headers: {},
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...edit,
+      name: current.name,
+      insertHeaders: {
+        "X-Forwarded-For": { before: null, enabled: true },
+        "X-Forwarded-Proto": { before: null, enabled: true },
+        "X-Forwarded-Port": { before: null, enabled: true },
+      },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: {
+          listener: {
+            insert_headers: {
+              "X-Forwarded-For": "True",
+              "X-Forwarded-Proto": "True",
+              "X-Forwarded-Port": "True",
+            },
+          },
+        },
+      }),
+    );
+  });
+
+  it("clears the last forwarded header without sending other settings", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue({
+      ...listener,
+      protocol: "HTTP",
+      insert_headers: { "X-Forwarded-For": "true" },
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...edit,
+      name: current.name,
+      insertHeaders: { "X-Forwarded-For": { before: "true", enabled: false } },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.0",
+        body: { listener: { insert_headers: {} } },
+      }),
+    );
+  });
+
+  it.each([undefined, [], { "X-Forwarded-For": "true" }])(
+    "does not overwrite unknown or stale header state: %j",
+    async (insert_headers) => {
+      mocks.getLoadBalancerListener.mockResolvedValue({
+        ...listener,
+        protocol: "HTTP",
+        insert_headers,
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...edit,
+          insertHeaders: { "X-Forwarded-For": { before: null, enabled: true } },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { provider: "amphorav2", protocol: "HTTPS", ceiling: "2.28" },
+    { provider: "ovn", protocol: "HTTP", ceiling: "2.28" },
+    { provider: "amphorav2", protocol: "HTTP", ceiling: "2.0" },
+  ])(
+    "rejects unsupported forwarded protocol changes: %j",
+    async ({ provider, protocol, ceiling }) => {
+      mocks.getLoadBalancer.mockResolvedValue(
+        existingLoadBalancer({ provider, listeners: [{ id: listenerId }] }),
+      );
+      mocks.getLoadBalancerListener.mockResolvedValue({
+        ...listener,
+        protocol,
+        insert_headers: null,
+      });
+      mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+        ...capabilities(),
+        configuredMicroversionMaximum: ceiling,
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...edit,
+          insertHeaders: {
+            "X-Forwarded-Proto": { before: null, enabled: true },
+          },
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
 
   it("writes the minimum required API version and does not send defaulted fields", async () => {
     await mutateLoadBalancerListenerAction(scope, loadBalancerId, {

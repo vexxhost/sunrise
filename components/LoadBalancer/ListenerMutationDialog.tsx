@@ -36,10 +36,13 @@ import {
 import { octaviaListenerDeletionBlock } from "@/lib/openstack/octavia";
 import {
   availableListenerProtocols,
+  editableListenerInsertHeaders,
+  isListenerInsertHeaderEnabled,
   LISTENER_NUMERIC_FIELDS,
   LISTENER_NUMERIC_KEYS,
   listenerCidrError,
   listenerSettingUnavailable,
+  readListenerInsertHeaders,
   sameListenerCidrs,
   type ListenerNumericField,
   type OctaviaListenerProtocol,
@@ -50,6 +53,10 @@ import type { OctaviaListener, OctaviaLoadBalancer } from "@/types/openstack";
 export type ListenerDialogAction =
   | { action: "create" }
   | { action: "edit" | "delete"; listener: OctaviaListener };
+
+type ListenerHeaderChanges = NonNullable<
+  Extract<OctaviaListenerMutation, { action: "edit" }>["insertHeaders"]
+>;
 
 export function ListenerMutationDialog({
   target,
@@ -97,6 +104,9 @@ export function ListenerMutationDialog({
     initial.cidrs?.length ? "restricted" : "any",
   );
   const [cidrText, setCidrText] = useState(initial.cidrs?.join("\n") ?? "");
+  const [headerChoices, setHeaderChoices] = useState<
+    Partial<Record<keyof ListenerHeaderChanges, boolean>>
+  >({});
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const inFlight = useRef(false);
@@ -249,12 +259,36 @@ export function ListenerMutationDialog({
       }
     }
   }
+  const initialHeaders =
+    !creating && readListenerInsertHeaders(initial.listener?.insert_headers);
+  const editableHeaders = initialHeaders
+    ? editableListenerInsertHeaders(
+        loadBalancer.provider,
+        activeProtocol,
+        capabilities,
+      )
+    : [];
+  const insertHeaders: ListenerHeaderChanges = {};
+  if (initialHeaders) {
+    for (const header of editableHeaders) {
+      const before = initialHeaders[header];
+      const enabled = headerChoices[header];
+      if (
+        enabled !== undefined &&
+        enabled !== isListenerInsertHeaderEnabled(before)
+      ) {
+        insertHeaders[header] = { before: before ?? null, enabled };
+      }
+    }
+  }
   const advancedChanged = Object.keys(settings).length > 0;
+  const headersChanged = Object.keys(insertHeaders).length > 0;
   const changed =
     name !== initial.name ||
     description !== initial.description ||
     adminStateUp !== initial.adminStateUp ||
-    advancedChanged;
+    advancedChanged ||
+    headersChanged;
   const allowed =
     !settingsError &&
     (creating
@@ -276,6 +310,7 @@ export function ListenerMutationDialog({
         action: "edit",
         id: target.listener.id,
         ...fields,
+        ...(headersChanged ? { insertHeaders } : {}),
         source: {
           name: initial.name,
           description: initial.description,
@@ -467,6 +502,34 @@ export function ListenerMutationDialog({
                 <p className="text-xs text-muted-foreground">
                   {cidrUnavailable}
                 </p>
+              ) : null}
+              {initialHeaders && editableHeaders.length ? (
+                <fieldset className="space-y-2">
+                  <legend className="mb-2 text-sm font-medium">
+                    Insert headers
+                  </legend>
+                  {editableHeaders.map((header) => (
+                    <Label
+                      key={header}
+                      className="flex items-center gap-2 wrap-anywhere"
+                    >
+                      <Checkbox
+                        checked={
+                          headerChoices[header] ??
+                          isListenerInsertHeaderEnabled(initialHeaders[header])
+                        }
+                        onCheckedChange={(checked) =>
+                          setHeaderChoices((choices) => ({
+                            ...choices,
+                            [header]: checked === true,
+                          }))
+                        }
+                        disabled={pending}
+                      />
+                      {header}
+                    </Label>
+                  ))}
+                </fieldset>
               ) : null}
             </div>
           </details>

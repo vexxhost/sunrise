@@ -42,6 +42,7 @@ const serviceNames: Record<string, string> = {
   ports: "Ports",
   "floating-ips": "Floating IPs",
   "load-balancers": "Load Balancers",
+  listeners: "Listeners",
   volumes: "Volumes",
   snapshots: "Snapshots",
   images: "Images",
@@ -77,7 +78,14 @@ export function Breadcrumbs() {
           </BreadcrumbLink>
         </BreadcrumbItem>
         {segments.map((segment, index) => {
-          const href = "/" + segments.slice(0, index + 1).join("/");
+          const listenerList =
+            index === 3 &&
+            segment === "listeners" &&
+            segments[0] === "networking" &&
+            segments[1] === "load-balancers";
+          const href = listenerList
+            ? `/${segments.slice(0, index).join("/")}#listeners`
+            : "/" + segments.slice(0, index + 1).join("/");
           const isLast = index === segments.length - 1;
           const label = serviceNames[segment] || segment;
 

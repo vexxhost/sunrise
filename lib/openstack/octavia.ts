@@ -1,5 +1,12 @@
 import type { OctaviaListener, OctaviaLoadBalancer } from "@/types/openstack";
 
+export function loadBalancerListenerPath(
+  loadBalancerId: string,
+  listenerId: string,
+) {
+  return `/networking/load-balancers/${encodeURIComponent(loadBalancerId)}/listeners/${encodeURIComponent(listenerId)}`;
+}
+
 export function canChangeOctaviaListeners(
   loadBalancer: Pick<OctaviaLoadBalancer, "provisioning_status">,
 ) {

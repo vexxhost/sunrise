@@ -19,6 +19,13 @@ const LISTENER_BASELINE = "2.0";
 const LISTENER_TIMEOUTS = "2.1";
 const LISTENER_CIDRS = "2.12";
 const LISTENER_UDP = "2.1";
+const FORWARDED_PROTO = "X-Forwarded-Proto";
+export const LISTENER_INSERT_HEADERS = [
+  "X-Forwarded-For",
+  "X-Forwarded-Port",
+  FORWARDED_PROTO,
+] as const;
+type ListenerInsertHeader = (typeof LISTENER_INSERT_HEADERS)[number];
 
 export const LISTENER_NUMERIC_FIELDS = {
   connection_limit: { label: "Connection limit", min: -1, max: 2_147_483_647 },
@@ -70,6 +77,48 @@ function isAmphora(provider?: string) {
   return ["amphora", "amphorav2", "octavia"].includes(
     provider?.toLowerCase() ?? "",
   );
+}
+
+export function listenerInsertHeaderVersion(header: ListenerInsertHeader) {
+  return header === FORWARDED_PROTO ? "2.1" : LISTENER_BASELINE;
+}
+
+export function editableListenerInsertHeaders(
+  provider: string | undefined,
+  protocol: string,
+  capabilities: OpenStackServiceCapabilities,
+) {
+  if (
+    !isAmphora(provider) ||
+    !["HTTP", "TERMINATED_HTTPS"].includes(protocol)
+  ) {
+    return [];
+  }
+  return LISTENER_INSERT_HEADERS.filter((header) => {
+    const version = listenerInsertHeaderVersion(header);
+    return (
+      version === LISTENER_BASELINE ||
+      microversionSupport(capabilities, version, header).status === "supported"
+    );
+  });
+}
+
+export function readListenerInsertHeaders(value: unknown) {
+  if (value === null) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  if (
+    !entries.every(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    )
+  ) {
+    return null;
+  }
+  return Object.fromEntries(entries);
+}
+
+export function isListenerInsertHeaderEnabled(value: string | undefined) {
+  return value !== undefined && /^(true|1|yes|on|y|t)$/i.test(value);
 }
 
 export function availableListenerProtocols(
@@ -160,9 +209,12 @@ export function listenerParentReadApiVersion(
 export function requiredListenerWriteVersion(
   keys: readonly ListenerSettingKey[],
   protocol?: OctaviaListenerProtocol,
+  hasForwardedProto = false,
 ) {
   if (keys.includes("allowed_cidrs")) return LISTENER_CIDRS;
-  return protocol === "UDP" || keys.some((key) => key.startsWith("timeout_"))
+  return hasForwardedProto ||
+    protocol === "UDP" ||
+    keys.some((key) => key.startsWith("timeout_"))
     ? LISTENER_TIMEOUTS
     : LISTENER_BASELINE;
 }

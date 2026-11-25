@@ -1,6 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import {
   getLoadBalancerDetailsAction,
+  getLoadBalancerListenerDetailsAction,
   listLoadBalancerAvailabilityZonesAction,
   listLoadBalancerFloatingIpsAction,
   listLoadBalancersAction,
@@ -50,5 +51,28 @@ export function loadBalancerFloatingIpsQueryOptions(
     queryFn: () =>
       listLoadBalancerFloatingIpsAction(portId!, regionId, projectId),
     enabled: Boolean(regionId && projectId && portId),
+  });
+}
+
+export function loadBalancerListenerDetailsQueryOptions(
+  regionId: string,
+  projectId: string,
+  loadBalancerId: string,
+  listenerId: string,
+) {
+  return queryOptions({
+    queryKey: [
+      ...loadBalancerDetailsQueryOptions(regionId, projectId, loadBalancerId)
+        .queryKey,
+      "listener",
+      listenerId,
+    ],
+    queryFn: () =>
+      getLoadBalancerListenerDetailsAction(
+        loadBalancerId,
+        listenerId,
+        regionId,
+        projectId,
+      ),
   });
 }
