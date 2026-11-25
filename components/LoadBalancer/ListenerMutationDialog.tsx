@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Plus, Save } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Plus, RefreshCw, Save } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
@@ -26,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { loadBalancerPoolChoicesQueryOptions } from "@/hooks/queries/useLoadBalancers";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { MutationScope } from "@/lib/mutations";
 import type { OpenStackServiceCapabilities } from "@/lib/openstack/capabilities";
@@ -48,6 +50,10 @@ import {
   type OctaviaListenerProtocol,
   type OctaviaListenerSettings,
 } from "@/lib/openstack/octavia-listener-settings";
+import {
+  canUseOctaviaPoolAsDefault,
+  supportsOctaviaDefaultPoolChanges,
+} from "@/lib/openstack/octavia-pool-settings";
 import type { OctaviaListener, OctaviaLoadBalancer } from "@/types/openstack";
 
 export type ListenerDialogAction =
@@ -57,6 +63,8 @@ export type ListenerDialogAction =
 type ListenerHeaderChanges = NonNullable<
   Extract<OctaviaListenerMutation, { action: "edit" }>["insertHeaders"]
 >;
+
+const NO_DEFAULT_POOL = "none";
 
 export function ListenerMutationDialog({
   target,
@@ -107,6 +115,24 @@ export function ListenerMutationDialog({
   const [headerChoices, setHeaderChoices] = useState<
     Partial<Record<keyof ListenerHeaderChanges, boolean>>
   >({});
+  const originalDefaultPoolId = initial.listener?.default_pool_id;
+  const [defaultPoolId, setDefaultPoolId] = useState(originalDefaultPoolId);
+  const defaultPoolSupported =
+    target.action === "edit" &&
+    supportsOctaviaDefaultPoolChanges(
+      loadBalancer.provider,
+      target.listener.protocol,
+    );
+  const canChooseDefaultPool =
+    defaultPoolSupported && originalDefaultPoolId !== undefined;
+  const poolQuery = useQuery({
+    ...loadBalancerPoolChoicesQueryOptions(
+      initial.scope.regionId,
+      initial.scope.projectId,
+      initial.loadBalancerId,
+    ),
+    enabled: canChooseDefaultPool,
+  });
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const inFlight = useRef(false);
@@ -184,6 +210,26 @@ export function ListenerMutationDialog({
   const activeProtocol = creating
     ? protocol
     : (initial.listener?.protocol ?? "");
+  const poolChoices = poolQuery.isError
+    ? []
+    : (poolQuery.data ?? []).filter((pool) =>
+        canUseOctaviaPoolAsDefault(
+          pool,
+          loadBalancer.provider,
+          capabilities,
+          activeProtocol,
+        ),
+      );
+  const defaultPoolChange =
+    canChooseDefaultPool &&
+    defaultPoolId !== undefined &&
+    defaultPoolId !== originalDefaultPoolId
+      ? { before: originalDefaultPoolId, after: defaultPoolId }
+      : undefined;
+  const selectedPool = poolChoices.find(({ id }) => id === defaultPoolId);
+  const originalPool = poolQuery.data?.find(
+    ({ id }) => id === originalDefaultPoolId,
+  );
   const numericKeys = LISTENER_NUMERIC_KEYS.filter(
     (key) =>
       !listenerSettingUnavailable(
@@ -288,12 +334,16 @@ export function ListenerMutationDialog({
     description !== initial.description ||
     adminStateUp !== initial.adminStateUp ||
     advancedChanged ||
-    headersChanged;
+    headersChanged ||
+    defaultPoolChange !== undefined;
   const allowed =
     !settingsError &&
     (creating
       ? validPort && protocols.includes(protocol) && quota.issues.length === 0
-      : changed);
+      : changed &&
+        (!defaultPoolChange ||
+          defaultPoolChange.after === null ||
+          Boolean(selectedPool)));
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!allowed) return;
@@ -311,6 +361,7 @@ export function ListenerMutationDialog({
         id: target.listener.id,
         ...fields,
         ...(headersChanged ? { insertHeaders } : {}),
+        ...(defaultPoolChange ? { defaultPool: defaultPoolChange } : {}),
         source: {
           name: initial.name,
           description: initial.description,
@@ -412,6 +463,111 @@ export function ListenerMutationDialog({
             />
             Admin state up
           </Label>
+          {defaultPoolSupported ? (
+            <div className="space-y-2">
+              <Label htmlFor="octavia-listener-default-pool">
+                Default pool
+              </Label>
+              {canChooseDefaultPool ? (
+                <>
+                  <Select
+                    value={defaultPoolId ?? NO_DEFAULT_POOL}
+                    onValueChange={(value) =>
+                      setDefaultPoolId(value === NO_DEFAULT_POOL ? null : value)
+                    }
+                    disabled={pending}
+                  >
+                    <SelectTrigger
+                      id="octavia-listener-default-pool"
+                      className="w-full"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_DEFAULT_POOL}>
+                        No default pool
+                      </SelectItem>
+                      {originalDefaultPoolId &&
+                      !poolChoices.some(
+                        ({ id }) => id === originalDefaultPoolId,
+                      ) ? (
+                        <SelectItem value={originalDefaultPoolId}>
+                          {originalPool?.name || originalDefaultPoolId}{" "}
+                          (current)
+                        </SelectItem>
+                      ) : null}
+                      {defaultPoolChange?.after && !selectedPool ? (
+                        <SelectItem value={defaultPoolChange.after} disabled>
+                          Selected pool unavailable
+                        </SelectItem>
+                      ) : null}
+                      {poolChoices.map((pool) => (
+                        <SelectItem value={pool.id} key={pool.id}>
+                          {pool.name || pool.id} ({pool.protocol}
+                          {pool.admin_state_up === false ? ", disabled" : ""})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {poolQuery.isLoading ? (
+                    <p role="status" className="text-sm text-muted-foreground">
+                      Loading compatible pools.
+                    </p>
+                  ) : poolQuery.isError ? (
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                      <span>Pool choices could not be loaded.</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={pending}
+                        loading={poolQuery.isFetching}
+                        onClick={() => void poolQuery.refetch()}
+                      >
+                        <RefreshCw /> Retry
+                      </Button>
+                    </div>
+                  ) : poolChoices.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No compatible Active pools are available.
+                    </p>
+                  ) : null}
+                  {defaultPoolChange?.after === null ? (
+                    <MutationAlert variant="warning">
+                      Traffic that does not match an L7 policy will have no
+                      default route. The current pool and its members will be
+                      kept.
+                    </MutationAlert>
+                  ) : defaultPoolChange && selectedPool ? (
+                    <MutationAlert variant="warning">
+                      Traffic that does not match an L7 policy will use{" "}
+                      {selectedPool.name || selectedPool.id}.
+                      {originalDefaultPoolId
+                        ? " The previous pool and its members will be kept."
+                        : ""}
+                      {selectedPool.admin_state_up === false
+                        ? " The selected pool is disabled."
+                        : selectedPool.memberCount === 0
+                          ? " The selected pool has no members."
+                          : ""}
+                    </MutationAlert>
+                  ) : defaultPoolChange ? (
+                    <MutationAlert variant="warning">
+                      The selected pool is no longer available. Select another
+                      pool or keep the current assignment.
+                    </MutationAlert>
+                  ) : null}
+                </>
+              ) : (
+                <p
+                  className="text-sm text-muted-foreground"
+                  id="octavia-listener-default-pool"
+                >
+                  Octavia did not report the current default pool.
+                </p>
+              )}
+            </div>
+          ) : null}
           <details className="rounded-md border p-3">
             <summary className="cursor-pointer text-sm font-medium">
               Advanced settings

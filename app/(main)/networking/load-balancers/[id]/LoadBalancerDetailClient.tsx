@@ -584,7 +584,7 @@ export function LoadBalancerDetailClient({
         </div>
       </section>
 
-      <section className="space-y-3">
+      <section className="space-y-3" id="pools">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Waypoints className="size-4 text-muted-foreground" />

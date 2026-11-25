@@ -351,6 +351,8 @@ describe("Octavia pool actions", () => {
 });
 
 describe("Octavia listener actions", () => {
+  const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
+  const previousPoolId = "564c3265-5933-44c7-a8da-3101e2e66a29";
   const current = { name: "http", description: "", adminStateUp: true };
   const create = {
     ...current,
@@ -391,12 +393,172 @@ describe("Octavia listener actions", () => {
     mocks.getLoadBalancer.mockResolvedValue(
       existingLoadBalancer({
         listeners: [{ id: listenerId }],
+        pools: [{ id: poolId }, { id: previousPoolId }],
         provider: "amphorav2",
         vip_address: "192.0.2.10",
       }),
     );
     mocks.getLoadBalancerListener.mockResolvedValue(listener);
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      id: poolId,
+      protocol: "TCP",
+      provisioning_status: "ACTIVE",
+    });
     mocks.executeOpenStackMutation.mockResolvedValue({ ok: true });
+  });
+
+  it.each([
+    [null, poolId],
+    [previousPoolId, poolId],
+    [previousPoolId, null],
+  ])(
+    "changes only the listener default pool from %s to %s",
+    async (before, after) => {
+      mocks.getLoadBalancerListener.mockResolvedValue({
+        ...listener,
+        default_pool_id: before,
+      });
+      await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...edit,
+        name: current.name,
+        defaultPool: { before, after },
+      });
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: "PUT",
+          path: `/v2/lbaas/listeners/${listenerId}`,
+          apiVersion: "load-balancer 2.0",
+          body: { listener: { default_pool_id: after } },
+          successMessage: "Default pool change requested.",
+        }),
+      );
+      if (after) {
+        expect(mocks.getLoadBalancerPool).toHaveBeenCalledWith(
+          loadBalancerId,
+          after,
+          scope.regionId,
+          scope.projectId,
+        );
+      } else {
+        expect(mocks.getLoadBalancerPool).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it.each([undefined, previousPoolId])(
+    "rejects a stale or unreported default pool (%s)",
+    async (actual) => {
+      mocks.getLoadBalancerListener.mockResolvedValue({
+        ...listener,
+        default_pool_id: actual,
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...edit,
+          defaultPool: { before: null, after: poolId },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(mocks.getLoadBalancerPool).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not look up a pool outside the scoped load balancer", async () => {
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...edit,
+        defaultPool: { before: null, after: vipSubnetId },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getLoadBalancerPool).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { protocol: "UDP", provisioning_status: "ACTIVE" },
+    { protocol: "TCP", provisioning_status: "ERROR" },
+    { protocol: "TCP", provisioning_status: "PENDING_DELETE" },
+  ])("rejects an incompatible or non-Active pool (%o)", async (pool) => {
+    mocks.getLoadBalancerPool.mockResolvedValue(pool);
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...edit,
+        defaultPool: { before: null, after: poolId },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not let the default pool edit bypass provider support", async () => {
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({
+        listeners: [{ id: listenerId }],
+        provider: "ovn",
+      }),
+    );
+    mocks.getLoadBalancerListener.mockResolvedValue({
+      ...listener,
+      default_pool_id: previousPoolId,
+    });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...edit,
+        defaultPool: { before: previousPoolId, after: null },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not write a default pool for unrelated listener edits", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue({
+      ...listener,
+      default_pool_id: undefined,
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, edit);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ body: { listener: { name: edit.name } } }),
+    );
+  });
+
+  it("allows an unnamed listener to change pools without rewriting its name", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue({
+      ...listener,
+      name: null,
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...edit,
+      name: "",
+      source: { ...current, name: "" },
+      defaultPool: { before: null, after: poolId },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        body: { listener: { default_pool_id: poolId } },
+      }),
+    );
+  });
+
+  it("does not update the listener if the chosen pool disappears", async () => {
+    mocks.getLoadBalancerPool.mockRejectedValueOnce({
+      name: "OpenStackRequestError",
+      status: 404,
+    });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...edit,
+        defaultPool: { before: null, after: poolId },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { status: 404 } });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it.each(["HTTP", "TCP", "HTTPS", "UDP"] as const)(

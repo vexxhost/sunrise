@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { Network, Pencil } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
@@ -15,6 +19,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import {
   loadBalancerDetailsQueryOptions,
   loadBalancerListenerDetailsQueryOptions,
+  loadBalancerPoolChoicesQueryOptions,
 } from "@/hooks/queries/useLoadBalancers";
 import {
   canChangeOctaviaListener,
@@ -68,6 +73,12 @@ export function ListenerDetailClient({
         : false,
   });
   const insertedHeaders = readListenerInsertHeaders(listener.insert_headers);
+  const defaultPoolId = listener.default_pool_id;
+  const { data: pools } = useQuery({
+    ...loadBalancerPoolChoicesQueryOptions(regionId, projectId, loadBalancerId),
+    enabled: Boolean(defaultPoolId),
+  });
+  const defaultPool = pools?.find(({ id }) => id === defaultPoolId);
   const headers = insertedHeaders
     ? Object.entries(insertedHeaders).sort(([a], [b]) => a.localeCompare(b))
     : [];
@@ -154,8 +165,18 @@ export function ListenerDetailClient({
           <DetailField label="Administrative state">
             {listener.admin_state_up ? "Up" : "Down"}
           </DetailField>
-          <DetailField label="Default pool ID" className="font-mono text-xs">
-            {listener.default_pool_id}
+          <DetailField label="Default pool">
+            {defaultPoolId ? (
+              <ResourceLink
+                href={`/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#pools`}
+              >
+                {defaultPool?.name || defaultPoolId}
+              </ResourceLink>
+            ) : defaultPoolId === null ? (
+              "None"
+            ) : (
+              "Not reported"
+            )}
           </DetailField>
           <DetailField label="Description">
             {listener.description || "-"}

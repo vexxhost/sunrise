@@ -71,6 +71,30 @@ export function canAttachNewOctaviaPool(
   );
 }
 
+export function supportsOctaviaDefaultPoolChanges(
+  provider: string | undefined,
+  protocol: string,
+) {
+  return (
+    isOctaviaAmphoraProvider(provider) &&
+    Object.hasOwn(listenerPoolProtocols, protocol)
+  );
+}
+
+export function canUseOctaviaPoolAsDefault(
+  pool: Pick<OctaviaPool, "protocol" | "provisioning_status">,
+  provider: string | undefined,
+  capabilities: OpenStackServiceCapabilities,
+  listenerProtocol: string,
+) {
+  return (
+    pool.provisioning_status?.toUpperCase() === "ACTIVE" &&
+    availablePoolProtocols(provider, capabilities, listenerProtocol).some(
+      (protocol) => protocol === pool.protocol,
+    )
+  );
+}
+
 export function octaviaPoolDeletionBlock(
   pool: Pick<OctaviaPool, "id" | "members" | "healthmonitor_id" | "listeners">,
   l7Policies: ReadonlyArray<Pick<OctaviaL7Policy, "redirect_pool_id">>,

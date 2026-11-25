@@ -560,18 +560,78 @@ export async function getLoadBalancerPool(
     "pool",
     poolId,
   );
-  if (
-    pool.id !== poolId ||
-    !Array.isArray(pool.loadbalancers) ||
-    pool.loadbalancers.length !== 1 ||
-    pool.loadbalancers[0]?.id !== parentId
-  ) {
+  if (pool.id !== poolId || !poolBelongsToLoadBalancer(pool, parentId)) {
     throw new OpenStackRequestError(
       404,
       "Pool not found on this load balancer",
     );
   }
   return pool;
+}
+
+function poolBelongsToLoadBalancer(pool: OctaviaPool, parentId: string) {
+  return (
+    Array.isArray(pool.loadbalancers) &&
+    pool.loadbalancers.length === 1 &&
+    pool.loadbalancers[0]?.id === parentId
+  );
+}
+
+export async function listLoadBalancerPoolChoices(
+  id: string,
+  regionId?: string,
+  projectId?: string,
+) {
+  const parentId = requireUuid(id, "load balancer ID").toLowerCase();
+  const scope = await resolveScope(regionId, projectId);
+  const parent = await getProjectResource<OctaviaLoadBalancer>(
+    scope,
+    "loadbalancers",
+    "loadbalancer",
+    parentId,
+  );
+  if (parent.id !== parentId) {
+    throw new OpenStackRequestError(404, "Load balancer not found");
+  }
+  const poolIds = new Set(referenceIds(parent.pools, "pool"));
+  if (!poolIds.size) return [];
+  const filters = { project_id: scope.projectId, loadbalancer_id: parentId };
+  const pools = await listCollection<OctaviaPool>(
+    scope,
+    "pools",
+    collectionPath("pools", scope.projectId, filters),
+    undefined,
+    new URLSearchParams(filters),
+  );
+  return pools
+    .filter(
+      (pool) =>
+        poolIds.has(pool.id) &&
+        belongsToProject(pool.project_id, scope.projectId) &&
+        poolBelongsToLoadBalancer(pool, parentId),
+    )
+    .map(
+      ({
+        id,
+        name,
+        protocol,
+        provisioning_status,
+        admin_state_up,
+        members,
+      }) => ({
+        id,
+        name,
+        protocol,
+        provisioning_status,
+        admin_state_up,
+        memberCount: members?.length,
+      }),
+    )
+    .sort(
+      (a, b) =>
+        (a.name || a.id).localeCompare(b.name || b.id) ||
+        a.id.localeCompare(b.id),
+    );
 }
 
 export async function listOctaviaPoolRedirectPolicies(
