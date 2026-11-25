@@ -23,6 +23,8 @@ import {
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
+  getOctaviaL7Rule,
+  getOctaviaListenerL7Policy,
   getOctaviaPoolHealthMonitor,
   getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
@@ -647,6 +649,56 @@ describe("Octavia project scoping", () => {
       expect(reads).toBe(2);
     },
   );
+
+  it("reads an L7 policy only for its current project and listener", async () => {
+    const listenerId = "11111111-1111-4111-8111-111111111111";
+    const id = "22222222-2222-4222-8222-222222222222";
+    const l7policy = { id, listener_id: listenerId, project_id: "project-a" };
+    mocks.openstackRequest.mockResolvedValue({ l7policy });
+    await expect(getOctaviaListenerL7Policy(listenerId, id)).resolves.toEqual(
+      l7policy,
+    );
+    for (const changed of [
+      { id: listenerId },
+      { listener_id: id },
+      { project_id: "project-b" },
+    ]) {
+      mocks.openstackRequest.mockResolvedValueOnce({
+        l7policy: { ...l7policy, ...changed },
+      });
+      await expect(
+        getOctaviaListenerL7Policy(listenerId, id),
+      ).rejects.toMatchObject({ status: 404 });
+    }
+  });
+
+  it("reads an L7 rule only through its policy and checks both project and identity", async () => {
+    const policyId = "11111111-1111-4111-8111-111111111111";
+    const id = "22222222-2222-4222-8222-222222222222";
+    const rule = { id, project_id: "project-a" };
+    mocks.openstackRequest.mockResolvedValue({ rule });
+    await expect(getOctaviaL7Rule(policyId, id)).resolves.toMatchObject({
+      ...rule,
+      l7policy_id: policyId,
+    });
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: `/v2/lbaas/l7policies/${policyId}/rules/${id}`,
+      }),
+    );
+    for (const changed of [
+      { id: policyId },
+      { l7policy_id: id },
+      { project_id: "project-b" },
+    ]) {
+      mocks.openstackRequest.mockResolvedValueOnce({
+        rule: { ...rule, ...changed },
+      });
+      await expect(getOctaviaL7Rule(policyId, id)).rejects.toMatchObject({
+        status: 404,
+      });
+    }
+  });
 
   it("retries when a health monitor disappears after the pool is read", async () => {
     const parentId = "11111111-1111-4111-8111-111111111111";
