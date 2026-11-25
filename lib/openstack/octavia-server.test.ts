@@ -22,6 +22,7 @@ import {
   getLoadBalancerDetails,
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
+  getLoadBalancerPool,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
 } from "@/lib/openstack/octavia-server";
@@ -426,6 +427,72 @@ describe("Octavia project scoping", () => {
     );
     expect(mocks.openstackRequest).not.toHaveBeenCalled();
   });
+
+  it("checks the identity and parent of a pool before mutation", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const id = "22222222-2222-4222-8222-222222222222";
+    const pool = {
+      id,
+      project_id: "project-a",
+      loadbalancers: [{ id: parentId }],
+    };
+    mocks.openstackRequest.mockResolvedValue({ pool });
+    await expect(getLoadBalancerPool(parentId, id)).resolves.toEqual(pool);
+    for (const invalid of [
+      { ...pool, project_id: "project-b" },
+      { ...pool, id: parentId },
+      { ...pool, loadbalancers: [{ id }] },
+      { ...pool, loadbalancers: undefined },
+    ]) {
+      mocks.openstackRequest.mockResolvedValue({ pool: invalid });
+      await expect(getLoadBalancerPool(parentId, id)).rejects.toMatchObject({
+        status: 404,
+      });
+    }
+  });
+
+  it.each([
+    { missing: "pool", stillReferenced: false },
+    { missing: "members", stillReferenced: false },
+    { missing: "pool", stillReferenced: true },
+  ])(
+    "retries a topology read when $missing disappears (still referenced: $stillReferenced)",
+    async ({ missing, stillReferenced }) => {
+      const parentId = "11111111-1111-4111-8111-111111111111";
+      const id = "22222222-2222-4222-8222-222222222222";
+      const parent = loadBalancer(parentId, "project-a", "application");
+      let reads = 0;
+      mocks.openstackRequest.mockImplementation(async ({ path }) => {
+        if (path === "/v2/lbaas/loadbalancers/" + parentId) {
+          return {
+            loadbalancer: {
+              ...parent,
+              pools: ++reads === 1 || stillReferenced ? [{ id }] : [],
+            },
+          };
+        }
+        if (path === "/v2/lbaas/pools/" + id && missing === "members") {
+          return { pool: { id, project_id: "project-a" } };
+        }
+        if (path.startsWith("/v2/lbaas/pools/" + id)) {
+          throw new OpenStackRequestError(404, "Pool not found");
+        }
+        return null;
+      });
+      const details = getLoadBalancerDetails(parentId);
+      if (stillReferenced) {
+        await expect(details).rejects.toThrow(
+          "missing pool in the load balancer topology",
+        );
+      } else {
+        await expect(details).resolves.toMatchObject({
+          pools: [],
+          members: [],
+        });
+      }
+      expect(reads).toBe(2);
+    },
+  );
 
   it("loads details through the selected load balancer relationships", async () => {
     const loadBalancerId = "11111111-1111-1111-1111-111111111111";

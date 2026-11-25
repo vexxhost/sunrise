@@ -20,6 +20,10 @@ import {
   type LoadBalancerMutationKind,
 } from "@/components/LoadBalancer/LoadBalancerMutationDialog";
 import { OctaviaTagList } from "@/components/LoadBalancer/OctaviaTags";
+import {
+  PoolMutationDialog,
+  type PoolDialogAction,
+} from "@/components/LoadBalancer/PoolMutationDialog";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
@@ -50,10 +54,12 @@ import {
   canChangeOctaviaListener,
   canChangeOctaviaListeners,
   formatOctaviaStatus,
+  isOctaviaAmphoraProvider,
   isOctaviaProvisioning,
   loadBalancerListenerPath,
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
+import { formatPoolAlgorithm } from "@/lib/openstack/octavia-pool-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 import type {
   OpenStackFeatureSupport,
@@ -107,6 +113,11 @@ export function LoadBalancerDetailClient({
     message: string;
     at: number;
   } | null>(null);
+  const [poolAction, setPoolAction] = useState<PoolDialogAction | null>(null);
+  const [poolNotice, setPoolNotice] = useState<{
+    message: string;
+    at: number;
+  } | null>(null);
   const detailsQuery = useMemo(
     () => loadBalancerDetailsQueryOptions(regionId, projectId, id),
     [id, projectId, regionId],
@@ -115,9 +126,11 @@ export function LoadBalancerDetailClient({
     ...detailsQuery,
     refetchInterval: ({ state }) =>
       (listenerNotice && Date.now() - listenerNotice.at < 20_000) ||
+      (poolNotice && Date.now() - poolNotice.at < 20_000) ||
       (state.data &&
         (isOctaviaProvisioning(state.data.loadBalancer) ||
-          state.data.listeners.some(isOctaviaProvisioning)))
+          state.data.listeners.some(isOctaviaProvisioning) ||
+          state.data.pools.some(isOctaviaProvisioning)))
         ? 5_000
         : false,
     refetchOnReconnect: false,
@@ -125,6 +138,20 @@ export function LoadBalancerDetailClient({
   });
   const { loadBalancer } = data;
   const listenerChangesAvailable = canChangeOctaviaListeners(loadBalancer);
+  const poolChangesSupported = isOctaviaAmphoraProvider(loadBalancer.provider);
+  const openPoolAction = (target: PoolDialogAction) => {
+    setPoolNotice(null);
+    setPoolAction(target);
+  };
+  const refreshTopology = () => {
+    void queryClient.invalidateQueries({ queryKey: detailsQuery.queryKey });
+    void queryClient.invalidateQueries({
+      queryKey: loadBalancersQueryOptions(regionId, projectId).queryKey,
+    });
+    void queryClient.invalidateQueries({
+      queryKey: [regionId, projectId, "project-quotas", "load-balancing"],
+    });
+  };
   const openListenerAction = (target: ListenerDialogAction) => {
     setListenerNotice(null);
     setListenerAction(target);
@@ -558,11 +585,28 @@ export function LoadBalancerDetailClient({
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Waypoints className="size-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">Pools and members</h2>
-          <Badge variant="outline">{data.pools.length}</Badge>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Waypoints className="size-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold">Pools and members</h2>
+            <Badge variant="outline">{data.pools.length}</Badge>
+          </div>
+          {poolChangesSupported ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!listenerChangesAvailable}
+              onClick={() => openPoolAction({ action: "create" })}
+            >
+              <Plus className="size-4" />
+              Create pool
+            </Button>
+          ) : null}
         </div>
+        {poolNotice ? (
+          <MutationAlert variant="success">{poolNotice.message}</MutationAlert>
+        ) : null}
         <div className="overflow-hidden rounded-md border">
           <Table>
             <TableHeader>
@@ -573,6 +617,10 @@ export function LoadBalancerDetailClient({
                 <TableHead>Listener</TableHead>
                 <TableHead>Members</TableHead>
                 <TableHead>Operating</TableHead>
+                <TableHead>Provisioning</TableHead>
+                {poolChangesSupported ? (
+                  <TableHead className="text-right">Actions</TableHead>
+                ) : null}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -586,7 +634,9 @@ export function LoadBalancerDetailClient({
                       </div>
                     </TableCell>
                     <TableCell>{pool.protocol}</TableCell>
-                    <TableCell>{pool.lb_algorithm}</TableCell>
+                    <TableCell>
+                      {formatPoolAlgorithm(pool.lb_algorithm)}
+                    </TableCell>
                     <TableCell>
                       {pool.listeners?.length
                         ? pool.listeners
@@ -605,13 +655,57 @@ export function LoadBalancerDetailClient({
                     <TableCell>
                       <StatusBadge status={pool.operating_status} />
                     </TableCell>
+                    <TableCell>
+                      {isOctaviaProvisioning(pool) ? (
+                        <ProgressStatusBadge
+                          label={formatOctaviaStatus(pool.provisioning_status)}
+                        />
+                      ) : (
+                        <StatusBadge status={pool.provisioning_status} />
+                      )}
+                    </TableCell>
+                    {poolChangesSupported ? (
+                      <TableCell>
+                        <div className="flex justify-end gap-1">
+                          <EditActionButton
+                            type="button"
+                            compact
+                            label={"Edit pool " + (pool.name || pool.id)}
+                            disabled={
+                              !listenerChangesAvailable ||
+                              !canChangeOctaviaListener(pool)
+                            }
+                            onClick={() =>
+                              openPoolAction({ action: "edit", pool })
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            tone="danger"
+                            size="icon-sm"
+                            aria-label={"Delete pool " + (pool.name || pool.id)}
+                            title={"Delete pool " + (pool.name || pool.id)}
+                            disabled={
+                              !listenerChangesAvailable ||
+                              !canChangeOctaviaListener(pool)
+                            }
+                            onClick={() =>
+                              openPoolAction({ action: "delete", pool })
+                            }
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
                   <TableCell
                     className="py-8 text-center text-muted-foreground"
-                    colSpan={6}
+                    colSpan={poolChangesSupported ? 8 : 7}
                   >
                     No pools are configured.
                   </TableCell>
@@ -755,20 +849,24 @@ export function LoadBalancerDetailClient({
           onSuccess={(message) => {
             setListenerNotice({ message, at: Date.now() });
             setListenerAction(null);
-            void queryClient.invalidateQueries({
-              queryKey: detailsQuery.queryKey,
-            });
-            void queryClient.invalidateQueries({
-              queryKey: loadBalancersQueryOptions(regionId, projectId).queryKey,
-            });
-            void queryClient.invalidateQueries({
-              queryKey: [
-                regionId,
-                projectId,
-                "project-quotas",
-                "load-balancing",
-              ],
-            });
+            refreshTopology();
+          }}
+        />
+      ) : null}
+
+      {poolAction ? (
+        <PoolMutationDialog
+          target={poolAction}
+          loadBalancerId={loadBalancer.id}
+          provider={loadBalancer.provider}
+          capabilities={octaviaCapabilities}
+          listeners={data.listeners}
+          scope={{ projectId, regionId }}
+          onClose={() => setPoolAction(null)}
+          onSuccess={(message) => {
+            setPoolNotice({ message, at: Date.now() });
+            setPoolAction(null);
+            refreshTopology();
           }}
         />
       ) : null}

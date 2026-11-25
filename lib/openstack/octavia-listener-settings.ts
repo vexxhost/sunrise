@@ -3,7 +3,10 @@ import {
   microversionSupport,
   type OpenStackServiceCapabilities,
 } from "@/lib/openstack/capabilities";
-import { loadBalancerVipAddresses } from "@/lib/openstack/octavia";
+import {
+  isOctaviaAmphoraProvider,
+  loadBalancerVipAddresses,
+} from "@/lib/openstack/octavia";
 import type { OctaviaLoadBalancer } from "@/types/openstack";
 
 export const OCTAVIA_LISTENER_PROTOCOLS = [
@@ -73,12 +76,6 @@ type ListenerParent = Pick<
   "provider" | "vip_address" | "vip_sg_ids" | "additional_vips"
 >;
 
-function isAmphora(provider?: string) {
-  return ["amphora", "amphorav2", "octavia"].includes(
-    provider?.toLowerCase() ?? "",
-  );
-}
-
 export function listenerInsertHeaderVersion(header: ListenerInsertHeader) {
   return header === FORWARDED_PROTO ? "2.1" : LISTENER_BASELINE;
 }
@@ -89,7 +86,7 @@ export function editableListenerInsertHeaders(
   capabilities: OpenStackServiceCapabilities,
 ) {
   if (
-    !isAmphora(provider) ||
+    !isOctaviaAmphoraProvider(provider) ||
     !["HTTP", "TERMINATED_HTTPS"].includes(protocol)
   ) {
     return [];
@@ -125,7 +122,7 @@ export function availableListenerProtocols(
   provider: string | undefined,
   capabilities: OpenStackServiceCapabilities,
 ): OctaviaListenerProtocol[] {
-  const amphora = isAmphora(provider);
+  const amphora = isOctaviaAmphoraProvider(provider);
   const udpProvider = amphora || provider?.toLowerCase() === "ovn";
   return OCTAVIA_LISTENER_PROTOCOLS.filter((protocol) => {
     if (protocol === "TCP") return true;
@@ -151,7 +148,7 @@ export function listenerSettingUnavailable(
   capabilities: OpenStackServiceCapabilities,
   value?: string[] | number | null,
 ) {
-  if (!isAmphora(parent.provider))
+  if (!isOctaviaAmphoraProvider(parent.provider))
     return "These settings are not verified for this load balancer provider.";
   if (
     key.startsWith("timeout_") &&
