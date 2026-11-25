@@ -52,7 +52,11 @@ export function AddressGroupsClient({
       {
         accessorKey: "id",
         header: "ID",
-        meta: { fieldType: "string", visible: true, monospace: true },
+        meta: {
+          fieldType: "string",
+          visible: true,
+          idResourceKind: "address-group",
+        },
       },
       {
         id: "addresses",

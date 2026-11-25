@@ -482,15 +482,7 @@ function NodeGroupsTable({
         header: "UUID",
         enableHiding: false,
         cell: ({ row }) => (
-          <IDCell
-            isSelected={row.getIsSelected()}
-            linkPath={
-              row.original.detailHref
-                ? `/kubernetes/clusters/${cluster.uuid}/node-groups`
-                : undefined
-            }
-            value={row.original.uuid}
-          />
+          <IDCell href={row.original.detailHref} value={row.original.uuid} />
         ),
         meta: {
           fieldType: "string",
@@ -578,7 +570,7 @@ function NodeGroupsTable({
         meta: { fieldType: "string", visible: false },
       },
     ],
-    [cluster.uuid],
+    [],
   );
 
   const rowActions = useMemo(

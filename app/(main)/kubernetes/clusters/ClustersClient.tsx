@@ -9,6 +9,8 @@ import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge"
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/DataTable";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
+import { resourceDetailHref } from "@/lib/resource-detail-paths";
 import {
   clusterTemplatesQueryOptions,
   clustersQueryOptions,
@@ -58,9 +60,10 @@ function clusterColumns(
       accessorKey: "name",
       header: "Name",
       cell: ({ row }: { row: { original: MagnumCluster } }) => (
-        <ResourceLink href={`/kubernetes/clusters/${row.original.uuid}`}>
-          {row.original.name || row.original.uuid}
-        </ResourceLink>
+        <ResourceNameCell
+          href={resourceDetailHref("cluster", row.original.uuid)}
+          value={row.original.name || row.original.uuid}
+        />
       ),
       meta: {
         fieldType: "string",
@@ -71,6 +74,7 @@ function clusterColumns(
       accessorKey: "uuid",
       header: "ID",
       meta: {
+        idResourceKind: "cluster",
         fieldType: "string",
         monospace: true,
         visible: true,

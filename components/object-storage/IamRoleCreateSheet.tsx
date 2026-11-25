@@ -157,7 +157,7 @@ export function IamRoleCreateSheet({
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="border-b px-5 py-3">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid h-auto w-full grid-cols-2 gap-y-1 sm:grid-cols-4">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="trust">Trust policy</TabsTrigger>
               <TabsTrigger value="tags">Tags</TabsTrigger>

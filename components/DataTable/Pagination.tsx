@@ -1,7 +1,14 @@
 "use client";
 
 import { Table } from "@tanstack/react-table";
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "../ui/pagination";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+} from "@/components/ui/pagination";
 
 /**
  * Helper function to generate page numbers with ellipsis for pagination UI
@@ -14,8 +21,11 @@ import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, Pagi
  * generatePaginationItems(5, 10)
  * // Returns: [1, 'ellipsis', 4, 5, 6, 'ellipsis', 10]
  */
-function generatePaginationItems(currentPage: number, totalPages: number): (number | 'ellipsis')[] {
-  const items: (number | 'ellipsis')[] = [];
+function generatePaginationItems(
+  currentPage: number,
+  totalPages: number,
+): (number | "ellipsis")[] {
+  const items: (number | "ellipsis")[] = [];
 
   if (totalPages <= 7) {
     // Show all pages if total is 7 or less
@@ -27,7 +37,7 @@ function generatePaginationItems(currentPage: number, totalPages: number): (numb
     items.push(1);
 
     if (currentPage > 3) {
-      items.push('ellipsis');
+      items.push("ellipsis");
     }
 
     // Show pages around current page
@@ -39,7 +49,7 @@ function generatePaginationItems(currentPage: number, totalPages: number): (numb
     }
 
     if (currentPage < totalPages - 2) {
-      items.push('ellipsis');
+      items.push("ellipsis");
     }
 
     // Always show last page
@@ -53,43 +63,65 @@ interface DataTablePaginationProps<TData> {
   table: Table<TData>;
 }
 
-export function DataTablePagination<TData>({ table }: DataTablePaginationProps<TData>) {
-  return table.getRowModel().rows.length > 0 && (
-    <Pagination>
-      <PaginationContent>
+export function DataTablePagination<TData>({
+  table,
+}: DataTablePaginationProps<TData>) {
+  if (!table.getRowModel().rows.length) return null;
+  const currentPage = table.getState().pagination.pageIndex + 1;
+
+  return (
+    <Pagination aria-label="Table pages" className="mx-0 w-auto max-w-full">
+      <PaginationContent className="flex-wrap">
         <PaginationItem>
-          <PaginationPrevious
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label="Go to previous page"
             onClick={() => table.previousPage()}
-            aria-disabled={!table.getCanPreviousPage()}
-            className={!table.getCanPreviousPage() ? "pointer-events-none opacity-50" : "cursor-pointer"}
-          />
+            disabled={!table.getCanPreviousPage()}
+          >
+            <ChevronLeft />
+            <span className="hidden sm:inline">Previous</span>
+          </Button>
         </PaginationItem>
 
-        {generatePaginationItems(
-          table.getState().pagination.pageIndex + 1,
-          table.getPageCount()
-        ).map((item, index) => (
-          <PaginationItem key={index}>
-            {item === 'ellipsis' ? (
-              <PaginationEllipsis />
-            ) : (
-              <PaginationLink
-                onClick={() => table.setPageIndex(item - 1)}
-                isActive={table.getState().pagination.pageIndex + 1 === item}
-                className="cursor-pointer"
-              >
-                {item}
-              </PaginationLink>
-            )}
-          </PaginationItem>
-        ))}
+        {generatePaginationItems(currentPage, table.getPageCount()).map(
+          (item, index) => (
+            <PaginationItem
+              key={index}
+              className={
+                item === currentPage ? undefined : "hidden sm:list-item"
+              }
+            >
+              {item === "ellipsis" ? (
+                <PaginationEllipsis />
+              ) : (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant={item === currentPage ? "outline" : "ghost"}
+                  onClick={() => table.setPageIndex(item - 1)}
+                  aria-current={item === currentPage ? "page" : undefined}
+                  aria-label={`Page ${item}`}
+                >
+                  {item}
+                </Button>
+              )}
+            </PaginationItem>
+          ),
+        )}
 
         <PaginationItem>
-          <PaginationNext
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label="Go to next page"
             onClick={() => table.nextPage()}
-            aria-disabled={!table.getCanNextPage()}
-            className={!table.getCanNextPage() ? "pointer-events-none opacity-50" : "cursor-pointer"}
-          />
+            disabled={!table.getCanNextPage()}
+          >
+            <span className="hidden sm:inline">Next</span>
+            <ChevronRight />
+          </Button>
         </PaginationItem>
       </PaginationContent>
     </Pagination>

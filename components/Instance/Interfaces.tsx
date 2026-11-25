@@ -3,7 +3,6 @@
 import { useMemo, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DataTable, type DataTableRowAction } from "@/components/DataTable";
-import { IDCell } from "@/components/DataTable/IDCell";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { Button } from "@/components/ui/button";
@@ -44,16 +43,9 @@ export const columns: ColumnDef<Port>[] = [
     accessorKey: "id",
     header: "Port ID",
     enableHiding: false,
-    cell: ({ row }) => (
-      <IDCell
-        value={row.original.id}
-        isSelected={row.getIsSelected()}
-        linkPath="/networking/ports"
-      />
-    ),
     meta: {
       fieldType: "string",
-      monospace: true,
+      idResourceKind: "port",
       visible: true,
     },
   },

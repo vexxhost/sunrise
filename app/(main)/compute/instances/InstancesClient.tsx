@@ -52,6 +52,8 @@ import {
 import { collectTransitionUpdates } from "@/lib/openstack/transition-poll";
 import { resolveServerFlavor } from "@/lib/openstack/server-flavor";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
+import { resourceDetailHref } from "@/lib/resource-detail-paths";
 import { InstanceTagFilterControl } from "@/components/Instance/InstanceTagFilter";
 import { InstanceResourceTagList } from "@/components/Instance/InstanceResourceTag";
 import {
@@ -335,11 +337,10 @@ export function InstancesClient({
         accessorKey: "name",
         header: "Instance Name",
         cell: ({ row }) => (
-          <ResourceLink
-            href={`/compute/instances/${encodeURIComponent(row.original.id)}`}
-          >
-            {row.original.name || "Unnamed instance"}
-          </ResourceLink>
+          <ResourceNameCell
+            href={resourceDetailHref("instance", row.original.id)}
+            value={row.original.name || "Unnamed instance"}
+          />
         ),
         meta: {
           fieldType: "string",
@@ -350,6 +351,7 @@ export function InstancesClient({
         accessorKey: "id",
         header: "ID",
         meta: {
+          idResourceKind: "instance",
           fieldType: "string",
           visible: true,
         },

@@ -29,6 +29,7 @@ const columns: ColumnDef<Flavor>[] = [
     accessorKey: "id",
     header: "ID",
     meta: {
+      idResourceKind: "instance-flavor",
       fieldType: "string",
       visible: true
     }

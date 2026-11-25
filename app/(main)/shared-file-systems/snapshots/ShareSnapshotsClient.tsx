@@ -42,7 +42,7 @@ const columns: ColumnDef<ManilaShareSnapshot>[] = [
     meta: {
       fieldType: "string",
       visible: true,
-      idLinkPath: "/shared-file-systems/snapshots",
+      idResourceKind: "share-snapshot",
     },
   },
   {

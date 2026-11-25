@@ -78,7 +78,7 @@ export function OrdersClient({
         fieldType: "string",
         visible: true,
         monospace: true,
-        idLinkPath: "/key-manager/orders",
+        idResourceKind: "secret-order",
       },
     },
     {

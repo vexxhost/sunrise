@@ -14,7 +14,8 @@ import { OctaviaTagList } from "@/components/LoadBalancer/OctaviaTags";
 import { DataTable } from "@/components/DataTable";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
-import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
+import { resourceDetailHref } from "@/lib/resource-detail-paths";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,11 +37,10 @@ const baseColumns: ColumnDef<OctaviaLoadBalancer>[] = [
     accessorKey: "name",
     header: "Name",
     cell: ({ row }) => (
-      <ResourceLink
-        href={`/networking/load-balancers/${encodeURIComponent(row.original.id)}`}
-      >
-        {row.original.name || "Unnamed load balancer"}
-      </ResourceLink>
+      <ResourceNameCell
+        href={resourceDetailHref("load-balancer", row.original.id)}
+        value={row.original.name || "Unnamed load balancer"}
+      />
     ),
     meta: { fieldType: "string", visible: true },
   },
@@ -50,7 +50,7 @@ const baseColumns: ColumnDef<OctaviaLoadBalancer>[] = [
     meta: {
       fieldType: "string",
       visible: true,
-      idLinkPath: "/networking/load-balancers",
+      idResourceKind: "load-balancer",
     },
   },
   {
@@ -63,7 +63,10 @@ const baseColumns: ColumnDef<OctaviaLoadBalancer>[] = [
     accessorKey: "operating_status",
     header: "Operating Status",
     cell: ({ row }) => (
-      <Badge variant={octaviaStatusVariant(row.original.operating_status)}>
+      <Badge
+        className="text-sm"
+        variant={octaviaStatusVariant(row.original.operating_status)}
+      >
         {formatOctaviaStatus(row.original.operating_status)}
       </Badge>
     ),
@@ -75,10 +78,14 @@ const baseColumns: ColumnDef<OctaviaLoadBalancer>[] = [
     cell: ({ row }) =>
       isOctaviaProvisioning(row.original) ? (
         <ProgressStatusBadge
+          className="text-sm"
           label={formatOctaviaStatus(row.original.provisioning_status)}
         />
       ) : (
-        <Badge variant={octaviaStatusVariant(row.original.provisioning_status)}>
+        <Badge
+          className="text-sm"
+          variant={octaviaStatusVariant(row.original.provisioning_status)}
+        >
           {formatOctaviaStatus(row.original.provisioning_status)}
         </Badge>
       ),

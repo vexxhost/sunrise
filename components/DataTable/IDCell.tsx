@@ -1,59 +1,54 @@
 "use client";
 
-import Link from "next/link";
+import type { ReactElement, ReactNode } from "react";
+import {
+  ResourceLink,
+  ResourceLinkButton,
+} from "@/components/resources/ResourceLink";
 import { CopyButton } from "@/components/ui/copy-button";
 
-interface IDCellProps {
-  value: string;
-  isSelected: boolean;
-  linkPath?: string;
-}
+type IDCellProps = { value: string; copyLabel?: string } & (
+  | { href?: string; renderTrigger?: never }
+  | { href?: never; renderTrigger: (trigger: ReactElement) => ReactNode }
+);
 
-/**
- * ID Cell Component with copy functionality and hover expand
- * Shows truncated ID with gradient fade, expands on hover to show full ID
- */
-export function IDCell({ value, isSelected, linkPath }: IDCellProps) {
-  const content = (
-    <div className="relative w-[100px] flex-shrink-0 group/id">
-      <div className="absolute left-0 top-0 w-full overflow-hidden group-hover/id:left-[-9px] group-hover/id:top-[-5px] group-hover/id:z-50 group-hover/id:w-auto group-hover/id:px-2 group-hover/id:py-1 group-hover/id:bg-popover group-hover/id:text-popover-foreground group-hover/id:border group-hover/id:border-border group-hover/id:rounded-md group-hover/id:overflow-visible group-hover/id:underline">
-        <span className="font-mono text-sm tracking-tighter block whitespace-nowrap relative z-10">
+export function IDCell({
+  value,
+  href,
+  renderTrigger,
+  copyLabel = "Copy ID",
+}: IDCellProps) {
+  const triggerClassName = "min-w-0 flex-1 font-normal";
+  const text = <span className="block truncate">{value}</span>;
+  return (
+    <div className="flex w-28 items-center gap-1 font-mono text-sm">
+      {renderTrigger ? (
+        renderTrigger(
+          <ResourceLinkButton className={triggerClassName} title={value}>
+            {text}
+          </ResourceLinkButton>,
+        )
+      ) : href ? (
+        <ResourceLink
+          className={triggerClassName}
+          href={href}
+          onClick={(event) => event.stopPropagation()}
+          prefetch={false}
+          title={value}
+        >
+          {text}
+        </ResourceLink>
+      ) : (
+        <span className="min-w-0 flex-1 truncate" title={value}>
           {value}
         </span>
-      </div>
-      {/* Gradient fade - visible when not hovering */}
-      <div
-        className={`absolute inset-y-0 right-0 w-12 pointer-events-none opacity-100 group-hover/id:opacity-0 z-20 ${
-          isSelected
-            ? "bg-gradient-to-l from-muted to-transparent"
-            : "bg-gradient-to-l from-background to-transparent group-hover/row:from-muted/50"
-        }`}
-      />
-      {/* Invisible spacer to maintain height */}
-      <span className="font-mono text-sm tracking-tighter block whitespace-nowrap invisible">
-        {value.substring(0, 10)}
-      </span>
-    </div>
-  );
-
-  return (
-    <div className="flex items-center gap-1 group">
-      {linkPath ? (
-        <Link href={`${linkPath}/${value}`} onClick={(e) => e.stopPropagation()}>
-          {content}
-        </Link>
-      ) : (
-        content
       )}
       <CopyButton
         value={value}
-        label="Copy ID"
+        label={copyLabel}
         size="icon-xs"
-        className="opacity-0 group-hover:opacity-100 group-hover/id:opacity-0 transition-opacity duration-200 shrink-0"
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-        }}
+        className="shrink-0 text-muted-foreground"
+        onClick={(event) => event.stopPropagation()}
       />
     </div>
   );

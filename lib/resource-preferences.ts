@@ -1,3 +1,5 @@
+import { resourceDetailHref } from "@/lib/resource-detail-paths";
+
 export const RESOURCE_PREFERENCE_LIMIT = 4;
 
 export const resourceKinds = [
@@ -280,41 +282,7 @@ export function filterResourcePreferencesByLiveIds(
 export function resourcePreferenceHref(
   resource: Pick<ResourcePreferenceInput, "kind" | "id">,
 ) {
-  const id = encodeURIComponent(resource.id);
-  switch (resource.kind) {
-    case "instance":
-      return `/compute/instances/${id}/overview`;
-    case "volume":
-      return `/compute/volumes/${id}`;
-    case "image":
-      return `/compute/images/${id}`;
-    case "cluster":
-      return `/kubernetes/clusters/${id}/overview`;
-    case "load-balancer":
-      return `/networking/load-balancers/${id}`;
-    case "network":
-      return `/networking/networks/${id}`;
-    case "router":
-      return `/networking/routers/${id}`;
-    case "port":
-      return `/networking/ports/${id}`;
-    case "floating-ip":
-      return `/networking/floating-ips/${id}`;
-    case "security-group":
-      return `/networking/security-groups/${id}`;
-    case "bucket":
-      return `/object-storage/buckets/${id}`;
-    case "share":
-      return `/shared-file-systems/shares/${id}`;
-    case "share-snapshot":
-      return `/shared-file-systems/snapshots/${id}`;
-    case "secret":
-      return `/key-manager/secrets/${id}`;
-    case "secret-container":
-      return `/key-manager/containers/${id}`;
-    case "secret-order":
-      return `/key-manager/orders/${id}`;
-  }
+  return resourceDetailHref(resource.kind, resource.id);
 }
 
 export function resourceKindLabel(kind: ResourceKind) {

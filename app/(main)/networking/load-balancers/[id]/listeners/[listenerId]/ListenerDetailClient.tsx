@@ -121,7 +121,6 @@ export function ListenerDetailClient({
           <DetailField label="Load balancer">
             <ResourceLink
               href={`/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#listeners`}
-              className="text-primary"
             >
               {loadBalancer.name || loadBalancer.id}
             </ResourceLink>

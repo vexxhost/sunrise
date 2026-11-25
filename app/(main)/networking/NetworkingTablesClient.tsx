@@ -39,6 +39,8 @@ import type {
   Subnet,
 } from "@/types/openstack";
 import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
+import { resourceDetailHref } from "@/lib/resource-detail-paths";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import {
   neutronPortHardwareOffloadTypeLabel,
@@ -63,18 +65,6 @@ interface NetworkingTableProps {
 }
 
 const TAG_FILTER_VISIBLE_COLUMNS = ["tags"];
-
-function NameLink({
-  href,
-  name,
-  id,
-}: {
-  href: string;
-  name: string;
-  id: string;
-}) {
-  return <ResourceLink href={href}>{name.trim() || id}</ResourceLink>;
-}
 
 function StateBadge({ active, label }: { active: boolean; label: string }) {
   return <Badge variant={active ? "secondary" : "outline"}>{label}</Badge>;
@@ -155,10 +145,9 @@ export function NetworksTableClient({
         accessorKey: "name",
         header: "Name",
         cell: ({ row }) => (
-          <NameLink
-            href={`/networking/networks/${row.original.id}`}
-            name={row.original.name}
-            id={row.original.id}
+          <ResourceNameCell
+            href={resourceDetailHref("network", row.original.id)}
+            value={row.original.name.trim() || row.original.id}
           />
         ),
         meta: { fieldType: "string", visible: true },
@@ -166,7 +155,7 @@ export function NetworksTableClient({
       {
         accessorKey: "id",
         header: "ID",
-        meta: { fieldType: "string", visible: true },
+        meta: { fieldType: "string", visible: true, idResourceKind: "network" },
       },
       {
         id: "subnets",
@@ -358,10 +347,9 @@ export function RoutersTableClient({
         accessorKey: "name",
         header: "Name",
         cell: ({ row }) => (
-          <NameLink
-            href={`/networking/routers/${row.original.id}`}
-            name={row.original.name}
-            id={row.original.id}
+          <ResourceNameCell
+            href={resourceDetailHref("router", row.original.id)}
+            value={row.original.name.trim() || row.original.id}
           />
         ),
         meta: { fieldType: "string", visible: true },
@@ -369,7 +357,7 @@ export function RoutersTableClient({
       {
         accessorKey: "id",
         header: "ID",
-        meta: { fieldType: "string", visible: true },
+        meta: { fieldType: "string", visible: true, idResourceKind: "router" },
       },
       {
         accessorKey: "status",
@@ -551,10 +539,9 @@ export function PortsTableClient({
         accessorKey: "name",
         header: "Name",
         cell: ({ row }) => (
-          <NameLink
-            href={`/networking/ports/${row.original.id}`}
-            name={row.original.name}
-            id={row.original.id}
+          <ResourceNameCell
+            href={resourceDetailHref("port", row.original.id)}
+            value={row.original.name.trim() || row.original.id}
           />
         ),
         meta: { fieldType: "string", visible: true },
@@ -562,7 +549,7 @@ export function PortsTableClient({
       {
         accessorKey: "id",
         header: "ID",
-        meta: { fieldType: "string", visible: true },
+        meta: { fieldType: "string", visible: true, idResourceKind: "port" },
       },
       {
         id: "network",
@@ -818,10 +805,9 @@ export function FloatingIpsTableClient({
         accessorKey: "floating_ip_address",
         header: "Floating IP",
         cell: ({ row }) => (
-          <NameLink
-            href={`/networking/floating-ips/${row.original.id}`}
-            name={row.original.floating_ip_address}
-            id={row.original.id}
+          <ResourceNameCell
+            href={resourceDetailHref("floating-ip", row.original.id)}
+            value={row.original.floating_ip_address.trim() || row.original.id}
           />
         ),
         meta: { fieldType: "string", visible: true },
@@ -829,7 +815,11 @@ export function FloatingIpsTableClient({
       {
         accessorKey: "id",
         header: "ID",
-        meta: { fieldType: "string", visible: true },
+        meta: {
+          fieldType: "string",
+          visible: true,
+          idResourceKind: "floating-ip",
+        },
       },
       {
         accessorKey: "status",
@@ -848,8 +838,8 @@ export function FloatingIpsTableClient({
         cell: ({ row }) =>
           row.original.fixed_ip_address && row.original.port_id ? (
             <ResourceLink
-              href={`/networking/ports/${encodeURIComponent(row.original.port_id)}`}
-              className="font-mono text-xs"
+              href={resourceDetailHref("port", row.original.port_id)}
+              className="font-mono"
             >
               {row.original.fixed_ip_address}
             </ResourceLink>
@@ -864,8 +854,8 @@ export function FloatingIpsTableClient({
         cell: ({ row }) =>
           row.original.port_id ? (
             <ResourceLink
-              href={`/networking/ports/${encodeURIComponent(row.original.port_id)}`}
-              className="font-mono text-xs"
+              href={resourceDetailHref("port", row.original.port_id)}
+              className="font-mono"
             >
               {row.original.port_id}
             </ResourceLink>
@@ -983,10 +973,9 @@ export function SecurityGroupsTableClient({
         accessorKey: "name",
         header: "Name",
         cell: ({ row }) => (
-          <NameLink
-            href={`/networking/security-groups/${row.original.id}`}
-            name={row.original.name}
-            id={row.original.id}
+          <ResourceNameCell
+            href={resourceDetailHref("security-group", row.original.id)}
+            value={row.original.name.trim() || row.original.id}
           />
         ),
         meta: { fieldType: "string", visible: true },
@@ -994,7 +983,11 @@ export function SecurityGroupsTableClient({
       {
         accessorKey: "id",
         header: "ID",
-        meta: { fieldType: "string", visible: true },
+        meta: {
+          fieldType: "string",
+          visible: true,
+          idResourceKind: "security-group",
+        },
       },
       {
         accessorKey: "description",

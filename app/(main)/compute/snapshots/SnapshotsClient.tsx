@@ -48,6 +48,7 @@ const columns: ColumnDef<Snapshot>[] = [
     accessorKey: "id",
     header: "ID",
     meta: {
+      idResourceKind: "instance-snapshot",
       fieldType: "string",
       visible: true,
     },

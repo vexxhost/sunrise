@@ -75,7 +75,7 @@ export function ContainersClient({
         fieldType: "string",
         visible: true,
         monospace: true,
-        idLinkPath: "/key-manager/containers",
+        idResourceKind: "secret-container",
       },
     },
     {

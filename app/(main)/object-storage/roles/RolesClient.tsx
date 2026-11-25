@@ -5,7 +5,8 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { useState, type ReactNode } from "react";
 import { AlertTriangle, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { DataTable } from "@/components/DataTable";
-import { FadedText } from "@/components/FadedText";
+import { IDCell } from "@/components/DataTable/IDCell";
+import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { IamRoleCreateSheet } from "@/components/object-storage/IamRoleCreateSheet";
@@ -137,41 +138,29 @@ export function RolesClient({
       accessorKey: "name",
       header: "Name",
       enableHiding: false,
-      cell: ({ row }) =>
-        roleDialog(
-          row.original,
-          <button
-            type="button"
-            className="flex max-w-72 items-center gap-2 text-left font-medium underline-offset-2 hover:underline focus-visible:underline"
-            title={row.original.name}
-          >
-            <span className="truncate">{row.original.name}</span>
-            {row.original.isActive ? (
-              <Badge variant="secondary" className="shrink-0">
-                Current
-              </Badge>
-            ) : null}
-          </button>,
-        ),
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <ResourceNameCell
+            value={row.original.name}
+            renderTrigger={(trigger) => roleDialog(row.original, trigger)}
+          />
+          {row.original.isActive ? (
+            <Badge variant="secondary">Current</Badge>
+          ) : null}
+        </div>
+      ),
       meta: { fieldType: "string", visible: true },
     },
     {
       accessorKey: "arn",
       header: "ARN",
-      cell: ({ row }) =>
-        roleDialog(
-          row.original,
-          <button
-            type="button"
-            className="block max-w-96 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            title={`Open ${row.original.arn}`}
-          >
-            <FadedText
-              value={row.original.arn}
-              className="max-w-96 font-mono text-sm"
-            />
-          </button>,
-        ),
+      cell: ({ row }) => (
+        <IDCell
+          value={row.original.arn}
+          copyLabel="Copy ARN"
+          renderTrigger={(trigger) => roleDialog(row.original, trigger)}
+        />
+      ),
       meta: { fieldType: "string", visible: true, monospace: true },
     },
     {
@@ -199,7 +188,8 @@ export function RolesClient({
     {
       accessorKey: "id",
       header: "Role ID",
-      cell: ({ row }) => row.original.id ?? "-",
+      cell: ({ row }) =>
+        row.original.id ? <IDCell value={row.original.id} /> : "-",
       meta: { fieldType: "string", visible: false, monospace: true },
     },
     {
