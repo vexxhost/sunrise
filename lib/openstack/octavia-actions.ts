@@ -24,12 +24,16 @@ import {
   canChangeOctaviaListener,
   canChangeOctaviaListeners,
   isOctaviaProvisioning,
+  loadBalancerListenerPath,
   octaviaListenerDeletionBlock,
 } from "@/lib/openstack/octavia";
 import {
   availableListenerProtocols,
+  editableListenerInsertHeaders,
+  isListenerInsertHeaderEnabled,
   LISTENER_CIDR_LENGTH_MAX,
   LISTENER_CIDR_MAX,
+  LISTENER_INSERT_HEADERS,
   LISTENER_NUMERIC_FIELDS,
   LISTENER_NUMERIC_KEYS,
   LISTENER_SETTING_KEYS,
@@ -37,6 +41,7 @@ import {
   listenerReadApiVersion,
   listenerSettingUnavailable,
   OCTAVIA_LISTENER_PROTOCOLS,
+  readListenerInsertHeaders,
   requiredListenerWriteVersion,
   sameListenerCidrs,
   type ListenerNumericField,
@@ -46,6 +51,7 @@ import {
   getLoadBalancer,
   getLoadBalancerDetails,
   getLoadBalancerListener,
+  getLoadBalancerListenerDetails,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
 } from "@/lib/openstack/octavia-server";
@@ -140,6 +146,15 @@ const listenerMutationSchema = z.discriminatedUnion("action", [
     action: z.literal("edit"),
     id: uuidSchema,
     source: listenerFieldsWithSettings,
+    insertHeaders: z
+      .partialRecord(
+        z.enum(LISTENER_INSERT_HEADERS),
+        z.object({
+          before: z.string().max(1024).nullable(),
+          enabled: z.boolean(),
+        }),
+      )
+      .optional(),
   }),
   z.object({ action: z.literal("delete"), id: uuidSchema }),
 ]);
@@ -606,7 +621,7 @@ export async function mutateLoadBalancerListenerAction(
         value.id.toLowerCase(),
         activeScope.regionId,
         activeScope.projectId,
-        value.action === "edit" && value.settings
+        value.action === "edit" && (value.settings || value.insertHeaders)
           ? listenerReadApiVersion(capabilities)
           : undefined,
       );
@@ -649,6 +664,7 @@ export async function mutateLoadBalancerListenerAction(
   }
 
   const settingsKeys: ListenerSettingKey[] = [];
+  let hasForwardedProto = false;
   if (value.action !== "delete" && body) {
     for (const key of LISTENER_SETTING_KEYS) {
       const next = value.settings?.[key];
@@ -705,6 +721,60 @@ export async function mutateLoadBalancerListenerAction(
       body[key] = next;
       settingsKeys.push(key);
     }
+    if (value.action === "edit" && value.insertHeaders && listener) {
+      const changes = LISTENER_INSERT_HEADERS.filter(
+        (header) => value.insertHeaders?.[header] !== undefined,
+      );
+      if (changes.length) {
+        const supportedHeaders = editableListenerInsertHeaders(
+          existing.value.provider,
+          listener.protocol,
+          capabilities,
+        );
+        if (changes.some((header) => !supportedHeaders.includes(header))) {
+          return validationFailure(
+            activeScope,
+            "Header insertion is not available for this listener, provider, or API version.",
+          );
+        }
+        const headers = readListenerInsertHeaders(listener.insert_headers);
+        if (
+          !headers ||
+          changes.some(
+            (header) =>
+              (headers[header] ?? null) !==
+              value.insertHeaders?.[header]?.before,
+          )
+        ) {
+          return mutationFailure(
+            {
+              code: "conflict",
+              message:
+                "The listener's inserted headers changed or could not be verified. Refresh and try again.",
+              retryable: true,
+            },
+            activeScope,
+          );
+        }
+        let headersChanged = false;
+        for (const header of changes) {
+          const change = value.insertHeaders[header];
+          if (
+            !change ||
+            change.enabled === isListenerInsertHeaderEnabled(headers[header])
+          )
+            continue;
+          // Octavia replaces the map, so start from its fresh values, not a client copy.
+          if (change.enabled) headers[header] = "True";
+          else delete headers[header];
+          headersChanged = true;
+        }
+        if (headersChanged) {
+          body.insert_headers = headers;
+          hasForwardedProto = Object.hasOwn(headers, "X-Forwarded-Proto");
+        }
+      }
+    }
     if (Object.keys(body).length === 0)
       return validationFailure(activeScope, "No listener settings changed.");
   }
@@ -719,6 +789,7 @@ export async function mutateLoadBalancerListenerAction(
     requiredListenerWriteVersion(
       settingsKeys,
       value.action === "create" ? value.protocol : undefined,
+      hasForwardedProto,
     ),
     "Changing load balancer listeners",
     capabilities,
@@ -741,6 +812,7 @@ export async function mutateLoadBalancerListenerAction(
     invalidates: [
       "/networking/load-balancers",
       `/networking/load-balancers/${parentId}`,
+      ...(listenerId ? [loadBalancerListenerPath(parentId, listenerId)] : []),
       "/quotas",
     ],
     successMessage: {
@@ -793,6 +865,20 @@ export async function getLoadBalancerDetailsAction(
   projectId?: string,
 ): Promise<OctaviaLoadBalancerDetails> {
   return getLoadBalancerDetails(id, regionId, projectId);
+}
+
+export async function getLoadBalancerListenerDetailsAction(
+  loadBalancerId: string,
+  listenerId: string,
+  regionId?: string,
+  projectId?: string,
+) {
+  return getLoadBalancerListenerDetails(
+    loadBalancerId,
+    listenerId,
+    regionId,
+    projectId,
+  );
 }
 
 export async function listLoadBalancerFloatingIpsAction(

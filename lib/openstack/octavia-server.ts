@@ -443,6 +443,14 @@ export async function getLoadBalancer(
 ): Promise<OctaviaLoadBalancer> {
   const loadBalancerId = requireUuid(id, "load balancer ID");
   const scope = await resolveScope(regionId, projectId);
+  return readLoadBalancer(scope, loadBalancerId, listenerCapabilities);
+}
+
+async function readLoadBalancer(
+  scope: OctaviaScope,
+  loadBalancerId: string,
+  listenerCapabilities?: OpenStackServiceCapabilities,
+) {
   const tagsRead = await loadBalancerTagsApiVersion(
     scope,
     listenerCapabilities,
@@ -467,6 +475,15 @@ export async function getLoadBalancerListener(
   const parentId = requireUuid(loadBalancerId, "load balancer ID");
   const listenerId = requireUuid(id, "listener ID");
   const scope = await resolveScope(regionId, projectId);
+  return readListener(scope, parentId, listenerId, apiVersion);
+}
+
+async function readListener(
+  scope: OctaviaScope,
+  parentId: string,
+  listenerId: string,
+  apiVersion?: string,
+) {
   const listener = await getProjectResource<OctaviaListener>(
     scope,
     "listeners",
@@ -488,6 +505,34 @@ export async function getLoadBalancerListener(
   return listener;
 }
 
+export async function getLoadBalancerListenerDetails(
+  loadBalancerId: string,
+  id: string,
+  regionId?: string,
+  projectId?: string,
+) {
+  const parentId = requireUuid(
+    loadBalancerId,
+    "load balancer ID",
+  ).toLowerCase();
+  const listenerId = requireUuid(id, "listener ID").toLowerCase();
+  const scope = await resolveScope(regionId, projectId);
+  const capabilities = await discoverLoadBalancerCapabilities(scope.regionId);
+  const [loadBalancer, listener] = await Promise.all([
+    readLoadBalancer(scope, parentId, capabilities),
+    readListener(
+      scope,
+      parentId,
+      listenerId,
+      listenerReadApiVersion(capabilities),
+    ),
+  ]);
+  if (loadBalancer.id !== parentId) {
+    throw new OpenStackRequestError(404, "Load balancer not found");
+  }
+  return { loadBalancer, listener, capabilities };
+}
+
 export async function getLoadBalancerDetails(
   id: string,
   regionId?: string,
@@ -496,16 +541,9 @@ export async function getLoadBalancerDetails(
   const loadBalancerId = requireUuid(id, "load balancer ID");
   const scope = await resolveScope(regionId, projectId);
   const capabilities = await discoverLoadBalancerCapabilities(scope.regionId);
-  const tagsRead = await loadBalancerTagsApiVersion(scope, capabilities);
-  const advancedVersion = listenerParentReadApiVersion(capabilities);
   const listenerVersion = listenerReadApiVersion(capabilities);
-  const readLoadBalancer = () =>
-    getLoadBalancerWithTags(
-      scope,
-      loadBalancerId,
-      advancedVersion ?? tagsRead.apiVersion,
-      !advancedVersion && tagsRead.fallbackAllowed,
-    );
+  const readParent = () =>
+    readLoadBalancer(scope, loadBalancerId, capabilities);
   const readListeners = (parent: OctaviaLoadBalancer) =>
     Promise.all(
       referenceIds(parent.listeners, "listener").map(async (listenerId) => {
@@ -524,7 +562,7 @@ export async function getLoadBalancerDetails(
       }),
     );
 
-  let loadBalancer = await readLoadBalancer();
+  let loadBalancer = await readParent();
   const [firstListenerResults, stats, status] = await Promise.all([
     readListeners(loadBalancer),
     octaviaGet<{ stats: OctaviaLoadBalancerStats }>(
@@ -541,7 +579,7 @@ export async function getLoadBalancerDetails(
   let listenerResults = firstListenerResults;
   // A listener can disappear between the parent and child reads during deletion.
   if (listenerResults.includes(null)) {
-    loadBalancer = await readLoadBalancer();
+    loadBalancer = await readParent();
     listenerResults = await readListeners(loadBalancer);
   }
   const listeners = listenerResults.filter((listener) => listener !== null);

@@ -53,10 +53,13 @@ export interface OctaviaListener {
   timeout_member_data?: number | null;
   timeout_tcp_inspect?: number | null;
   allowed_cidrs?: string[] | null;
+  insert_headers?: Record<string, string> | null;
   default_pool_id?: string | null;
   loadbalancers?: OctaviaResourceReference[];
   l7policies?: OctaviaResourceReference[];
   tags?: string[];
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface OctaviaPool {

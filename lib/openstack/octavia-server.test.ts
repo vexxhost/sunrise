@@ -21,6 +21,7 @@ import {
   getLoadBalancer,
   getLoadBalancerDetails,
   getLoadBalancerListener,
+  getLoadBalancerListenerDetails,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
 } from "@/lib/openstack/octavia-server";
@@ -298,6 +299,61 @@ describe("Octavia project scoping", () => {
       (error: unknown) =>
         error instanceof OpenStackRequestError && error.status === 404,
     );
+  });
+
+  it("loads a listener deep link through only the scoped parent and listener", async () => {
+    const parentId = "44444444-4444-4444-8444-444444444444";
+    const listenerId = "22222222-2222-4222-8222-222222222222";
+    const listener = {
+      id: listenerId,
+      project_id: "project-a",
+      loadbalancers: [{ id: parentId }],
+      insert_headers: { "X-Forwarded-For": "true" },
+    };
+    mocks.openstackRequest.mockImplementation(async ({ path }) =>
+      path.endsWith(parentId)
+        ? { loadbalancer: loadBalancer(parentId, "project-a", "application") }
+        : { listener },
+    );
+    await expect(
+      getLoadBalancerListenerDetails(
+        parentId,
+        listenerId,
+        "RegionOne",
+        "project-a",
+      ),
+    ).resolves.toMatchObject({ listener, loadBalancer: { id: parentId } });
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(2);
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: `/v2/lbaas/listeners/${listenerId}`,
+        apiVersion: "load-balancer 2.12",
+      }),
+    );
+    mocks.openstackRequest.mockClear();
+    await expect(
+      getLoadBalancerListenerDetails(
+        parentId,
+        listenerId,
+        "RegionTwo",
+        "project-a",
+      ),
+    ).rejects.toThrow("Octavia region does not match");
+    expect(mocks.openstackRequest).not.toHaveBeenCalled();
+
+    for (const invalidListener of [
+      { ...listener, project_id: "project-b" },
+      { ...listener, loadbalancers: [{ id: listenerId }] },
+    ]) {
+      mocks.openstackRequest.mockImplementation(async ({ path }) =>
+        path.endsWith(parentId)
+          ? { loadbalancer: loadBalancer(parentId, "project-a", "application") }
+          : { listener: invalidListener },
+      );
+      await expect(
+        getLoadBalancerListenerDetails(parentId, listenerId),
+      ).rejects.toMatchObject({ status: 404 });
+    }
   });
 
   it("checks both the returned listener and its parent before a mutation", async () => {

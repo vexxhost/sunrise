@@ -50,6 +50,7 @@ import {
   canChangeOctaviaListeners,
   formatOctaviaStatus,
   isOctaviaProvisioning,
+  loadBalancerListenerPath,
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
@@ -423,7 +424,7 @@ export function LoadBalancerDetailClient({
         </DetailSection>
       ) : null}
 
-      <section className="space-y-3">
+      <section id="listeners" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Network className="size-4 text-muted-foreground" />
@@ -466,7 +467,16 @@ export function LoadBalancerDetailClient({
                 data.listeners.map((listener) => (
                   <TableRow key={listener.id}>
                     <TableCell>
-                      <div>{nameOrId(listener.name, listener.id)}</div>
+                      <ResourceLink
+                        href={loadBalancerListenerPath(
+                          loadBalancer.id,
+                          listener.id,
+                        )}
+                        prefetch={false}
+                        className="text-primary"
+                      >
+                        {nameOrId(listener.name, listener.id)}
+                      </ResourceLink>
                       <div className="font-mono text-xs text-muted-foreground">
                         {listener.id}
                       </div>
