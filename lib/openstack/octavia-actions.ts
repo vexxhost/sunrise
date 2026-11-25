@@ -51,9 +51,11 @@ import {
 import {
   availablePoolProtocols,
   canAttachNewOctaviaPool,
+  canUseOctaviaPoolAsDefault,
   OCTAVIA_POOL_ALGORITHMS,
   OCTAVIA_POOL_PROTOCOLS,
   octaviaPoolDeletionBlock,
+  supportsOctaviaDefaultPoolChanges,
 } from "@/lib/openstack/octavia-pool-settings";
 import {
   getLoadBalancer,
@@ -62,6 +64,7 @@ import {
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
   listLoadBalancerAvailabilityZones,
+  listLoadBalancerPoolChoices,
   listLoadBalancers,
   listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
@@ -157,6 +160,12 @@ const listenerMutationSchema = z.discriminatedUnion("action", [
     action: z.literal("edit"),
     id: uuidSchema,
     source: listenerFieldsWithSettings,
+    defaultPool: z
+      .object({
+        before: uuidSchema.nullable(),
+        after: uuidSchema.nullable(),
+      })
+      .optional(),
     insertHeaders: z
       .partialRecord(
         z.enum(LISTENER_INSERT_HEADERS),
@@ -669,9 +678,10 @@ export async function mutateLoadBalancerListenerAction(
       const blocked = octaviaListenerDeletionBlock(listener);
       if (blocked) return validationFailure(activeScope, blocked);
     } else {
+      const currentName = listener.name ?? "";
       const currentDescription = listener.description ?? "";
       if (
-        value.source.name !== listener.name ||
+        value.source.name !== currentName ||
         value.source.description !== currentDescription ||
         value.source.adminStateUp !== listener.admin_state_up
       ) {
@@ -686,7 +696,7 @@ export async function mutateLoadBalancerListenerAction(
         );
       }
       body = {
-        ...(value.name !== listener.name ? { name: value.name } : {}),
+        ...(value.name !== currentName ? { name: value.name } : {}),
         ...(value.description !== currentDescription
           ? { description: value.description }
           : {}),
@@ -694,6 +704,74 @@ export async function mutateLoadBalancerListenerAction(
           ? { admin_state_up: value.adminStateUp }
           : {}),
       };
+      if (value.defaultPool) {
+        const { before, after } = value.defaultPool;
+        const expected = before?.toLowerCase() ?? null;
+        const next = after?.toLowerCase() ?? null;
+        const current = listener.default_pool_id;
+        if (
+          (typeof current === "string" ? current.toLowerCase() : current) !==
+          expected
+        ) {
+          return mutationFailure(
+            {
+              code: "conflict",
+              message:
+                "The listener's default pool changed or could not be verified. Refresh and try again.",
+              retryable: true,
+            },
+            activeScope,
+          );
+        }
+        if (next !== expected) {
+          if (
+            !supportsOctaviaDefaultPoolChanges(
+              existing.value.provider,
+              listener.protocol,
+            )
+          ) {
+            return validationFailure(
+              activeScope,
+              "Changing the default pool is not available for this listener.",
+            );
+          }
+          if (next !== null) {
+            if (
+              !Array.isArray(existing.value.pools) ||
+              !existing.value.pools.some((ref) => ref?.id === next)
+            ) {
+              return validationFailure(
+                activeScope,
+                "Select a pool on this load balancer.",
+              );
+            }
+            try {
+              const pool = await getLoadBalancerPool(
+                parentId,
+                next,
+                activeScope.regionId,
+                activeScope.projectId,
+              );
+              if (
+                !canUseOctaviaPoolAsDefault(
+                  pool,
+                  existing.value.provider,
+                  capabilities,
+                  listener.protocol,
+                )
+              ) {
+                return validationFailure(
+                  activeScope,
+                  "Select an Active pool with a protocol compatible with this listener.",
+                );
+              }
+            } catch (error) {
+              return preflightFailure(error, activeScope, "selected pool");
+            }
+          }
+          body.default_pool_id = next;
+        }
+      }
     }
   }
 
@@ -851,7 +929,10 @@ export async function mutateLoadBalancerListenerAction(
     ],
     successMessage: {
       create: "Listener creation requested.",
-      edit: "Listener update requested.",
+      edit:
+        value.action === "edit" && Object.hasOwn(body ?? {}, "default_pool_id")
+          ? "Default pool change requested."
+          : "Listener update requested.",
       delete: "Listener deletion requested.",
     }[value.action],
     transform: (payload) => {
@@ -1163,6 +1244,14 @@ export async function listLoadBalancerAvailabilityZonesAction(
   projectId?: string,
 ) {
   return listLoadBalancerAvailabilityZones(regionId, projectId);
+}
+
+export async function listLoadBalancerPoolChoicesAction(
+  id: string,
+  regionId?: string,
+  projectId?: string,
+) {
+  return listLoadBalancerPoolChoices(id, regionId, projectId);
 }
 
 export async function getLoadBalancerDetailsAction(

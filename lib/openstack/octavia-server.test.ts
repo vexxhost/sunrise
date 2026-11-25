@@ -24,6 +24,7 @@ import {
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
   listLoadBalancerAvailabilityZones,
+  listLoadBalancerPoolChoices,
   listLoadBalancers,
   listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
@@ -450,6 +451,62 @@ describe("Octavia project scoping", () => {
         status: 404,
       });
     }
+  });
+
+  it("only offers pools belonging to the scoped load balancer", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const unrelatedParentId = "11111111-1111-4111-8111-999999999999";
+    const ids = Array.from(
+      { length: 4 },
+      (_, i) => `22222222-2222-4222-8222-22222222222${i}`,
+    );
+    const [owned, wrongOwner, wrongParent, unlisted] = ids;
+    const pool = {
+      id: owned,
+      name: "backend",
+      protocol: "HTTP",
+      provisioning_status: "ACTIVE",
+      admin_state_up: false,
+      project_id: "project-a",
+      loadbalancers: [{ id: parentId }],
+      members: [{ id: "member" }],
+    };
+    mocks.openstackRequest
+      .mockResolvedValueOnce({
+        loadbalancer: {
+          ...loadBalancer(parentId, "project-a", "app"),
+          pools: ids.slice(0, 3).map((id) => ({ id })),
+        },
+      })
+      .mockResolvedValueOnce({
+        pools: [
+          pool,
+          { ...pool, id: wrongOwner, project_id: "project-b" },
+          {
+            ...pool,
+            id: wrongParent,
+            loadbalancers: [{ id: unrelatedParentId }],
+          },
+          { ...pool, id: unlisted },
+        ],
+      });
+    await expect(
+      listLoadBalancerPoolChoices(parentId, "RegionOne", "project-a"),
+    ).resolves.toEqual([
+      {
+        id: owned,
+        name: "backend",
+        protocol: "HTTP",
+        provisioning_status: "ACTIVE",
+        admin_state_up: false,
+        memberCount: 1,
+      },
+    ]);
+    expect(mocks.openstackRequest).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        path: `/v2/lbaas/pools?limit=100&project_id=project-a&loadbalancer_id=${parentId}`,
+      }),
+    );
   });
 
   it("keeps pool and project filters on every L7 page and verifies the returned relationships", async () => {

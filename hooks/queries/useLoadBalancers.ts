@@ -4,6 +4,7 @@ import {
   getLoadBalancerListenerDetailsAction,
   listLoadBalancerAvailabilityZonesAction,
   listLoadBalancerFloatingIpsAction,
+  listLoadBalancerPoolChoicesAction,
   listLoadBalancersAction,
 } from "@/lib/openstack/octavia-actions";
 
@@ -51,6 +52,22 @@ export function loadBalancerFloatingIpsQueryOptions(
     queryFn: () =>
       listLoadBalancerFloatingIpsAction(portId!, regionId, projectId),
     enabled: Boolean(regionId && projectId && portId),
+  });
+}
+
+export function loadBalancerPoolChoicesQueryOptions(
+  regionId: string | undefined,
+  projectId: string,
+  loadBalancerId: string,
+) {
+  return queryOptions({
+    queryKey: [
+      ...loadBalancerDetailsQueryOptions(regionId, projectId, loadBalancerId)
+        .queryKey,
+      "pool-choices",
+    ],
+    queryFn: () =>
+      listLoadBalancerPoolChoicesAction(loadBalancerId, regionId, projectId),
   });
 }
 
