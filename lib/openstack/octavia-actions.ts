@@ -29,6 +29,14 @@ import {
   octaviaListenerDeletionBlock,
 } from "@/lib/openstack/octavia";
 import {
+  canChangeHealthMonitor,
+  changedHealthMonitorFields,
+  healthMonitorSettingsSchema,
+  healthMonitorSnapshotSchema,
+  healthMonitorTypeForPool,
+  readHealthMonitorSettings,
+} from "@/lib/openstack/octavia-health-monitor-settings";
+import {
   availableListenerProtocols,
   editableListenerInsertHeaders,
   isListenerInsertHeaderEnabled,
@@ -68,6 +76,7 @@ import {
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
+  getOctaviaPoolHealthMonitor,
   getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
   listLoadBalancerPoolChoices,
@@ -1535,6 +1544,232 @@ export async function mutateOctaviaPoolMemberAction(
           normalizeProjectId(activeScope.projectId)
       ) {
         throw new Error("Octavia returned an invalid pool member");
+      }
+      return null;
+    },
+  });
+}
+
+const healthMonitorMutationSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("create"),
+    settings: healthMonitorSettingsSchema,
+  }),
+  z.object({
+    action: z.literal("edit"),
+    id: uuidSchema,
+    settings: healthMonitorSettingsSchema,
+    source: healthMonitorSnapshotSchema,
+  }),
+  z.object({ action: z.literal("delete"), id: uuidSchema }),
+]);
+
+export type OctaviaHealthMonitorMutation = z.input<
+  typeof healthMonitorMutationSchema
+>;
+
+export async function mutateOctaviaHealthMonitorAction(
+  scope: MutationScope,
+  loadBalancerId: string,
+  poolId: string,
+  input: OctaviaHealthMonitorMutation,
+): Promise<MutationResult<null>> {
+  const parent = uuidSchema.safeParse(loadBalancerId);
+  const poolRef = uuidSchema.safeParse(poolId);
+  const parsed = healthMonitorMutationSchema.safeParse(input);
+  if (!parent.success || !poolRef.success || !parsed.success) {
+    return validationFailure(
+      scope,
+      "Review the health monitor settings and try again.",
+    );
+  }
+  const guarded = await guardMutationContext(scope);
+  if (!guarded.ok) return guarded.result;
+  const activeScope = guarded.context.scope;
+  const parentId = parent.data.toLowerCase();
+  const targetPoolId = poolRef.data.toLowerCase();
+  const value = parsed.data;
+  const capabilities = await discoverLoadBalancerCapabilities(
+    activeScope.regionId!,
+  );
+  const existing = await readLoadBalancerForMutation(
+    activeScope,
+    parentId,
+    capabilities,
+  );
+  if (!existing.ok) return existing.result;
+  if (
+    existing.value.id !== parentId ||
+    !Array.isArray(existing.value.pools) ||
+    !existing.value.pools.some((pool) => pool?.id === targetPoolId)
+  ) {
+    return mutationFailure(
+      mutationErrorForStatus(404, "read this pool"),
+      activeScope,
+    );
+  }
+  if (!isOctaviaAmphoraProvider(existing.value.provider)) {
+    return validationFailure(
+      activeScope,
+      "Changing health monitors is not available for this provider.",
+    );
+  }
+  if (!canChangeOctaviaListeners(existing.value))
+    return pendingMutationFailure(activeScope);
+
+  let pool;
+  try {
+    pool = await getLoadBalancerPool(
+      parentId,
+      targetPoolId,
+      activeScope.regionId,
+      activeScope.projectId,
+    );
+  } catch (error) {
+    return preflightFailure(error, activeScope, "pool");
+  }
+  const type = healthMonitorTypeForPool(pool);
+  if (!type)
+    return validationFailure(
+      activeScope,
+      "This pool protocol is not supported for health monitor changes.",
+    );
+  if (!canChangeOctaviaListeners(pool))
+    return pendingMutationFailure(activeScope);
+
+  const monitorId = value.action === "create" ? null : value.id.toLowerCase();
+  let body: Record<string, unknown> | undefined;
+  if (value.action === "create") {
+    if (value.settings.type !== type) {
+      return validationFailure(
+        activeScope,
+        "The check type must match the pool protocol.",
+      );
+    }
+    if (!canChangeHealthMonitor(pool)) {
+      return mutationFailure(
+        {
+          code: "conflict",
+          message:
+            "This pool already has a health monitor. Refresh to see the current settings.",
+          retryable: true,
+        },
+        activeScope,
+      );
+    }
+    body = { ...value.settings, pool_id: targetPoolId };
+  } else {
+    if (pool.healthmonitor_id !== monitorId) {
+      return mutationFailure(
+        mutationErrorForStatus(404, "read this health monitor"),
+        activeScope,
+      );
+    }
+    let monitor;
+    try {
+      monitor = await getOctaviaPoolHealthMonitor(
+        targetPoolId,
+        monitorId!,
+        activeScope.regionId,
+        activeScope.projectId,
+      );
+    } catch (error) {
+      return preflightFailure(error, activeScope, "health monitor");
+    }
+    if (monitor.type !== type) {
+      return validationFailure(
+        activeScope,
+        "Changing this type of health monitor is not supported.",
+      );
+    }
+    if (!canChangeHealthMonitor(pool, monitor, value.action === "delete")) {
+      return pendingMutationFailure(activeScope);
+    }
+    if (value.action === "edit") {
+      const current = readHealthMonitorSettings(monitor);
+      if (
+        !current ||
+        current.type !== value.source.type ||
+        current.type !== value.settings.type ||
+        Object.keys(changedHealthMonitorFields(current, value.source)).length
+      ) {
+        return mutationFailure(
+          {
+            code: "conflict",
+            message:
+              "The health monitor changed or its settings could not be verified. Refresh and try again.",
+            retryable: true,
+          },
+          activeScope,
+        );
+      }
+      body = changedHealthMonitorFields(current, value.settings);
+      if (!Object.keys(body).length) {
+        return {
+          ok: true,
+          status: "success",
+          data: null,
+          message: "No health monitor changes to save.",
+          scope: activeScope,
+        };
+      }
+    }
+  }
+  const supported = await supportedMutationMicroversion(
+    activeScope,
+    OCTAVIA_BASELINE_MICROVERSION,
+    "Changing health monitors",
+    capabilities,
+  );
+  if (!supported.ok) return supported.result;
+  const operation = {
+    create: {
+      method: "POST",
+      label: "create a health monitor",
+      message: "Health monitor creation requested.",
+    },
+    edit: {
+      method: "PUT",
+      label: "update this health monitor",
+      message: "Health monitor update requested.",
+    },
+    delete: {
+      method: "DELETE",
+      label: "delete this health monitor",
+      message: "Health monitor deletion requested.",
+    },
+  } as const;
+  const path = "/v2/lbaas/healthmonitors";
+  return executeOpenStackMutation<null>({
+    ...OCTAVIA_SERVICE,
+    scope: activeScope,
+    path: monitorId ? `${path}/${monitorId}` : path,
+    method: operation[value.action].method,
+    actionLabel: operation[value.action].label,
+    successMessage: operation[value.action].message,
+    apiVersion: `load-balancer ${supported.version}`,
+    ...(body ? { body: { healthmonitor: body } } : {}),
+    invalidates: [`/networking/load-balancers/${parentId}`, "/quotas"],
+    transform: (payload) => {
+      if (value.action === "delete") return null;
+      const response = z
+        .object({
+          healthmonitor: z.object({
+            id: uuidSchema,
+            project_id: z.string(),
+            pools: z.tuple([z.object({ id: uuidSchema })]),
+            type: z.literal(type),
+          }),
+        })
+        .safeParse(payload);
+      if (
+        !response.success ||
+        (monitorId && response.data.healthmonitor.id !== monitorId) ||
+        response.data.healthmonitor.pools[0].id !== targetPoolId ||
+        normalizeProjectId(response.data.healthmonitor.project_id) !==
+          normalizeProjectId(activeScope.projectId)
+      ) {
+        throw new Error("Octavia returned an invalid health monitor");
       }
       return null;
     },

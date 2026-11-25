@@ -19,6 +19,11 @@ import {
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
 import {
+  HealthMonitorMutationDialog,
+  type HealthMonitorDialogAction,
+} from "@/components/LoadBalancer/HealthMonitorMutationDialog";
+import { HealthMonitorTable } from "@/components/LoadBalancer/HealthMonitorTable";
+import {
   ListenerMutationDialog,
   type ListenerDialogAction,
 } from "@/components/LoadBalancer/ListenerMutationDialog";
@@ -141,6 +146,12 @@ export function LoadBalancerDetailClient({
     message: string;
     at: number;
   } | null>(null);
+  const [monitorAction, setMonitorAction] =
+    useState<HealthMonitorDialogAction | null>(null);
+  const [monitorNotice, setMonitorNotice] = useState<{
+    message: string;
+    at: number;
+  } | null>(null);
   const detailsQuery = useMemo(
     () => loadBalancerDetailsQueryOptions(regionId, projectId, id),
     [id, projectId, regionId],
@@ -151,11 +162,13 @@ export function LoadBalancerDetailClient({
       (listenerNotice && Date.now() - listenerNotice.at < 20_000) ||
       (poolNotice && Date.now() - poolNotice.at < 20_000) ||
       (memberNotice && Date.now() - memberNotice.at < 20_000) ||
+      (monitorNotice && Date.now() - monitorNotice.at < 20_000) ||
       (state.data &&
         (isOctaviaProvisioning(state.data.loadBalancer) ||
           state.data.listeners.some(isOctaviaProvisioning) ||
           state.data.pools.some(isOctaviaProvisioning) ||
-          state.data.members.some(isOctaviaProvisioning)))
+          state.data.members.some(isOctaviaProvisioning) ||
+          state.data.healthMonitors.some(isOctaviaProvisioning)))
         ? 5_000
         : false,
     refetchOnReconnect: false,
@@ -896,41 +909,23 @@ export function LoadBalancerDetailClient({
         ) : null}
       </section>
 
-      {data.healthMonitors.length ? (
+      {data.pools.length ? (
         <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Activity className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Health monitors</h2>
-            <Badge variant="outline">{data.healthMonitors.length}</Badge>
-          </div>
-          <div className="overflow-hidden rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Delay</TableHead>
-                  <TableHead>Timeout</TableHead>
-                  <TableHead>Retries</TableHead>
-                  <TableHead>Operating</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.healthMonitors.map((monitor) => (
-                  <TableRow key={monitor.id}>
-                    <TableCell>{nameOrId(monitor.name, monitor.id)}</TableCell>
-                    <TableCell>{monitor.type}</TableCell>
-                    <TableCell>{monitor.delay}s</TableCell>
-                    <TableCell>{monitor.timeout}s</TableCell>
-                    <TableCell>{monitor.max_retries}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={monitor.operating_status} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {monitorNotice ? (
+            <MutationAlert variant="success">
+              {monitorNotice.message}
+            </MutationAlert>
+          ) : null}
+          <HealthMonitorTable
+            pools={data.pools}
+            monitors={data.healthMonitors}
+            supportsChanges={poolChangesSupported}
+            busy={!listenerChangesAvailable}
+            onAction={(target) => {
+              setMonitorNotice(null);
+              setMonitorAction(target);
+            }}
+          />
         </section>
       ) : null}
 
@@ -1031,6 +1026,20 @@ export function LoadBalancerDetailClient({
           onSuccess={(message) => {
             setMemberNotice({ message, at: Date.now() });
             setMemberAction(null);
+            refreshTopology();
+          }}
+        />
+      ) : null}
+
+      {monitorAction ? (
+        <HealthMonitorMutationDialog
+          target={monitorAction}
+          loadBalancerId={loadBalancer.id}
+          scope={{ projectId, regionId }}
+          onClose={() => setMonitorAction(null)}
+          onSuccess={(message) => {
+            setMonitorNotice({ message, at: Date.now() });
+            setMonitorAction(null);
             refreshTopology();
           }}
         />

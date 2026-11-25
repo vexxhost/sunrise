@@ -23,6 +23,7 @@ import {
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
+  getOctaviaPoolHealthMonitor,
   getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
   listLoadBalancerPoolChoices,
@@ -479,6 +480,34 @@ describe("Octavia project scoping", () => {
     }
   });
 
+  it("rejects a health monitor unless its identity, project and pool agree", async () => {
+    const poolId = "11111111-1111-4111-8111-111111111111";
+    const id = "22222222-2222-4222-8222-222222222222";
+    const healthmonitor = {
+      id,
+      project_id: "project-a",
+      pools: [{ id: poolId }],
+    };
+    mocks.openstackRequest.mockResolvedValue({ healthmonitor });
+    await expect(getOctaviaPoolHealthMonitor(poolId, id)).resolves.toEqual(
+      healthmonitor,
+    );
+    for (const overrides of [
+      { id: poolId },
+      { project_id: "project-b" },
+      { pools: [{ id }] },
+      { pools: [{ id: poolId }, { id }] },
+      { pools: undefined },
+    ]) {
+      mocks.openstackRequest.mockResolvedValue({
+        healthmonitor: { ...healthmonitor, ...overrides },
+      });
+      await expect(
+        getOctaviaPoolHealthMonitor(poolId, id),
+      ).rejects.toMatchObject({ status: 404 });
+    }
+  });
+
   it("only offers pools belonging to the scoped load balancer", async () => {
     const parentId = "11111111-1111-4111-8111-111111111111";
     const unrelatedParentId = "11111111-1111-4111-8111-999999999999";
@@ -607,7 +636,7 @@ describe("Octavia project scoping", () => {
       const details = getLoadBalancerDetails(parentId);
       if (stillReferenced) {
         await expect(details).rejects.toThrow(
-          "missing pool in the load balancer topology",
+          "missing pool or child resource in the topology",
         );
       } else {
         await expect(details).resolves.toMatchObject({
@@ -618,6 +647,44 @@ describe("Octavia project scoping", () => {
       expect(reads).toBe(2);
     },
   );
+
+  it("retries when a health monitor disappears after the pool is read", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const poolId = "22222222-2222-4222-8222-222222222222";
+    const monitorId = "33333333-3333-4333-8333-333333333333";
+    let poolReads = 0;
+    mocks.openstackRequest.mockImplementation(async ({ path }) => {
+      if (path === `/v2/lbaas/loadbalancers/${parentId}`) {
+        return {
+          loadbalancer: {
+            ...loadBalancer(parentId, "project-a", "application"),
+            pools: [{ id: poolId }],
+          },
+        };
+      }
+      if (path === `/v2/lbaas/pools/${poolId}`) {
+        return {
+          pool: {
+            id: poolId,
+            project_id: "project-a",
+            healthmonitor_id: ++poolReads === 1 ? monitorId : null,
+          },
+        };
+      }
+      if (path === `/v2/lbaas/healthmonitors/${monitorId}`) {
+        throw new OpenStackRequestError(404, "Health monitor not found");
+      }
+      if (path === `/v2/lbaas/pools/${poolId}/members?limit=100`) {
+        return { members: [] };
+      }
+      return null;
+    });
+    await expect(getLoadBalancerDetails(parentId)).resolves.toMatchObject({
+      pools: [{ id: poolId, healthmonitor_id: null }],
+      healthMonitors: [],
+    });
+    expect(poolReads).toBe(2);
+  });
 
   it("loads details through the selected load balancer relationships", async () => {
     const loadBalancerId = "11111111-1111-1111-1111-111111111111";
@@ -682,6 +749,7 @@ describe("Octavia project scoping", () => {
             operating_status: "ONLINE",
             admin_state_up: true,
             type: "HTTPS",
+            pools: [{ id: poolId }],
             delay: 5,
             timeout: 3,
             max_retries: 3,

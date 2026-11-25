@@ -19,6 +19,7 @@ import {
   listenerParentReadApiVersion,
   listenerReadApiVersion,
 } from "@/lib/openstack/octavia-listener-settings";
+import { healthMonitorBelongsToPool } from "@/lib/openstack/octavia-health-monitor-settings";
 import { getSession } from "@/lib/session";
 import type {
   OctaviaAvailabilityZone,
@@ -592,6 +593,41 @@ export async function getOctaviaPoolMember(
   return { ...member, pool_id: parentId };
 }
 
+async function readPoolHealthMonitor(
+  scope: OctaviaScope,
+  poolId: string,
+  monitorId: string,
+) {
+  const monitor = await getProjectResource<OctaviaHealthMonitor>(
+    scope,
+    "healthmonitors",
+    "healthmonitor",
+    monitorId,
+  );
+  if (
+    monitor.id !== monitorId ||
+    !healthMonitorBelongsToPool(monitor, poolId)
+  ) {
+    throw new OpenStackRequestError(
+      404,
+      "Health monitor not found in this pool",
+    );
+  }
+  return monitor;
+}
+
+export async function getOctaviaPoolHealthMonitor(
+  poolId: string,
+  id: string,
+  regionId?: string,
+  projectId?: string,
+) {
+  const parentId = requireUuid(poolId, "pool ID");
+  const monitorId = requireUuid(id, "health monitor ID");
+  const scope = await resolveScope(regionId, projectId);
+  return readPoolHealthMonitor(scope, parentId, monitorId);
+}
+
 function poolBelongsToLoadBalancer(pool: OctaviaPool, parentId: string) {
   return (
     Array.isArray(pool.loadbalancers) &&
@@ -680,9 +716,9 @@ export async function listOctaviaPoolRedirectPolicies(
   );
 }
 
-class MissingPoolTopologyError extends Error {
+class MissingPoolTopologyResourceError extends Error {
   constructor(cause: unknown) {
-    super("Octavia returned a missing pool in the load balancer topology", {
+    super("Octavia returned a missing pool or child resource in the topology", {
       cause,
     });
   }
@@ -693,7 +729,7 @@ async function readPoolTopologyResource<T>(request: Promise<T>) {
     return await request;
   } catch (error) {
     if (isOpenStackNotFoundError(error))
-      throw new MissingPoolTopologyError(error);
+      throw new MissingPoolTopologyResourceError(error);
     throw error;
   }
 }
@@ -709,8 +745,8 @@ export async function getLoadBalancerDetails(
   try {
     return await readLoadBalancerDetails(scope, loadBalancerId, capabilities);
   } catch (error) {
-    if (!(error instanceof MissingPoolTopologyError)) throw error;
-    // A deleted pool can still be referenced by an earlier parent or listener read.
+    if (!(error instanceof MissingPoolTopologyResourceError)) throw error;
+    // A deleted pool or monitor can still be referenced by an earlier read.
     return readLoadBalancerDetails(scope, loadBalancerId, capabilities);
   }
 }
@@ -811,18 +847,15 @@ async function readLoadBalancerDetails(
     ),
   );
   const pools = [...initialPools, ...redirectPools];
-  const healthMonitorIds = relatedResourceIds(
-    pools.map(({ healthmonitor_id: healthMonitorId }) => healthMonitorId),
-    "health monitor",
-  );
   const healthMonitorsPromise = Promise.all(
-    healthMonitorIds.map((healthMonitorId) =>
-      getProjectResource<OctaviaHealthMonitor>(
-        scope,
-        "healthmonitors",
-        "healthmonitor",
-        healthMonitorId,
-      ),
+    pools.flatMap(({ id: poolId, healthmonitor_id: monitorId }) =>
+      monitorId == null
+        ? []
+        : [
+            readPoolTopologyResource(
+              readPoolHealthMonitor(scope, poolId, monitorId),
+            ),
+          ],
     ),
   );
 

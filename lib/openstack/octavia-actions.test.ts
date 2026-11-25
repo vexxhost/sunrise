@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getLoadBalancer: vi.fn(),
   getLoadBalancerListener: vi.fn(),
   getLoadBalancerPool: vi.fn(),
+  getOctaviaPoolHealthMonitor: vi.fn(),
   getOctaviaPoolMember: vi.fn(),
   guardMutationContext: vi.fn(),
   listOctaviaPoolRedirectPolicies: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock("@/lib/openstack/octavia-server", () => ({
   getLoadBalancerListener: mocks.getLoadBalancerListener,
   getLoadBalancerListenerDetails: vi.fn(),
   getLoadBalancerPool: mocks.getLoadBalancerPool,
+  getOctaviaPoolHealthMonitor: mocks.getOctaviaPoolHealthMonitor,
   getOctaviaPoolMember: mocks.getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones: vi.fn(),
   listLoadBalancers: vi.fn(),
@@ -44,6 +46,7 @@ import {
   deleteLoadBalancerAction,
   mutateLoadBalancerListenerAction,
   mutateLoadBalancerPoolAction,
+  mutateOctaviaHealthMonitorAction,
   mutateOctaviaPoolMemberAction,
   updateLoadBalancerAction,
 } from "@/lib/openstack/octavia-actions";
@@ -80,6 +83,227 @@ function capabilities(maximum = "2.30") {
     serviceType: "load-balancer",
   };
 }
+
+describe("Octavia health monitor actions", () => {
+  const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
+  const monitorId = "564c3265-5933-44c7-a8da-3101e2e66a29";
+  const pool = { id: poolId, protocol: "HTTP", provisioning_status: "ACTIVE" };
+  const settings = {
+    type: "HTTP",
+    name: "healthz",
+    admin_state_up: false,
+    delay: 10,
+    timeout: 3,
+    max_retries: 2,
+    max_retries_down: 4,
+    http_method: "GET",
+    url_path: "/healthz",
+    expected_codes: "200-204",
+  } as const;
+  const monitor = {
+    ...settings,
+    id: monitorId,
+    project_id: scope.projectId,
+    provisioning_status: "ACTIVE",
+    pools: [{ id: poolId }],
+  };
+  const create = { action: "create", settings } as const;
+  const edit = {
+    action: "edit",
+    id: monitorId,
+    source: settings,
+    settings: { ...settings, http_method: "HEAD", expected_codes: "204" },
+  } as const;
+  const remove = { action: "delete", id: monitorId } as const;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.guardMutationContext.mockResolvedValue({
+      ok: true,
+      context: { scope },
+    });
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue(capabilities());
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({ pools: [{ id: poolId }], provider: "amphorav2" }),
+    );
+    mocks.getLoadBalancerPool.mockResolvedValue(pool);
+    mocks.getOctaviaPoolHealthMonitor.mockResolvedValue(monitor);
+    mocks.executeOpenStackMutation.mockResolvedValue({ ok: true });
+  });
+
+  it("creates a monitor without supplying a project override", async () => {
+    await mutateOctaviaHealthMonitorAction(
+      scope,
+      loadBalancerId,
+      poolId,
+      create,
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2/lbaas/healthmonitors",
+        method: "POST",
+        scope,
+        apiVersion: "load-balancer 2.0",
+        body: { healthmonitor: { ...settings, pool_id: poolId } },
+      }),
+    );
+    const { transform } = mocks.executeOpenStackMutation.mock.calls[0][0];
+    expect(transform({ healthmonitor: monitor })).toBeNull();
+    expect(() =>
+      transform({
+        healthmonitor: { ...monitor, pools: [{ id: vipSubnetId }] },
+      }),
+    ).toThrow();
+    expect(() =>
+      transform({
+        healthmonitor: { ...monitor, project_id: "another-project" },
+      }),
+    ).toThrow();
+  });
+
+  it.each([
+    { timeout: 10 },
+    { max_retries_down: 11 },
+    { expected_codes: "204-200" },
+    { expected_codes: "099" },
+    { expected_codes: "200,\n204" },
+    { url_path: "//example.test/health" },
+    { url_path: "/health check" },
+    { url_path: "/health%zz" },
+  ])(
+    "rejects invalid settings before a service call: %j",
+    async (overrides) => {
+      await expect(
+        mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+          action: "create",
+          settings: { ...settings, ...overrides },
+        }),
+      ).resolves.toMatchObject({ ok: false });
+      expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
+    },
+  );
+
+  it("scopes pool access and rejects another protocol, a pending pool, or a duplicate", async () => {
+    await expect(
+      mutateOctaviaHealthMonitorAction(
+        scope,
+        loadBalancerId,
+        vipSubnetId,
+        create,
+      ),
+    ).resolves.toMatchObject({ ok: false });
+    expect(mocks.getLoadBalancerPool).not.toHaveBeenCalled();
+    for (const overrides of [
+      { protocol: "UDP" },
+      { protocol: "TCP" },
+      { provisioning_status: "PENDING_UPDATE" },
+      { healthmonitor_id: monitorId },
+    ]) {
+      mocks.getLoadBalancerPool.mockResolvedValueOnce({
+        ...pool,
+        ...overrides,
+      });
+      await expect(
+        mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, create),
+      ).resolves.toMatchObject({ ok: false });
+    }
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("creates TCP checks without sending HTTP fields", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol: "TCP" });
+    const tcp = {
+      type: "TCP",
+      name: settings.name,
+      admin_state_up: false,
+      delay: 10,
+      timeout: 3,
+      max_retries: 2,
+      max_retries_down: 4,
+    } as const;
+    await mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+      action: "create",
+      settings: tcp,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: { healthmonitor: { ...tcp, pool_id: poolId } },
+      }),
+    );
+  });
+
+  it("sends only changed mutable fields for an edit", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      healthmonitor_id: monitorId,
+    });
+    await mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, edit);
+    expect(mocks.getOctaviaPoolHealthMonitor).toHaveBeenCalledWith(
+      poolId,
+      monitorId,
+      scope.regionId,
+      scope.projectId,
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: `/v2/lbaas/healthmonitors/${monitorId}`,
+        body: { healthmonitor: { http_method: "HEAD", expected_codes: "204" } },
+      }),
+    );
+  });
+
+  it("rejects writes when snapshot, monitor status or pool link changed", async () => {
+    await expect(
+      mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, remove),
+    ).resolves.toMatchObject({ ok: false });
+    expect(mocks.getOctaviaPoolHealthMonitor).not.toHaveBeenCalled();
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      healthmonitor_id: monitorId,
+    });
+    for (const overrides of [
+      { delay: 20 },
+      { provisioning_status: "PENDING_UPDATE" },
+      { pools: [{ id: vipSubnetId }] },
+    ]) {
+      mocks.getOctaviaPoolHealthMonitor.mockResolvedValueOnce({
+        ...monitor,
+        ...overrides,
+      });
+      await expect(
+        mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, edit),
+      ).resolves.toMatchObject({ ok: false });
+    }
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("deletes only the monitor, including one in ERROR", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      healthmonitor_id: monitorId,
+    });
+    mocks.getOctaviaPoolHealthMonitor.mockResolvedValueOnce({
+      ...monitor,
+      provisioning_status: "ERROR",
+    });
+    await mutateOctaviaHealthMonitorAction(
+      scope,
+      loadBalancerId,
+      poolId,
+      remove,
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: `/v2/lbaas/healthmonitors/${monitorId}`,
+      }),
+    );
+    expect(mocks.executeOpenStackMutation.mock.calls[0][0]).not.toHaveProperty(
+      "body",
+    );
+  });
+});
 
 describe("Octavia member actions", () => {
   const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
