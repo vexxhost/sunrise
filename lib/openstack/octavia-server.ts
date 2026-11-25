@@ -569,6 +569,29 @@ export async function getLoadBalancerPool(
   return pool;
 }
 
+export async function getOctaviaPoolMember(
+  poolId: string,
+  id: string,
+  regionId?: string,
+  projectId?: string,
+): Promise<OctaviaMember> {
+  const parentId = requireUuid(poolId, "pool ID");
+  const memberId = requireUuid(id, "member ID");
+  const scope = await resolveScope(regionId, projectId);
+  const payload = await octaviaGet<{
+    member: Omit<OctaviaMember, "pool_id"> & { pool_id?: string };
+  }>(scope, `/v2/lbaas/pools/${parentId}/members/${memberId}`);
+  const member = payload?.member;
+  if (
+    member?.id !== memberId ||
+    !belongsToProject(member.project_id, scope.projectId) ||
+    (member.pool_id !== undefined && member.pool_id !== parentId)
+  ) {
+    throw new OpenStackRequestError(404, "Member not found in this pool");
+  }
+  return { ...member, pool_id: parentId };
+}
+
 function poolBelongsToLoadBalancer(pool: OctaviaPool, parentId: string) {
   return (
     Array.isArray(pool.loadbalancers) &&
