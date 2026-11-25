@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   discoverLoadBalancerCapabilities: vi.fn(),
   executeOpenStackMutation: vi.fn(),
   getLoadBalancer: vi.fn(),
+  getLoadBalancerListener: vi.fn(),
   guardMutationContext: vi.fn(),
 }));
 
@@ -22,6 +23,7 @@ vi.mock("@/lib/openstack/mutations", () => ({
 vi.mock("@/lib/openstack/octavia-server", () => ({
   getLoadBalancer: mocks.getLoadBalancer,
   getLoadBalancerDetails: vi.fn(),
+  getLoadBalancerListener: mocks.getLoadBalancerListener,
   listLoadBalancerAvailabilityZones: vi.fn(),
   listLoadBalancers: vi.fn(),
 }));
@@ -29,6 +31,7 @@ vi.mock("@/lib/openstack/octavia-server", () => ({
 import {
   createLoadBalancerAction,
   deleteLoadBalancerAction,
+  mutateLoadBalancerListenerAction,
   updateLoadBalancerAction,
 } from "@/lib/openstack/octavia-actions";
 
@@ -38,6 +41,7 @@ const scope = {
 };
 const vipSubnetId = "2217ca4f-3722-40ae-88cc-20fb92f21395";
 const loadBalancerId = "4ed3f70c-5126-470d-be60-3710d8682220";
+const listenerId = "620630da-7cc9-45a3-97bc-f519aaa46066";
 
 function existingLoadBalancer(overrides: Record<string, unknown> = {}) {
   return {
@@ -63,6 +67,295 @@ function capabilities(maximum = "2.30") {
     serviceType: "load-balancer",
   };
 }
+
+describe("Octavia listener actions", () => {
+  const current = { name: "http", description: "", adminStateUp: true };
+  const create = {
+    ...current,
+    action: "create",
+    port: 8080,
+    protocol: "HTTP",
+  } as const;
+  const edit = {
+    ...current,
+    action: "edit",
+    id: listenerId,
+    name: "renamed",
+    source: current,
+  } as const;
+  const remove = { action: "delete", id: listenerId } as const;
+  const listener = {
+    id: listenerId,
+    project_id: scope.projectId.replaceAll("-", ""),
+    loadbalancers: [{ id: loadBalancerId }],
+    name: current.name,
+    description: null,
+    admin_state_up: true,
+    provisioning_status: "ACTIVE",
+    default_pool_id: null,
+    l7policies: [],
+    protocol: "HTTPS",
+    allowed_cidrs: ["192.0.2.0/24"],
+    timeout_client_data: 50_000,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.guardMutationContext.mockResolvedValue({
+      ok: true,
+      context: { projectToken: "project-token", scope },
+    });
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue(capabilities());
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({
+        listeners: [{ id: listenerId }],
+        provider: "amphorav2",
+        vip_address: "192.0.2.10",
+      }),
+    );
+    mocks.getLoadBalancerListener.mockResolvedValue(listener);
+    mocks.executeOpenStackMutation.mockResolvedValue({ ok: true });
+  });
+
+  it.each(["HTTP", "TCP", "HTTPS", "UDP"] as const)(
+    "creates an owned %s listener",
+    async (protocol) => {
+      await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...create,
+        protocol,
+      });
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: "POST",
+          path: "/v2/lbaas/listeners",
+          apiVersion:
+            protocol === "UDP" ? "load-balancer 2.1" : "load-balancer 2.0",
+          body: {
+            listener: {
+              name: "http",
+              description: "",
+              admin_state_up: true,
+              protocol,
+              protocol_port: 8080,
+              loadbalancer_id: loadBalancerId,
+            },
+          },
+        }),
+      );
+    },
+  );
+
+  it.each([0, 65536, 80.5])(
+    "rejects invalid port %s before accessing Octavia",
+    async (port) => {
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...create,
+          port,
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+      expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks writes when the parent is not active", async () => {
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({ provisioning_status: "PENDING_UPDATE" }),
+    );
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, create),
+    ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects a listener missing from the selected load balancer even in the same project", async () => {
+    mocks.getLoadBalancer.mockResolvedValue(existingLoadBalancer());
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, edit),
+    ).resolves.toMatchObject({ ok: false, error: { code: "not-found" } });
+    expect(mocks.getLoadBalancerListener).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("sends only changed fields and verifies the returned listener's identity and scope", async () => {
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, edit);
+    expect(mocks.getLoadBalancerListener).toHaveBeenCalledWith(
+      loadBalancerId,
+      listenerId,
+      scope.regionId,
+      scope.projectId,
+      undefined,
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: "/v2/lbaas/listeners/" + listenerId,
+        body: { listener: { name: "renamed" } },
+      }),
+    );
+    const { transform } = mocks.executeOpenStackMutation.mock.calls[0][0];
+    expect(transform({ listener })).toBeNull();
+    for (const changes of [
+      { id: vipSubnetId },
+      { project_id: "different-project" },
+      { loadbalancers: [{ id: vipSubnetId }] },
+    ]) {
+      expect(() =>
+        transform({ listener: { ...listener, ...changes } }),
+      ).toThrow("invalid listener");
+    }
+  });
+
+  it("rejects an edit whose source changed", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue({
+      ...listener,
+      admin_state_up: false,
+    });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, edit),
+    ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("writes the minimum required API version and does not send defaulted fields", async () => {
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...create,
+      settings: {
+        connection_limit: -1,
+        timeout_tcp_inspect: 0,
+        timeout_member_connect: null,
+        allowed_cidrs: ["192.0.2.0/24"],
+      },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.12",
+        body: {
+          listener: expect.objectContaining({
+            connection_limit: -1,
+            timeout_tcp_inspect: 0,
+            allowed_cidrs: ["192.0.2.0/24"],
+          }),
+        },
+      }),
+    );
+    expect(
+      mocks.executeOpenStackMutation.mock.calls[0][0].body.listener,
+    ).not.toHaveProperty("timeout_member_connect");
+  });
+
+  it("distinguishes an explicit reset and allowlist removal from an omitted field", async () => {
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...edit,
+      name: current.name,
+      settings: { allowed_cidrs: [], timeout_client_data: null },
+      source: {
+        ...current,
+        settings: {
+          allowed_cidrs: ["192.0.2.0/24"],
+          timeout_client_data: 50_000,
+        },
+      },
+    });
+    expect(mocks.getLoadBalancerListener).toHaveBeenCalledWith(
+      loadBalancerId,
+      listenerId,
+      scope.regionId,
+      scope.projectId,
+      "load-balancer 2.12",
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.12",
+        body: { listener: { allowed_cidrs: [], timeout_client_data: null } },
+      }),
+    );
+  });
+
+  it("refuses to overwrite versioned settings with a stale or missing source", async () => {
+    for (const settings of [undefined, { timeout_client_data: 42_000 }]) {
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...edit,
+          settings: { timeout_client_data: 30_000 },
+          source: { ...current, settings },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    }
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects timeouts on UDP and CIDRs beyond the configured API ceiling", async () => {
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...create,
+        protocol: "UDP",
+        settings: { timeout_member_data: 1000 },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("not available for this protocol"),
+      },
+    });
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      ...capabilities(),
+      configuredMicroversionMaximum: "2.11",
+    });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...create,
+        settings: { allowed_cidrs: ["192.0.2.0/24"] },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("2.12"),
+      },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { default_pool_id: vipSubnetId },
+    { default_pool_id: undefined },
+    { l7policies: [{ id: vipSubnetId }] },
+    { l7policies: undefined },
+  ])(
+    "refuses deletion with attached or unknown topology: %j",
+    async (fields) => {
+      mocks.getLoadBalancerListener.mockResolvedValue({
+        ...listener,
+        ...fields,
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, remove),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("deletes an unattached listener without a cascade request", async () => {
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, remove);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: "/v2/lbaas/listeners/" + listenerId,
+      }),
+    );
+    expect(mocks.executeOpenStackMutation.mock.calls[0][0]).not.toHaveProperty(
+      "body",
+    );
+  });
+});
 
 describe("Octavia load balancer mutation actions", () => {
   beforeEach(() => {

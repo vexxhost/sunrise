@@ -1,4 +1,33 @@
-import type { OctaviaLoadBalancer } from "@/types/openstack";
+import type { OctaviaListener, OctaviaLoadBalancer } from "@/types/openstack";
+
+export function canChangeOctaviaListeners(
+  loadBalancer: Pick<OctaviaLoadBalancer, "provisioning_status">,
+) {
+  return loadBalancer.provisioning_status?.toUpperCase() === "ACTIVE";
+}
+
+export function canChangeOctaviaListener(
+  listener: Pick<OctaviaListener, "provisioning_status">,
+) {
+  return ["ACTIVE", "ERROR"].includes(
+    listener.provisioning_status?.toUpperCase(),
+  );
+}
+
+export function octaviaListenerDeletionBlock(
+  listener: Pick<OctaviaListener, "default_pool_id" | "l7policies">,
+) {
+  if (listener.default_pool_id || listener.l7policies?.length) {
+    return "Detach the default pool and remove any L7 policies before deleting this listener.";
+  }
+  if (
+    listener.default_pool_id !== null ||
+    !Array.isArray(listener.l7policies)
+  ) {
+    return "Octavia did not return the listener's attachment information. Refresh before deleting it.";
+  }
+  return null;
+}
 
 export function formatOctaviaStatus(status: string | null | undefined) {
   if (!status) return "Unknown";
@@ -12,7 +41,7 @@ export function formatOctaviaStatus(status: string | null | undefined) {
 export function isOctaviaProvisioning(
   resource: Pick<OctaviaLoadBalancer, "provisioning_status">,
 ) {
-  return resource.provisioning_status.toUpperCase().startsWith("PENDING_");
+  return resource.provisioning_status?.toUpperCase().startsWith("PENDING_");
 }
 
 export function canUpdateLoadBalancer(
@@ -108,7 +137,7 @@ export function indexFloatingIpAddressesByPort(
   return addressesByPort;
 }
 
-function loadBalancerVipAddresses(
+export function loadBalancerVipAddresses(
   loadBalancer: Pick<OctaviaLoadBalancer, "additional_vips" | "vip_address">,
 ) {
   const additionalVips = Array.isArray(loadBalancer.additional_vips)

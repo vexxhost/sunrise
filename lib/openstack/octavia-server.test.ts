@@ -20,6 +20,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
 import {
   getLoadBalancer,
   getLoadBalancerDetails,
+  getLoadBalancerListener,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
 } from "@/lib/openstack/octavia-server";
@@ -299,6 +300,69 @@ describe("Octavia project scoping", () => {
     );
   });
 
+  it("checks both the returned listener and its parent before a mutation", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const id = "22222222-2222-4222-8222-222222222222";
+    const listener = {
+      id,
+      project_id: "project-a",
+      loadbalancers: [{ id: parentId }],
+    };
+    mocks.openstackRequest.mockResolvedValue({ listener });
+    await expect(getLoadBalancerListener(parentId, id)).resolves.toEqual(
+      listener,
+    );
+    for (const invalid of [
+      { ...listener, project_id: "project-b" },
+      { ...listener, id: parentId },
+      { ...listener, loadbalancers: [{ id }] },
+      { ...listener, loadbalancers: undefined },
+    ]) {
+      mocks.openstackRequest.mockResolvedValue({ listener: invalid });
+      await expect(getLoadBalancerListener(parentId, id)).rejects.toMatchObject(
+        { status: 404 },
+      );
+    }
+  });
+
+  it.each([false, true])(
+    "refreshes the parent once when a listener disappears (still referenced: %s)",
+    async (stillReferenced) => {
+      const parentId = "11111111-1111-4111-8111-111111111111";
+      const id = "22222222-2222-4222-8222-222222222222";
+      const first = {
+        ...loadBalancer(parentId, "project-a", "application"),
+        listeners: [{ id }],
+      };
+      const refreshed = {
+        ...first,
+        listeners: stillReferenced ? [{ id }] : [],
+      };
+      let parentReads = 0;
+      mocks.openstackRequest.mockImplementation(async ({ path }) => {
+        if (path === "/v2/lbaas/loadbalancers/" + parentId) {
+          return { loadbalancer: ++parentReads === 1 ? first : refreshed };
+        }
+        if (path === "/v2/lbaas/listeners/" + id) {
+          throw new OpenStackRequestError(404, "Listener not found");
+        }
+        return null;
+      });
+      const details = getLoadBalancerDetails(parentId);
+      if (stillReferenced) {
+        await expect(details).rejects.toThrow(
+          "missing listener in the load balancer topology",
+        );
+      } else {
+        await expect(details).resolves.toMatchObject({
+          loadBalancer: refreshed,
+          listeners: [],
+        });
+      }
+      expect(parentReads).toBe(2);
+    },
+  );
+
   it("rejects malformed resource IDs before making an API request", async () => {
     await expect(getLoadBalancerDetails("../other-project")).rejects.toSatisfy(
       (error: unknown) =>
@@ -462,6 +526,18 @@ describe("Octavia project scoping", () => {
     expect(details.l7Rules).toEqual([
       expect.objectContaining({ id: ruleId, l7policy_id: policyId }),
     ]);
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.29",
+        path: `/v2/lbaas/loadbalancers/${loadBalancerId}`,
+      }),
+    );
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.12",
+        path: `/v2/lbaas/listeners/${listenerId}`,
+      }),
+    );
     const requestedPaths = mocks.openstackRequest.mock.calls.map(
       ([options]) => options.path,
     );

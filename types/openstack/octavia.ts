@@ -47,7 +47,12 @@ export interface OctaviaListener {
   admin_state_up: boolean;
   protocol: string;
   protocol_port: number;
-  connection_limit?: number;
+  connection_limit?: number | null;
+  timeout_client_data?: number | null;
+  timeout_member_connect?: number | null;
+  timeout_member_data?: number | null;
+  timeout_tcp_inspect?: number | null;
+  allowed_cidrs?: string[] | null;
   default_pool_id?: string | null;
   loadbalancers?: OctaviaResourceReference[];
   l7policies?: OctaviaResourceReference[];
