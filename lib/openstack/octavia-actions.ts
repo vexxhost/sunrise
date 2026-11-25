@@ -53,8 +53,12 @@ import {
   canAttachNewOctaviaPool,
   canUseOctaviaPoolAsDefault,
   OCTAVIA_POOL_ALGORITHMS,
+  OCTAVIA_POOL_PERSISTENCE_MODES,
   OCTAVIA_POOL_PROTOCOLS,
   octaviaPoolDeletionBlock,
+  poolPersistenceError,
+  readPoolPersistence,
+  samePoolPersistence,
   supportsOctaviaDefaultPoolChanges,
 } from "@/lib/openstack/octavia-pool-settings";
 import {
@@ -184,17 +188,36 @@ export type OctaviaListenerMutation = z.input<typeof listenerMutationSchema>;
 const poolFields = administrativeFields.extend({
   algorithm: z.string().min(1).max(255),
 });
+const poolPersistenceSchema = z.object({
+  type: z.enum(OCTAVIA_POOL_PERSISTENCE_MODES),
+  cookie_name: z.string().max(255).optional(),
+});
+const poolPersistenceSnapshotSchema = z
+  .object({
+    type: z.string().min(1).max(255),
+    cookie_name: z.string().max(255).nullable(),
+    persistence_timeout: z.number().int().nullable(),
+    persistence_granularity: z.string().max(255).nullable(),
+  })
+  .nullable();
 const poolMutationSchema = z.discriminatedUnion("action", [
   poolFields.extend({
     action: z.literal("create"),
     protocol: z.enum(OCTAVIA_POOL_PROTOCOLS),
     algorithm: z.enum(OCTAVIA_POOL_ALGORITHMS),
     listenerId: uuidSchema.optional(),
+    persistence: poolPersistenceSchema.optional(),
   }),
   poolFields.extend({
     action: z.literal("edit"),
     id: uuidSchema,
     source: poolFields,
+    persistence: z
+      .object({
+        before: poolPersistenceSnapshotSchema,
+        after: poolPersistenceSchema.nullable(),
+      })
+      .optional(),
   }),
   z.object({
     action: z.literal("delete"),
@@ -1048,12 +1071,17 @@ export async function mutateLoadBalancerPoolAction(
         "This pool protocol is not available for the selected listener, provider, or API version.",
       );
     }
+    if (value.persistence) {
+      const error = poolPersistenceError(protocol, value.persistence);
+      if (error) return validationFailure(activeScope, error);
+    }
     body = {
       name: value.name,
       description: value.description,
       admin_state_up: value.adminStateUp,
       protocol,
       lb_algorithm: value.algorithm,
+      ...(value.persistence ? { session_persistence: value.persistence } : {}),
       ...(listenerId
         ? { listener_id: listenerId }
         : { loadbalancer_id: parentId }),
@@ -1155,6 +1183,34 @@ export async function mutateLoadBalancerPoolAction(
           ? { lb_algorithm: value.algorithm }
           : {}),
       };
+      if (value.persistence) {
+        const current = readPoolPersistence(pool.session_persistence);
+        const { before, after } = value.persistence;
+        if (current === undefined || !samePoolPersistence(current, before)) {
+          return mutationFailure(
+            {
+              code: "conflict",
+              message:
+                "The pool's session persistence changed or could not be verified. Refresh and try again.",
+              retryable: true,
+            },
+            activeScope,
+          );
+        }
+        const error = poolPersistenceError(protocol, after);
+        if (error) return validationFailure(activeScope, error);
+        // Reselecting a mode must not reset provider or UDP-specific settings.
+        if (
+          current?.type !== after?.type ||
+          (after?.type === "APP_COOKIE" &&
+            current?.cookie_name !== after.cookie_name)
+        ) {
+          body.session_persistence =
+            after && after.type !== "APP_COOKIE" && current?.cookie_name != null
+              ? { ...after, cookie_name: null }
+              : after;
+        }
+      }
       if (!Object.keys(body).length) {
         return {
           ok: true,

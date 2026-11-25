@@ -34,12 +34,18 @@ import {
   type OctaviaPoolMutation,
 } from "@/lib/openstack/octavia-actions";
 import {
+  availablePoolPersistenceModes,
   availablePoolProtocols,
   canAttachNewOctaviaPool,
+  describePoolPersistence,
+  formatPoolAlgorithm,
+  formatPoolPersistence,
   OCTAVIA_POOL_ALGORITHMS,
   octaviaPoolDeletionBlock,
-  formatPoolAlgorithm,
+  poolPersistenceError,
+  readPoolPersistence,
   type OctaviaPoolAlgorithm,
+  type OctaviaPoolPersistenceMode,
   type OctaviaPoolProtocol,
 } from "@/lib/openstack/octavia-pool-settings";
 import type {
@@ -52,6 +58,7 @@ export type PoolDialogAction =
   { action: "create" } | { action: "edit" | "delete"; pool: OctaviaPool };
 
 const NO_LISTENER = "none";
+const NO_PERSISTENCE = "none";
 
 export function PoolMutationDialog({
   target,
@@ -81,6 +88,7 @@ export function PoolMutationDialog({
     description: pool?.description ?? "",
     adminStateUp: pool?.admin_state_up ?? true,
     algorithm: pool?.lb_algorithm ?? "ROUND_ROBIN",
+    persistence: readPoolPersistence(pool?.session_persistence),
   }));
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
@@ -88,6 +96,12 @@ export function PoolMutationDialog({
   const [algorithm, setAlgorithm] = useState(initial.algorithm);
   const [listenerId, setListenerId] = useState(NO_LISTENER);
   const [protocol, setProtocol] = useState<OctaviaPoolProtocol>("HTTP");
+  const initialPersistenceMode = initial.persistence?.type ?? NO_PERSISTENCE;
+  const initialCookieName = initial.persistence?.cookie_name ?? "";
+  const [persistenceMode, setPersistenceMode] = useState(
+    initialPersistenceMode,
+  );
+  const [cookieName, setCookieName] = useState(initialCookieName);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const inFlight = useRef(false);
@@ -181,14 +195,39 @@ export function PoolMutationDialog({
   const supportedAlgorithm = OCTAVIA_POOL_ALGORITHMS.includes(
     algorithm as OctaviaPoolAlgorithm,
   );
+  const activeProtocol = creating ? protocol : (pool?.protocol ?? "");
+  const persistenceModes = availablePoolPersistenceModes(activeProtocol);
+  const canEditPersistence =
+    persistenceModes.length > 0 && initial.persistence !== undefined;
+  const persistence =
+    persistenceMode === NO_PERSISTENCE
+      ? null
+      : {
+          type: persistenceMode as OctaviaPoolPersistenceMode,
+          ...(persistenceMode === "APP_COOKIE"
+            ? { cookie_name: cookieName }
+            : {}),
+        };
+  const persistenceChanged =
+    canEditPersistence &&
+    (persistenceMode !== initialPersistenceMode ||
+      (persistenceMode === "APP_COOKIE" && cookieName !== initialCookieName));
+  const persistenceError = persistenceChanged
+    ? poolPersistenceError(activeProtocol, persistence)
+    : null;
   const unchanged =
     name === initial.name &&
     description === initial.description &&
     adminStateUp === initial.adminStateUp &&
-    algorithm === initial.algorithm;
-  const disabled = creating
-    ? staleListener || !protocols.includes(protocol) || quota.issues.length > 0
-    : unchanged;
+    algorithm === initial.algorithm &&
+    !persistenceChanged;
+  const disabled =
+    Boolean(persistenceError) ||
+    (creating
+      ? staleListener ||
+        !protocols.includes(protocol) ||
+        quota.issues.length > 0
+      : unchanged);
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
@@ -213,13 +252,27 @@ export function PoolMutationDialog({
                 protocol,
                 algorithm: algorithm as OctaviaPoolAlgorithm,
                 listenerId: selectedListener?.id,
+                ...(persistence ? { persistence } : {}),
               });
             } else if (target.action === "edit") {
               run({
                 ...fields,
                 action: "edit",
                 id: target.pool.id,
-                source: initial,
+                source: {
+                  name: initial.name,
+                  description: initial.description,
+                  adminStateUp: initial.adminStateUp,
+                  algorithm: initial.algorithm,
+                },
+                ...(persistenceChanged && initial.persistence !== undefined
+                  ? {
+                      persistence: {
+                        before: initial.persistence,
+                        after: persistence,
+                      },
+                    }
+                  : {}),
               });
             }
           }}
@@ -349,6 +402,68 @@ export function PoolMutationDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label
+              htmlFor={
+                canEditPersistence ? "pool-session-persistence" : undefined
+              }
+            >
+              Session persistence
+            </Label>
+            {canEditPersistence ? (
+              <Select
+                value={persistenceMode}
+                onValueChange={setPersistenceMode}
+                disabled={pending}
+              >
+                <SelectTrigger id="pool-session-persistence" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_PERSISTENCE}>None</SelectItem>
+                  {persistence &&
+                  !persistenceModes.some((mode) => mode === persistenceMode) ? (
+                    <SelectItem value={persistenceMode} disabled>
+                      {formatPoolPersistence(persistenceMode)} (not available)
+                    </SelectItem>
+                  ) : null}
+                  {persistenceModes.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {formatPoolPersistence(mode)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {describePoolPersistence(pool?.session_persistence)}
+              </p>
+            )}
+            {canEditPersistence &&
+            persistenceMode === "APP_COOKIE" &&
+            activeProtocol === "HTTP" ? (
+              <div className="space-y-2">
+                <Label htmlFor="pool-cookie-name">Cookie name</Label>
+                <Input
+                  id="pool-cookie-name"
+                  value={cookieName}
+                  maxLength={255}
+                  onChange={(event) => setCookieName(event.target.value)}
+                  disabled={pending}
+                  aria-invalid={Boolean(persistenceError)}
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
+            {persistenceError ? (
+              <MutationAlert variant="error">{persistenceError}</MutationAlert>
+            ) : persistenceChanged && !creating && initial.persistence ? (
+              <MutationAlert variant="warning">
+                Changing session persistence can send existing sessions to a
+                different backend.
+              </MutationAlert>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <Checkbox

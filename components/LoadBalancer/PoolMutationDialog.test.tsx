@@ -28,7 +28,7 @@ import {
   PoolMutationDialog,
   type PoolDialogAction,
 } from "@/components/LoadBalancer/PoolMutationDialog";
-import type { OctaviaL7Policy } from "@/types/openstack";
+import type { OctaviaL7Policy, OctaviaPool } from "@/types/openstack";
 
 const poolId = "22222222-2222-4222-8222-222222222222";
 
@@ -89,6 +89,48 @@ describe("Octavia pool dialog", () => {
     const submit = markup.match(/<button\b[^>]*type="submit"[^>]*>/)?.[0];
     expect(submit).toBeDefined();
     expect(submit).not.toContain(' disabled=""');
+  });
+
+  const editablePool: OctaviaPool = {
+    id: poolId,
+    name: "backend",
+    project_id: "project-a",
+    protocol: "HTTP",
+    provisioning_status: "ACTIVE",
+    operating_status: "OFFLINE",
+    admin_state_up: false,
+    lb_algorithm: "ROUND_ROBIN",
+  };
+
+  it("loads the configured cookie name without marking an edit dirty", () => {
+    const markup = renderDialog({
+      action: "edit",
+      pool: {
+        ...editablePool,
+        session_persistence: { type: "APP_COOKIE", cookie_name: "app_session" },
+      },
+    });
+    expect(markup).toContain("Session persistence");
+    expect(
+      markup.match(/<input\b[^>]*id="pool-cookie-name"[^>]*>/)?.[0],
+    ).toContain('value="app_session"');
+    expect(markup.match(/<button\b[^>]*type="submit"[^>]*>/)?.[0]).toContain(
+      ' disabled=""',
+    );
+  });
+
+  it("does not offer cookie settings for an existing pool on an unsupported protocol", () => {
+    const markup = renderDialog({
+      action: "edit",
+      pool: {
+        ...editablePool,
+        protocol: "PROXY",
+        session_persistence: { type: "APP_COOKIE", cookie_name: "app_session" },
+      },
+    });
+    expect(markup).toContain("App cookie");
+    expect(markup).not.toContain('id="pool-session-persistence"');
+    expect(markup).not.toContain('id="pool-cookie-name"');
   });
 
   it("shows the L7 dependency and blocks confirmation for an empty pool", () => {

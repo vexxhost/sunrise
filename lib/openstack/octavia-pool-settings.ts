@@ -7,6 +7,7 @@ import type {
   OctaviaL7Policy,
   OctaviaListener,
   OctaviaPool,
+  OctaviaPoolSessionPersistence,
 } from "@/types/openstack";
 
 export const OCTAVIA_POOL_PROTOCOLS = ["HTTP", "TCP", "HTTPS", "UDP"] as const;
@@ -28,6 +29,109 @@ export function formatPoolAlgorithm(algorithm: string) {
   return Object.hasOwn(poolAlgorithmLabels, algorithm)
     ? poolAlgorithmLabels[algorithm as OctaviaPoolAlgorithm]
     : algorithm;
+}
+
+export const OCTAVIA_POOL_PERSISTENCE_MODES = [
+  "SOURCE_IP",
+  "HTTP_COOKIE",
+  "APP_COOKIE",
+] as const;
+
+export type OctaviaPoolPersistenceMode =
+  (typeof OCTAVIA_POOL_PERSISTENCE_MODES)[number];
+type PersistenceChoice = { type: string; cookie_name?: string };
+
+const poolPersistenceLabels: Record<OctaviaPoolPersistenceMode, string> = {
+  SOURCE_IP: "Source IP",
+  HTTP_COOKIE: "HTTP cookie",
+  APP_COOKIE: "App cookie",
+};
+
+export function formatPoolPersistence(mode: string) {
+  return Object.hasOwn(poolPersistenceLabels, mode)
+    ? poolPersistenceLabels[mode as OctaviaPoolPersistenceMode]
+    : mode;
+}
+
+export function availablePoolPersistenceModes(
+  protocol: string,
+): readonly OctaviaPoolPersistenceMode[] {
+  if (protocol === "HTTP") return OCTAVIA_POOL_PERSISTENCE_MODES;
+  if (protocol === "TCP" || protocol === "HTTPS" || protocol === "UDP")
+    return ["SOURCE_IP"];
+  return [];
+}
+
+export function poolPersistenceError(
+  protocol: string,
+  choice: PersistenceChoice | null,
+) {
+  const modes = availablePoolPersistenceModes(protocol);
+  if (
+    !modes.length ||
+    (choice && !modes.some((mode) => mode === choice.type))
+  ) {
+    return "This session persistence mode is not available for the pool protocol.";
+  }
+  if (choice?.type === "APP_COOKIE") {
+    const name = choice.cookie_name ?? "";
+    if (
+      !name ||
+      name.length > 255 ||
+      /[^!#$%&'*+.^_\x60|~0-9A-Za-z-]/.test(name)
+    ) {
+      return "Enter a valid cookie name of 1 to 255 characters, without spaces or separators.";
+    }
+  } else if (choice?.cookie_name !== undefined) {
+    return "Only App cookie persistence accepts a cookie name.";
+  }
+  return null;
+}
+
+export function readPoolPersistence(
+  value: unknown,
+): Required<OctaviaPoolSessionPersistence> | null | undefined {
+  // Octavia omits session_persistence when there is no configuration.
+  if (value == null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) return undefined;
+  const { type, cookie_name, persistence_timeout, persistence_granularity } =
+    value as Partial<OctaviaPoolSessionPersistence>;
+  if (
+    typeof type !== "string" ||
+    !type ||
+    (cookie_name != null && typeof cookie_name !== "string") ||
+    (persistence_timeout != null && !Number.isInteger(persistence_timeout)) ||
+    (persistence_granularity != null &&
+      typeof persistence_granularity !== "string")
+  )
+    return undefined;
+  return {
+    type,
+    cookie_name: cookie_name ?? null,
+    persistence_timeout: persistence_timeout ?? null,
+    persistence_granularity: persistence_granularity ?? null,
+  };
+}
+
+export function samePoolPersistence(
+  current: OctaviaPoolSessionPersistence | null,
+  expected: OctaviaPoolSessionPersistence | null,
+) {
+  if (!current || !expected) return current === expected;
+  return (
+    current.type === expected.type &&
+    (current.cookie_name ?? null) === (expected.cookie_name ?? null) &&
+    (current.persistence_timeout ?? null) ===
+      (expected.persistence_timeout ?? null) &&
+    (current.persistence_granularity ?? null) ===
+      (expected.persistence_granularity ?? null)
+  );
+}
+
+export function describePoolPersistence(value: unknown) {
+  const persistence = readPoolPersistence(value);
+  if (persistence === undefined) return "Unavailable";
+  return persistence ? formatPoolPersistence(persistence.type) : "None";
 }
 
 const listenerPoolProtocols: Record<string, readonly OctaviaPoolProtocol[]> = {
