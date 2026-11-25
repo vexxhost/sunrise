@@ -4,10 +4,6 @@ export const OCTAVIA_MAX_RESOURCE_TAG_LENGTH = 60;
 export type OctaviaTagsValidationResult =
   { ok: true; tags: string[] } | { ok: false; error: string };
 
-export function limitOctaviaTagInput(value: string) {
-  return Array.from(value).slice(0, OCTAVIA_MAX_RESOURCE_TAG_LENGTH).join("");
-}
-
 export function formatOctaviaTag(tag: string) {
   return tag.length > 0 &&
     tag === tag.trim() &&

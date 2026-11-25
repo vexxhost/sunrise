@@ -6,6 +6,7 @@ import { Plus, Waypoints } from "lucide-react";
 
 import {
   OctaviaTagsEditor,
+  octaviaTagsFromDrafts,
   type OctaviaTagDraft,
 } from "@/components/LoadBalancer/OctaviaTags";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
@@ -40,6 +41,7 @@ import { loadBalancerAvailabilityZonesQueryOptions } from "@/hooks/queries/useLo
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { createLoadBalancerAction } from "@/lib/openstack/octavia-actions";
+import { validateOctaviaTags } from "@/lib/openstack/octavia-tags";
 
 export function LoadBalancerCreateAction({
   availabilityZoneSupport,
@@ -119,9 +121,7 @@ export function LoadBalancerCreateAction({
         .sort((left, right) => left.localeCompare(right)),
     [zones.data],
   );
-  const submittedTags = tags
-    .map((tag) => tag.value)
-    .filter((tag) => tag.length > 0);
+  const submittedTags = octaviaTagsFromDrafts(tags);
   const subnetQueryFailed = subnets.isError;
   const noVisibleSubnets = subnets.isSuccess && subnetOptions.length === 0;
   const zoneLookupMessage = zones.isError
@@ -153,6 +153,12 @@ export function LoadBalancerCreateAction({
     event.preventDefault();
     if (!name.trim() || !vipSubnetId || subnetQueryFailed) return;
 
+    const parsedTags = validateOctaviaTags(tagsAvailable ? submittedTags : []);
+    if (!parsedTags.ok) {
+      setError(parsedTags.error);
+      return;
+    }
+
     startTransition(async () => {
       setError(null);
       const result = await createLoadBalancerAction(
@@ -166,7 +172,7 @@ export function LoadBalancerCreateAction({
               ? availabilityZone
               : undefined,
           adminStateUp,
-          tags: tagsAvailable ? submittedTags : [],
+          tags: parsedTags.tags,
         },
       );
       if (!result.ok) {

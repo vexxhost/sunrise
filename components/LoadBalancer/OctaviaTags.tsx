@@ -4,19 +4,28 @@ import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   formatOctaviaTag,
-  limitOctaviaTagInput,
   OCTAVIA_MAX_RESOURCE_TAG_LENGTH,
   OCTAVIA_MAX_RESOURCE_TAGS,
 } from "@/lib/openstack/octavia-tags";
+import {
+  decodeTagFromEditor,
+  encodeTagForEditor,
+} from "@/lib/openstack/tag-editor";
 
-export type OctaviaTagDraft = { id: string; value: string };
+export type OctaviaTagDraft = { id: string; text: string };
 
 export function octaviaTagDraft(value = ""): OctaviaTagDraft {
-  return { id: crypto.randomUUID(), value };
+  return { id: crypto.randomUUID(), text: encodeTagForEditor(value) };
+}
+
+export function octaviaTagsFromDrafts(drafts: OctaviaTagDraft[]) {
+  return drafts
+    .map(({ text }) => decodeTagFromEditor(text))
+    .filter((tag) => tag.length > 0);
 }
 
 export function OctaviaTagList({ tags }: { tags?: string[] }) {
@@ -60,10 +69,11 @@ export function OctaviaTagsEditor({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold">Tags</h3>
-          <p className="text-xs text-muted-foreground">
+          <p id={`${idPrefix}-help`} className="text-xs text-muted-foreground">
             Optional exact values. Each tag may contain up to{" "}
             {OCTAVIA_MAX_RESOURCE_TAG_LENGTH} characters, excluding commas and
-            slashes.
+            slashes. Carriage returns are shown as <code>\r</code>; literal
+            backslashes are shown as <code>\\</code>.
           </p>
         </div>
         <Button
@@ -81,27 +91,28 @@ export function OctaviaTagsEditor({
       {tags.length ? (
         <div className="space-y-2">
           {tags.map((tag, index) => (
-            <div className="flex items-center gap-2" key={tag.id}>
+            <div className="flex items-start gap-2" key={tag.id}>
               <Label className="sr-only" htmlFor={`${idPrefix}-${tag.id}`}>
                 Tag {index + 1}
               </Label>
-              <Input
+              <Textarea
                 id={`${idPrefix}-${tag.id}`}
+                aria-describedby={`${idPrefix}-help`}
+                className="min-w-0 font-mono"
                 disabled={disabled}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const text = event.target.value;
                   onChange(
                     tags.map((currentTag) =>
                       currentTag.id === tag.id
-                        ? {
-                            ...currentTag,
-                            value: limitOctaviaTagInput(event.target.value),
-                          }
+                        ? { ...currentTag, text }
                         : currentTag,
                     ),
-                  )
-                }
+                  );
+                }}
                 placeholder="env:test"
-                value={tag.value}
+                rows={2}
+                value={tag.text}
               />
               <Button
                 aria-label={`Remove tag ${index + 1}`}

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import {
   OctaviaTagsEditor,
   octaviaTagDraft,
+  octaviaTagsFromDrafts,
   type OctaviaTagDraft,
 } from "@/components/LoadBalancer/OctaviaTags";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
@@ -27,7 +28,10 @@ import {
   deleteLoadBalancerAction,
   updateLoadBalancerAction,
 } from "@/lib/openstack/octavia-actions";
-import { sameOctaviaTags } from "@/lib/openstack/octavia-tags";
+import {
+  sameOctaviaTags,
+  validateOctaviaTags,
+} from "@/lib/openstack/octavia-tags";
 import type { MutationScope } from "@/lib/mutations";
 import type { OctaviaLoadBalancer } from "@/types/openstack";
 
@@ -62,9 +66,7 @@ export function LoadBalancerMutationDialog({
   const [pending, startTransition] = useTransition();
   const tagUpdatesAvailable =
     tagSupport.status !== "unsupported" && originalTags !== undefined;
-  const submittedTags = tags
-    .map((tag) => tag.value)
-    .filter((tag) => tag.length > 0);
+  const submittedTags = octaviaTagsFromDrafts(tags);
   const tagsChanged =
     tagUpdatesAvailable && !sameOctaviaTags(originalTags, submittedTags);
   const detailsChanged =
@@ -147,18 +149,25 @@ export function LoadBalancerMutationDialog({
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!detailsChanged && !tagsChanged) return;
+
+    const parsedTags = tagsChanged ? validateOctaviaTags(submittedTags) : null;
+    if (parsedTags && !parsedTags.ok) {
+      setError(parsedTags.error);
+      return;
+    }
+
     run(
       () =>
         updateLoadBalancerAction(initial.scope, original.id, {
           name,
           description,
           adminStateUp,
-          ...(tagsChanged ? { tags: submittedTags } : {}),
+          ...(parsedTags ? { tags: parsedTags.tags } : {}),
           source: {
             name: original.name,
             description: original.description ?? "",
             adminStateUp: original.admin_state_up,
-            ...(tagsChanged ? { tags: originalTags } : {}),
+            ...(parsedTags ? { tags: originalTags } : {}),
           },
         }),
       false,

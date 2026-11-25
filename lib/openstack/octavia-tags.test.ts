@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatOctaviaTag,
-  limitOctaviaTagInput,
   OCTAVIA_MAX_RESOURCE_TAGS,
   sameOctaviaTags,
   validateOctaviaTags,
@@ -15,9 +14,7 @@ describe("Octavia resource tags", () => {
     expect(validateOctaviaTags(tags)).toEqual({ ok: true, tags });
   });
 
-  it("limits editor input by Unicode code points", () => {
-    expect(limitOctaviaTagInput("😀".repeat(61))).toBe("😀".repeat(60));
-    expect(limitOctaviaTagInput("a".repeat(61))).toBe("a".repeat(60));
+  it("counts tag length by Unicode code points", () => {
     expect(validateOctaviaTags(["😀".repeat(60)])).toEqual({
       ok: true,
       tags: ["😀".repeat(60)],

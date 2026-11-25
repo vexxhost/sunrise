@@ -329,6 +329,11 @@ describe("Octavia load balancer mutation actions", () => {
   });
 
   it("uses microversion 2.5 for exact tag replacement", async () => {
+    const originalTags = ["first\r\nold\nliteral\\r"];
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({ tags: originalTags }),
+    );
+    const tags = [" Team A ", "first\r\nsecond\nliteral\\r", "env:prod"];
     await updateLoadBalancerAction(scope, loadBalancerId, {
       adminStateUp: true,
       description: "Current description",
@@ -337,9 +342,9 @@ describe("Octavia load balancer mutation actions", () => {
         adminStateUp: true,
         description: "Current description",
         name: "application",
-        tags: ["env:test"],
+        tags: originalTags,
       },
-      tags: [" Team A ", "env:prod"],
+      tags,
     });
 
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
@@ -347,7 +352,7 @@ describe("Octavia load balancer mutation actions", () => {
         apiVersion: "load-balancer 2.5",
         body: {
           loadbalancer: expect.objectContaining({
-            tags: [" Team A ", "env:prod"],
+            tags,
           }),
         },
       }),
