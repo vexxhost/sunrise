@@ -13,6 +13,7 @@ import {
 import { OCTAVIA_BASELINE_MICROVERSION } from "@/lib/openstack/capabilities-server";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import {
+  canChangeOctaviaListener,
   canChangeOctaviaListeners,
   isOctaviaAmphoraProvider,
 } from "@/lib/openstack/octavia";
@@ -58,6 +59,12 @@ const mutationSchema = z.discriminatedUnion("action", [
     sourceRule: pathSnapshot,
   }),
   z.object({ action: z.literal("delete-policy"), policyId: idSchema }),
+  z.object({
+    action: z.literal("delete-failed-policy"),
+    policyId: idSchema,
+    poolId: idSchema,
+    sourceRule: pathSnapshot.nullable(),
+  }),
   z.object({
     action: z.literal("add-rule"),
     policyId: idSchema,
@@ -112,6 +119,11 @@ const operations = {
     "DELETE",
     "delete this routing policy",
     "Routing policy deletion requested.",
+  ],
+  "delete-failed-policy": [
+    "DELETE",
+    "delete this failed routing policy",
+    "Failed routing policy deletion requested.",
   ],
   "add-rule": ["POST", "add a path rule", "Path rule creation requested."],
   "edit-rule": ["PUT", "edit this path rule", "Path rule update requested."],
@@ -215,15 +227,27 @@ export async function mutateOctaviaL7Action(
           "Only pool routing policies with one basic path rule or no rules can be changed here.",
         );
       }
-      if (
-        policy.provisioning_status !== "ACTIVE" &&
-        !(
-          value.action === "delete-policy" &&
-          policy.provisioning_status === "ERROR"
-        )
-      )
+      const deletingFailedPolicy = value.action === "delete-failed-policy";
+      // Octavia rejects nested rule deletion while the parent policy is in ERROR.
+      if (deletingFailedPolicy) {
+        if (
+          policy.provisioning_status !== "ERROR" ||
+          current.redirect_pool_id !== value.poolId ||
+          rules.length !== (value.sourceRule ? 1 : 0)
+        ) {
+          return conflict(
+            active,
+            "The failed policy changed. Refresh and try again.",
+          );
+        }
+      } else if (policy.provisioning_status !== "ACTIVE") {
         return conflict(active);
-      if (value.action !== "set-enabled" && policy.admin_state_up) {
+      }
+      if (
+        value.action !== "set-enabled" &&
+        !deletingFailedPolicy &&
+        policy.admin_state_up
+      ) {
         return conflict(
           active,
           "Disable the routing policy before changing or deleting it.",
@@ -246,12 +270,14 @@ export async function mutateOctaviaL7Action(
           regionId,
           projectId,
         );
+        const allowRuleError =
+          deletingFailedPolicy ||
+          value.action === "delete-rule" ||
+          (value.action === "set-enabled" && !value.enabled);
         if (
-          rule.provisioning_status !== "ACTIVE" &&
-          !(
-            value.action === "delete-rule" &&
-            rule.provisioning_status === "ERROR"
-          )
+          !(allowRuleError
+            ? canChangeOctaviaListener(rule)
+            : canChangeOctaviaListeners(rule))
         )
           return conflict(active);
         currentPath = readL7Path(rule);
@@ -263,6 +289,7 @@ export async function mutateOctaviaL7Action(
       }
       if (
         "sourceRule" in value &&
+        value.sourceRule &&
         (rules[0] !== value.sourceRule.id ||
           !currentPath ||
           !sameL7Path(currentPath, value.sourceRule.settings))

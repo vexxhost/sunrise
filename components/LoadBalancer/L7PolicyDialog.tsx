@@ -42,7 +42,10 @@ import type { OctaviaListener, OctaviaPool } from "@/types/openstack";
 
 type ConfirmationInput = Extract<
   OctaviaL7Mutation,
-  { action: "set-enabled" | "delete-policy" | "delete-rule" }
+  {
+    action:
+      "set-enabled" | "delete-policy" | "delete-failed-policy" | "delete-rule";
+  }
 >;
 type PathSnapshot = Extract<
   OctaviaL7Mutation,
@@ -161,15 +164,35 @@ export function L7PolicyDialog({
           : "Disable routing policy"
         : input.action === "delete-policy"
           ? "Delete routing policy"
-          : "Delete path rule";
+          : input.action === "delete-failed-policy"
+            ? "Delete failed policy"
+            : "Delete path rule";
     const description =
-      input.action === "set-enabled"
-        ? input.enabled
-          ? "Matching requests will be routed to the selected pool when the listener is enabled."
-          : "Matching requests will no longer be routed by this policy."
-        : input.action === "delete-policy"
-          ? "The disabled policy will be removed. Its listener and pool will remain."
-          : "The rule will be removed. The policy will stay disabled.";
+      input.action === "set-enabled" ? (
+        input.enabled ? (
+          "Matching requests will be routed to the selected pool when the listener is enabled."
+        ) : (
+          "Matching requests will no longer be routed by this policy."
+        )
+      ) : input.action === "delete-policy" ? (
+        "The disabled policy will be removed. Its listener and pool will remain."
+      ) : input.action === "delete-failed-policy" ? (
+        <>
+          The failed policy
+          {input.sourceRule ? (
+            <>
+              {" "}
+              and its path rule{" "}
+              <code className="wrap-anywhere">
+                {input.sourceRule.settings.value}
+              </code>
+            </>
+          ) : null}{" "}
+          will be permanently removed. Its listener and pool will remain.
+        </>
+      ) : (
+        "The rule will be removed. The policy will stay disabled."
+      );
     return (
       <MutationConfirmationDialog
         open

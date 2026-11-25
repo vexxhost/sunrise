@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import type { MutationScope } from "@/lib/mutations";
 import {
+  canChangeOctaviaListener,
   canChangeOctaviaListeners,
   formatOctaviaStatus,
   isOctaviaProvisioning,
@@ -161,9 +162,13 @@ export function L7PolicyPanel({
                   !busy &&
                   Boolean(listener && canChangeOctaviaListeners(listener));
                 const active = policy.provisioning_status === "ACTIVE";
+                const failed = policy.provisioning_status === "ERROR";
                 const disabledPolicy = policy.admin_state_up === false;
                 const ruleActive = Boolean(
                   rule && canChangeOctaviaListeners(rule),
+                );
+                const ruleSettled = Boolean(
+                  rule && canChangeOctaviaListener(rule),
                 );
                 const label = policy.name || policy.id;
                 const listenerId = policy.listener_id;
@@ -238,17 +243,34 @@ export function L7PolicyPanel({
                                 size="icon-sm"
                                 title="Routing policy actions"
                                 aria-label={`Actions for ${label}`}
-                                disabled={
-                                  !ready ||
-                                  (!active &&
-                                    policy.provisioning_status !== "ERROR")
-                                }
+                                disabled={!ready || (!active && !failed)}
                               >
                                 <Ellipsis className="size-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {disabledPolicy ? (
+                              {failed ? (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  disabled={Boolean(rule) && !ruleSettled}
+                                  onSelect={() =>
+                                    open({
+                                      action: "confirm",
+                                      label,
+                                      listenerId,
+                                      input: {
+                                        action: "delete-failed-policy",
+                                        policyId,
+                                        poolId: current.redirect_pool_id,
+                                        sourceRule: ruleSnapshot ?? null,
+                                      },
+                                    })
+                                  }
+                                >
+                                  <Trash2 /> Delete failed policy
+                                </DropdownMenuItem>
+                              ) : null}
+                              {disabledPolicy && !failed ? (
                                 <>
                                   <DropdownMenuItem
                                     disabled={
@@ -285,12 +307,7 @@ export function L7PolicyPanel({
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
                                         variant="destructive"
-                                        disabled={
-                                          !active ||
-                                          (!ruleActive &&
-                                            rule.provisioning_status !==
-                                              "ERROR")
-                                        }
+                                        disabled={!active || !ruleSettled}
                                         onSelect={() =>
                                           open({
                                             action: "confirm",
@@ -342,11 +359,13 @@ export function L7PolicyPanel({
                                   )}
                                 </>
                               ) : null}
-                              {ruleSnapshot ? (
+                              {ruleSnapshot && !failed ? (
                                 <DropdownMenuItem
                                   disabled={
                                     !active ||
-                                    !ruleActive ||
+                                    !(disabledPolicy
+                                      ? ruleActive
+                                      : ruleSettled) ||
                                     (disabledPolicy &&
                                       (!pool || !isL7HttpPool(pool)))
                                   }

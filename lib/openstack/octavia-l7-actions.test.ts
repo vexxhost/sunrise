@@ -227,6 +227,7 @@ describe("Octavia L7 path routing", () => {
       { invert: true },
       { admin_state_up: false },
       { provisioning_status: "PENDING_CREATE" },
+      { provisioning_status: "ERROR" },
     ]) {
       mocks.getOctaviaL7Rule.mockResolvedValueOnce({ ...rule, ...changed });
       await expect(mutate(enable)).resolves.toMatchObject({ ok: false });
@@ -286,6 +287,133 @@ describe("Octavia L7 path routing", () => {
       expect.objectContaining({
         method: "DELETE",
         path: policyPath,
+      }),
+    );
+  });
+
+  it.each([
+    { enabled: false, ruleStatus: "ACTIVE" },
+    { enabled: true, ruleStatus: "ERROR" },
+  ])(
+    "removes an errored policy and its verified rule: %j",
+    async ({ enabled, ruleStatus }) => {
+      mocks.getOctaviaListenerL7Policy.mockResolvedValue({
+        ...policy,
+        admin_state_up: enabled,
+        provisioning_status: "ERROR",
+      });
+      mocks.getOctaviaL7Rule.mockResolvedValue({
+        ...rule,
+        provisioning_status: ruleStatus,
+      });
+      await expect(
+        mutate({ action: "delete-rule", policyId, sourceRule }),
+      ).resolves.toMatchObject({ ok: false });
+      await expect(
+        mutate({ action: "delete-policy", policyId }),
+      ).resolves.toMatchObject({ ok: false });
+      await expect(
+        mutate({
+          action: "delete-failed-policy",
+          policyId,
+          poolId,
+          sourceRule,
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(mocks.getOctaviaL7Rule).toHaveBeenCalledWith(
+        policyId,
+        ruleId,
+        scope.regionId,
+        scope.projectId,
+      );
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: "DELETE",
+          path: policyPath,
+        }),
+      );
+    },
+  );
+
+  it("also allows recovery of an errored policy with no rules", async () => {
+    mocks.getOctaviaListenerL7Policy.mockResolvedValue({
+      ...policy,
+      rules: [],
+      provisioning_status: "ERROR",
+    });
+    await expect(
+      mutate({
+        action: "delete-failed-policy",
+        policyId,
+        poolId,
+        sourceRule: null,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(mocks.getOctaviaL7Rule).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: policyPath,
+      }),
+    );
+  });
+
+  it("rejects recovery when the policy or confirmed rule changed or is pending", async () => {
+    const failed = { ...policy, provisioning_status: "ERROR" };
+    const recovery = {
+      action: "delete-failed-policy",
+      policyId,
+      poolId,
+      sourceRule,
+    } as const;
+    for (const overrides of [
+      { provisioning_status: "ACTIVE" },
+      { provisioning_status: "PENDING_UPDATE" },
+      { redirect_pool_id: otherId },
+      { rules: [] },
+      { rules: [{ id: otherId }] },
+      { rules: [{ id: ruleId }, { id: otherId }] },
+    ]) {
+      mocks.getOctaviaListenerL7Policy.mockResolvedValueOnce({
+        ...failed,
+        ...overrides,
+      });
+      await expect(mutate(recovery)).resolves.toMatchObject({ ok: false });
+    }
+    mocks.getOctaviaListenerL7Policy.mockResolvedValue(failed);
+    for (const overrides of [
+      { provisioning_status: "PENDING_DELETE" },
+      { value: "/another-path/" },
+    ]) {
+      mocks.getOctaviaL7Rule.mockResolvedValueOnce({ ...rule, ...overrides });
+      await expect(mutate(recovery)).resolves.toMatchObject({ ok: false });
+    }
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("allows disabling an active policy with an errored rule so the rule can be removed", async () => {
+    mocks.getOctaviaListenerL7Policy.mockResolvedValue({
+      ...policy,
+      admin_state_up: true,
+    });
+    mocks.getOctaviaL7Rule.mockResolvedValue({
+      ...rule,
+      provisioning_status: "ERROR",
+    });
+    await expect(
+      mutate({
+        action: "set-enabled",
+        policyId,
+        enabled: false,
+        poolId,
+        sourceRule,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: policyPath,
+        body: { l7policy: { admin_state_up: false } },
       }),
     );
   });
