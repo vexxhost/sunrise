@@ -8,7 +8,6 @@ import {
   useReactTable,
   RowData,
 } from "@tanstack/react-table";
-import { usePathname } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
   Table,
@@ -30,6 +29,11 @@ import { useColumnOrder } from "@/hooks/useColumnOrder";
 import { useGlobalFilter, createGlobalFilterFn } from "@/hooks/useGlobalFilter";
 import { ensureRequiredDataTableColumn } from "@/lib/data-table-columns";
 import { formatAge } from "@/lib/openstack/time";
+import {
+  resourceDetailHref,
+  type ResourceDetailKind,
+} from "@/lib/resource-detail-paths";
+import { cn } from "@/lib/utils";
 import { DataTableToolbar } from "./DataTable/Toolbar";
 
 const NO_FORCED_VISIBLE_COLUMNS: string[] = [];
@@ -41,7 +45,7 @@ declare module "@tanstack/react-table" {
     fieldType?: "string" | "number" | "boolean" | "date";
     dateDisplay?: "relative" | "age";
     visible?: boolean;
-    idLinkPath?: string;
+    idResourceKind?: ResourceDetailKind;
   }
 }
 
@@ -93,8 +97,6 @@ export function DataTable<TData, TValue>({
   getRowId,
 }: DataTableProps<TData, TValue>) {
   "use no memo";
-
-  const pathname = usePathname();
 
   // Use extracted hooks
   const { globalFilter, setGlobalFilter } = useGlobalFilter();
@@ -199,14 +201,11 @@ export function DataTable<TData, TValue>({
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow
-                key={headerGroup.id}
-                className="text-xs font-bold hover:bg-transparent"
-              >
+              <TableRow key={headerGroup.id} className="hover:bg-transparent">
                 {headerGroup.headers.map((header) => {
                   const isIDColumn =
-                    typeof header.column.columnDef.header === "string" &&
-                    header.column.columnDef.header === "ID";
+                    header.column.columnDef.header === "ID" ||
+                    Boolean(header.column.columnDef.meta?.idResourceKind);
                   const isSelectColumn = header.column.id === "select";
                   const canSort = header.column.getCanSort();
                   const isSorted = header.column.getIsSorted();
@@ -214,7 +213,22 @@ export function DataTable<TData, TValue>({
                   return (
                     <TableHead
                       key={header.id}
-                      className={`px-0 text-xs font-bold border-r ${isIDColumn ? "max-w-32" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] !px-3" : ""}`}
+                      colSpan={header.colSpan}
+                      scope={header.colSpan > 1 ? "colgroup" : "col"}
+                      aria-sort={
+                        isSorted === "asc"
+                          ? "ascending"
+                          : isSorted === "desc"
+                            ? "descending"
+                            : undefined
+                      }
+                      className={cn(
+                        "border-r last:border-r-0",
+                        isIDColumn && "max-w-36",
+                        isSelectColumn
+                          ? "w-10 min-w-10 max-w-10"
+                          : canSort && "px-0",
+                      )}
                     >
                       {header.isPlaceholder ? null : isSelectColumn ? (
                         flexRender(
@@ -227,7 +241,7 @@ export function DataTable<TData, TValue>({
                           onClick={() =>
                             header.column.toggleSorting(isSorted === "asc")
                           }
-                          className="h-full w-full py-2 hover:bg-transparent font-bold rounded-none flex justify-between items-center"
+                          className="h-full min-h-10 w-full justify-between rounded-none px-3 py-2 text-sm font-semibold hover:bg-transparent"
                         >
                           <span>
                             {typeof header.column.columnDef.header === "string"
@@ -268,9 +282,11 @@ export function DataTable<TData, TValue>({
                   className={`group/row`}
                 >
                   {row.getVisibleCells().map((cell) => {
+                    const idResourceKind =
+                      cell.column.columnDef.meta?.idResourceKind;
                     const isIDColumn =
-                      typeof cell.column.columnDef.header === "string" &&
-                      cell.column.columnDef.header === "ID";
+                      cell.column.columnDef.header === "ID" ||
+                      Boolean(idResourceKind);
                     const isSelectColumn = cell.column.id === "select";
                     const isMonospace =
                       cell.column.columnDef.meta?.monospace || isIDColumn;
@@ -279,13 +295,18 @@ export function DataTable<TData, TValue>({
 
                     // Auto-format date fields if it's a date type and has a plain string value
                     let renderedCell;
-                    if (isIDColumn && typeof cellValue === "string") {
+                    if (
+                      isIDColumn &&
+                      typeof cellValue === "string" &&
+                      cellValue.length
+                    ) {
                       renderedCell = (
                         <IDCell
                           value={cellValue}
-                          isSelected={row.getIsSelected()}
-                          linkPath={
-                            cell.column.columnDef.meta?.idLinkPath ?? pathname
+                          href={
+                            idResourceKind
+                              ? resourceDetailHref(idResourceKind, cellValue)
+                              : undefined
                           }
                         />
                       );
@@ -317,7 +338,11 @@ export function DataTable<TData, TValue>({
                     return (
                       <TableCell
                         key={cell.id}
-                        className={`px-3 ${isMonospace ? "font-mono" : ""} ${isIDColumn ? "max-w-32" : ""} ${isSelectColumn ? "w-[40px] min-w-[40px] max-w-[40px] px-3" : ""}`}
+                        className={cn(
+                          isMonospace && "font-mono",
+                          isIDColumn && "max-w-36",
+                          isSelectColumn && "w-10 min-w-10 max-w-10",
+                        )}
                       >
                         {renderedCell}
                       </TableCell>
@@ -327,7 +352,7 @@ export function DataTable<TData, TValue>({
               ))
             ) : (
               <TableEmpty
-                columns={columns.length + 1}
+                columns={table.getVisibleLeafColumns().length}
                 message={
                   resourceName
                     ? `No ${pluralize(resourceName)} found.`

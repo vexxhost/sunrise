@@ -72,6 +72,7 @@ const columns: ColumnDef<Volume>[] = [
     accessorKey: "id",
     header: "ID",
     meta: {
+      idResourceKind: "volume",
       fieldType: "string",
       visible: true,
     },

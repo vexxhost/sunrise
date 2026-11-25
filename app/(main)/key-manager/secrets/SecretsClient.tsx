@@ -72,7 +72,7 @@ export function SecretsClient({
         fieldType: "string",
         visible: true,
         monospace: true,
-        idLinkPath: "/key-manager/secrets",
+        idResourceKind: "secret",
       },
     },
     {

@@ -84,6 +84,7 @@ const columns: ColumnDef<Image>[] = [
     accessorKey: "id",
     header: "ID",
     meta: {
+      idResourceKind: "image",
       fieldType: "string",
       monospace: true,
       visible: true,

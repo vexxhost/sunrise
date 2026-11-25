@@ -10,7 +10,8 @@ import { EditActionButton } from "@/components/resources/EditActionButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/DataTable";
-import { IDCell } from "@/components/DataTable/IDCell";
+import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
+import { resourceDetailHref } from "@/lib/resource-detail-paths";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { imagesQueryOptions } from "@/hooks/queries/useImages";
 import { clusterTemplatesQueryOptions } from "@/hooks/queries/useMagnum";
@@ -148,15 +149,10 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
         accessorKey: "name",
         header: "Name",
         cell: ({ row }: { row: { original: MagnumClusterTemplate } }) => (
-          <ResourceLink
-            className="block min-w-0"
-            href={`/kubernetes/templates/${row.original.uuid}`}
-          >
-            <FadedTableText
-              value={row.original.name || row.original.uuid}
-              className="w-64"
-            />
-          </ResourceLink>
+          <ResourceNameCell
+            href={resourceDetailHref("cluster-template", row.original.uuid)}
+            value={row.original.name || row.original.uuid}
+          />
         ),
         meta: { fieldType: "string", visible: true },
       },
@@ -164,14 +160,11 @@ export function TemplatesClient({ regionId, projectId }: TemplatesClientProps) {
         accessorKey: "uuid",
         header: "UUID",
         enableHiding: false,
-        cell: ({ row }) => (
-          <IDCell
-            isSelected={row.getIsSelected()}
-            linkPath="/kubernetes/templates"
-            value={row.original.uuid}
-          />
-        ),
-        meta: { fieldType: "string", visible: true },
+        meta: {
+          fieldType: "string",
+          visible: true,
+          idResourceKind: "cluster-template",
+        },
       },
       {
         accessorKey: "image_id",

@@ -146,7 +146,7 @@ export function NodeGroupDetailClient({
           fieldType: "string",
           monospace: true,
           visible: true,
-          idLinkPath: "/compute/instances",
+          idResourceKind: "instance",
         },
       },
       {

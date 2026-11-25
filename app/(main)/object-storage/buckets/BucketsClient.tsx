@@ -8,7 +8,8 @@ import { ArrowRight, Database, Plus, Trash2 } from "lucide-react";
 import { DataTable } from "@/components/DataTable";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
-import { ResourceLink } from "@/components/resources/ResourceLink";
+import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
+import { resourceDetailHref } from "@/lib/resource-detail-paths";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -79,11 +80,10 @@ export function BucketsClient({
       header: "Name",
       enableHiding: false,
       cell: ({ row }) => (
-        <ResourceLink
-          href={`/object-storage/buckets/${encodeURIComponent(row.original.name)}`}
-        >
-          {row.original.name}
-        </ResourceLink>
+        <ResourceNameCell
+          href={resourceDetailHref("bucket", row.original.name)}
+          value={row.original.name}
+        />
       ),
       meta: { fieldType: "string", visible: true },
     },

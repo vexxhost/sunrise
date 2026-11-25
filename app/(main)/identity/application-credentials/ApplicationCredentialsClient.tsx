@@ -119,7 +119,7 @@ export function ApplicationCredentialsClient({
         fieldType: "string",
         visible: true,
         monospace: true,
-        idLinkPath: "/identity/application-credentials",
+        idResourceKind: "application-credential",
       },
     },
     {

@@ -50,7 +50,7 @@ const columns: ColumnDef<ManilaShare>[] = [
     meta: {
       fieldType: "string",
       visible: true,
-      idLinkPath: "/shared-file-systems/shares",
+      idResourceKind: "share",
     },
   },
   {

@@ -3,13 +3,6 @@
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { RefreshCw, Filter as FilterIcon, ChevronDown } from "lucide-react";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationPrevious,
-  PaginationNext,
-} from "@/components/ui/pagination";
 import { FilterBuilder, Filter } from "@/components/FilterBuilder";
 import { DataTablePagination } from "./Pagination";
 import { DataTableDialog } from "@/components/DataTableDialog";
@@ -69,7 +62,7 @@ export function DataTableToolbar<TData>({
         {additionalFilters}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
         {hasTable && <DataTablePagination table={table} />}
 
         {rowActions.length > 0 && (

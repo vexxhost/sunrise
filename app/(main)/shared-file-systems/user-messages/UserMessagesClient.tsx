@@ -28,7 +28,7 @@ const columns: ColumnDef<ManilaUserMessage>[] = [
       fieldType: "string",
       visible: true,
       monospace: true,
-      idLinkPath: "/shared-file-systems/user-messages",
+      idResourceKind: "user-message",
     },
   },
   {

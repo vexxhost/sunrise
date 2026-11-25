@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { Activity, Network, Plus, Trash2, Waypoints } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
 import {
   ListenerMutationDialog,
   type ListenerDialogAction,
@@ -467,16 +468,13 @@ export function LoadBalancerDetailClient({
                 data.listeners.map((listener) => (
                   <TableRow key={listener.id}>
                     <TableCell>
-                      <ResourceLink
+                      <ResourceNameCell
                         href={loadBalancerListenerPath(
                           loadBalancer.id,
                           listener.id,
                         )}
-                        prefetch={false}
-                        className="text-primary"
-                      >
-                        {nameOrId(listener.name, listener.id)}
-                      </ResourceLink>
+                        value={nameOrId(listener.name, listener.id)}
+                      />
                       <div className="font-mono text-xs text-muted-foreground">
                         {listener.id}
                       </div>

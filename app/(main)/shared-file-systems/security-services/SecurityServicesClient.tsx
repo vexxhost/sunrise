@@ -45,7 +45,7 @@ const columns: ColumnDef<ManilaSecurityService>[] = [
       fieldType: "string",
       visible: true,
       monospace: true,
-      idLinkPath: "/shared-file-systems/security-services",
+        idResourceKind: "security-service",
     },
   },
   {

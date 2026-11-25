@@ -280,7 +280,7 @@ export function RoleDetailsDialog({
               defaultValue="overview"
               className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
             >
-              <TabsList className="grid w-full shrink-0 grid-cols-3">
+              <TabsList className="grid h-auto w-full shrink-0 grid-cols-3 items-stretch wrap-anywhere [&>button]:px-1.5 [&>button]:whitespace-normal sm:[&>button]:px-3">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="trust-policy">Trust policy</TabsTrigger>
                 <TabsTrigger value="permissions">Permissions</TabsTrigger>
