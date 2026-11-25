@@ -25,6 +25,7 @@ import {
   getLoadBalancerPool,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
+  listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
 
@@ -449,6 +450,47 @@ describe("Octavia project scoping", () => {
         status: 404,
       });
     }
+  });
+
+  it("keeps pool and project filters on every L7 page and verifies the returned relationships", async () => {
+    const id = "22222222-2222-4222-8222-222222222222";
+    const matchingPolicy = {
+      id: "policy-one",
+      project_id: "project-a",
+      redirect_pool_id: id,
+      admin_state_up: false,
+      rules: [],
+    };
+    mocks.openstackRequest
+      .mockResolvedValueOnce({
+        l7policies: [{ ...matchingPolicy, redirect_pool_id: null }],
+        l7policies_links: [
+          {
+            rel: "next",
+            href: "https://octavia.example/v2/lbaas/l7policies?limit=100&marker=first",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        l7policies: [
+          matchingPolicy,
+          { ...matchingPolicy, project_id: "project-b" },
+        ],
+      });
+
+    await expect(
+      listOctaviaPoolRedirectPolicies(id, "RegionOne", "project-a"),
+    ).resolves.toEqual([matchingPolicy]);
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(2);
+    for (const [{ path }] of mocks.openstackRequest.mock.calls) {
+      const url = new URL(path, "https://octavia.example");
+      expect(url.pathname).toBe("/v2/lbaas/l7policies");
+      expect(url.searchParams.get("project_id")).toBe("project-a");
+      expect(url.searchParams.get("redirect_pool_id")).toBe(id);
+    }
+    expect(mocks.openstackRequest.mock.calls[1][0].path).toContain(
+      "marker=first",
+    );
   });
 
   it.each([

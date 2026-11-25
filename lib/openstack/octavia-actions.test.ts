@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getLoadBalancerListener: vi.fn(),
   getLoadBalancerPool: vi.fn(),
   guardMutationContext: vi.fn(),
+  listOctaviaPoolRedirectPolicies: vi.fn(),
 }));
 
 vi.mock("@/lib/mutation-context", () => ({
@@ -29,6 +30,7 @@ vi.mock("@/lib/openstack/octavia-server", () => ({
   getLoadBalancerPool: mocks.getLoadBalancerPool,
   listLoadBalancerAvailabilityZones: vi.fn(),
   listLoadBalancers: vi.fn(),
+  listOctaviaPoolRedirectPolicies: mocks.listOctaviaPoolRedirectPolicies,
 }));
 
 import {
@@ -125,6 +127,7 @@ describe("Octavia pool actions", () => {
     mocks.getLoadBalancer.mockResolvedValue(existingLoadBalancer(parent));
     mocks.getLoadBalancerListener.mockResolvedValue(listener);
     mocks.getLoadBalancerPool.mockResolvedValue(pool);
+    mocks.listOctaviaPoolRedirectPolicies.mockResolvedValue([]);
     mocks.executeOpenStackMutation.mockResolvedValue({ ok: true });
   });
 
@@ -309,6 +312,41 @@ describe("Octavia pool actions", () => {
         path: `/v2/lbaas/pools/${poolId}`,
       }),
     );
+    expect(mocks.listOctaviaPoolRedirectPolicies).toHaveBeenCalledWith(
+      poolId,
+      scope.regionId,
+      scope.projectId,
+    );
+  });
+
+  it("blocks deletion if a fresh read finds a disabled L7 redirect to the pool", async () => {
+    mocks.listOctaviaPoolRedirectPolicies.mockResolvedValue([
+      {
+        redirect_pool_id: poolId,
+        admin_state_up: false,
+        rules: [],
+      },
+    ]);
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, remove),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("L7 policies") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not delete the pool if L7 dependencies cannot be checked", async () => {
+    mocks.listOctaviaPoolRedirectPolicies.mockRejectedValue(
+      new Error("unavailable"),
+    );
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, remove),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("L7 policy dependencies") },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 });
 

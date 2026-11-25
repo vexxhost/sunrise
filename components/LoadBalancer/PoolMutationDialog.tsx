@@ -42,7 +42,11 @@ import {
   type OctaviaPoolAlgorithm,
   type OctaviaPoolProtocol,
 } from "@/lib/openstack/octavia-pool-settings";
-import type { OctaviaListener, OctaviaPool } from "@/types/openstack";
+import type {
+  OctaviaL7Policy,
+  OctaviaListener,
+  OctaviaPool,
+} from "@/types/openstack";
 
 export type PoolDialogAction =
   { action: "create" } | { action: "edit" | "delete"; pool: OctaviaPool };
@@ -55,6 +59,7 @@ export function PoolMutationDialog({
   provider,
   capabilities,
   listeners,
+  l7Policies,
   scope,
   onClose,
   onSuccess,
@@ -64,6 +69,7 @@ export function PoolMutationDialog({
   provider?: string;
   capabilities: OpenStackServiceCapabilities;
   listeners: OctaviaListener[];
+  l7Policies: OctaviaL7Policy[];
   scope: MutationScope;
   onClose: () => void;
   onSuccess: (message: string) => void;
@@ -134,7 +140,7 @@ export function PoolMutationDialog({
   };
 
   if (target.action === "delete") {
-    const blocked = octaviaPoolDeletionBlock(target.pool);
+    const blocked = octaviaPoolDeletionBlock(target.pool, l7Policies);
     return (
       <MutationConfirmationDialog
         open
@@ -181,7 +187,7 @@ export function PoolMutationDialog({
     adminStateUp === initial.adminStateUp &&
     algorithm === initial.algorithm;
   const disabled = creating
-    ? staleListener || !protocols.includes(protocol)
+    ? staleListener || !protocols.includes(protocol) || quota.issues.length > 0
     : unchanged;
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>

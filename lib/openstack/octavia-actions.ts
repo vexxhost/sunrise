@@ -63,6 +63,7 @@ import {
   getLoadBalancerPool,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
+  listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
 import {
   sameOctaviaTags,
@@ -1002,8 +1003,21 @@ export async function mutateLoadBalancerPoolAction(
       return pendingMutationFailure(activeScope);
     protocol = pool.protocol;
     if (value.action === "delete") {
-      const blocked = octaviaPoolDeletionBlock(pool);
-      if (blocked) return validationFailure(activeScope, blocked);
+      try {
+        const policies = await listOctaviaPoolRedirectPolicies(
+          id,
+          activeScope.regionId,
+          activeScope.projectId,
+        );
+        const blocked = octaviaPoolDeletionBlock(pool, policies);
+        if (blocked) return validationFailure(activeScope, blocked);
+      } catch (error) {
+        return preflightFailure(
+          error,
+          activeScope,
+          "pool's L7 policy dependencies",
+        );
+      }
       const actual = pool.listeners!.map(({ id }) => id).sort();
       const expected = value.listenerIds.map((id) => id.toLowerCase()).sort();
       if (

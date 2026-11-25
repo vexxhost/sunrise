@@ -244,6 +244,7 @@ async function listCollection<T>(
   collection: string,
   initialPath: string,
   apiVersion?: string,
+  filters?: URLSearchParams,
 ): Promise<T[]> {
   const items: T[] = [];
   const visited = new Set<string>();
@@ -266,7 +267,18 @@ async function listCollection<T>(
       throw new Error(`Invalid Octavia ${collection} response`);
     }
     items.push(...(page as T[]));
-    path = nextCollectionPath(payload?.[`${collection}_links`], collection);
+    const next = nextCollectionPath(
+      payload?.[`${collection}_links`],
+      collection,
+    );
+    if (next && filters) {
+      // Octavia's next links may omit collection filters.
+      const url = new URL(next, "https://octavia.invalid");
+      for (const [key, value] of filters) url.searchParams.set(key, value);
+      path = `${url.pathname}${url.search}`;
+    } else {
+      path = next;
+    }
   }
 
   return items;
@@ -560,6 +572,29 @@ export async function getLoadBalancerPool(
     );
   }
   return pool;
+}
+
+export async function listOctaviaPoolRedirectPolicies(
+  id: string,
+  regionId?: string,
+  projectId?: string,
+): Promise<OctaviaL7Policy[]> {
+  const poolId = requireUuid(id, "pool ID");
+  const scope = await resolveScope(regionId, projectId);
+  const filters = { project_id: scope.projectId, redirect_pool_id: poolId };
+  const policies = await listCollection<OctaviaL7Policy>(
+    scope,
+    "l7policies",
+    collectionPath("l7policies", scope.projectId, filters),
+    undefined,
+    new URLSearchParams(filters),
+  );
+  // Filtering can be disabled in Octavia, even though it accepts the parameter.
+  return policies.filter(
+    (policy) =>
+      belongsToProject(policy.project_id, scope.projectId) &&
+      policy.redirect_pool_id === poolId,
+  );
 }
 
 class MissingPoolTopologyError extends Error {

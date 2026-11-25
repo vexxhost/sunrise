@@ -3,7 +3,11 @@ import {
   type OpenStackServiceCapabilities,
 } from "@/lib/openstack/capabilities";
 import { isOctaviaAmphoraProvider } from "@/lib/openstack/octavia";
-import type { OctaviaListener, OctaviaPool } from "@/types/openstack";
+import type {
+  OctaviaL7Policy,
+  OctaviaListener,
+  OctaviaPool,
+} from "@/types/openstack";
 
 export const OCTAVIA_POOL_PROTOCOLS = ["HTTP", "TCP", "HTTPS", "UDP"] as const;
 export type OctaviaPoolProtocol = (typeof OCTAVIA_POOL_PROTOCOLS)[number];
@@ -68,8 +72,12 @@ export function canAttachNewOctaviaPool(
 }
 
 export function octaviaPoolDeletionBlock(
-  pool: Pick<OctaviaPool, "members" | "healthmonitor_id" | "listeners">,
+  pool: Pick<OctaviaPool, "id" | "members" | "healthmonitor_id" | "listeners">,
+  l7Policies: ReadonlyArray<Pick<OctaviaL7Policy, "redirect_pool_id">>,
 ) {
+  if (l7Policies.some(({ redirect_pool_id }) => redirect_pool_id === pool.id)) {
+    return "Remove or retarget the L7 policies that redirect to this pool before deleting it.";
+  }
   // Octavia omits healthmonitor_id when there is no monitor.
   if (pool.members?.length || pool.healthmonitor_id != null) {
     return "Remove the pool members and health monitor before deleting this pool.";

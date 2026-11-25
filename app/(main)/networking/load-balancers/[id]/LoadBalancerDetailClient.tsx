@@ -807,6 +807,7 @@ export function LoadBalancerDetailClient({
                   <TableHead>Policy</TableHead>
                   <TableHead>Listener</TableHead>
                   <TableHead>Action</TableHead>
+                  <TableHead>Redirect pool</TableHead>
                   <TableHead>Position</TableHead>
                   <TableHead>Rules</TableHead>
                 </TableRow>
@@ -822,6 +823,14 @@ export function LoadBalancerDetailClient({
                       )}
                     </TableCell>
                     <TableCell>{formatOctaviaStatus(policy.action)}</TableCell>
+                    <TableCell>
+                      {policy.redirect_pool_id
+                        ? nameOrId(
+                            poolById.get(policy.redirect_pool_id)?.name,
+                            policy.redirect_pool_id,
+                          )
+                        : "-"}
+                    </TableCell>
                     <TableCell>{policy.position}</TableCell>
                     <TableCell>
                       {(rulesByPolicy.get(policy.id) ?? [])
@@ -861,6 +870,7 @@ export function LoadBalancerDetailClient({
           provider={loadBalancer.provider}
           capabilities={octaviaCapabilities}
           listeners={data.listeners}
+          l7Policies={data.l7Policies}
           scope={{ projectId, regionId }}
           onClose={() => setPoolAction(null)}
           onSuccess={(message) => {
