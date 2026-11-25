@@ -23,6 +23,7 @@ import {
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
+  getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
   listLoadBalancerPoolChoices,
   listLoadBalancers,
@@ -448,6 +449,31 @@ describe("Octavia project scoping", () => {
     ]) {
       mocks.openstackRequest.mockResolvedValue({ pool: invalid });
       await expect(getLoadBalancerPool(parentId, id)).rejects.toMatchObject({
+        status: 404,
+      });
+    }
+  });
+
+  it("reads a member through its pool and verifies the project and member identity", async () => {
+    const poolId = "11111111-1111-4111-8111-111111111111";
+    const id = "22222222-2222-4222-8222-222222222222";
+    const member = { id, project_id: "project-a" };
+    mocks.openstackRequest.mockResolvedValue({ member });
+    await expect(
+      getOctaviaPoolMember(poolId, id, "RegionOne", "project-a"),
+    ).resolves.toMatchObject({ ...member, pool_id: poolId });
+    expect(mocks.openstackRequest).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        path: `/v2/lbaas/pools/${poolId}/members/${id}`,
+      }),
+    );
+    for (const invalid of [
+      { ...member, project_id: "project-b" },
+      { ...member, id: poolId },
+      { ...member, pool_id: id },
+    ]) {
+      mocks.openstackRequest.mockResolvedValue({ member: invalid });
+      await expect(getOctaviaPoolMember(poolId, id)).rejects.toMatchObject({
         status: 404,
       });
     }

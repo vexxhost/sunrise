@@ -6,6 +6,7 @@ import { isOctaviaAmphoraProvider } from "@/lib/openstack/octavia";
 import type {
   OctaviaL7Policy,
   OctaviaListener,
+  OctaviaMember,
   OctaviaPool,
   OctaviaPoolSessionPersistence,
 } from "@/types/openstack";
@@ -197,6 +198,24 @@ export function canUseOctaviaPoolAsDefault(
       (protocol) => protocol === pool.protocol,
     )
   );
+}
+
+export function canChangeOctaviaPoolMembers(
+  pool: Pick<OctaviaPool, "protocol" | "provisioning_status">,
+) {
+  return (
+    pool.provisioning_status?.toUpperCase() === "ACTIVE" &&
+    OCTAVIA_POOL_PROTOCOLS.some((protocol) => protocol === pool.protocol)
+  );
+}
+
+export function formatOctaviaMemberAddress(
+  member: Pick<OctaviaMember, "address" | "protocol_port">,
+) {
+  const address = member.address.includes(":")
+    ? `[${member.address}]`
+    : member.address;
+  return `${address}:${member.protocol_port}`;
 }
 
 export function octaviaPoolDeletionBlock(

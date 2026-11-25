@@ -6,8 +6,10 @@ const mocks = vi.hoisted(() => ({
   getLoadBalancer: vi.fn(),
   getLoadBalancerListener: vi.fn(),
   getLoadBalancerPool: vi.fn(),
+  getOctaviaPoolMember: vi.fn(),
   guardMutationContext: vi.fn(),
   listOctaviaPoolRedirectPolicies: vi.fn(),
+  openstackRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/mutation-context", () => ({
@@ -22,12 +24,16 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
 vi.mock("@/lib/openstack/mutations", () => ({
   executeOpenStackMutation: mocks.executeOpenStackMutation,
 }));
+vi.mock("@/lib/openstack/request-server", () => ({
+  openstackRequest: mocks.openstackRequest,
+}));
 vi.mock("@/lib/openstack/octavia-server", () => ({
   getLoadBalancer: mocks.getLoadBalancer,
   getLoadBalancerDetails: vi.fn(),
   getLoadBalancerListener: mocks.getLoadBalancerListener,
   getLoadBalancerListenerDetails: vi.fn(),
   getLoadBalancerPool: mocks.getLoadBalancerPool,
+  getOctaviaPoolMember: mocks.getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones: vi.fn(),
   listLoadBalancers: vi.fn(),
   listOctaviaPoolRedirectPolicies: mocks.listOctaviaPoolRedirectPolicies,
@@ -38,6 +44,7 @@ import {
   deleteLoadBalancerAction,
   mutateLoadBalancerListenerAction,
   mutateLoadBalancerPoolAction,
+  mutateOctaviaPoolMemberAction,
   updateLoadBalancerAction,
 } from "@/lib/openstack/octavia-actions";
 
@@ -73,6 +80,209 @@ function capabilities(maximum = "2.30") {
     serviceType: "load-balancer",
   };
 }
+
+describe("Octavia member actions", () => {
+  const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
+  const memberId = "564c3265-5933-44c7-a8da-3101e2e66a29";
+  const pool = {
+    id: poolId,
+    protocol: "HTTP",
+    provisioning_status: "ACTIVE",
+    members: [{ id: memberId }],
+  };
+  const member = {
+    id: memberId,
+    name: "backend",
+    weight: 1,
+    admin_state_up: false,
+    provisioning_status: "ACTIVE",
+  };
+  const current = { name: member.name, adminStateUp: false, weight: 1 };
+  const create = {
+    action: "create",
+    ...current,
+    address: "10.10.0.20",
+    port: 8080,
+  } as const;
+  const edit = {
+    action: "edit",
+    id: memberId,
+    ...current,
+    source: current,
+    weight: 0,
+  } as const;
+  const remove = { action: "delete", id: memberId } as const;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.guardMutationContext.mockResolvedValue({
+      ok: true,
+      context: { scope },
+    });
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue(capabilities());
+    mocks.getLoadBalancer.mockResolvedValue(
+      existingLoadBalancer({ pools: [{ id: poolId }], provider: "amphorav2" }),
+    );
+    mocks.getLoadBalancerPool.mockResolvedValue(pool);
+    mocks.getOctaviaPoolMember.mockResolvedValue(member);
+    mocks.openstackRequest.mockResolvedValue({ subnet: { id: vipSubnetId } });
+    mocks.executeOpenStackMutation.mockResolvedValue({ ok: true });
+  });
+
+  it("creates a member on the VIP subnet by default", async () => {
+    await mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, create);
+    expect(mocks.openstackRequest).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "POST",
+        path: `/v2/lbaas/pools/${poolId}/members`,
+        apiVersion: "load-balancer 2.0",
+        body: {
+          member: {
+            name: "backend",
+            admin_state_up: false,
+            address: "10.10.0.20",
+            protocol_port: 8080,
+            weight: 1,
+          },
+        },
+      }),
+    );
+  });
+
+  it("validates subnet visibility before adding an IPv6 member and allows routed addresses", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol: "UDP" });
+    await mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+      ...create,
+      address: "2001:db8::20",
+      subnetId: vipSubnetId,
+    });
+    expect(mocks.openstackRequest).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        path: `/v2.0/subnets/${vipSubnetId}`,
+        regionId: scope.regionId,
+        serviceType: "network",
+        errorMode: "throw",
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.1",
+        body: {
+          member: expect.objectContaining({
+            address: "2001:db8::20",
+            subnet_id: vipSubnetId,
+          }),
+        },
+      }),
+    );
+  });
+
+  it("does not add a member on an unavailable subnet", async () => {
+    mocks.openstackRequest.mockRejectedValueOnce({
+      name: "OpenStackRequestError",
+      status: 403,
+    });
+    await expect(
+      mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+        ...create,
+        subnetId: vipSubnetId,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { status: 403 } });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { address: "10.10.0.20/24" },
+    { address: "2001:db8::2]#" },
+    { port: 0 },
+    { port: 65536 },
+    { weight: -1 },
+    { weight: 257 },
+  ])("rejects invalid member inputs (%o)", async (changes) => {
+    await expect(
+      mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+        ...create,
+        ...changes,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not mutate unlisted pools or members", async () => {
+    await expect(
+      mutateOctaviaPoolMemberAction(scope, loadBalancerId, vipSubnetId, create),
+    ).resolves.toMatchObject({ ok: false, error: { status: 404 } });
+    expect(mocks.getLoadBalancerPool).not.toHaveBeenCalled();
+    await expect(
+      mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+        ...remove,
+        id: vipSubnetId,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { status: 404 } });
+    expect(mocks.getOctaviaPoolMember).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("updates only changed mutable fields, including zero weight", async () => {
+    await mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, edit);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: `/v2/lbaas/pools/${poolId}/members/${memberId}`,
+        body: { member: { weight: 0 } },
+      }),
+    );
+  });
+
+  it.each([3, undefined])(
+    "blocks a stale or missing weight (%s)",
+    async (weight) => {
+      mocks.getOctaviaPoolMember.mockResolvedValue({ ...member, weight });
+      await expect(
+        mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, edit),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not mutate a pending pool or member", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValueOnce({
+      ...pool,
+      provisioning_status: "PENDING_UPDATE",
+    });
+    await expect(
+      mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, create),
+    ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    mocks.getOctaviaPoolMember.mockResolvedValue({
+      ...member,
+      provisioning_status: "PENDING_DELETE",
+    });
+    await expect(
+      mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, remove),
+    ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("removes the member through the scoped nested endpoint and not the pool", async () => {
+    await mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, remove);
+    expect(mocks.getOctaviaPoolMember).toHaveBeenCalledExactlyOnceWith(
+      poolId,
+      memberId,
+      scope.regionId,
+      scope.projectId,
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "DELETE",
+        path: `/v2/lbaas/pools/${poolId}/members/${memberId}`,
+      }),
+    );
+  });
+});
 
 describe("Octavia pool actions", () => {
   const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";

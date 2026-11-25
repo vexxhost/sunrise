@@ -51,6 +51,7 @@ import {
 import {
   availablePoolProtocols,
   canAttachNewOctaviaPool,
+  canChangeOctaviaPoolMembers,
   canUseOctaviaPoolAsDefault,
   OCTAVIA_POOL_ALGORITHMS,
   OCTAVIA_POOL_PERSISTENCE_MODES,
@@ -67,11 +68,13 @@ import {
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
+  getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
   listLoadBalancerPoolChoices,
   listLoadBalancers,
   listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
+import { openstackRequest } from "@/lib/openstack/request-server";
 import {
   sameOctaviaTags,
   validateOctaviaTags,
@@ -226,6 +229,31 @@ const poolMutationSchema = z.discriminatedUnion("action", [
   }),
 ]);
 export type OctaviaPoolMutation = z.input<typeof poolMutationSchema>;
+
+const memberWeightSchema = z.number().int().min(0).max(256);
+const memberFields = z.object({
+  name: z.string().max(255),
+  adminStateUp: z.boolean(),
+  weight: memberWeightSchema.optional(),
+});
+const memberMutationSchema = z.discriminatedUnion("action", [
+  memberFields.extend({
+    action: z.literal("create"),
+    address: z
+      .string()
+      .trim()
+      .pipe(z.union([z.ipv4(), z.ipv6()])),
+    port: z.number().int().min(1).max(65535),
+    subnetId: uuidSchema.optional(),
+  }),
+  memberFields.extend({
+    action: z.literal("edit"),
+    id: uuidSchema,
+    source: memberFields,
+  }),
+  z.object({ action: z.literal("delete"), id: uuidSchema }),
+]);
+export type OctaviaMemberMutation = z.input<typeof memberMutationSchema>;
 
 function validationFailure(scope: MutationScope, message: string) {
   return mutationFailure(
@@ -1282,6 +1310,231 @@ export async function mutateLoadBalancerPoolAction(
           normalizeProjectId(activeScope.projectId)
       ) {
         throw new Error("Octavia returned an invalid pool");
+      }
+      return null;
+    },
+  });
+}
+
+export async function mutateOctaviaPoolMemberAction(
+  scope: MutationScope,
+  loadBalancerId: string,
+  poolId: string,
+  input: OctaviaMemberMutation,
+): Promise<MutationResult<null>> {
+  const parent = uuidSchema.safeParse(loadBalancerId);
+  const poolRef = uuidSchema.safeParse(poolId);
+  const parsed = memberMutationSchema.safeParse(input);
+  if (!parent.success || !poolRef.success || !parsed.success) {
+    return validationFailure(
+      scope,
+      "Review the pool member settings and try again.",
+    );
+  }
+  const guarded = await guardMutationContext(scope);
+  if (!guarded.ok) return guarded.result;
+  const activeScope = guarded.context.scope;
+  const parentId = parent.data.toLowerCase();
+  const targetPoolId = poolRef.data.toLowerCase();
+  const value = parsed.data;
+  const capabilities = await discoverLoadBalancerCapabilities(
+    activeScope.regionId!,
+  );
+  const existing = await readLoadBalancerForMutation(
+    activeScope,
+    parentId,
+    capabilities,
+  );
+  if (!existing.ok) return existing.result;
+  if (
+    existing.value.id !== parentId ||
+    !Array.isArray(existing.value.pools) ||
+    !existing.value.pools.some((pool) => pool?.id === targetPoolId)
+  ) {
+    return mutationFailure(
+      mutationErrorForStatus(404, "read this pool"),
+      activeScope,
+    );
+  }
+  if (!isOctaviaAmphoraProvider(existing.value.provider)) {
+    return validationFailure(
+      activeScope,
+      "Changing pool members is not available for this provider.",
+    );
+  }
+  if (!canChangeOctaviaListeners(existing.value))
+    return pendingMutationFailure(activeScope);
+  let pool: OctaviaPool;
+  try {
+    pool = await getLoadBalancerPool(
+      parentId,
+      targetPoolId,
+      activeScope.regionId,
+      activeScope.projectId,
+    );
+  } catch (error) {
+    return preflightFailure(error, activeScope, "pool");
+  }
+  if (!canChangeOctaviaPoolMembers(pool)) {
+    return mutationFailure(
+      {
+        code: "conflict",
+        message:
+          "The pool must be Active and use a supported protocol to change its members.",
+        retryable: true,
+      },
+      activeScope,
+    );
+  }
+  const memberId = value.action === "create" ? null : value.id.toLowerCase();
+  let body: Record<string, unknown> | undefined;
+  if (value.action === "create") {
+    const subnetId = value.subnetId?.toLowerCase();
+    if (subnetId) {
+      try {
+        const payload = await openstackRequest<{ subnet: { id: string } }>({
+          regionId: activeScope.regionId!,
+          serviceType: "network",
+          serviceName: "neutron",
+          path: `/v2.0/subnets/${subnetId}`,
+          errorMode: "throw",
+        });
+        if (payload?.subnet?.id !== subnetId) {
+          return validationFailure(
+            activeScope,
+            "The selected subnet is no longer available.",
+          );
+        }
+      } catch (error) {
+        return preflightFailure(error, activeScope, "selected subnet");
+      }
+    }
+    body = {
+      name: value.name,
+      address: value.address,
+      protocol_port: value.port,
+      admin_state_up: value.adminStateUp,
+      ...(value.weight !== undefined ? { weight: value.weight } : {}),
+      ...(subnetId ? { subnet_id: subnetId } : {}),
+    };
+  } else {
+    const id = value.id.toLowerCase();
+    if (
+      !Array.isArray(pool.members) ||
+      !pool.members.some((ref) => ref?.id === id)
+    ) {
+      return mutationFailure(
+        mutationErrorForStatus(404, "read this member"),
+        activeScope,
+      );
+    }
+    let member;
+    try {
+      member = await getOctaviaPoolMember(
+        targetPoolId,
+        id,
+        activeScope.regionId,
+        activeScope.projectId,
+      );
+    } catch (error) {
+      return preflightFailure(error, activeScope, "pool member");
+    }
+    if (!canChangeOctaviaListener(member))
+      return pendingMutationFailure(activeScope);
+    if (value.action === "edit") {
+      const currentName = member.name ?? "";
+      if (
+        value.source.name !== currentName ||
+        value.source.adminStateUp !== member.admin_state_up ||
+        (value.weight !== undefined &&
+          (member.weight === undefined ||
+            value.source.weight !== member.weight))
+      ) {
+        return mutationFailure(
+          {
+            code: "conflict",
+            message:
+              "The pool member changed or its settings could not be verified. Refresh and try again.",
+            retryable: true,
+          },
+          activeScope,
+        );
+      }
+      body = {
+        ...(value.name !== currentName ? { name: value.name } : {}),
+        ...(value.adminStateUp !== member.admin_state_up
+          ? { admin_state_up: value.adminStateUp }
+          : {}),
+        ...(value.weight !== undefined && value.weight !== member.weight
+          ? { weight: value.weight }
+          : {}),
+      };
+      if (!Object.keys(body).length) {
+        return {
+          ok: true,
+          status: "success",
+          data: null,
+          message: "No member changes to save.",
+          scope: activeScope,
+        };
+      }
+    }
+  }
+  const supported = await supportedMutationMicroversion(
+    activeScope,
+    pool.protocol === "UDP" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION,
+    "Changing pool members",
+    capabilities,
+  );
+  if (!supported.ok) return supported.result;
+  const operation = {
+    create: {
+      method: "POST",
+      label: "add a pool member",
+      message: "Pool member creation requested.",
+    },
+    edit: {
+      method: "PUT",
+      label: "update this pool member",
+      message: "Pool member update requested.",
+    },
+    delete: {
+      method: "DELETE",
+      label: "remove this pool member",
+      message: "Pool member removal requested.",
+    },
+  } as const;
+  const path = `/v2/lbaas/pools/${targetPoolId}/members`;
+  return executeOpenStackMutation<null>({
+    ...OCTAVIA_SERVICE,
+    scope: activeScope,
+    path: memberId ? `${path}/${memberId}` : path,
+    method: operation[value.action].method,
+    actionLabel: operation[value.action].label,
+    successMessage: operation[value.action].message,
+    apiVersion: `load-balancer ${supported.version}`,
+    ...(body ? { body: { member: body } } : {}),
+    invalidates: [`/networking/load-balancers/${parentId}`, "/quotas"],
+    transform: (payload) => {
+      if (value.action === "delete") return null;
+      const response = z
+        .object({
+          member: z.object({
+            id: uuidSchema,
+            project_id: z.string(),
+            pool_id: uuidSchema.optional(),
+          }),
+        })
+        .safeParse(payload);
+      if (
+        !response.success ||
+        (memberId && response.data.member.id !== memberId) ||
+        (response.data.member.pool_id !== undefined &&
+          response.data.member.pool_id !== targetPoolId) ||
+        normalizeProjectId(response.data.member.project_id) !==
+          normalizeProjectId(activeScope.projectId)
+      ) {
+        throw new Error("Octavia returned an invalid pool member");
       }
       return null;
     },
