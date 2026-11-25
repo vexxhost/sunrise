@@ -51,13 +51,15 @@ const mutationSchema = z.discriminatedUnion("action", [
     settings: l7PoolPolicySchema,
     source: l7PoolPolicySchema,
   }),
-  z.object({
-    action: z.literal("set-enabled"),
-    policyId: idSchema,
-    enabled: z.boolean(),
-    poolId: idSchema,
-    sourceRule: pathSnapshot,
-  }),
+  z
+    .object({
+      action: z.literal("set-enabled"),
+      policyId: idSchema,
+      enabled: z.boolean(),
+      poolId: idSchema,
+      sourceRule: pathSnapshot.nullable(),
+    })
+    .refine(({ enabled, sourceRule }) => !enabled || sourceRule !== null),
   z.object({ action: z.literal("delete-policy"), policyId: idSchema }),
   z.object({
     action: z.literal("delete-failed-policy"),
@@ -232,8 +234,7 @@ export async function mutateOctaviaL7Action(
       if (deletingFailedPolicy) {
         if (
           policy.provisioning_status !== "ERROR" ||
-          current.redirect_pool_id !== value.poolId ||
-          rules.length !== (value.sourceRule ? 1 : 0)
+          current.redirect_pool_id !== value.poolId
         ) {
           return conflict(
             active,
@@ -261,6 +262,15 @@ export async function mutateOctaviaL7Action(
       }
       if (value.action === "add-rule" && rules.length) {
         return conflict(active, "This policy already has a path rule.");
+      }
+      if (
+        "sourceRule" in value &&
+        (rules[0] ?? null) !== (value.sourceRule?.id ?? null)
+      ) {
+        return conflict(
+          active,
+          "The path rule changed. Refresh and try again.",
+        );
       }
       let currentPath;
       if (rules.length) {
@@ -290,9 +300,7 @@ export async function mutateOctaviaL7Action(
       if (
         "sourceRule" in value &&
         value.sourceRule &&
-        (rules[0] !== value.sourceRule.id ||
-          !currentPath ||
-          !sameL7Path(currentPath, value.sourceRule.settings))
+        (!currentPath || !sameL7Path(currentPath, value.sourceRule.settings))
       )
         return conflict(
           active,

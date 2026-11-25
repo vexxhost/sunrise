@@ -217,6 +217,13 @@ describe("Octavia L7 path routing", () => {
       poolId,
       sourceRule,
     } as const;
+    await expect(
+      mutate({ ...enable, sourceRule: null }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
     mocks.getOctaviaListenerL7Policy.mockResolvedValueOnce({
       ...policy,
       rules: [],
@@ -417,4 +424,52 @@ describe("Octavia L7 path routing", () => {
       }),
     );
   });
+
+  it("disables an active policy confirmed to have no rules", async () => {
+    mocks.getOctaviaListenerL7Policy.mockResolvedValue({
+      ...policy,
+      admin_state_up: true,
+      rules: [],
+    });
+    await expect(
+      mutate({
+        action: "set-enabled",
+        policyId,
+        enabled: false,
+        poolId,
+        sourceRule: null,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(mocks.getOctaviaL7Rule).not.toHaveBeenCalled();
+    expect(mocks.getLoadBalancerPool).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: policyPath,
+        body: { l7policy: { admin_state_up: false } },
+      }),
+    );
+  });
+
+  it.each([{ rules: [{ id: ruleId }] }, { rules: undefined }])(
+    "rejects a ruleless disable snapshot if Octavia returns different or missing rule references: %j",
+    async ({ rules }) => {
+      mocks.getOctaviaListenerL7Policy.mockResolvedValue({
+        ...policy,
+        admin_state_up: true,
+        rules,
+      });
+      await expect(
+        mutate({
+          action: "set-enabled",
+          policyId,
+          enabled: false,
+          poolId,
+          sourceRule: null,
+        }),
+      ).resolves.toMatchObject({ ok: false });
+      expect(mocks.getOctaviaL7Rule).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
 });

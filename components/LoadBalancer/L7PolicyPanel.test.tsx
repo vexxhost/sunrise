@@ -65,7 +65,10 @@ const policy: OctaviaL7Policy = {
   rules: [{ id: ruleId }],
 };
 
-function renderPanel(nextPolicy: OctaviaL7Policy, nextRule = rule) {
+function renderPanel(
+  nextPolicy: OctaviaL7Policy,
+  nextRule: OctaviaL7Rule | null = rule,
+) {
   return renderToStaticMarkup(
     <L7PolicyPanel
       data={{
@@ -89,7 +92,7 @@ function renderPanel(nextPolicy: OctaviaL7Policy, nextRule = rule) {
           },
         ],
         l7Policies: [nextPolicy],
-        l7Rules: [nextRule],
+        l7Rules: nextRule ? [nextRule] : [],
       }}
       supportsChanges
       busy={false}
@@ -148,5 +151,26 @@ describe("Octavia L7 error recovery controls", () => {
     expect(markup).toContain("and its path rule");
     expect(markup).toContain("/ready");
     expect(markup).toContain("Its listener and pool will remain.");
+  });
+
+  it("offers Disable for an enabled policy with no rules but never offers Enable", () => {
+    const markup = renderPanel({ ...policy, rules: [] }, null);
+    expect(markup).toMatch(
+      /<button>(?:(?!<\/button>)[\s\S])*Disable policy<\/button>/,
+    );
+    expect(markup).not.toContain("Enable policy");
+    const disabled = renderPanel(
+      { ...policy, admin_state_up: false, rules: [] },
+      null,
+    );
+    expect(disabled).not.toContain("Enable policy");
+    expect(disabled).toContain("Add path rule");
+    expect(disabled).toContain("Delete policy");
+  });
+
+  it("does not infer that a rule is absent if a reference remains but its details are unavailable", () => {
+    const markup = renderPanel(policy, null);
+    expect(markup).toContain("Unavailable");
+    expect(markup).not.toContain("Disable policy");
   });
 });

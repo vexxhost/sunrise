@@ -359,15 +359,15 @@ export function L7PolicyPanel({
                                   )}
                                 </>
                               ) : null}
-                              {ruleSnapshot && !failed ? (
+                              {!failed && (ruleSnapshot || !disabledPolicy) ? (
                                 <DropdownMenuItem
                                   disabled={
                                     !active ||
-                                    !(disabledPolicy
-                                      ? ruleActive
-                                      : ruleSettled) ||
-                                    (disabledPolicy &&
-                                      (!pool || !isL7HttpPool(pool)))
+                                    (disabledPolicy
+                                      ? !ruleActive ||
+                                        !pool ||
+                                        !isL7HttpPool(pool)
+                                      : Boolean(rule) && !ruleSettled)
                                   }
                                   onSelect={() =>
                                     open({
@@ -379,7 +379,7 @@ export function L7PolicyPanel({
                                         policyId,
                                         enabled: disabledPolicy,
                                         poolId: current.redirect_pool_id,
-                                        sourceRule: ruleSnapshot,
+                                        sourceRule: ruleSnapshot ?? null,
                                       },
                                     })
                                   }
