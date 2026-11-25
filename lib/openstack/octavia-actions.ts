@@ -23,6 +23,7 @@ import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import {
   canChangeOctaviaListener,
   canChangeOctaviaListeners,
+  isOctaviaAmphoraProvider,
   isOctaviaProvisioning,
   loadBalancerListenerPath,
   octaviaListenerDeletionBlock,
@@ -48,12 +49,21 @@ import {
   type ListenerSettingKey,
 } from "@/lib/openstack/octavia-listener-settings";
 import {
+  availablePoolProtocols,
+  canAttachNewOctaviaPool,
+  OCTAVIA_POOL_ALGORITHMS,
+  OCTAVIA_POOL_PROTOCOLS,
+  octaviaPoolDeletionBlock,
+} from "@/lib/openstack/octavia-pool-settings";
+import {
   getLoadBalancer,
   getLoadBalancerDetails,
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
+  getLoadBalancerPool,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
+  listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
 import {
   sameOctaviaTags,
@@ -65,6 +75,7 @@ import type {
   OctaviaLoadBalancer,
   OctaviaLoadBalancerDetails,
   OctaviaListener,
+  OctaviaPool,
 } from "@/types/openstack";
 
 const OCTAVIA_SERVICE = {
@@ -110,7 +121,7 @@ const updateLoadBalancerSchema = z
 export type CreateLoadBalancerInput = z.input<typeof createLoadBalancerSchema>;
 export type UpdateLoadBalancerInput = z.input<typeof updateLoadBalancerSchema>;
 
-const listenerFields = z.object({
+const administrativeFields = z.object({
   name: z.string().max(255),
   description: z.string().max(255),
   adminStateUp: z.boolean(),
@@ -133,7 +144,7 @@ const listenerSettingsSchema = z.object({
     .max(LISTENER_CIDR_MAX)
     .optional(),
 });
-const listenerFieldsWithSettings = listenerFields.extend({
+const listenerFieldsWithSettings = administrativeFields.extend({
   settings: listenerSettingsSchema.optional(),
 });
 const listenerMutationSchema = z.discriminatedUnion("action", [
@@ -160,6 +171,29 @@ const listenerMutationSchema = z.discriminatedUnion("action", [
 ]);
 
 export type OctaviaListenerMutation = z.input<typeof listenerMutationSchema>;
+
+const poolFields = administrativeFields.extend({
+  algorithm: z.string().min(1).max(255),
+});
+const poolMutationSchema = z.discriminatedUnion("action", [
+  poolFields.extend({
+    action: z.literal("create"),
+    protocol: z.enum(OCTAVIA_POOL_PROTOCOLS),
+    algorithm: z.enum(OCTAVIA_POOL_ALGORITHMS),
+    listenerId: uuidSchema.optional(),
+  }),
+  poolFields.extend({
+    action: z.literal("edit"),
+    id: uuidSchema,
+    source: poolFields,
+  }),
+  z.object({
+    action: z.literal("delete"),
+    id: uuidSchema,
+    listenerIds: z.array(uuidSchema),
+  }),
+]);
+export type OctaviaPoolMutation = z.input<typeof poolMutationSchema>;
 
 function validationFailure(scope: MutationScope, message: string) {
   return mutationFailure(
@@ -839,6 +873,278 @@ export async function mutateLoadBalancerListenerAction(
           normalizeProjectId(activeScope.projectId)
       ) {
         throw new Error("Octavia returned an invalid listener");
+      }
+      return null;
+    },
+  });
+}
+
+export async function mutateLoadBalancerPoolAction(
+  scope: MutationScope,
+  loadBalancerId: string,
+  input: OctaviaPoolMutation,
+): Promise<MutationResult<null>> {
+  const parent = uuidSchema.safeParse(loadBalancerId);
+  const parsed = poolMutationSchema.safeParse(input);
+  if (!parent.success || !parsed.success) {
+    return validationFailure(scope, "Review the pool settings and try again.");
+  }
+  const guarded = await guardMutationContext(scope);
+  if (!guarded.ok) return guarded.result;
+  const activeScope = guarded.context.scope;
+  const parentId = parent.data.toLowerCase();
+  const value = parsed.data;
+  const capabilities = await discoverLoadBalancerCapabilities(
+    activeScope.regionId!,
+  );
+  const existing = await readLoadBalancerForMutation(
+    activeScope,
+    parentId,
+    capabilities,
+  );
+  if (!existing.ok) return existing.result;
+  if (existing.value.id !== parentId) {
+    return mutationFailure(
+      mutationErrorForStatus(404, "read this load balancer"),
+      activeScope,
+    );
+  }
+  if (!canChangeOctaviaListeners(existing.value)) {
+    return pendingMutationFailure(activeScope);
+  }
+  const provider = existing.value.provider;
+  if (!isOctaviaAmphoraProvider(provider)) {
+    return validationFailure(
+      activeScope,
+      "Changing pools is not available for this load balancer provider.",
+    );
+  }
+
+  const poolId = value.action === "create" ? null : value.id.toLowerCase();
+  let body: Record<string, unknown> | undefined;
+  let protocol: string;
+  if (value.action === "create") {
+    const listenerId = value.listenerId?.toLowerCase();
+    let listenerProtocol: string | undefined;
+    if (listenerId) {
+      if (
+        !Array.isArray(existing.value.listeners) ||
+        !existing.value.listeners.some((ref) => ref?.id === listenerId)
+      ) {
+        return mutationFailure(
+          mutationErrorForStatus(404, "read this listener"),
+          activeScope,
+        );
+      }
+      try {
+        const listener = await getLoadBalancerListener(
+          parentId,
+          listenerId,
+          activeScope.regionId,
+          activeScope.projectId,
+        );
+        if (!canAttachNewOctaviaPool(listener)) {
+          return validationFailure(
+            activeScope,
+            "Select an Active listener without a default pool.",
+          );
+        }
+        listenerProtocol = listener.protocol;
+      } catch (error) {
+        return preflightFailure(error, activeScope, "listener");
+      }
+    }
+    protocol = value.protocol;
+    if (
+      !availablePoolProtocols(
+        provider,
+        capabilities,
+        listenerProtocol,
+      ).includes(value.protocol)
+    ) {
+      return validationFailure(
+        activeScope,
+        "This pool protocol is not available for the selected listener, provider, or API version.",
+      );
+    }
+    body = {
+      name: value.name,
+      description: value.description,
+      admin_state_up: value.adminStateUp,
+      protocol,
+      lb_algorithm: value.algorithm,
+      ...(listenerId
+        ? { listener_id: listenerId }
+        : { loadbalancer_id: parentId }),
+    };
+  } else {
+    const id = value.id.toLowerCase();
+    if (
+      !Array.isArray(existing.value.pools) ||
+      !existing.value.pools.some((ref) => ref?.id === id)
+    ) {
+      return mutationFailure(
+        mutationErrorForStatus(404, "read this pool"),
+        activeScope,
+      );
+    }
+    let pool: OctaviaPool;
+    try {
+      pool = await getLoadBalancerPool(
+        parentId,
+        id,
+        activeScope.regionId,
+        activeScope.projectId,
+      );
+    } catch (error) {
+      return preflightFailure(error, activeScope, "pool");
+    }
+    if (!canChangeOctaviaListener(pool))
+      return pendingMutationFailure(activeScope);
+    protocol = pool.protocol;
+    if (value.action === "delete") {
+      try {
+        const policies = await listOctaviaPoolRedirectPolicies(
+          id,
+          activeScope.regionId,
+          activeScope.projectId,
+        );
+        const blocked = octaviaPoolDeletionBlock(pool, policies);
+        if (blocked) return validationFailure(activeScope, blocked);
+      } catch (error) {
+        return preflightFailure(
+          error,
+          activeScope,
+          "pool's L7 policy dependencies",
+        );
+      }
+      const actual = pool.listeners!.map(({ id }) => id).sort();
+      const expected = value.listenerIds.map((id) => id.toLowerCase()).sort();
+      if (
+        actual.length !== expected.length ||
+        actual.some((id, index) => id !== expected[index])
+      ) {
+        return mutationFailure(
+          {
+            code: "conflict",
+            message:
+              "This pool's listener attachments changed. Refresh before deleting it.",
+            retryable: true,
+          },
+          activeScope,
+        );
+      }
+    } else {
+      const currentName = pool.name ?? "";
+      const currentDescription = pool.description ?? "";
+      if (
+        value.source.name !== currentName ||
+        value.source.description !== currentDescription ||
+        value.source.adminStateUp !== pool.admin_state_up ||
+        value.source.algorithm !== pool.lb_algorithm
+      ) {
+        return mutationFailure(
+          {
+            code: "conflict",
+            message:
+              "The pool changed while this form was open. Refresh and try again.",
+            retryable: true,
+          },
+          activeScope,
+        );
+      }
+      if (
+        value.algorithm !== pool.lb_algorithm &&
+        !z.enum(OCTAVIA_POOL_ALGORITHMS).safeParse(value.algorithm).success
+      ) {
+        return validationFailure(
+          activeScope,
+          "Select a supported load balancing algorithm.",
+        );
+      }
+      body = {
+        ...(value.name !== currentName ? { name: value.name } : {}),
+        ...(value.description !== currentDescription
+          ? { description: value.description }
+          : {}),
+        ...(value.adminStateUp !== pool.admin_state_up
+          ? { admin_state_up: value.adminStateUp }
+          : {}),
+        ...(value.algorithm !== pool.lb_algorithm
+          ? { lb_algorithm: value.algorithm }
+          : {}),
+      };
+      if (!Object.keys(body).length) {
+        return {
+          ok: true,
+          status: "success",
+          data: null,
+          message: "No pool changes to save.",
+          scope: activeScope,
+        };
+      }
+    }
+  }
+
+  const supported = await supportedMutationMicroversion(
+    activeScope,
+    protocol === "UDP" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION,
+    "Changing load balancer pools",
+    capabilities,
+  );
+  if (!supported.ok) return supported.result;
+
+  const path = "/v2/lbaas/pools";
+  const operation = {
+    create: {
+      method: "POST",
+      label: "create this pool",
+      message: "Pool creation requested.",
+    },
+    edit: {
+      method: "PUT",
+      label: "update this pool",
+      message: "Pool update requested.",
+    },
+    delete: {
+      method: "DELETE",
+      label: "delete this pool",
+      message: "Pool deletion requested.",
+    },
+  } as const;
+  return executeOpenStackMutation<null>({
+    actionLabel: operation[value.action].label,
+    scope: activeScope,
+    ...OCTAVIA_SERVICE,
+    path: poolId ? `${path}/${poolId}` : path,
+    method: operation[value.action].method,
+    apiVersion: `load-balancer ${supported.version}`,
+    ...(body ? { body: { pool: body } } : {}),
+    invalidates: [
+      "/networking/load-balancers",
+      `/networking/load-balancers/${parentId}`,
+      "/quotas",
+    ],
+    successMessage: operation[value.action].message,
+    transform: (payload) => {
+      if (value.action === "delete") return null;
+      const response = z
+        .object({
+          pool: z.object({
+            id: uuidSchema,
+            project_id: z.string(),
+            loadbalancers: z.tuple([z.object({ id: uuidSchema })]),
+          }),
+        })
+        .safeParse(payload);
+      if (
+        !response.success ||
+        (poolId && response.data.pool.id !== poolId) ||
+        response.data.pool.loadbalancers[0].id !== parentId ||
+        normalizeProjectId(response.data.pool.project_id) !==
+          normalizeProjectId(activeScope.projectId)
+      ) {
+        throw new Error("Octavia returned an invalid pool");
       }
       return null;
     },

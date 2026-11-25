@@ -1,5 +1,11 @@
 import type { OctaviaListener, OctaviaLoadBalancer } from "@/types/openstack";
 
+export function isOctaviaAmphoraProvider(provider?: string) {
+  return ["amphora", "amphorav2", "octavia"].includes(
+    provider?.toLowerCase() ?? "",
+  );
+}
+
 export function loadBalancerListenerPath(
   loadBalancerId: string,
   listenerId: string,

@@ -123,6 +123,10 @@ export function LoadBalancerCreateAction({
   );
   const submittedTags = octaviaTagsFromDrafts(tags);
   const subnetQueryFailed = subnets.isError;
+  const canSubmit =
+    Boolean(name.trim() && vipSubnetId) &&
+    !subnetQueryFailed &&
+    quota.issues.length === 0;
   const noVisibleSubnets = subnets.isSuccess && subnetOptions.length === 0;
   const zoneLookupMessage = zones.isError
     ? "The cloud scheduler can still choose placement."
@@ -151,7 +155,7 @@ export function LoadBalancerCreateAction({
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!name.trim() || !vipSubnetId || subnetQueryFailed) return;
+    if (pending || !canSubmit) return;
 
     const parsedTags = validateOctaviaTags(tagsAvailable ? submittedTags : []);
     if (!parsedTags.ok) {
@@ -370,16 +374,7 @@ export function LoadBalancerCreateAction({
               >
                 Cancel
               </Button>
-              <Button
-                disabled={
-                  !name.trim() ||
-                  !vipSubnetId ||
-                  subnetQueryFailed ||
-                  quota.issues.length > 0
-                }
-                loading={pending}
-                type="submit"
-              >
+              <Button disabled={!canSubmit} loading={pending} type="submit">
                 <Plus />
                 Create load balancer
               </Button>

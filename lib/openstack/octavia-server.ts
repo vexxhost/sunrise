@@ -244,6 +244,7 @@ async function listCollection<T>(
   collection: string,
   initialPath: string,
   apiVersion?: string,
+  filters?: URLSearchParams,
 ): Promise<T[]> {
   const items: T[] = [];
   const visited = new Set<string>();
@@ -266,7 +267,18 @@ async function listCollection<T>(
       throw new Error(`Invalid Octavia ${collection} response`);
     }
     items.push(...(page as T[]));
-    path = nextCollectionPath(payload?.[`${collection}_links`], collection);
+    const next = nextCollectionPath(
+      payload?.[`${collection}_links`],
+      collection,
+    );
+    if (next && filters) {
+      // Octavia's next links may omit collection filters.
+      const url = new URL(next, "https://octavia.invalid");
+      for (const [key, value] of filters) url.searchParams.set(key, value);
+      path = `${url.pathname}${url.search}`;
+    } else {
+      path = next;
+    }
   }
 
   return items;
@@ -533,6 +545,76 @@ export async function getLoadBalancerListenerDetails(
   return { loadBalancer, listener, capabilities };
 }
 
+export async function getLoadBalancerPool(
+  loadBalancerId: string,
+  id: string,
+  regionId?: string,
+  projectId?: string,
+): Promise<OctaviaPool> {
+  const parentId = requireUuid(loadBalancerId, "load balancer ID");
+  const poolId = requireUuid(id, "pool ID");
+  const scope = await resolveScope(regionId, projectId);
+  const pool = await getProjectResource<OctaviaPool>(
+    scope,
+    "pools",
+    "pool",
+    poolId,
+  );
+  if (
+    pool.id !== poolId ||
+    !Array.isArray(pool.loadbalancers) ||
+    pool.loadbalancers.length !== 1 ||
+    pool.loadbalancers[0]?.id !== parentId
+  ) {
+    throw new OpenStackRequestError(
+      404,
+      "Pool not found on this load balancer",
+    );
+  }
+  return pool;
+}
+
+export async function listOctaviaPoolRedirectPolicies(
+  id: string,
+  regionId?: string,
+  projectId?: string,
+): Promise<OctaviaL7Policy[]> {
+  const poolId = requireUuid(id, "pool ID");
+  const scope = await resolveScope(regionId, projectId);
+  const filters = { project_id: scope.projectId, redirect_pool_id: poolId };
+  const policies = await listCollection<OctaviaL7Policy>(
+    scope,
+    "l7policies",
+    collectionPath("l7policies", scope.projectId, filters),
+    undefined,
+    new URLSearchParams(filters),
+  );
+  // Filtering can be disabled in Octavia, even though it accepts the parameter.
+  return policies.filter(
+    (policy) =>
+      belongsToProject(policy.project_id, scope.projectId) &&
+      policy.redirect_pool_id === poolId,
+  );
+}
+
+class MissingPoolTopologyError extends Error {
+  constructor(cause: unknown) {
+    super("Octavia returned a missing pool in the load balancer topology", {
+      cause,
+    });
+  }
+}
+
+async function readPoolTopologyResource<T>(request: Promise<T>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (isOpenStackNotFoundError(error))
+      throw new MissingPoolTopologyError(error);
+    throw error;
+  }
+}
+
 export async function getLoadBalancerDetails(
   id: string,
   regionId?: string,
@@ -541,6 +623,20 @@ export async function getLoadBalancerDetails(
   const loadBalancerId = requireUuid(id, "load balancer ID");
   const scope = await resolveScope(regionId, projectId);
   const capabilities = await discoverLoadBalancerCapabilities(scope.regionId);
+  try {
+    return await readLoadBalancerDetails(scope, loadBalancerId, capabilities);
+  } catch (error) {
+    if (!(error instanceof MissingPoolTopologyError)) throw error;
+    // A deleted pool can still be referenced by an earlier parent or listener read.
+    return readLoadBalancerDetails(scope, loadBalancerId, capabilities);
+  }
+}
+
+async function readLoadBalancerDetails(
+  scope: OctaviaScope,
+  loadBalancerId: string,
+  capabilities: OpenStackServiceCapabilities,
+): Promise<OctaviaLoadBalancerDetails> {
   const listenerVersion = listenerReadApiVersion(capabilities);
   const readParent = () =>
     readLoadBalancer(scope, loadBalancerId, capabilities);
@@ -603,7 +699,9 @@ export async function getLoadBalancerDetails(
   const [initialPools, l7Policies] = await Promise.all([
     Promise.all(
       poolIds.map((poolId) =>
-        getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
+        readPoolTopologyResource(
+          getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
+        ),
       ),
     ),
     Promise.all(
@@ -624,7 +722,9 @@ export async function getLoadBalancerDetails(
   ).filter((poolId) => !initialPoolIds.has(poolId));
   const redirectPools = await Promise.all(
     redirectPoolIds.map((poolId) =>
-      getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
+      readPoolTopologyResource(
+        getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
+      ),
     ),
   );
   const pools = [...initialPools, ...redirectPools];
@@ -647,11 +747,13 @@ export async function getLoadBalancerDetails(
     healthMonitorsPromise,
     Promise.all(
       pools.map(async (pool) => {
-        const members = await listCollection<OctaviaMember>(
-          scope,
-          "members",
-          nestedCollectionPath(
-            `/v2/lbaas/pools/${encodeURIComponent(pool.id)}/members`,
+        const members = await readPoolTopologyResource(
+          listCollection<OctaviaMember>(
+            scope,
+            "members",
+            nestedCollectionPath(
+              `/v2/lbaas/pools/${encodeURIComponent(pool.id)}/members`,
+            ),
           ),
         );
         return members.map((member) => ({ ...member, pool_id: pool.id }));

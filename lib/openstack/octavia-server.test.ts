@@ -22,8 +22,10 @@ import {
   getLoadBalancerDetails,
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
+  getLoadBalancerPool,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
+  listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
 
@@ -426,6 +428,113 @@ describe("Octavia project scoping", () => {
     );
     expect(mocks.openstackRequest).not.toHaveBeenCalled();
   });
+
+  it("checks the identity and parent of a pool before mutation", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const id = "22222222-2222-4222-8222-222222222222";
+    const pool = {
+      id,
+      project_id: "project-a",
+      loadbalancers: [{ id: parentId }],
+    };
+    mocks.openstackRequest.mockResolvedValue({ pool });
+    await expect(getLoadBalancerPool(parentId, id)).resolves.toEqual(pool);
+    for (const invalid of [
+      { ...pool, project_id: "project-b" },
+      { ...pool, id: parentId },
+      { ...pool, loadbalancers: [{ id }] },
+      { ...pool, loadbalancers: undefined },
+    ]) {
+      mocks.openstackRequest.mockResolvedValue({ pool: invalid });
+      await expect(getLoadBalancerPool(parentId, id)).rejects.toMatchObject({
+        status: 404,
+      });
+    }
+  });
+
+  it("keeps pool and project filters on every L7 page and verifies the returned relationships", async () => {
+    const id = "22222222-2222-4222-8222-222222222222";
+    const matchingPolicy = {
+      id: "policy-one",
+      project_id: "project-a",
+      redirect_pool_id: id,
+      admin_state_up: false,
+      rules: [],
+    };
+    mocks.openstackRequest
+      .mockResolvedValueOnce({
+        l7policies: [{ ...matchingPolicy, redirect_pool_id: null }],
+        l7policies_links: [
+          {
+            rel: "next",
+            href: "https://octavia.example/v2/lbaas/l7policies?limit=100&marker=first",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        l7policies: [
+          matchingPolicy,
+          { ...matchingPolicy, project_id: "project-b" },
+        ],
+      });
+
+    await expect(
+      listOctaviaPoolRedirectPolicies(id, "RegionOne", "project-a"),
+    ).resolves.toEqual([matchingPolicy]);
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(2);
+    for (const [{ path }] of mocks.openstackRequest.mock.calls) {
+      const url = new URL(path, "https://octavia.example");
+      expect(url.pathname).toBe("/v2/lbaas/l7policies");
+      expect(url.searchParams.get("project_id")).toBe("project-a");
+      expect(url.searchParams.get("redirect_pool_id")).toBe(id);
+    }
+    expect(mocks.openstackRequest.mock.calls[1][0].path).toContain(
+      "marker=first",
+    );
+  });
+
+  it.each([
+    { missing: "pool", stillReferenced: false },
+    { missing: "members", stillReferenced: false },
+    { missing: "pool", stillReferenced: true },
+  ])(
+    "retries a topology read when $missing disappears (still referenced: $stillReferenced)",
+    async ({ missing, stillReferenced }) => {
+      const parentId = "11111111-1111-4111-8111-111111111111";
+      const id = "22222222-2222-4222-8222-222222222222";
+      const parent = loadBalancer(parentId, "project-a", "application");
+      let reads = 0;
+      mocks.openstackRequest.mockImplementation(async ({ path }) => {
+        if (path === "/v2/lbaas/loadbalancers/" + parentId) {
+          return {
+            loadbalancer: {
+              ...parent,
+              pools: ++reads === 1 || stillReferenced ? [{ id }] : [],
+            },
+          };
+        }
+        if (path === "/v2/lbaas/pools/" + id && missing === "members") {
+          return { pool: { id, project_id: "project-a" } };
+        }
+        if (path.startsWith("/v2/lbaas/pools/" + id)) {
+          throw new OpenStackRequestError(404, "Pool not found");
+        }
+        return null;
+      });
+      const details = getLoadBalancerDetails(parentId);
+      if (stillReferenced) {
+        await expect(details).rejects.toThrow(
+          "missing pool in the load balancer topology",
+        );
+      } else {
+        await expect(details).resolves.toMatchObject({
+          pools: [],
+          members: [],
+        });
+      }
+      expect(reads).toBe(2);
+    },
+  );
 
   it("loads details through the selected load balancer relationships", async () => {
     const loadBalancerId = "11111111-1111-1111-1111-111111111111";
