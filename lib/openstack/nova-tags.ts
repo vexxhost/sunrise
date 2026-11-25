@@ -1,33 +1,16 @@
+export {
+  decodeTagFromEditor as decodeNovaTagFromEditor,
+  encodeTagForEditor as encodeNovaTagForEditor,
+} from "@/lib/openstack/tag-editor";
+
 export const NOVA_MAX_SERVER_TAGS = 50;
 export const NOVA_MAX_SERVER_TAG_LENGTH = 60;
 
 export type NovaTagsValidationResult =
-  | { ok: true; tags: string[] }
-  | { ok: false; error: string };
+  { ok: true; tags: string[] } | { ok: false; error: string };
 
 export function novaTagLength(value: string) {
   return Array.from(value).length;
-}
-
-export function encodeNovaTagForEditor(value: string) {
-  return value.replaceAll("\\", "\\\\").replaceAll("\r", "\\r");
-}
-
-export function decodeNovaTagFromEditor(value: string) {
-  let decoded = "";
-
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index];
-    const next = value[index + 1];
-    if (character === "\\" && (next === "\\" || next === "r")) {
-      decoded += next === "r" ? "\r" : "\\";
-      index += 1;
-    } else {
-      decoded += character;
-    }
-  }
-
-  return decoded;
 }
 
 export function formatNovaTag(value: string) {

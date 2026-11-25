@@ -1,14 +1,26 @@
 "use client";
 
-import { useMemo } from "react";
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { Activity, Network, Waypoints } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { Activity, Network, Trash2, Waypoints } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import {
+  LoadBalancerMutationDialog,
+  type LoadBalancerMutationKind,
+} from "@/components/LoadBalancer/LoadBalancerMutationDialog";
+import { OctaviaTagList } from "@/components/LoadBalancer/OctaviaTags";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { RecentResourceTracker } from "@/components/resources/RecentResourceTracker";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import {
   Table,
@@ -21,6 +33,7 @@ import {
 import {
   loadBalancerDetailsQueryOptions,
   loadBalancerFloatingIpsQueryOptions,
+  loadBalancersQueryOptions,
 } from "@/hooks/queries/useLoadBalancers";
 import {
   networkQueryOptions,
@@ -33,6 +46,7 @@ import {
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
+import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
   return (
@@ -62,12 +76,17 @@ export function LoadBalancerDetailClient({
   neutronAvailable,
   projectId,
   regionId,
+  tagSupport,
 }: {
   id: string;
   neutronAvailable: boolean;
-  projectId?: string;
-  regionId?: string;
+  projectId: string;
+  regionId: string;
+  tagSupport: OpenStackFeatureSupport;
 }) {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const [action, setAction] = useState<LoadBalancerMutationKind | null>(null);
   const detailsQuery = useMemo(
     () => loadBalancerDetailsQueryOptions(regionId, projectId, id),
     [id, projectId, regionId],
@@ -166,7 +185,21 @@ export function LoadBalancerDetailClient({
             <CopyButton value={loadBalancer.id} label="Copy load balancer ID" />
           </div>
         </div>
-        <Badge variant="outline">Read-only</Badge>
+        <div className="flex items-center gap-2">
+          <EditActionButton
+            disabled={isOctaviaProvisioning(loadBalancer)}
+            onClick={() => setAction("edit")}
+          />
+          <Button
+            disabled={isOctaviaProvisioning(loadBalancer)}
+            onClick={() => setAction("delete")}
+            tone="danger"
+            variant="outline"
+          >
+            <Trash2 className="size-4" />
+            Delete
+          </Button>
+        </div>
       </div>
 
       <section className="space-y-3">
@@ -230,6 +263,11 @@ export function LoadBalancerDetailClient({
           <DetailField label="Administrative state">
             {loadBalancer.admin_state_up ? "Up" : "Down"}
           </DetailField>
+          {tagSupport.status !== "unsupported" ? (
+            <DetailField label="Tags">
+              <OctaviaTagList tags={loadBalancer.tags} />
+            </DetailField>
+          ) : null}
           <DetailField label="Created">
             {formatUtcTimestamp(loadBalancer.created_at)}
           </DetailField>
@@ -608,17 +646,30 @@ export function LoadBalancerDetailClient({
         </section>
       ) : null}
 
-      {loadBalancer.tags?.length ? (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold">Tags</h2>
-          <div className="flex flex-wrap gap-2">
-            {loadBalancer.tags.map((tag) => (
-              <Badge key={tag} variant="outline">
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        </section>
+      {action ? (
+        <LoadBalancerMutationDialog
+          action={action}
+          key={`${action}-${loadBalancer.id}`}
+          loadBalancer={loadBalancer}
+          onComplete={async (deleted) => {
+            await Promise.all([
+              queryClient.invalidateQueries({
+                queryKey: loadBalancersQueryOptions(regionId, projectId)
+                  .queryKey,
+              }),
+              queryClient.invalidateQueries({
+                queryKey: detailsQuery.queryKey,
+                refetchType: deleted ? "none" : "active",
+              }),
+            ]);
+            if (deleted) {
+              router.replace("/networking/load-balancers");
+            }
+          }}
+          onOpenChange={() => setAction(null)}
+          scope={{ projectId, regionId }}
+          tagSupport={tagSupport}
+        />
       ) : null}
     </div>
   );

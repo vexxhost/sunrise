@@ -14,9 +14,11 @@ vi.mock("@/lib/openstack/request-server", () => ({
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverLoadBalancerCapabilities: mocks.discoverLoadBalancerCapabilities,
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION: "2.14",
+  OCTAVIA_TAGS_MICROVERSION: "2.5",
 }));
 
 import {
+  getLoadBalancer,
   getLoadBalancerDetails,
   listLoadBalancerAvailabilityZones,
   listLoadBalancers,
@@ -165,6 +167,7 @@ describe("Octavia project scoping", () => {
     expect(mocks.openstackRequest).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
+        apiVersion: "load-balancer 2.5",
         path: "/v2/lbaas/loadbalancers?limit=100&project_id=project-a",
       }),
     );
@@ -174,6 +177,49 @@ describe("Octavia project scoping", () => {
         path: "/v2/lbaas/loadbalancers?project_id=project-a&marker=next",
       }),
     );
+  });
+
+  it("falls back to baseline reads when an undiscoverable cloud rejects tag microversions", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      message: "",
+      serviceType: "load-balancer",
+    });
+    mocks.openstackRequest
+      .mockRejectedValueOnce(
+        new OpenStackRequestError(406, "Microversion is not supported"),
+      )
+      .mockResolvedValueOnce({
+        loadbalancers: [
+          loadBalancer(
+            "11111111-1111-1111-1111-111111111111",
+            "project-a",
+            "application",
+          ),
+        ],
+      });
+
+    await expect(listLoadBalancers()).resolves.toHaveLength(1);
+    expect(mocks.openstackRequest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ apiVersion: "load-balancer 2.5" }),
+    );
+    expect(mocks.openstackRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ apiVersion: undefined }),
+    );
+  });
+
+  it("does not hide a tag-read failure after support was advertised", async () => {
+    mocks.openstackRequest.mockRejectedValue(
+      new OpenStackRequestError(406, "Microversion is not supported"),
+    );
+
+    await expect(listLoadBalancers()).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof OpenStackRequestError && error.status === 406,
+    );
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(1);
   });
 
   it("rejects pagination targets outside the Octavia API", async () => {
@@ -216,6 +262,41 @@ describe("Octavia project scoping", () => {
         error instanceof OpenStackRequestError && error.status === 404,
     );
     expect(mocks.openstackRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads only an active-project load balancer for mutation preflight", async () => {
+    const resource = loadBalancer(
+      "11111111-1111-1111-1111-111111111111",
+      "project-a",
+      "application",
+    );
+    mocks.openstackRequest.mockResolvedValue({ loadbalancer: resource });
+
+    await expect(
+      getLoadBalancer("11111111-1111-1111-1111-111111111111"),
+    ).resolves.toBe(resource);
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/v2/lbaas/loadbalancers/11111111-1111-1111-1111-111111111111",
+      }),
+    );
+  });
+
+  it("rejects a cross-project mutation-preflight resource", async () => {
+    mocks.openstackRequest.mockResolvedValue({
+      loadbalancer: loadBalancer(
+        "11111111-1111-1111-1111-111111111111",
+        "project-b",
+        "other",
+      ),
+    });
+
+    await expect(
+      getLoadBalancer("11111111-1111-1111-1111-111111111111"),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof OpenStackRequestError && error.status === 404,
+    );
   });
 
   it("rejects malformed resource IDs before making an API request", async () => {

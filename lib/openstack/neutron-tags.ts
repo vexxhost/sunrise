@@ -1,3 +1,8 @@
+export {
+  decodeTagFromEditor as decodeNeutronTagFromEditor,
+  encodeTagForEditor as encodeNeutronTagForEditor,
+} from "@/lib/openstack/tag-editor";
+
 export const NEUTRON_MAX_TAG_LENGTH = 255;
 
 export type NeutronTagsValidationResult =
@@ -5,27 +10,6 @@ export type NeutronTagsValidationResult =
 
 export function neutronTagLength(value: string) {
   return Array.from(value).length;
-}
-
-export function encodeNeutronTagForEditor(value: string) {
-  return value.replaceAll("\\", "\\\\").replaceAll("\r", "\\r");
-}
-
-export function decodeNeutronTagFromEditor(value: string) {
-  let decoded = "";
-
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index];
-    const next = value[index + 1];
-    if (character === "\\" && (next === "\\" || next === "r")) {
-      decoded += next === "r" ? "\r" : "\\";
-      index += 1;
-    } else {
-      decoded += character;
-    }
-  }
-
-  return decoded;
 }
 
 export function formatNeutronTag(value: string) {

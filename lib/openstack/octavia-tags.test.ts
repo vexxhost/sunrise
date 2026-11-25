@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  limitOctaviaTagInput,
+  formatOctaviaTag,
   OCTAVIA_MAX_RESOURCE_TAGS,
+  sameOctaviaTags,
   validateOctaviaTags,
 } from "@/lib/openstack/octavia-tags";
 
@@ -13,13 +14,21 @@ describe("Octavia resource tags", () => {
     expect(validateOctaviaTags(tags)).toEqual({ ok: true, tags });
   });
 
-  it("limits editor input by Unicode code points", () => {
-    expect(limitOctaviaTagInput("😀".repeat(61))).toBe("😀".repeat(60));
-    expect(limitOctaviaTagInput("a".repeat(61))).toBe("a".repeat(60));
+  it("counts tag length by Unicode code points", () => {
     expect(validateOctaviaTags(["😀".repeat(60)])).toEqual({
       ok: true,
       tags: ["😀".repeat(60)],
     });
+  });
+
+  it("formats ambiguous values and compares tags as an unordered set", () => {
+    expect(formatOctaviaTag(" visible ")).toBe('" visible "');
+    expect(formatOctaviaTag("line\nbreak")).toBe('"line\\nbreak"');
+    expect(
+      sameOctaviaTags(["env:test", "team:one"], ["team:one", "env:test"]),
+    ).toBe(true);
+    expect(sameOctaviaTags(["env:test"], ["env:prod"])).toBe(false);
+    expect(sameOctaviaTags(["a", "a"], ["a", "b"])).toBe(false);
   });
 
   it.each([

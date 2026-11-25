@@ -2,8 +2,13 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Waypoints } from "lucide-react";
+import { Plus, Waypoints } from "lucide-react";
 
+import {
+  OctaviaTagsEditor,
+  octaviaTagsFromDrafts,
+  type OctaviaTagDraft,
+} from "@/components/LoadBalancer/OctaviaTags";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { AvailabilityZoneSelect } from "@/components/OpenStack/AvailabilityZoneSelect";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
@@ -36,17 +41,7 @@ import { loadBalancerAvailabilityZonesQueryOptions } from "@/hooks/queries/useLo
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { createLoadBalancerAction } from "@/lib/openstack/octavia-actions";
-import {
-  limitOctaviaTagInput,
-  OCTAVIA_MAX_RESOURCE_TAG_LENGTH,
-  OCTAVIA_MAX_RESOURCE_TAGS,
-} from "@/lib/openstack/octavia-tags";
-
-type TagDraft = { id: string; value: string };
-
-function tagDraft(): TagDraft {
-  return { id: crypto.randomUUID(), value: "" };
-}
+import { validateOctaviaTags } from "@/lib/openstack/octavia-tags";
 
 export function LoadBalancerCreateAction({
   availabilityZoneSupport,
@@ -69,7 +64,7 @@ export function LoadBalancerCreateAction({
   const [vipSubnetId, setVipSubnetId] = useState("");
   const [availabilityZone, setAvailabilityZone] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
-  const [tags, setTags] = useState<TagDraft[]>([]);
+  const [tags, setTags] = useState<OctaviaTagDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const tagsAvailable = tagSupport.status !== "unsupported";
@@ -126,9 +121,7 @@ export function LoadBalancerCreateAction({
         .sort((left, right) => left.localeCompare(right)),
     [zones.data],
   );
-  const submittedTags = tags
-    .map((tag) => tag.value)
-    .filter((tag) => tag.length > 0);
+  const submittedTags = octaviaTagsFromDrafts(tags);
   const subnetQueryFailed = subnets.isError;
   const noVisibleSubnets = subnets.isSuccess && subnetOptions.length === 0;
   const zoneLookupMessage = zones.isError
@@ -160,6 +153,12 @@ export function LoadBalancerCreateAction({
     event.preventDefault();
     if (!name.trim() || !vipSubnetId || subnetQueryFailed) return;
 
+    const parsedTags = validateOctaviaTags(tagsAvailable ? submittedTags : []);
+    if (!parsedTags.ok) {
+      setError(parsedTags.error);
+      return;
+    }
+
     startTransition(async () => {
       setError(null);
       const result = await createLoadBalancerAction(
@@ -173,7 +172,7 @@ export function LoadBalancerCreateAction({
               ? availabilityZone
               : undefined,
           adminStateUp,
-          tags: tagsAvailable ? submittedTags : [],
+          tags: parsedTags.tags,
         },
       );
       if (!result.ok) {
@@ -308,89 +307,12 @@ export function LoadBalancerCreateAction({
             </div>
 
             {tagsAvailable ? (
-              <section className="space-y-3 border-t pt-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">Tags</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Optional exact values. Each tag may contain up to{" "}
-                      {OCTAVIA_MAX_RESOURCE_TAG_LENGTH} characters, excluding
-                      commas and slashes.
-                    </p>
-                  </div>
-                  <Button
-                    aria-label="Add tag"
-                    disabled={
-                      pending || tags.length >= OCTAVIA_MAX_RESOURCE_TAGS
-                    }
-                    onClick={() =>
-                      setTags((current) => [...current, tagDraft()])
-                    }
-                    size="icon-sm"
-                    title="Add tag"
-                    type="button"
-                    variant="outline"
-                  >
-                    <Plus />
-                  </Button>
-                </div>
-                {tags.length ? (
-                  <div className="space-y-2">
-                    {tags.map((tag, index) => (
-                      <div className="flex items-center gap-2" key={tag.id}>
-                        <Label
-                          className="sr-only"
-                          htmlFor={`load-balancer-tag-${tag.id}`}
-                        >
-                          Tag {index + 1}
-                        </Label>
-                        <Input
-                          id={`load-balancer-tag-${tag.id}`}
-                          disabled={pending}
-                          onChange={(event) =>
-                            setTags((current) =>
-                              current.map((currentTag) =>
-                                currentTag.id === tag.id
-                                  ? {
-                                      ...currentTag,
-                                      value: limitOctaviaTagInput(
-                                        event.target.value,
-                                      ),
-                                    }
-                                  : currentTag,
-                              ),
-                            )
-                          }
-                          placeholder="env:test"
-                          value={tag.value}
-                        />
-                        <Button
-                          aria-label={`Remove tag ${index + 1}`}
-                          disabled={pending}
-                          onClick={() =>
-                            setTags((current) =>
-                              current.filter(
-                                (currentTag) => currentTag.id !== tag.id,
-                              ),
-                            )
-                          }
-                          size="icon-sm"
-                          title="Remove tag"
-                          tone="danger"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Trash2 />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No tags will be applied.
-                  </p>
-                )}
-              </section>
+              <OctaviaTagsEditor
+                disabled={pending}
+                idPrefix="load-balancer-tag"
+                onChange={setTags}
+                tags={tags}
+              />
             ) : (
               <MutationAlert variant="info" title="Tags unavailable">
                 {tagSupport.message}
