@@ -72,11 +72,19 @@ export interface OctaviaPool {
   admin_state_up: boolean;
   protocol: string;
   lb_algorithm: string;
+  session_persistence?: OctaviaPoolSessionPersistence | null;
   loadbalancers?: OctaviaResourceReference[];
   listeners?: OctaviaResourceReference[];
   members?: OctaviaResourceReference[];
   healthmonitor_id?: string | null;
   tags?: string[];
+}
+
+export interface OctaviaPoolSessionPersistence {
+  type: string;
+  cookie_name?: string | null;
+  persistence_timeout?: number | null;
+  persistence_granularity?: string | null;
 }
 
 export interface OctaviaMember {

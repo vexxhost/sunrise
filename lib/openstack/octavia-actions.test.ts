@@ -176,6 +176,187 @@ describe("Octavia pool actions", () => {
     expect(body.pool).not.toHaveProperty("loadbalancer_id");
   });
 
+  const appCookie = {
+    type: "APP_COOKIE",
+    cookie_name: "app_session-id",
+    persistence_timeout: null,
+    persistence_granularity: null,
+  } as const;
+
+  it.each([
+    {
+      protocol: "HTTP",
+      persistence: { type: "HTTP_COOKIE" },
+      apiVersion: "2.0",
+    },
+    {
+      protocol: "HTTP",
+      persistence: { type: "APP_COOKIE", cookie_name: appCookie.cookie_name },
+      apiVersion: "2.0",
+    },
+    { protocol: "TCP", persistence: { type: "SOURCE_IP" }, apiVersion: "2.0" },
+    {
+      protocol: "HTTPS",
+      persistence: { type: "SOURCE_IP" },
+      apiVersion: "2.0",
+    },
+    { protocol: "UDP", persistence: { type: "SOURCE_IP" }, apiVersion: "2.1" },
+  ] as const)(
+    "creates a $protocol pool with $persistence.type",
+    async ({ protocol, persistence, apiVersion }) => {
+      await mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...create,
+        protocol,
+        persistence,
+      });
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: "POST",
+          apiVersion: `load-balancer ${apiVersion}`,
+          body: {
+            pool: expect.objectContaining({ session_persistence: persistence }),
+          },
+        }),
+      );
+    },
+  );
+
+  it.each([
+    { protocol: "UDP", persistence: { type: "HTTP_COOKIE" } },
+    {
+      protocol: "TCP",
+      persistence: { type: "APP_COOKIE", cookie_name: "session" },
+    },
+    { protocol: "HTTPS", persistence: { type: "HTTP_COOKIE" } },
+    {
+      protocol: "HTTP",
+      persistence: { type: "HTTP_COOKIE", cookie_name: "session" },
+    },
+    { protocol: "HTTP", persistence: { type: "APP_COOKIE" } },
+    {
+      protocol: "HTTP",
+      persistence: { type: "APP_COOKIE", cookie_name: "bad name" },
+    },
+    {
+      protocol: "HTTP",
+      persistence: { type: "APP_COOKIE", cookie_name: "session\n" },
+    },
+    {
+      protocol: "HTTP",
+      persistence: { type: "APP_COOKIE", cookie_name: "a".repeat(256) },
+    },
+  ] as const)("rejects invalid persistence at creation (%o)", async (input) => {
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...create,
+        ...input,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [null, { type: "HTTP_COOKIE" }, { type: "HTTP_COOKIE" }],
+    [
+      appCookie,
+      { type: "APP_COOKIE", cookie_name: "renamed_session" },
+      { type: "APP_COOKIE", cookie_name: "renamed_session" },
+    ],
+    [
+      appCookie,
+      { type: "SOURCE_IP" },
+      { type: "SOURCE_IP", cookie_name: null },
+    ],
+    [appCookie, null, null],
+  ] as const)(
+    "updates only session persistence from %o to %o",
+    async (before, after, expected) => {
+      mocks.getLoadBalancerPool.mockResolvedValue({
+        ...pool,
+        session_persistence: before ?? undefined,
+      });
+      await mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...edit,
+        persistence: { before, after },
+      });
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: "PUT",
+          body: { pool: { session_persistence: expected } },
+        }),
+      );
+    },
+  );
+
+  it("validates edit persistence against the fresh pool protocol", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol: "UDP" });
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...edit,
+        persistence: { before: null, after: { type: "HTTP_COOKIE" } },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  const customSource = {
+    type: "SOURCE_IP",
+    cookie_name: null,
+    persistence_timeout: 360,
+    persistence_granularity: "255.255.255.0",
+  } as const;
+
+  it.each([
+    { ...appCookie, cookie_name: "changed_cookie" },
+    { ...customSource, persistence_timeout: 180 },
+    { type: "SOURCE_IP", persistence_timeout: "invalid" },
+  ])(
+    "rejects a stale or unverified persistence snapshot (%o)",
+    async (session_persistence) => {
+      const before =
+        session_persistence.type === "APP_COOKIE" ? appCookie : customSource;
+      mocks.getLoadBalancerPool.mockResolvedValue({
+        ...pool,
+        session_persistence,
+      });
+      await expect(
+        mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+          ...edit,
+          persistence: { before, after: null },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("leaves provider-specific UDP SOURCE_IP settings untouched when the mode is unchanged", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      protocol: "UDP",
+      session_persistence: customSource,
+    });
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...edit,
+        persistence: { before: customSource, after: { type: "SOURCE_IP" } },
+      }),
+    ).resolves.toMatchObject({ ok: true, status: "success" });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    await mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+      ...edit,
+      name: "renamed",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ body: { pool: { name: "renamed" } } }),
+    );
+  });
+
   it.each([
     { ...listener, default_pool_id: poolId },
     { ...listener, default_pool_id: undefined },

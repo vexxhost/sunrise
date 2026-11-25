@@ -59,7 +59,10 @@ import {
   loadBalancerListenerPath,
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
-import { formatPoolAlgorithm } from "@/lib/openstack/octavia-pool-settings";
+import {
+  describePoolPersistence,
+  formatPoolAlgorithm,
+} from "@/lib/openstack/octavia-pool-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 import type {
   OpenStackFeatureSupport,
@@ -614,6 +617,7 @@ export function LoadBalancerDetailClient({
                 <TableHead>Pool</TableHead>
                 <TableHead>Protocol</TableHead>
                 <TableHead>Algorithm</TableHead>
+                <TableHead>Session persistence</TableHead>
                 <TableHead>Listener</TableHead>
                 <TableHead>Members</TableHead>
                 <TableHead>Operating</TableHead>
@@ -636,6 +640,9 @@ export function LoadBalancerDetailClient({
                     <TableCell>{pool.protocol}</TableCell>
                     <TableCell>
                       {formatPoolAlgorithm(pool.lb_algorithm)}
+                    </TableCell>
+                    <TableCell>
+                      {describePoolPersistence(pool.session_persistence)}
                     </TableCell>
                     <TableCell>
                       {pool.listeners?.length
@@ -705,7 +712,7 @@ export function LoadBalancerDetailClient({
                 <TableRow>
                   <TableCell
                     className="py-8 text-center text-muted-foreground"
-                    colSpan={poolChangesSupported ? 8 : 7}
+                    colSpan={poolChangesSupported ? 9 : 8}
                   >
                     No pools are configured.
                   </TableCell>
