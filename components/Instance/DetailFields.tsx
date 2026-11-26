@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 interface DetailSectionProps {
   title: string;
   children: ReactNode;
+  actions?: ReactNode;
 }
 
 interface DetailFieldProps {
@@ -13,10 +14,21 @@ interface DetailFieldProps {
   className?: string;
 }
 
-export function DetailSection({ title, children }: DetailSectionProps) {
+export function DetailSection({
+  title,
+  children,
+  actions,
+}: DetailSectionProps) {
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold">{title}</h2>
+      {actions ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          {actions}
+        </div>
+      ) : (
+        <h2 className="text-sm font-semibold">{title}</h2>
+      )}
       <div className="overflow-visible rounded-md border">{children}</div>
     </section>
   );
@@ -28,7 +40,12 @@ export function DetailField({ label, children, className }: DetailFieldProps) {
       <div className="min-w-0 text-muted-foreground">
         <FadedText value={label} />
       </div>
-      <div className={cn("min-w-0 break-words [overflow-wrap:anywhere]", className)}>
+      <div
+        className={cn(
+          "min-w-0 break-words [overflow-wrap:anywhere]",
+          className,
+        )}
+      >
         {children ?? "-"}
       </div>
     </div>

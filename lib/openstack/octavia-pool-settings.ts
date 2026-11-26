@@ -2,6 +2,7 @@ import {
   microversionSupport,
   type OpenStackServiceCapabilities,
 } from "@/lib/openstack/capabilities";
+import type { MutationErrorCode } from "@/lib/mutations";
 import { isOctaviaAmphoraProvider } from "@/lib/openstack/octavia";
 import type {
   OctaviaL7Policy,
@@ -207,6 +208,21 @@ export function canChangeOctaviaPoolMembers(
     pool.provisioning_status?.toUpperCase() === "ACTIVE" &&
     OCTAVIA_POOL_PROTOCOLS.some((protocol) => protocol === pool.protocol)
   );
+}
+
+export function poolChildMutationRecovery(
+  code: MutationErrorCode,
+  retainDraftOnConflict = false,
+) {
+  const unconfirmed = code === "invalid-response" || code === "network-error";
+  return {
+    needsRefresh: code === "conflict" || code === "not-found" || unconfirmed,
+    needsReopen:
+      code === "context-changed" ||
+      code === "not-found" ||
+      unconfirmed ||
+      (code === "conflict" && !retainDraftOnConflict),
+  };
 }
 
 export function formatOctaviaMemberAddress(

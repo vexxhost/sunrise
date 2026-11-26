@@ -13,6 +13,9 @@ vi.mock("@/hooks/queries/useLoadBalancers", () => ({
 vi.mock("@/components/LoadBalancer/MemberMutationDialog", () => ({
   MemberMutationDialog: () => null,
 }));
+vi.mock("@/components/LoadBalancer/HealthMonitorMutationDialog", () => ({
+  HealthMonitorMutationDialog: () => null,
+}));
 
 import { PoolDetailClient } from "./PoolDetailClient";
 
@@ -27,6 +30,31 @@ const loadBalancer = {
   pools: [{ id: poolId }],
   provisioning_status: "ACTIVE",
 };
+const pool = {
+  id: poolId,
+  name: "backend",
+  protocol: "HTTP",
+  lb_algorithm: "ROUND_ROBIN",
+  provisioning_status: "ACTIVE",
+  admin_state_up: true,
+  listeners: [],
+  session_persistence: { type: "APP_COOKIE", cookie_name: "app_session" },
+};
+const monitor = {
+  id: "monitor",
+  name: "health",
+  type: "HTTP",
+  delay: 5,
+  timeout: 3,
+  admin_state_up: true,
+  max_retries: 3,
+  max_retries_down: 3,
+  http_method: "GET",
+  url_path: "/health",
+  expected_codes: "200",
+  provisioning_status: "ACTIVE",
+  pools: [{ id: poolId }],
+};
 
 function renderDetail(
   overrides: Record<string, unknown> = {},
@@ -36,16 +64,7 @@ function renderDetail(
     ...queryState,
     data: {
       loadBalancer,
-      pool: {
-        id: poolId,
-        name: "backend",
-        protocol: "HTTP",
-        lb_algorithm: "ROUND_ROBIN",
-        provisioning_status: "ACTIVE",
-        admin_state_up: true,
-        listeners: [],
-        session_persistence: { type: "APP_COOKIE", cookie_name: "app_session" },
-      },
+      pool,
       members: [],
       listeners: [],
       healthMonitor: null,
@@ -66,6 +85,12 @@ function renderDetail(
 function addMemberButton(markup: string) {
   return markup.match(
     /<button\b[^>]*>(?:(?!<\/button>)[\s\S])*Add member<\/button>/,
+  )?.[0];
+}
+
+function addMonitorButton(markup: string) {
+  return markup.match(
+    /<button\b[^>]*>(?:(?!<\/button>)[\s\S])*Add health monitor<\/button>/,
   )?.[0];
 }
 
@@ -148,4 +173,49 @@ describe("pool details view", () => {
       ' disabled=""',
     );
   });
+
+  it("adds monitors only for supported providers and pools with no monitor reference", () => {
+    expect(addMonitorButton(renderDetail())).toBeDefined();
+    expect(addMonitorButton(renderDetail())).not.toContain(' disabled=""');
+    expect(
+      addMonitorButton(renderDetail({}, { isRefetchError: true })),
+    ).toContain(' disabled=""');
+    expect(
+      addMonitorButton(
+        renderDetail({ pool: { ...pool, healthmonitor_id: monitor.id } }),
+      ),
+    ).toBeUndefined();
+    expect(
+      addMonitorButton(renderDetail({ pool: { ...pool, protocol: "UDP" } })),
+    ).toBeUndefined();
+    expect(
+      addMonitorButton(
+        renderDetail({ loadBalancer: { ...loadBalancer, provider: "ovn" } }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it.each(["ACTIVE", "ERROR", "PENDING_UPDATE"])(
+    "gates edit and delete for monitor provisioning status %s",
+    (provisioning_status) => {
+      const markup = renderDetail({
+        pool: { ...pool, healthmonitor_id: monitor.id },
+        healthMonitor: { ...monitor, provisioning_status },
+      });
+      const edit = markup.match(
+        /<button\b[^>]*aria-label="Edit health monitor"[^>]*>/,
+      )?.[0];
+      const remove = markup.match(
+        /<button\b[^>]*aria-label="Delete health monitor"[^>]*>/,
+      )?.[0];
+      expect(edit).toBeDefined();
+      expect(remove).toBeDefined();
+      expect(edit?.includes(' disabled=""')).toBe(
+        provisioning_status !== "ACTIVE",
+      );
+      expect(remove?.includes(' disabled=""')).toBe(
+        provisioning_status === "PENDING_UPDATE",
+      );
+    },
+  );
 });

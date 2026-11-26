@@ -974,6 +974,7 @@ export function LoadBalancerDetailClient({
           loadBalancerId={loadBalancer.id}
           scope={{ projectId, regionId }}
           onClose={() => setMonitorAction(null)}
+          onRefresh={refreshTopology}
           onSuccess={(message) => {
             setMonitorNotice({ message, at: Date.now() });
             setMonitorAction(null);
