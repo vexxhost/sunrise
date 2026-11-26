@@ -24,6 +24,7 @@ import {
 } from "@/components/LoadBalancer/HealthMonitorMutationDialog";
 import { HealthMonitorTable } from "@/components/LoadBalancer/HealthMonitorTable";
 import { L7PolicyPanel } from "@/components/LoadBalancer/L7PolicyPanel";
+import { LoadBalancerFloatingIps } from "@/components/LoadBalancer/LoadBalancerFloatingIps";
 import {
   ListenerMutationDialog,
   type ListenerDialogAction,
@@ -59,7 +60,6 @@ import {
 } from "@/components/ui/table";
 import {
   loadBalancerDetailsQueryOptions,
-  loadBalancerFloatingIpsQueryOptions,
   loadBalancersQueryOptions,
 } from "@/hooks/queries/useLoadBalancers";
 import {
@@ -115,6 +115,7 @@ export function LoadBalancerDetailClient({
   id,
   octaviaCapabilities,
   neutronAvailable,
+  neutronRevisionPreconditions,
   projectId,
   regionId,
   tagSupport,
@@ -122,6 +123,7 @@ export function LoadBalancerDetailClient({
   id: string;
   octaviaCapabilities: OpenStackServiceCapabilities;
   neutronAvailable: boolean;
+  neutronRevisionPreconditions: boolean;
   projectId: string;
   regionId: string;
   tagSupport: OpenStackFeatureSupport;
@@ -230,17 +232,6 @@ export function LoadBalancerDetailClient({
     ),
     retry: false,
   });
-  const floatingIpsQuery = useQuery({
-    ...loadBalancerFloatingIpsQueryOptions(
-      neutronLookupAvailable ? regionId : undefined,
-      neutronLookupAvailable ? projectId : undefined,
-      neutronLookupAvailable
-        ? (loadBalancer.vip_port_id ?? undefined)
-        : undefined,
-    ),
-    retry: false,
-  });
-  const floatingIps = floatingIpsQuery.data ?? [];
   const poolById = useMemo(
     () => new Map(data.pools.map((pool) => [pool.id, pool])),
     [data.pools],
@@ -382,28 +373,14 @@ export function LoadBalancerDetailClient({
               ) : null}
             </span>
           </DetailField>
-          <DetailField label="Floating IPs">
-            {!loadBalancer.vip_port_id ? (
-              "-"
-            ) : !neutronLookupAvailable || floatingIpsQuery.isError ? (
-              <span className="text-muted-foreground">Lookup unavailable.</span>
-            ) : floatingIpsQuery.isLoading ? (
-              <span className="text-muted-foreground">Loading</span>
-            ) : floatingIps.length > 0 ? (
-              <span className="flex flex-col items-start gap-1">
-                {floatingIps.map((floatingIp) => (
-                  <ResourceLink
-                    href={`/networking/floating-ips/${encodeURIComponent(floatingIp.id)}`}
-                    key={floatingIp.id}
-                  >
-                    {floatingIp.floating_ip_address}
-                  </ResourceLink>
-                ))}
-              </span>
-            ) : (
-              "-"
-            )}
-          </DetailField>
+          <LoadBalancerFloatingIps
+            key={`${regionId}/${projectId}/${loadBalancer.id}`}
+            loadBalancer={loadBalancer}
+            neutronAvailable={neutronLookupAvailable}
+            revisionPreconditions={neutronRevisionPreconditions}
+            projectId={projectId}
+            regionId={regionId}
+          />
           <DetailField label="Network">
             {loadBalancer.vip_network_id ? (
               neutronAvailable ? (

@@ -19,12 +19,16 @@ type NeutronScope = {
   regionId: string;
 };
 
-type FloatingIpFilter = { floating_ip_address: string } | { port_id: string };
+type FloatingIpFilter =
+  | { floating_ip_address: string }
+  | { port_id: string }
+  | { unassociated: true };
 
 export type NeutronFloatingIpReference = {
   floating_ip_address: string;
   id: string;
   port_id: string | null;
+  fixed_ip_address?: string | null;
 };
 
 function normalizeProjectId(value: string) {
@@ -59,7 +63,7 @@ function collectionPath(
   const query = new URLSearchParams({
     limit: String(COLLECTION_PAGE_SIZE),
     project_id: scope.projectId,
-    ...filter,
+    ...("unassociated" in filter ? {} : filter),
   });
   if (marker) query.set("marker", marker);
   return `${FLOATING_IPS_API_PATH}?${query}`;
@@ -124,6 +128,8 @@ function parseFloatingIps(
     const id = Reflect.get(floatingIp, "id");
     const address = Reflect.get(floatingIp, "floating_ip_address");
     const portId = Reflect.get(floatingIp, "port_id");
+    const fixedIp = Reflect.get(floatingIp, "fixed_ip_address");
+    const forwardings = Reflect.get(floatingIp, "port_forwardings");
     const resourceProjectId =
       Reflect.get(floatingIp, "project_id") ??
       Reflect.get(floatingIp, "tenant_id");
@@ -147,11 +153,25 @@ function parseFloatingIps(
     if (
       ("floating_ip_address" in filter &&
         address !== filter.floating_ip_address) ||
-      ("port_id" in filter && portId !== filter.port_id)
+      ("port_id" in filter && portId !== filter.port_id) ||
+      ("unassociated" in filter &&
+        (portId !== null ||
+          fixedIp !== null ||
+          isIP(address) !== 4 ||
+          Reflect.get(floatingIp, "router_id") !== null ||
+          (forwardings !== undefined &&
+            (!Array.isArray(forwardings) || forwardings.length !== 0))))
     ) {
       continue;
     }
-    references.push({ floating_ip_address: address, id, port_id: portId });
+    references.push({
+      floating_ip_address: address,
+      id,
+      port_id: portId,
+      ...(fixedIp === null || (typeof fixedIp === "string" && isIP(fixedIp))
+        ? { fixed_ip_address: fixedIp }
+        : {}),
+    });
   }
   return references;
 }
@@ -231,4 +251,12 @@ export async function listFloatingIpsForPort(
   }
   const scope = await resolveScope(regionId, projectId);
   return listFilteredFloatingIps(scope, { port_id: portId });
+}
+
+export async function listUnassociatedFloatingIps(
+  regionId?: string,
+  projectId?: string,
+) {
+  const scope = await resolveScope(regionId, projectId);
+  return listFilteredFloatingIps(scope, { unassociated: true });
 }

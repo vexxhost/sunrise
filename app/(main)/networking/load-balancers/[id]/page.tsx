@@ -4,6 +4,8 @@ import { loadCloudContext } from "@/lib/cloud-context";
 import { microversionSupport } from "@/lib/openstack/capabilities";
 import {
   discoverLoadBalancerCapabilities,
+  discoverNetworkCapabilities,
+  NEUTRON_REVISION_IF_MATCH_EXTENSION,
   OCTAVIA_TAGS_MICROVERSION,
 } from "@/lib/openstack/capabilities-server";
 import { makeQueryClient } from "@/lib/query-client";
@@ -24,7 +26,10 @@ export default async function LoadBalancerPage({
     ({ id: destinationId, status }) =>
       destinationId === "networking.networks" && status !== "unavailable",
   );
-  const capabilities = await discoverLoadBalancerCapabilities(regionId);
+  const [capabilities, neutronCapabilities] = await Promise.all([
+    discoverLoadBalancerCapabilities(regionId),
+    neutronAvailable ? discoverNetworkCapabilities(regionId) : null,
+  ]);
   const tagSupport = microversionSupport(
     capabilities,
     OCTAVIA_TAGS_MICROVERSION,
@@ -44,6 +49,14 @@ export default async function LoadBalancerPage({
         id={id}
         octaviaCapabilities={capabilities}
         neutronAvailable={neutronAvailable}
+        neutronRevisionPreconditions={
+          neutronCapabilities?.discoveryStatus === "available" &&
+          Boolean(
+            neutronCapabilities.extensions?.includes(
+              NEUTRON_REVISION_IF_MATCH_EXTENSION,
+            ),
+          )
+        }
         projectId={projectId}
         regionId={regionId}
         tagSupport={tagSupport}
