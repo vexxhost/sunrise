@@ -37,8 +37,9 @@ import {
   sameL7PoolPolicy,
   type L7Path,
   type L7PoolPolicySettings,
+  type L7RoutingPool,
 } from "@/lib/openstack/octavia-l7-settings";
-import type { OctaviaListener, OctaviaPool } from "@/types/openstack";
+import type { OctaviaListener } from "@/types/openstack";
 
 type ConfirmationInput = Extract<
   OctaviaL7Mutation,
@@ -80,6 +81,7 @@ export function L7PolicyDialog({
   scope,
   loadBalancerId,
   listeners,
+  listenerScoped = false,
   pools,
   onClose,
   onSuccess,
@@ -88,7 +90,8 @@ export function L7PolicyDialog({
   scope: MutationScope;
   loadBalancerId: string;
   listeners: OctaviaListener[];
-  pools: OctaviaPool[];
+  listenerScoped?: boolean;
+  pools: L7RoutingPool[];
   onClose: () => void;
   onSuccess: (message: string) => void;
 }) {
@@ -286,7 +289,7 @@ export function L7PolicyDialog({
           ) : null}
           {policyForm ? (
             <>
-              {target.action === "create-policy" ? (
+              {target.action === "create-policy" && !listenerScoped ? (
                 <div className="space-y-2">
                   <Label htmlFor="l7-listener">HTTP listener</Label>
                   <Select

@@ -84,11 +84,10 @@ function renderPanel(
         ],
         pools: [
           {
-            ...active,
             id: poolId,
             name: "backend",
             protocol: "HTTP",
-            lb_algorithm: "ROUND_ROBIN",
+            provisioning_status: "ACTIVE",
           },
         ],
         l7Policies: [nextPolicy],

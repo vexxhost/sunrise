@@ -16,6 +16,7 @@ import {
   canChangeOctaviaListener,
   canChangeOctaviaListeners,
   isOctaviaAmphoraProvider,
+  loadBalancerListenerPath,
 } from "@/lib/openstack/octavia";
 import {
   isL7HttpListener,
@@ -387,7 +388,11 @@ export async function mutateOctaviaL7Action(
     successMessage,
     apiVersion: `load-balancer ${OCTAVIA_BASELINE_MICROVERSION}`,
     ...(body ? { body } : {}),
-    invalidates: [`/networking/load-balancers/${parentId}`, "/quotas"],
+    invalidates: [
+      `/networking/load-balancers/${parentId}`,
+      loadBalancerListenerPath(parentId, targetListener),
+      "/quotas",
+    ],
     transform: (payload) => {
       if (method === "DELETE") return null;
       const response = z

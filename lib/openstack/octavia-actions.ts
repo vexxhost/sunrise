@@ -77,6 +77,7 @@ import {
   getLoadBalancerDetails,
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
+  getLoadBalancerListenerRouting,
   getLoadBalancerPool,
   getLoadBalancerPoolDetails,
   getOctaviaPoolHealthMonitor,
@@ -1991,6 +1992,20 @@ export async function getLoadBalancerListenerDetailsAction(
   projectId?: string,
 ) {
   return getLoadBalancerListenerDetails(
+    loadBalancerId,
+    listenerId,
+    regionId,
+    projectId,
+  );
+}
+
+export async function getLoadBalancerListenerRoutingAction(
+  loadBalancerId: string,
+  listenerId: string,
+  regionId: string,
+  projectId: string,
+) {
+  return getLoadBalancerListenerRouting(
     loadBalancerId,
     listenerId,
     regionId,
