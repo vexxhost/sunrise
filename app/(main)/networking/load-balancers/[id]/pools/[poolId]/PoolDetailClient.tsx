@@ -2,9 +2,13 @@
 
 import { useState } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Layers, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import { Layers, Plus, RefreshCw, Trash2, UserPlus } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import {
+  HealthMonitorMutationDialog,
+  type HealthMonitorDialogAction,
+} from "@/components/LoadBalancer/HealthMonitorMutationDialog";
 import {
   MemberMutationDialog,
   type MemberDialogAction,
@@ -38,6 +42,11 @@ import {
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
 import {
+  canChangeHealthMonitor,
+  healthMonitorTypeForPool,
+  readHealthMonitorSettings,
+} from "@/lib/openstack/octavia-health-monitor-settings";
+import {
   canChangeOctaviaPoolMembers,
   formatOctaviaMemberAddress,
   formatPoolAlgorithm,
@@ -45,6 +54,10 @@ import {
   readPoolPersistence,
 } from "@/lib/openstack/octavia-pool-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
+
+type PoolDetailAction =
+  | { kind: "member"; target: MemberDialogAction }
+  | { kind: "monitor"; target: HealthMonitorDialogAction };
 
 function Status({ status }: { status: string | undefined }) {
   return status && isOctaviaProvisioning({ provisioning_status: status }) ? (
@@ -70,10 +83,8 @@ export function PoolDetailClient({
   regionId: string;
 }) {
   const queryClient = useQueryClient();
-  const [memberAction, setMemberAction] = useState<MemberDialogAction | null>(
-    null,
-  );
-  const [memberNotice, setMemberNotice] = useState<{
+  const [action, setAction] = useState<PoolDetailAction | null>(null);
+  const [notice, setNotice] = useState<{
     message: string;
     at: number;
   } | null>(null);
@@ -93,7 +104,7 @@ export function PoolDetailClient({
         ...(details.members ?? []),
         ...(details.healthMonitor ? [details.healthMonitor] : []),
       ];
-      return (memberNotice && Date.now() - memberNotice.at < 20_000) ||
+      return (notice && Date.now() - notice.at < 20_000) ||
         resources.some(isOctaviaProvisioning)
         ? 5_000
         : false;
@@ -102,18 +113,21 @@ export function PoolDetailClient({
   const { loadBalancer, pool, healthMonitor, members, listeners } = data;
   const persistence = readPoolPersistence(pool.session_persistence);
   const parentHref = `/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#pools`;
-  const memberChangesSupported = isOctaviaAmphoraProvider(
-    loadBalancer.provider,
-  );
-  const canChangeMembers =
-    memberChangesSupported &&
+  const writesSupported = isOctaviaAmphoraProvider(loadBalancer.provider);
+  const canChangePoolChildren =
+    writesSupported &&
     !isFetching &&
     !isRefetchError &&
-    members !== null &&
     loadBalancer.pools?.some(({ id }) => id === pool.id) &&
-    canChangeOctaviaListeners(loadBalancer) &&
+    canChangeOctaviaListeners(loadBalancer);
+  const canChangeMembers =
+    canChangePoolChildren &&
+    members !== null &&
     canChangeOctaviaPoolMembers(pool);
-  const refreshMemberData = () => {
+  const monitorType = healthMonitorTypeForPool(pool);
+  const monitorSource =
+    healthMonitor && readHealthMonitorSettings(healthMonitor);
+  const refreshPoolData = () => {
     void queryClient.invalidateQueries({
       queryKey: loadBalancerDetailsQueryOptions(
         regionId,
@@ -125,9 +139,20 @@ export function PoolDetailClient({
       queryKey: [regionId, projectId, "project-quotas", "load-balancing"],
     });
   };
+  const openAction = (next: PoolDetailAction) => {
+    setNotice(null);
+    setAction(next);
+  };
   const openMemberAction = (target: MemberDialogAction) => {
-    setMemberNotice(null);
-    setMemberAction(target);
+    openAction({ kind: "member", target });
+  };
+  const openMonitorAction = (target: HealthMonitorDialogAction) => {
+    openAction({ kind: "monitor", target });
+  };
+  const onSuccess = (message: string) => {
+    setAction(null);
+    setNotice({ message, at: Date.now() });
+    refreshPoolData();
   };
 
   return (
@@ -158,6 +183,9 @@ export function PoolDetailClient({
         <MutationAlert variant="warning">
           Pool details could not be refreshed. The last loaded data is shown.
         </MutationAlert>
+      ) : null}
+      {notice ? (
+        <MutationAlert variant="success">{notice.message}</MutationAlert>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -232,7 +260,78 @@ export function PoolDetailClient({
           </DetailField>
         </DetailSection>
 
-        <DetailSection title="Health monitor">
+        <DetailSection
+          title="Health monitor"
+          actions={
+            writesSupported && monitorType ? (
+              healthMonitor ? (
+                healthMonitor.id === pool.healthmonitor_id &&
+                healthMonitor.type === monitorType ? (
+                  <div className="flex items-center gap-1">
+                    <EditActionButton
+                      type="button"
+                      compact
+                      label="Edit health monitor"
+                      disabled={
+                        !canChangePoolChildren ||
+                        !monitorSource ||
+                        !canChangeHealthMonitor(pool, healthMonitor)
+                      }
+                      onClick={() => {
+                        if (monitorSource)
+                          openMonitorAction({
+                            action: "edit",
+                            pool,
+                            monitor: healthMonitor,
+                            source: monitorSource,
+                          });
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      tone="danger"
+                      size="icon-sm"
+                      aria-label="Delete health monitor"
+                      title="Delete health monitor"
+                      disabled={
+                        !canChangePoolChildren ||
+                        !canChangeHealthMonitor(pool, healthMonitor, true)
+                      }
+                      onClick={() =>
+                        openMonitorAction({
+                          action: "delete",
+                          pool,
+                          monitor: healthMonitor,
+                        })
+                      }
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                ) : null
+              ) : pool.healthmonitor_id == null ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    !canChangePoolChildren || !canChangeHealthMonitor(pool)
+                  }
+                  onClick={() =>
+                    openMonitorAction({
+                      action: "create",
+                      pool,
+                      type: monitorType,
+                    })
+                  }
+                >
+                  <Plus className="size-4" /> Add health monitor
+                </Button>
+              ) : null
+            ) : null
+          }
+        >
           {healthMonitor ? (
             <>
               <DetailField label="Name">
@@ -296,7 +395,7 @@ export function PoolDetailClient({
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold">Members</h2>
-          {memberChangesSupported ? (
+          {writesSupported ? (
             <Button
               type="button"
               size="sm"
@@ -308,11 +407,6 @@ export function PoolDetailClient({
             </Button>
           ) : null}
         </div>
-        {memberNotice ? (
-          <MutationAlert variant="success">
-            {memberNotice.message}
-          </MutationAlert>
-        ) : null}
         {members?.length ? (
           <div className="overflow-hidden rounded-md border">
             <Table>
@@ -324,7 +418,7 @@ export function PoolDetailClient({
                   <TableHead>Operating</TableHead>
                   <TableHead>Provisioning</TableHead>
                   <TableHead>Administrative state</TableHead>
-                  {memberChangesSupported ? (
+                  {writesSupported ? (
                     <TableHead className="text-right">Actions</TableHead>
                   ) : null}
                 </TableRow>
@@ -346,7 +440,7 @@ export function PoolDetailClient({
                     <TableCell>
                       {member.admin_state_up ? "Up" : "Down"}
                     </TableCell>
-                    {memberChangesSupported ? (
+                    {writesSupported ? (
                       <TableCell>
                         <div className="flex justify-end gap-1">
                           <EditActionButton
@@ -398,19 +492,25 @@ export function PoolDetailClient({
           </p>
         )}
       </section>
-      {memberAction ? (
+      {action?.kind === "member" ? (
         <MemberMutationDialog
-          target={memberAction}
+          target={action.target}
           loadBalancerId={loadBalancerId}
           scope={{ projectId, regionId }}
           neutronAvailable={neutronAvailable}
-          onClose={() => setMemberAction(null)}
-          onRefresh={refreshMemberData}
-          onSuccess={(message) => {
-            setMemberAction(null);
-            setMemberNotice({ message, at: Date.now() });
-            refreshMemberData();
-          }}
+          onClose={() => setAction(null)}
+          onRefresh={refreshPoolData}
+          onSuccess={onSuccess}
+        />
+      ) : null}
+      {action?.kind === "monitor" ? (
+        <HealthMonitorMutationDialog
+          target={action.target}
+          loadBalancerId={loadBalancerId}
+          scope={{ projectId, regionId }}
+          onClose={() => setAction(null)}
+          onRefresh={refreshPoolData}
+          onSuccess={onSuccess}
         />
       ) : null}
     </div>

@@ -338,6 +338,7 @@ function preflightFailure(
   scope: MutationScope,
   resource = "load balancer",
 ): MutationResult<never> {
+  unstable_rethrow(error);
   const record =
     error && typeof error === "object"
       ? (error as { name?: unknown; status?: unknown })
@@ -1888,7 +1889,11 @@ export async function mutateOctaviaHealthMonitorAction(
     successMessage: operation[value.action].message,
     apiVersion: `load-balancer ${supported.version}`,
     ...(body ? { body: { healthmonitor: body } } : {}),
-    invalidates: [`/networking/load-balancers/${parentId}`, "/quotas"],
+    invalidates: [
+      `/networking/load-balancers/${parentId}`,
+      loadBalancerPoolPath(parentId, targetPoolId),
+      "/quotas",
+    ],
     transform: (payload) => {
       if (value.action === "delete") return null;
       const response = z

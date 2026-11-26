@@ -41,6 +41,7 @@ import {
   healthMonitorSettingsSchema,
   type HealthMonitorSettings,
 } from "@/lib/openstack/octavia-health-monitor-settings";
+import { poolChildMutationRecovery } from "@/lib/openstack/octavia-pool-settings";
 import type { OctaviaHealthMonitor, OctaviaPool } from "@/types/openstack";
 
 export type HealthMonitorDialogAction =
@@ -103,12 +104,14 @@ export function HealthMonitorMutationDialog({
   loadBalancerId,
   scope,
   onClose,
+  onRefresh,
   onSuccess,
 }: {
   target: HealthMonitorDialogAction;
   loadBalancerId: string;
   scope: MutationScope;
   onClose: () => void;
+  onRefresh: () => void;
   onSuccess: (message: string) => void;
 }) {
   const creating = target.action === "create";
@@ -125,6 +128,7 @@ export function HealthMonitorMutationDialog({
     max_retries_down: String(fields.max_retries_down),
   }));
   const [error, setError] = useState<string | null>(null);
+  const [requiresReopen, setRequiresReopen] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [pending, startTransition] = useTransition();
   const inFlight = useRef(false);
@@ -139,7 +143,7 @@ export function HealthMonitorMutationDialog({
     if (!inFlight.current && !pending) onClose();
   };
   const run = (input: OctaviaHealthMonitorMutation) => {
-    if (inFlight.current) return;
+    if (inFlight.current || requiresReopen) return;
     inFlight.current = true;
     setError(null);
     startTransition(async () => {
@@ -150,11 +154,24 @@ export function HealthMonitorMutationDialog({
           original.target.pool.id,
           input,
         );
-        if (result.ok) onSuccess(result.message);
-        else setError(result.error.message);
-      } catch {
+        if (result.ok) {
+          onSuccess(result.message);
+          return;
+        }
+        const { code, message } = result.error;
+        const { needsRefresh, needsReopen } = poolChildMutationRecovery(code);
+        if (needsRefresh) onRefresh();
+        if (needsReopen) setRequiresReopen(true);
         setError(
-          "The result could not be confirmed. Refresh the load balancer before retrying.",
+          needsReopen
+            ? `${message} Close this dialog to check the pool before retrying.`
+            : message,
+        );
+      } catch {
+        setRequiresReopen(true);
+        onRefresh();
+        setError(
+          "The result could not be confirmed. Close this dialog to check the pool before retrying.",
         );
       } finally {
         inFlight.current = false;
@@ -178,6 +195,7 @@ export function HealthMonitorMutationDialog({
           </>
         }
         confirmLabel="Delete health monitor"
+        confirmDisabled={requiresReopen}
         pending={pending}
         variant="destructive"
         error={error}
@@ -218,6 +236,7 @@ export function HealthMonitorMutationDialog({
             setAttempted(true);
             if (
               pending ||
+              requiresReopen ||
               !hasChanges ||
               !validated.success ||
               quota.issues.length
@@ -369,7 +388,9 @@ export function HealthMonitorMutationDialog({
             <Button
               type="submit"
               loading={pending}
-              disabled={!hasChanges || quota.issues.length > 0}
+              disabled={
+                requiresReopen || !hasChanges || quota.issues.length > 0
+              }
             >
               {creating ? <Plus /> : <Save />}
               {creating ? "Add health monitor" : "Save changes"}

@@ -148,6 +148,11 @@ describe("Octavia health monitor actions", () => {
         scope,
         apiVersion: "load-balancer 2.0",
         body: { healthmonitor: { ...settings, pool_id: poolId } },
+        invalidates: [
+          `/networking/load-balancers/${loadBalancerId}`,
+          `/networking/load-balancers/${loadBalancerId}/pools/${poolId}`,
+          "/quotas",
+        ],
       }),
     );
     const { transform } = mocks.executeOpenStackMutation.mock.calls[0][0];
@@ -162,6 +167,22 @@ describe("Octavia health monitor actions", () => {
         healthmonitor: { ...monitor, project_id: "another-project" },
       }),
     ).toThrow();
+  });
+
+  it("lets the session refresh redirect through when reading a monitor", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValueOnce({
+      ...pool,
+      healthmonitor_id: monitorId,
+    });
+    mocks.getOctaviaPoolHealthMonitor.mockImplementationOnce(() =>
+      redirect("/auth/refresh"),
+    );
+    await expect(
+      mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, edit),
+    ).rejects.toMatchObject({
+      digest: expect.stringContaining(";/auth/refresh;"),
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it.each([

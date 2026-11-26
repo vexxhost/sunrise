@@ -34,7 +34,10 @@ import {
   mutateOctaviaPoolMemberAction,
   type OctaviaMemberMutation,
 } from "@/lib/openstack/octavia-actions";
-import { formatOctaviaMemberAddress } from "@/lib/openstack/octavia-pool-settings";
+import {
+  formatOctaviaMemberAddress,
+  poolChildMutationRecovery,
+} from "@/lib/openstack/octavia-pool-settings";
 import type { OctaviaMember, OctaviaPool } from "@/types/openstack";
 
 export type MemberDialogAction =
@@ -114,15 +117,10 @@ export function MemberMutationDialog({
           return;
         }
         const { code, message } = result.error;
-        const unconfirmed =
-          code === "invalid-response" || code === "network-error";
-        const needsRefresh =
-          code === "conflict" || code === "not-found" || unconfirmed;
-        const needsReopen =
-          code === "context-changed" ||
-          code === "not-found" ||
-          unconfirmed ||
-          (!creating && code === "conflict");
+        const { needsRefresh, needsReopen } = poolChildMutationRecovery(
+          code,
+          creating,
+        );
         if (needsRefresh) onRefresh();
         if (needsReopen) setRequiresReopen(true);
         setError(
