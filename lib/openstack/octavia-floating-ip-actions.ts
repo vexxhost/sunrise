@@ -1,5 +1,6 @@
 "use server";
 
+import { redirect, unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { guardMutationContext } from "@/lib/mutation-context";
 import {
@@ -225,6 +226,7 @@ export async function changeOctaviaFloatingIpAssociationAction(
     revision = current.revision_number;
     address = current.floating_ip_address;
   } catch (error) {
+    unstable_rethrow(error);
     if (error instanceof OpenStackRequestError) {
       return mutationFailure(
         mutationErrorForStatus(error.status, actionLabel),
@@ -244,7 +246,7 @@ export async function changeOctaviaFloatingIpAssociationAction(
   const association = associating
     ? { port_id: vipPortId, fixed_ip_address: vipAddress }
     : { port_id: null };
-  return executeOpenStackMutation<null>({
+  const result = await executeOpenStackMutation<null>({
     ...neutron,
     scope: active,
     method: "PUT",
@@ -278,4 +280,6 @@ export async function changeOctaviaFloatingIpAssociationAction(
       return null;
     },
   });
+  if (!result.ok && result.error.status === 401) redirect("/auth/refresh");
+  return result;
 }

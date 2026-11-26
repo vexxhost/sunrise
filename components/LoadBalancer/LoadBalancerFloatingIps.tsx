@@ -25,7 +25,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { loadBalancerFloatingIpsQueryOptions } from "@/hooks/queries/useLoadBalancers";
+import {
+  loadBalancerDetailsQueryOptions,
+  loadBalancerFloatingIpsQueryOptions,
+} from "@/hooks/queries/useLoadBalancers";
 import { detectIpVersion } from "@/lib/network-address";
 import type { NeutronFloatingIpReference } from "@/lib/openstack/neutron-floating-ip-server";
 import {
@@ -123,6 +126,7 @@ export function LoadBalancerFloatingIps({
                   <Button
                     type="button"
                     variant="ghost"
+                    tone="danger"
                     size="icon-sm"
                     aria-label={`Disassociate ${floatingIp.floating_ip_address}`}
                     title="Disassociate floating IP"
@@ -186,15 +190,40 @@ function AssociationDialog({
   const [selectedId, setSelectedId] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [requiresNewTarget, setRequiresNewTarget] = useState(false);
   const inFlight = useRef(false);
+  const choicesKey = [
+    regionId,
+    projectId,
+    "octavia",
+    "unassociated-floating-ips",
+  ];
   const choices = useQuery({
-    queryKey: [regionId, projectId, "octavia", "unassociated-floating-ips"],
+    queryKey: choicesKey,
     queryFn: () => listOctaviaFloatingIpChoicesAction(regionId, projectId),
     enabled: associating,
     staleTime: 0,
     retry: false,
   });
   const selected = choices.data?.find(({ id }) => id === selectedId);
+  const refreshAssociation = () =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: loadBalancerFloatingIpsQueryOptions(
+          regionId,
+          projectId,
+          vipPortId,
+        ).queryKey,
+      }),
+      queryClient.invalidateQueries({
+        queryKey: loadBalancerDetailsQueryOptions(
+          regionId,
+          projectId,
+          loadBalancerId,
+        ).queryKey,
+      }),
+      queryClient.invalidateQueries({ queryKey: choicesKey }),
+    ]);
   const close = () => {
     if (!pending && !inFlight.current) onClose();
   };
@@ -202,7 +231,7 @@ function AssociationDialog({
     action: OctaviaFloatingIpAssociation["action"],
     floatingIpId: string,
   ) => {
-    if (inFlight.current) return;
+    if (inFlight.current || requiresNewTarget) return;
     inFlight.current = true;
     setError("");
     startTransition(async () => {
@@ -213,16 +242,23 @@ function AssociationDialog({
           { action, floatingIpId, vipAddress, vipPortId },
         );
         if (!result.ok) {
-          setError(result.error.message);
-          if (result.error.code === "conflict")
-            void queryClient.invalidateQueries({
-              queryKey: [
-                regionId,
-                projectId,
-                "octavia",
-                "unassociated-floating-ips",
-              ],
-            });
+          const needsRefresh =
+            result.error.code === "conflict" ||
+            result.error.code === "not-found" ||
+            result.error.code === "invalid-response";
+          const needsNewTarget =
+            needsRefresh &&
+            (!associating || result.error.code === "invalid-response");
+          setError(
+            needsNewTarget
+              ? `${result.error.message} Close this dialog to check the association.`
+              : result.error.message,
+          );
+          if (needsRefresh) {
+            if (needsNewTarget) setRequiresNewTarget(true);
+            else setSelectedId("");
+            await refreshAssociation();
+          }
           return;
         }
         await queryClient.invalidateQueries({
@@ -230,9 +266,11 @@ function AssociationDialog({
         });
         onSuccess(result.message);
       } catch {
+        setRequiresNewTarget(true);
         setError(
-          "The result could not be confirmed. Refresh before trying again.",
+          "The result could not be confirmed. Close this dialog and check the association before trying again.",
         );
+        void refreshAssociation();
       } finally {
         inFlight.current = false;
       }
@@ -252,6 +290,7 @@ function AssociationDialog({
           </>
         }
         confirmLabel="Disassociate"
+        confirmDisabled={requiresNewTarget}
         pending={pending}
         variant="destructive"
         error={error}
@@ -333,7 +372,12 @@ function AssociationDialog({
             <Button
               type="submit"
               loading={pending}
-              disabled={!selected || choices.isError || choices.isFetching}
+              disabled={
+                requiresNewTarget ||
+                !selected ||
+                choices.isError ||
+                choices.isFetching
+              }
             >
               <Link2 className="size-4" /> Associate
             </Button>

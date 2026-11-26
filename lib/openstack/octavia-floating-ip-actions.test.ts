@@ -1,4 +1,7 @@
+import { redirect } from "next/navigation";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mutationErrorForStatus, mutationFailure } from "@/lib/mutations";
+import { OpenStackRequestError } from "@/lib/openstack/request";
 
 const mocks = vi.hoisted(() => ({
   guardMutationContext: vi.fn(),
@@ -219,6 +222,44 @@ describe("Octavia floating IP association", () => {
       error: { code: "service-unavailable" },
     });
     expect(mocks.openstackRequest).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "getLoadBalancer",
+    "discoverNetworkCapabilities",
+    "openstackRequest",
+  ] as const)(
+    "passes the auth refresh redirect through when %s needs a new session",
+    async (source) => {
+      mocks[source].mockImplementationOnce(() => redirect("/auth/refresh"));
+      await expect(associate()).rejects.toMatchObject({
+        digest: expect.stringContaining(";/auth/refresh;"),
+      });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("redirects to refresh when the final write is rejected with 401 without resending it", async () => {
+    mocks.executeOpenStackMutation.mockResolvedValueOnce(
+      mutationFailure(
+        mutationErrorForStatus(401, "associate this floating IP"),
+      ),
+    );
+    await expect(associate()).rejects.toMatchObject({
+      digest: expect.stringContaining(";/auth/refresh;"),
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns not-found if the selected address was released", async () => {
+    mocks.openstackRequest.mockRejectedValueOnce(
+      new OpenStackRequestError(404, "Not Found"),
+    );
+    await expect(disassociate()).resolves.toMatchObject({
+      ok: false,
+      error: { code: "not-found" },
+    });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 });
