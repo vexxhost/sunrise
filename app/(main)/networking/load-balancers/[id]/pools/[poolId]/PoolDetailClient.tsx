@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import {
   Layers,
   Pencil,
@@ -10,6 +14,7 @@ import {
   Trash2,
   UserPlus,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import {
@@ -42,6 +47,7 @@ import {
 import {
   loadBalancerDetailsQueryOptions,
   loadBalancerPoolDetailsQueryOptions,
+  loadBalancerPoolRedirectPoliciesQueryOptions,
 } from "@/hooks/queries/useLoadBalancers";
 import {
   canChangeOctaviaListener,
@@ -62,12 +68,13 @@ import {
   formatOctaviaMemberAddress,
   formatPoolAlgorithm,
   formatPoolPersistence,
+  octaviaPoolDeletionBlock,
   readPoolPersistence,
 } from "@/lib/openstack/octavia-pool-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 
 type PoolDetailAction =
-  | { kind: "edit-pool"; target: Extract<PoolDialogAction, { action: "edit" }> }
+  | { kind: "pool"; target: Exclude<PoolDialogAction, { action: "create" }> }
   | { kind: "member"; target: MemberDialogAction }
   | { kind: "monitor"; target: HealthMonitorDialogAction };
 
@@ -94,8 +101,10 @@ export function PoolDetailClient({
   projectId: string;
   regionId: string;
 }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [action, setAction] = useState<PoolDetailAction | null>(null);
+  const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
   const [notice, setNotice] = useState<{
     message: string;
     at: number;
@@ -109,7 +118,7 @@ export function PoolDetailClient({
     ),
     refetchInterval: ({ state }) => {
       const details = state.data;
-      if (state.error || !details) return false;
+      if (deletionNotice || state.error || !details) return false;
       const resources = [
         details.loadBalancer,
         details.pool,
@@ -132,6 +141,27 @@ export function PoolDetailClient({
     !isRefetchError &&
     loadBalancer.pools?.some(({ id }) => id === pool.id) &&
     canChangeOctaviaListeners(loadBalancer);
+  const canChangePool = canChangePoolChildren && canChangeOctaviaListener(pool);
+  const deletionTarget =
+    action?.kind === "pool" && action.target.action === "delete"
+      ? action.target.pool
+      : null;
+  const redirectPolicies = useQuery({
+    ...loadBalancerPoolRedirectPoliciesQueryOptions(
+      regionId,
+      projectId,
+      loadBalancerId,
+      poolId,
+    ),
+    enabled: Boolean(
+      deletionTarget && !octaviaPoolDeletionBlock(deletionTarget, []),
+    ),
+  });
+  const l7Policies = redirectPolicies.isFetching
+    ? undefined
+    : redirectPolicies.isError || redirectPolicies.isPaused
+      ? null
+      : (redirectPolicies.data ?? null);
   const canChangeMembers =
     canChangePoolChildren &&
     members !== null &&
@@ -139,18 +169,20 @@ export function PoolDetailClient({
   const monitorType = healthMonitorTypeForPool(pool);
   const monitorSource =
     healthMonitor && readHealthMonitorSettings(healthMonitor);
-  const refreshPoolData = () => {
+  const invalidatePoolData = (deleted = false) => {
     void queryClient.invalidateQueries({
       queryKey: loadBalancerDetailsQueryOptions(
         regionId,
         projectId,
         loadBalancerId,
       ).queryKey,
+      refetchType: deleted ? "none" : "active",
     });
     void queryClient.invalidateQueries({
       queryKey: [regionId, projectId, "project-quotas", "load-balancing"],
     });
   };
+  const refreshPoolData = () => invalidatePoolData();
   const openAction = (next: PoolDetailAction) => {
     setNotice(null);
     setAction(next);
@@ -166,6 +198,15 @@ export function PoolDetailClient({
     setNotice({ message, at: Date.now() });
     refreshPoolData();
   };
+
+  if (deletionNotice) {
+    return (
+      <MutationAlert variant="success">
+        {deletionNotice}{" "}
+        <ResourceLink href={parentHref}>Return to pools</ResourceLink>
+      </MutationAlert>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -184,21 +225,32 @@ export function PoolDetailClient({
         </div>
         <div className="flex flex-wrap gap-2">
           {writesSupported ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={
-                !canChangePoolChildren || !canChangeOctaviaListener(pool)
-              }
-              onClick={() =>
-                openAction({
-                  kind: "edit-pool",
-                  target: { action: "edit", pool },
-                })
-              }
-            >
-              <Pencil className="size-4" /> Edit pool
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canChangePool}
+                onClick={() =>
+                  openAction({ kind: "pool", target: { action: "edit", pool } })
+                }
+              >
+                <Pencil className="size-4" /> Edit pool
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                tone="danger"
+                disabled={!canChangePool}
+                onClick={() =>
+                  openAction({
+                    kind: "pool",
+                    target: { action: "delete", pool },
+                  })
+                }
+              >
+                <Trash2 className="size-4" /> Delete pool
+              </Button>
+            </>
           ) : null}
           <Button
             variant="outline"
@@ -523,14 +575,25 @@ export function PoolDetailClient({
           </p>
         )}
       </section>
-      {action?.kind === "edit-pool" ? (
+      {action?.kind === "pool" ? (
         <PoolMutationDialog
-          target={action.target}
+          {...(action.target.action === "delete"
+            ? { target: action.target, l7Policies }
+            : { target: action.target })}
           loadBalancerId={loadBalancerId}
           scope={{ projectId, regionId }}
           onClose={() => setAction(null)}
           onRefresh={refreshPoolData}
-          onSuccess={onSuccess}
+          onSuccess={(message) => {
+            if (action.target.action === "edit") {
+              onSuccess(message);
+              return;
+            }
+            setAction(null);
+            setDeletionNotice(message);
+            invalidatePoolData(true);
+            router.replace(parentHref);
+          }}
         />
       ) : null}
       {action?.kind === "member" ? (

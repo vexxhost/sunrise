@@ -1,14 +1,22 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ useSuspenseQuery: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  useQuery: vi.fn(() => ({})),
+  useSuspenseQuery: vi.fn(),
+}));
 
 vi.mock("@tanstack/react-query", () => ({
+  useQuery: mocks.useQuery,
   useSuspenseQuery: mocks.useSuspenseQuery,
   useQueryClient: () => ({}),
 }));
 vi.mock("@/hooks/queries/useLoadBalancers", () => ({
   loadBalancerPoolDetailsQueryOptions: () => ({}),
+  loadBalancerPoolRedirectPoliciesQueryOptions: () => ({}),
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({}),
 }));
 vi.mock("@/components/LoadBalancer/MemberMutationDialog", () => ({
   MemberMutationDialog: () => null,
@@ -103,7 +111,21 @@ function editPoolButton(markup: string) {
   )?.[0];
 }
 
+function deletePoolButton(markup: string) {
+  return markup.match(
+    /<button\b[^>]*>(?:(?!<\/button>)[\s\S])*Delete pool<\/button>/,
+  )?.[0];
+}
+
 describe("pool details view", () => {
+  it("offers deletion for a settled pool without checking L7 until the dialog opens", () => {
+    const button = deletePoolButton(renderDetail());
+    expect(button).toBeDefined();
+    expect(button).not.toContain(' disabled=""');
+    expect(mocks.useQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+  });
   it("shows configured persistence, an IPv6 member, the monitor, and verified links", () => {
     const markup = renderDetail({
       members: [
@@ -160,6 +182,7 @@ describe("pool details view", () => {
     });
     expect(addMemberButton(markup)).toBeUndefined();
     expect(editPoolButton(markup)).toBeUndefined();
+    expect(deletePoolButton(markup)).toBeUndefined();
   });
 
   it.each([{ pools: [] }, { provisioning_status: "PENDING_UPDATE" }])(
@@ -170,6 +193,7 @@ describe("pool details view", () => {
       });
       expect(addMemberButton(markup)).toContain(' disabled=""');
       expect(editPoolButton(markup)).toContain(' disabled=""');
+      expect(deletePoolButton(markup)).toContain(' disabled=""');
     },
   );
 
@@ -188,11 +212,16 @@ describe("pool details view", () => {
   it.each(["ACTIVE", "ERROR", "PENDING_UPDATE"])(
     "gates pool editing for pool provisioning status %s, independent of member details",
     (provisioning_status) => {
-      const edit = editPoolButton(
-        renderDetail({ pool: { ...pool, provisioning_status }, members: null }),
-      );
+      const markup = renderDetail({
+        pool: { ...pool, provisioning_status },
+        members: null,
+      });
+      const edit = editPoolButton(markup);
       expect(edit).toBeDefined();
       expect(edit?.includes(' disabled=""')).toBe(
+        provisioning_status === "PENDING_UPDATE",
+      );
+      expect(deletePoolButton(markup)?.includes(' disabled=""')).toBe(
         provisioning_status === "PENDING_UPDATE",
       );
     },
@@ -201,9 +230,9 @@ describe("pool details view", () => {
   it.each([{ isFetching: true }, { isRefetchError: true }])(
     "disables pool editing until current details are available: %j",
     (queryState) => {
-      expect(editPoolButton(renderDetail({}, queryState))).toContain(
-        ' disabled=""',
-      );
+      const markup = renderDetail({}, queryState);
+      expect(editPoolButton(markup)).toContain(' disabled=""');
+      expect(deletePoolButton(markup)).toContain(' disabled=""');
     },
   );
 

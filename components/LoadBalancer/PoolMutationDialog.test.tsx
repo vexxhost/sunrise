@@ -34,7 +34,7 @@ const poolId = "22222222-2222-4222-8222-222222222222";
 
 function renderDialog(
   target: PoolDialogAction,
-  l7Policies: OctaviaL7Policy[] = [],
+  l7Policies?: OctaviaL7Policy[] | null,
 ) {
   return renderToStaticMarkup(
     <PoolMutationDialog
@@ -177,5 +177,45 @@ describe("Octavia pool dialog", () => {
     expect(markup).toMatch(
       /<button\b[^>]* disabled=""[^>]*>(?:(?!<\/button>)[\s\S])*Delete pool<\/button>/,
     );
+  });
+
+  it.each([
+    [undefined, "Checking L7 policy dependencies."],
+    [null, "L7 policy dependencies could not be verified."],
+  ] as const)(
+    "blocks confirmation when L7 policy data is %s",
+    (policies, message) => {
+      const markup = renderDialog(
+        {
+          action: "delete",
+          pool: { ...editablePool, listeners: [], members: [] },
+        },
+        policies,
+      );
+      expect(markup).toContain(message);
+      expect(markup).toMatch(
+        /<button\b[^>]* disabled=""[^>]*>(?:(?!<\/button>)[\s\S])*Delete pool<\/button>/,
+      );
+    },
+  );
+
+  it("allows confirmation after a successful empty dependency check", () => {
+    const markup = renderDialog(
+      {
+        action: "delete",
+        pool: {
+          ...editablePool,
+          listeners: [{ id: "listener-a" }],
+          members: [],
+        },
+      },
+      [],
+    );
+    expect(markup).toContain("will lose that default route");
+    const confirm = markup.match(
+      /<button\b[^>]*>(?:(?!<\/button>)[\s\S])*Delete pool<\/button>/,
+    )?.[0];
+    expect(confirm).toBeDefined();
+    expect(confirm).not.toContain(' disabled=""');
   });
 });

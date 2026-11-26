@@ -30,6 +30,7 @@ import {
   getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
   listLoadBalancerPoolChoices,
+  listLoadBalancerPoolRedirectPolicies,
   listLoadBalancers,
   listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
@@ -671,6 +672,51 @@ describe("Octavia project scoping", () => {
     }
     expect(mocks.openstackRequest.mock.calls[1][0].path).toContain(
       "marker=first",
+    );
+  });
+
+  it("checks the pool's project and parent before revealing redirect dependencies", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const poolId = "22222222-2222-4222-8222-222222222222";
+    const pool = {
+      id: poolId,
+      project_id: "project-a",
+      loadbalancers: [{ id: parentId }],
+    };
+    const request = () =>
+      listLoadBalancerPoolRedirectPolicies(
+        parentId,
+        poolId,
+        "RegionOne",
+        "project-a",
+      );
+
+    for (const invalidPool of [
+      { ...pool, project_id: "project-b" },
+      { ...pool, loadbalancers: [{ id: poolId }] },
+    ]) {
+      mocks.openstackRequest.mockClear();
+      mocks.openstackRequest.mockResolvedValue({ pool: invalidPool });
+      await expect(request()).rejects.toMatchObject({ status: 404 });
+      expect(mocks.openstackRequest).toHaveBeenCalledTimes(1);
+    }
+
+    mocks.openstackRequest
+      .mockResolvedValueOnce({ pool })
+      .mockResolvedValueOnce({
+        l7policies: [
+          {
+            project_id: "project-a",
+            redirect_pool_id: poolId,
+            name: "internal",
+          },
+        ],
+      });
+    await expect(request()).resolves.toEqual([{ redirect_pool_id: poolId }]);
+    expect(mocks.openstackRequest).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        path: `/v2/lbaas/l7policies?limit=100&project_id=project-a&redirect_pool_id=${poolId}`,
+      }),
     );
   });
 

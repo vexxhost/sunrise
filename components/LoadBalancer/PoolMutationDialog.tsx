@@ -78,7 +78,10 @@ type PoolDialogOperations =
   | {
       target: Extract<PoolDialogAction, { action: "delete" }>;
       creation?: never;
-      l7Policies: OctaviaL7Policy[];
+      l7Policies:
+        | ReadonlyArray<Pick<OctaviaL7Policy, "redirect_pool_id">>
+        | null
+        | undefined;
     };
 
 const NO_LISTENER = "none";
@@ -195,9 +198,18 @@ export function PoolMutationDialog({
   };
 
   if (target.action === "delete") {
-    const blocked = l7Policies
-      ? octaviaPoolDeletionBlock(target.pool, l7Policies)
-      : "The pool's L7 policy dependencies are unavailable. Refresh before deleting it.";
+    const dependencyBlock = octaviaPoolDeletionBlock(
+      target.pool,
+      l7Policies ?? [],
+    );
+    const checking = !dependencyBlock && l7Policies === undefined;
+    const blocked =
+      dependencyBlock ??
+      (checking
+        ? "Checking L7 policy dependencies."
+        : l7Policies === null
+          ? "The pool's L7 policy dependencies could not be verified. Close this dialog and retry."
+          : null);
     return (
       <MutationConfirmationDialog
         open
@@ -229,7 +241,9 @@ export function PoolMutationDialog({
         }}
       >
         {blocked ? (
-          <MutationAlert variant="warning">{blocked}</MutationAlert>
+          <MutationAlert variant={checking ? "info" : "warning"}>
+            {blocked}
+          </MutationAlert>
         ) : null}
       </MutationConfirmationDialog>
     );

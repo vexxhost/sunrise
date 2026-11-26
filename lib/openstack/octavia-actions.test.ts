@@ -959,6 +959,11 @@ describe("Octavia pool actions", () => {
       expect.objectContaining({
         method: "DELETE",
         path: `/v2/lbaas/pools/${poolId}`,
+        invalidates: [
+          "/networking/load-balancers",
+          `/networking/load-balancers/${loadBalancerId}`,
+          "/quotas",
+        ],
       }),
     );
     expect(mocks.listOctaviaPoolRedirectPolicies).toHaveBeenCalledWith(
