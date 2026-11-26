@@ -42,6 +42,7 @@ import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { createLoadBalancerAction } from "@/lib/openstack/octavia-actions";
 import { validateOctaviaTags } from "@/lib/openstack/octavia-tags";
+import { fixedVipAddressError } from "@/lib/openstack/octavia-vip-address";
 
 export function LoadBalancerCreateAction({
   availabilityZoneSupport,
@@ -62,6 +63,7 @@ export function LoadBalancerCreateAction({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [vipSubnetId, setVipSubnetId] = useState("");
+  const [vipAddress, setVipAddress] = useState("");
   const [availabilityZone, setAvailabilityZone] = useState("");
   const [adminStateUp, setAdminStateUp] = useState(true);
   const [tags, setTags] = useState<OctaviaTagDraft[]>([]);
@@ -123,8 +125,13 @@ export function LoadBalancerCreateAction({
   );
   const submittedTags = octaviaTagsFromDrafts(tags);
   const subnetQueryFailed = subnets.isError;
+  const selectedSubnet = subnetOptions.find(
+    (subnet) => subnet.id === vipSubnetId,
+  );
+  const vipError = fixedVipAddressError(vipAddress, selectedSubnet);
   const canSubmit =
-    Boolean(name.trim() && vipSubnetId) &&
+    Boolean(name.trim() && selectedSubnet) &&
+    !vipError &&
     !subnetQueryFailed &&
     quota.issues.length === 0;
   const noVisibleSubnets = subnets.isSuccess && subnetOptions.length === 0;
@@ -138,6 +145,7 @@ export function LoadBalancerCreateAction({
     setName("");
     setDescription("");
     setVipSubnetId("");
+    setVipAddress("");
     setAvailabilityZone("");
     setAdminStateUp(true);
     setTags([]);
@@ -171,6 +179,7 @@ export function LoadBalancerCreateAction({
           name,
           description: description || undefined,
           vipSubnetId,
+          vipAddress: vipAddress.trim() || undefined,
           availabilityZone:
             availabilityZonesAvailable && availabilityZone
               ? availabilityZone
@@ -242,7 +251,7 @@ export function LoadBalancerCreateAction({
                 <Select
                   disabled={pending || subnets.isLoading || noVisibleSubnets}
                   onValueChange={setVipSubnetId}
-                  value={vipSubnetId}
+                  value={selectedSubnet?.id ?? ""}
                 >
                   <SelectTrigger id="load-balancer-subnet" className="w-full">
                     <SelectValue
@@ -267,8 +276,34 @@ export function LoadBalancerCreateAction({
                     })}
                   </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground">
-                  Octavia allocates the virtual IP from this subnet.
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="load-balancer-vip-address">
+                  VIP address (optional)
+                </Label>
+                <Input
+                  id="load-balancer-vip-address"
+                  aria-describedby="load-balancer-vip-address-help"
+                  aria-invalid={Boolean(vipError)}
+                  autoComplete="off"
+                  disabled={
+                    pending || (!vipAddress && selectedSubnet?.ip_version !== 4)
+                  }
+                  onChange={(event) => setVipAddress(event.target.value)}
+                  value={vipAddress}
+                />
+                <p
+                  id="load-balancer-vip-address-help"
+                  className={
+                    vipError
+                      ? "text-xs text-destructive"
+                      : "text-xs text-muted-foreground"
+                  }
+                >
+                  {vipError ??
+                    (selectedSubnet?.ip_version === 6
+                      ? "Octavia will allocate the IPv6 address automatically."
+                      : "Leave blank for automatic allocation.")}
                 </p>
               </div>
               {availabilityZonesAvailable ? (

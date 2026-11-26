@@ -1,4 +1,6 @@
+import { redirect } from "next/navigation";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mutationErrorForStatus, mutationFailure } from "@/lib/mutations";
 
 const mocks = vi.hoisted(() => ({
   discoverLoadBalancerCapabilities: vi.fn(),
@@ -50,6 +52,7 @@ import {
   mutateOctaviaPoolMemberAction,
   updateLoadBalancerAction,
 } from "@/lib/openstack/octavia-actions";
+import { OpenStackRequestError } from "@/lib/openstack/request";
 
 const scope = {
   projectId: "297c1aa4-ef4f-42bf-9fdb-6a7c6ced78b2",
@@ -1552,6 +1555,9 @@ describe("Octavia listener actions", () => {
 });
 
 describe("Octavia load balancer mutation actions", () => {
+  const fixedVip = { name: "fixed-vip", vipSubnetId, vipAddress: "10.0.0.72" };
+  const visibleSubnet = { id: vipSubnetId, cidr: "10.0.0.0/25", ip_version: 4 };
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.guardMutationContext.mockResolvedValue({
@@ -1598,7 +1604,177 @@ describe("Octavia load balancer mutation actions", () => {
         scope,
       }),
     );
+    expect(mocks.openstackRequest).not.toHaveBeenCalled();
   });
+
+  it("requests the fixed IPv4 VIP on the freshly verified subnet using the baseline API", async () => {
+    mocks.openstackRequest.mockResolvedValueOnce({ subnet: visibleSubnet });
+    await expect(
+      createLoadBalancerAction(scope, {
+        ...fixedVip,
+        vipAddress: " 10.0.0.72 ",
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(mocks.openstackRequest).toHaveBeenCalledExactlyOnceWith({
+      regionId: scope.regionId,
+      serviceType: "network",
+      serviceName: "neutron",
+      path: `/v2.0/subnets/${vipSubnetId}`,
+      errorMode: "throw",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.0",
+        body: {
+          loadbalancer: expect.objectContaining({
+            vip_address: fixedVip.vipAddress,
+            vip_subnet_id: vipSubnetId,
+          }),
+        },
+      }),
+    );
+    const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+    const result = existingLoadBalancer({
+      vip_address: fixedVip.vipAddress,
+      vip_subnet_id: vipSubnetId,
+    });
+    expect(transform({ loadbalancer: result })).toBe(result);
+    expect(() =>
+      transform({ loadbalancer: { ...result, vip_address: "10.0.0.73" } }),
+    ).toThrow("requested fixed VIP");
+    expect(() =>
+      transform({ loadbalancer: { ...result, vip_subnet_id: loadBalancerId } }),
+    ).toThrow("requested fixed VIP");
+  });
+
+  it.each(["10.0.0.72/32", "2001:db8::72", "10.0.0.999", ""])(
+    "rejects a malformed or non-IPv4 fixed VIP without sending a request: %s",
+    async (vipAddress) => {
+      await expect(
+        createLoadBalancerAction(scope, { ...fixedVip, vipAddress }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+      expect(mocks.openstackRequest).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["wrong range", { subnet: { ...visibleSubnet, cidr: "10.0.0.128/25" } }],
+    [
+      "IPv6 subnet",
+      { subnet: { ...visibleSubnet, cidr: "2001:db8::/64", ip_version: 6 } },
+    ],
+    ["wrong subnet", { subnet: { ...visibleSubnet, id: loadBalancerId } }],
+    ["malformed subnet", { subnet: { id: vipSubnetId, cidr: null } }],
+    ["missing subnet", null],
+  ])("does not create a fixed VIP for %s", async (_label, response) => {
+    mocks.openstackRequest.mockResolvedValueOnce(response);
+    await expect(
+      createLoadBalancerAction(scope, fixedVip),
+    ).resolves.toMatchObject({
+      ok: false,
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not create a fixed VIP when Neutron denies subnet access", async () => {
+    mocks.openstackRequest.mockRejectedValueOnce(
+      new OpenStackRequestError(403, "Forbidden"),
+    );
+    await expect(
+      createLoadBalancerAction(scope, fixedVip),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "permission-denied" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("preserves the session refresh redirect during fixed VIP preflight", async () => {
+    mocks.openstackRequest.mockImplementationOnce(() =>
+      redirect("/auth/refresh"),
+    );
+    await expect(
+      createLoadBalancerAction(scope, fixedVip),
+    ).rejects.toMatchObject({
+      digest: expect.stringContaining(";/auth/refresh;"),
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([409, 500])(
+    "explains a fixed VIP create failure (%d) when an exact assignment is visible",
+    async (status) => {
+      const failure = mutationFailure(
+        mutationErrorForStatus(status, "create a load balancer", "req-create"),
+        scope,
+      );
+      mocks.executeOpenStackMutation.mockResolvedValueOnce(failure);
+      mocks.openstackRequest
+        .mockResolvedValueOnce({ subnet: visibleSubnet })
+        .mockResolvedValueOnce({
+          loadbalancers: [
+            {
+              project_id: scope.projectId.replaceAll("-", ""),
+              vip_subnet_id: vipSubnetId,
+              vip_address: fixedVip.vipAddress,
+            },
+          ],
+        });
+      await expect(
+        createLoadBalancerAction(scope, fixedVip),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: {
+          status,
+          requestId: "req-create",
+          message: expect.stringContaining("already assigned"),
+        },
+      });
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledTimes(1);
+      const lookup = mocks.openstackRequest.mock.lastCall?.[0];
+      expect(lookup).toMatchObject({
+        regionId: scope.regionId,
+        serviceName: "octavia",
+      });
+      expect(
+        new URLSearchParams(lookup.path.split("?")[1]).get("project_id"),
+      ).toBe(scope.projectId.replaceAll("-", ""));
+    },
+  );
+
+  it.each([
+    { project_id: "foreign-project" },
+    { vip_subnet_id: loadBalancerId },
+    { vip_address: "10.0.0.73" },
+  ])(
+    "keeps the original error on nonmatching assignment lookup %j",
+    async (other) => {
+      const failure = mutationFailure(
+        mutationErrorForStatus(500, "create a load balancer"),
+        scope,
+      );
+      mocks.executeOpenStackMutation.mockResolvedValueOnce(failure);
+      mocks.openstackRequest
+        .mockResolvedValueOnce({ subnet: visibleSubnet })
+        .mockResolvedValueOnce({
+          loadbalancers: [
+            {
+              project_id: scope.projectId,
+              vip_subnet_id: vipSubnetId,
+              vip_address: fixedVip.vipAddress,
+              ...other,
+            },
+          ],
+        });
+      await expect(createLoadBalancerAction(scope, fixedVip)).resolves.toEqual(
+        failure,
+      );
+    },
+  );
 
   it("requests the tags microversion and preserves opaque tag values", async () => {
     await createLoadBalancerAction(scope, {

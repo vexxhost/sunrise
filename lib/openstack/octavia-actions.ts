@@ -1,5 +1,6 @@
 "use server";
 
+import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 
 import {
@@ -84,10 +85,15 @@ import {
   listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
 import { openstackRequest } from "@/lib/openstack/request-server";
+import { OpenStackRequestError } from "@/lib/openstack/request";
 import {
   sameOctaviaTags,
   validateOctaviaTags,
 } from "@/lib/openstack/octavia-tags";
+import {
+  fixedVipAddressError,
+  INVALID_FIXED_VIP,
+} from "@/lib/openstack/octavia-vip-address";
 import { listFloatingIpsForPort } from "@/lib/openstack/neutron-floating-ip-server";
 import type { NeutronFloatingIpReference } from "@/lib/openstack/neutron-floating-ip-server";
 import type {
@@ -105,7 +111,8 @@ const uuidSchema = z.string().uuid();
 const createLoadBalancerSchema = z.object({
   name: z.string().trim().min(1).max(255),
   description: z.string().trim().max(255).optional(),
-  vipSubnetId: uuidSchema,
+  vipSubnetId: uuidSchema.toLowerCase(),
+  vipAddress: z.string().trim().pipe(z.ipv4(INVALID_FIXED_VIP)).optional(),
   availabilityZone: z
     .string()
     .min(1)
@@ -114,6 +121,22 @@ const createLoadBalancerSchema = z.object({
     .optional(),
   adminStateUp: z.boolean().default(true),
   tags: z.array(z.string()).default([]),
+});
+const vipSubnetResponse = z.object({
+  subnet: z.object({
+    id: uuidSchema.toLowerCase(),
+    ip_version: z.union([z.literal(4), z.literal(6)]),
+    cidr: z.string(),
+  }),
+});
+const vipAssignmentsResponse = z.object({
+  loadbalancers: z.array(
+    z.object({
+      project_id: z.string(),
+      vip_subnet_id: uuidSchema.toLowerCase(),
+      vip_address: z.ipv4(),
+    }),
+  ),
 });
 const updateLoadBalancerSchema = z
   .object({
@@ -423,6 +446,78 @@ function requiredCreateMicroversion(value: {
   return OCTAVIA_BASELINE_MICROVERSION;
 }
 
+async function verifyFixedVip(
+  scope: MutationScope,
+  subnetId: string,
+  address: string,
+): Promise<MutationResult<never> | null> {
+  try {
+    const subnet = vipSubnetResponse.safeParse(
+      await openstackRequest({
+        regionId: scope.regionId!,
+        serviceType: "network",
+        serviceName: "neutron",
+        path: `/v2.0/subnets/${subnetId}`,
+        errorMode: "throw",
+      }),
+    );
+    if (subnet.success && subnet.data.subnet.id === subnetId) {
+      const error = fixedVipAddressError(address, subnet.data.subnet);
+      return error ? validationFailure(scope, error) : null;
+    }
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof OpenStackRequestError) {
+      return mutationFailure(
+        mutationErrorForStatus(error.status, "read the selected VIP subnet"),
+        scope,
+      );
+    }
+  }
+  return mutationFailure(
+    {
+      code: "service-error",
+      message:
+        "The selected VIP subnet could not be verified. Try again shortly.",
+      retryable: true,
+    },
+    scope,
+  );
+}
+
+async function hasVisibleVipAssignment(
+  scope: MutationScope,
+  subnetId: string,
+  address: string,
+) {
+  const projectId = normalizeProjectId(scope.projectId);
+  const query = new URLSearchParams({
+    project_id: projectId,
+    vip_subnet_id: subnetId,
+    vip_address: address,
+    limit: "1",
+  });
+  for (const field of ["project_id", "vip_subnet_id", "vip_address"]) {
+    query.append("fields", field);
+  }
+  const result = vipAssignmentsResponse.safeParse(
+    await openstackRequest({
+      ...OCTAVIA_SERVICE,
+      regionId: scope.regionId!,
+      path: `/v2/lbaas/loadbalancers?${query}`,
+    }),
+  );
+  return (
+    result.success &&
+    result.data.loadbalancers.some(
+      (loadBalancer) =>
+        normalizeProjectId(loadBalancer.project_id) === projectId &&
+        loadBalancer.vip_subnet_id === subnetId &&
+        loadBalancer.vip_address === address,
+    )
+  );
+}
+
 export async function createLoadBalancerAction(
   scope: MutationScope,
   input: CreateLoadBalancerInput,
@@ -441,6 +536,14 @@ export async function createLoadBalancerAction(
   const guarded = await guardMutationContext(scope);
   if (!guarded.ok) return guarded.result;
   const activeScope = guarded.context.scope;
+  if (value.vipAddress) {
+    const error = await verifyFixedVip(
+      activeScope,
+      value.vipSubnetId,
+      value.vipAddress,
+    );
+    if (error) return error;
+  }
   const requiredMicroversion = requiredCreateMicroversion(value);
   const supported = await supportedMutationMicroversion(
     activeScope,
@@ -449,7 +552,7 @@ export async function createLoadBalancerAction(
   );
   if (!supported.ok) return supported.result;
 
-  return executeOpenStackMutation<OctaviaLoadBalancer>({
+  const result = await executeOpenStackMutation<OctaviaLoadBalancer>({
     actionLabel: "create a load balancer",
     scope: activeScope,
     ...OCTAVIA_SERVICE,
@@ -462,6 +565,7 @@ export async function createLoadBalancerAction(
         description: value.description || undefined,
         project_id: activeScope.projectId,
         vip_subnet_id: value.vipSubnetId,
+        ...(value.vipAddress ? { vip_address: value.vipAddress } : {}),
         availability_zone: value.availabilityZone || undefined,
         admin_state_up: value.adminStateUp,
         tags: value.tags.length ? parsedTags.tags : undefined,
@@ -469,9 +573,38 @@ export async function createLoadBalancerAction(
     },
     invalidates: ["/networking", "/networking/load-balancers", "/quotas"],
     successMessage: `Load balancer ${value.name} is being created.`,
-    transform: (payload) =>
-      loadBalancerFromPayload(payload, activeScope.projectId),
+    transform: (payload) => {
+      const created = loadBalancerFromPayload(payload, activeScope.projectId);
+      if (
+        value.vipAddress &&
+        (created.vip_address !== value.vipAddress ||
+          created.vip_subnet_id?.toLowerCase() !== value.vipSubnetId)
+      ) {
+        throw new Error("Octavia did not return the requested fixed VIP");
+      }
+      return created;
+    },
   });
+  if (
+    !result.ok &&
+    value.vipAddress &&
+    (result.error.status === 409 || (result.error.status ?? 0) >= 500) &&
+    (await hasVisibleVipAssignment(
+      activeScope,
+      value.vipSubnetId,
+      value.vipAddress,
+    ))
+  ) {
+    return {
+      ...result,
+      error: {
+        ...result.error,
+        message:
+          "This VIP is already assigned to a load balancer in this project. Check the load balancer list or choose a different address.",
+      },
+    };
+  }
+  return result;
 }
 
 export async function updateLoadBalancerAction(
