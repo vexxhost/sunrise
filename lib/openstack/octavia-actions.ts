@@ -77,6 +77,7 @@ import {
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
+  getLoadBalancerPoolDetails,
   getOctaviaPoolHealthMonitor,
   getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
@@ -1929,6 +1930,20 @@ export async function listLoadBalancerPoolChoicesAction(
   projectId?: string,
 ) {
   return listLoadBalancerPoolChoices(id, regionId, projectId);
+}
+
+export async function getLoadBalancerPoolDetailsAction(
+  loadBalancerId: string,
+  poolId: string,
+  regionId?: string,
+  projectId?: string,
+) {
+  return getLoadBalancerPoolDetails(
+    loadBalancerId,
+    poolId,
+    regionId,
+    projectId,
+  );
 }
 
 export async function getLoadBalancerDetailsAction(

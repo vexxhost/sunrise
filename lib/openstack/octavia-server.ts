@@ -249,6 +249,7 @@ async function listCollection<T>(
 ): Promise<T[]> {
   const items: T[] = [];
   const visited = new Set<string>();
+  const collectionPathname = initialPath.split("?")[0];
   let path: string | null = initialPath;
 
   while (path) {
@@ -272,6 +273,9 @@ async function listCollection<T>(
       payload?.[`${collection}_links`],
       collection,
     );
+    if (next && next.split("?")[0] !== collectionPathname) {
+      throw new Error(`Invalid Octavia ${collection} pagination target`);
+    }
     if (next && filters) {
       // Octavia's next links may omit collection filters.
       const url = new URL(next, "https://octavia.invalid");
@@ -555,6 +559,10 @@ export async function getLoadBalancerPool(
   const parentId = requireUuid(loadBalancerId, "load balancer ID");
   const poolId = requireUuid(id, "pool ID");
   const scope = await resolveScope(regionId, projectId);
+  return readPool(scope, parentId, poolId);
+}
+
+async function readPool(scope: OctaviaScope, parentId: string, poolId: string) {
   const pool = await getProjectResource<OctaviaPool>(
     scope,
     "pools",
@@ -568,6 +576,82 @@ export async function getLoadBalancerPool(
     );
   }
   return pool;
+}
+
+async function readPoolMembers(scope: OctaviaScope, poolId: string) {
+  const members = await listCollection<OctaviaMember>(
+    scope,
+    "members",
+    nestedCollectionPath(
+      `/v2/lbaas/pools/${encodeURIComponent(poolId)}/members`,
+    ),
+  );
+  return members
+    .filter(
+      (member) =>
+        belongsToProject(member?.project_id, scope.projectId) &&
+        (member.pool_id === undefined || member.pool_id === poolId),
+    )
+    .map((member) => ({ ...member, pool_id: poolId }));
+}
+
+async function optionalPoolChild<T>(request: Promise<T>) {
+  try {
+    return await request;
+  } catch (error) {
+    if (isOpenStackNotFoundError(error)) return null;
+    throw error;
+  }
+}
+
+export async function getLoadBalancerPoolDetails(
+  loadBalancerId: string,
+  id: string,
+  regionId?: string,
+  projectId?: string,
+) {
+  const parentId = requireUuid(
+    loadBalancerId,
+    "load balancer ID",
+  ).toLowerCase();
+  const poolId = requireUuid(id, "pool ID").toLowerCase();
+  const scope = await resolveScope(regionId, projectId);
+  const [loadBalancer, pool] = await Promise.all([
+    getProjectResource<OctaviaLoadBalancer>(
+      scope,
+      "loadbalancers",
+      "loadbalancer",
+      parentId,
+    ),
+    readPool(scope, parentId, poolId),
+  ]);
+  if (loadBalancer.id !== parentId) {
+    throw new OpenStackRequestError(404, "Load balancer not found");
+  }
+
+  const monitorId = relatedResourceIds(
+    [pool.healthmonitor_id],
+    "health monitor",
+  )[0];
+  const [memberList, listenerList, healthMonitor] = await Promise.all([
+    optionalPoolChild(readPoolMembers(scope, poolId)),
+    Promise.all(
+      referenceIds(pool.listeners, "listener").map((listenerId) =>
+        optionalPoolChild(readListener(scope, parentId, listenerId)),
+      ),
+    ),
+    monitorId
+      ? optionalPoolChild(readPoolHealthMonitor(scope, poolId, monitorId))
+      : null,
+  ]);
+
+  return {
+    loadBalancer,
+    pool,
+    members: memberList,
+    listeners: listenerList,
+    healthMonitor,
+  };
 }
 
 export async function getOctaviaPoolMember(
@@ -914,16 +998,7 @@ async function readLoadBalancerDetails(
     healthMonitorsPromise,
     Promise.all(
       pools.map(async (pool) => {
-        const members = await readTopologyResource(
-          listCollection<OctaviaMember>(
-            scope,
-            "members",
-            nestedCollectionPath(
-              `/v2/lbaas/pools/${encodeURIComponent(pool.id)}/members`,
-            ),
-          ),
-        );
-        return members.map((member) => ({ ...member, pool_id: pool.id }));
+        return readTopologyResource(readPoolMembers(scope, pool.id));
       }),
     ),
     Promise.all(

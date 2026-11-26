@@ -74,6 +74,7 @@ import {
   isOctaviaAmphoraProvider,
   isOctaviaProvisioning,
   loadBalancerListenerPath,
+  loadBalancerPoolPath,
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
 import {
@@ -645,10 +646,14 @@ export function LoadBalancerDetailClient({
                 data.pools.map((pool) => (
                   <TableRow key={pool.id}>
                     <TableCell>
-                      <div>{nameOrId(pool.name, pool.id)}</div>
-                      <div className="font-mono text-xs text-muted-foreground">
-                        {pool.id}
-                      </div>
+                      <ResourceLink href={loadBalancerPoolPath(id, pool.id)}>
+                        {nameOrId(pool.name, pool.id)}
+                      </ResourceLink>
+                      {pool.name ? (
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {pool.id}
+                        </div>
+                      ) : null}
                     </TableCell>
                     <TableCell>{pool.protocol}</TableCell>
                     <TableCell>
