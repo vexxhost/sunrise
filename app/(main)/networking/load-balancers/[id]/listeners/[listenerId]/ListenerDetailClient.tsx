@@ -26,6 +26,7 @@ import {
   canChangeOctaviaListeners,
   formatOctaviaStatus,
   isOctaviaProvisioning,
+  loadBalancerPoolPath,
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
 import {
@@ -168,7 +169,7 @@ export function ListenerDetailClient({
           <DetailField label="Default pool">
             {defaultPoolId ? (
               <ResourceLink
-                href={`/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#pools`}
+                href={loadBalancerPoolPath(loadBalancer.id, defaultPoolId)}
               >
                 {defaultPool?.name || defaultPoolId}
               </ResourceLink>

@@ -13,6 +13,10 @@ export function loadBalancerListenerPath(
   return `/networking/load-balancers/${encodeURIComponent(loadBalancerId)}/listeners/${encodeURIComponent(listenerId)}`;
 }
 
+export function loadBalancerPoolPath(loadBalancerId: string, poolId: string) {
+  return `/networking/load-balancers/${encodeURIComponent(loadBalancerId)}/pools/${encodeURIComponent(poolId)}`;
+}
+
 export function canChangeOctaviaListeners(
   loadBalancer: Pick<OctaviaLoadBalancer, "provisioning_status">,
 ) {

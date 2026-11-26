@@ -77,6 +77,8 @@ export interface OctaviaPool {
   listeners?: OctaviaResourceReference[];
   members?: OctaviaResourceReference[];
   healthmonitor_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
   tags?: string[];
 }
 

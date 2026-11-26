@@ -23,6 +23,7 @@ import {
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerPool,
+  getLoadBalancerPoolDetails,
   getOctaviaL7Rule,
   getOctaviaListenerL7Policy,
   getOctaviaPoolHealthMonitor,
@@ -914,5 +915,152 @@ describe("Octavia project scoping", () => {
         /^\/v2\/lbaas\/(listeners|pools|healthmonitors|l7policies)\?/,
       ),
     );
+  });
+
+  describe("pool details", () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const poolId = "22222222-2222-4222-8222-222222222222";
+    const listenerId = "33333333-3333-4333-8333-333333333333";
+    const monitorId = "44444444-4444-4444-8444-444444444444";
+    const memberId = "55555555-5555-4555-8555-555555555555";
+    const otherId = "66666666-6666-4666-8666-666666666666";
+    const memberPath = `/v2/lbaas/pools/${poolId}/members`;
+    const pool = {
+      id: poolId,
+      project_id: "project-a",
+      name: "application",
+      loadbalancers: [{ id: parentId }],
+      listeners: [{ id: listenerId }],
+      healthmonitor_id: monitorId,
+    };
+    const listener = {
+      id: listenerId,
+      name: "HTTP",
+      project_id: "project-a",
+      loadbalancers: [{ id: parentId }],
+    };
+    const monitor = {
+      id: monitorId,
+      project_id: "project-a",
+      pools: [{ id: poolId }],
+    };
+
+    function mockDetails(overrides: Record<string, unknown> = {}) {
+      const responses: Record<string, unknown> = {
+        [`/v2/lbaas/loadbalancers/${parentId}`]: {
+          loadbalancer: loadBalancer(parentId, "project-a", "edge"),
+        },
+        [`/v2/lbaas/pools/${poolId}`]: { pool },
+        [`${memberPath}?limit=100`]: { members: [] },
+        [`/v2/lbaas/listeners/${listenerId}`]: { listener },
+        [`/v2/lbaas/healthmonitors/${monitorId}`]: { healthmonitor: monitor },
+        ...overrides,
+      };
+      mocks.openstackRequest.mockImplementation(
+        async ({ path }: { path: string }) => {
+          const response = responses[path];
+          if (response instanceof Error) throw response;
+          if (response === undefined)
+            throw new Error(`Unexpected request: ${path}`);
+          return response;
+        },
+      );
+    }
+
+    it("reads only the selected pool topology and keeps members within the pool and project", async () => {
+      mockDetails({
+        [`${memberPath}?limit=100`]: {
+          members: [
+            { id: memberId, project_id: "project-a" },
+            { id: otherId, project_id: "project-b" },
+          ],
+          members_links: [
+            {
+              rel: "next",
+              href: `https://octavia.example${memberPath}?marker=${memberId}`,
+            },
+          ],
+        },
+        [`${memberPath}?marker=${memberId}`]: {
+          members: [{ id: otherId, project_id: "project-a", pool_id: otherId }],
+        },
+      });
+      const details = await getLoadBalancerPoolDetails(
+        parentId,
+        poolId,
+        "RegionOne",
+        "project-a",
+      );
+      expect(details).toMatchObject({
+        loadBalancer: { id: parentId },
+        pool,
+        listeners: [listener],
+        members: [{ id: memberId, project_id: "project-a", pool_id: poolId }],
+        healthMonitor: monitor,
+      });
+      expect(mocks.openstackRequest).toHaveBeenCalledTimes(6);
+      expect(mocks.discoverLoadBalancerCapabilities).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      { loadbalancers: [{ id: otherId }] },
+      { project_id: "project-b" },
+      { id: otherId },
+    ])(
+      "rejects a pool with an unrelated parent, project or ID: %j",
+      async (changes) => {
+        mockDetails({
+          [`/v2/lbaas/pools/${poolId}`]: { pool: { ...pool, ...changes } },
+        });
+        await expect(
+          getLoadBalancerPoolDetails(parentId, poolId),
+        ).rejects.toMatchObject({ status: 404 });
+        expect(mocks.openstackRequest).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it("rejects another region before making requests", async () => {
+      await expect(
+        getLoadBalancerPoolDetails(parentId, poolId, "RegionTwo"),
+      ).rejects.toThrow("region does not match");
+      expect(mocks.openstackRequest).not.toHaveBeenCalled();
+    });
+
+    it("distinguishes a missing child resource from an empty pool", async () => {
+      const missing = new OpenStackRequestError(404, "Missing");
+      mockDetails({
+        [`${memberPath}?limit=100`]: missing,
+        [`/v2/lbaas/listeners/${listenerId}`]: missing,
+        [`/v2/lbaas/healthmonitors/${monitorId}`]: missing,
+      });
+      await expect(
+        getLoadBalancerPoolDetails(parentId, poolId),
+      ).resolves.toMatchObject({
+        pool,
+        listeners: [null],
+        members: null,
+        healthMonitor: null,
+      });
+    });
+
+    it("does not follow a member pagination link that points at a different pool", async () => {
+      mockDetails({
+        [`${memberPath}?limit=100`]: {
+          members: [],
+          members_links: [
+            {
+              rel: "next",
+              href: `/v2/lbaas/pools/${otherId}/members?marker=${memberId}`,
+            },
+          ],
+        },
+      });
+      await expect(
+        getLoadBalancerPoolDetails(parentId, poolId),
+      ).rejects.toThrow("Invalid Octavia members pagination target");
+      expect(
+        mocks.openstackRequest.mock.calls.map(([options]) => options.path),
+      ).not.toContain(`/v2/lbaas/pools/${otherId}/members?marker=${memberId}`);
+    });
   });
 });
