@@ -1121,7 +1121,9 @@ export async function mutateLoadBalancerListenerAction(
     invalidates: [
       "/networking/load-balancers",
       `/networking/load-balancers/${parentId}`,
-      ...(listenerId ? [loadBalancerListenerPath(parentId, listenerId)] : []),
+      ...(value.action === "edit" && listenerId
+        ? [loadBalancerListenerPath(parentId, listenerId)]
+        : []),
       "/quotas",
     ],
     successMessage: {
