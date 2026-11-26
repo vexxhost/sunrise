@@ -210,7 +210,7 @@ export function canChangeOctaviaPoolMembers(
   );
 }
 
-export function poolChildMutationRecovery(
+export function poolMutationRecovery(
   code: MutationErrorCode,
   retainDraftOnConflict = false,
 ) {

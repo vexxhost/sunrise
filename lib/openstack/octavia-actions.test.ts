@@ -918,7 +918,12 @@ describe("Octavia pool actions", () => {
       name: "backend",
     });
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
-      expect.objectContaining({ body: { pool: { name: "backend" } } }),
+      expect.objectContaining({
+        body: { pool: { name: "backend" } },
+        invalidates: expect.arrayContaining([
+          `/networking/load-balancers/${loadBalancerId}/pools/${poolId}`,
+        ]),
+      }),
     );
   });
 

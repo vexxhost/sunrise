@@ -936,14 +936,22 @@ export function LoadBalancerDetailClient({
 
       {poolAction ? (
         <PoolMutationDialog
-          target={poolAction}
+          {...(poolAction.action === "create"
+            ? {
+                target: poolAction,
+                creation: {
+                  provider: loadBalancer.provider,
+                  capabilities: octaviaCapabilities,
+                  listeners: data.listeners,
+                },
+              }
+            : poolAction.action === "delete"
+              ? { target: poolAction, l7Policies: data.l7Policies }
+              : { target: poolAction })}
           loadBalancerId={loadBalancer.id}
-          provider={loadBalancer.provider}
-          capabilities={octaviaCapabilities}
-          listeners={data.listeners}
-          l7Policies={data.l7Policies}
           scope={{ projectId, regionId }}
           onClose={() => setPoolAction(null)}
+          onRefresh={refreshTopology}
           onSuccess={(message) => {
             setPoolNotice({ message, at: Date.now() });
             setPoolAction(null);

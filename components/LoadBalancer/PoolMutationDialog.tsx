@@ -42,6 +42,7 @@ import {
   formatPoolPersistence,
   OCTAVIA_POOL_ALGORITHMS,
   octaviaPoolDeletionBlock,
+  poolMutationRecovery,
   poolPersistenceError,
   readPoolPersistence,
   type OctaviaPoolAlgorithm,
@@ -55,7 +56,30 @@ import type {
 } from "@/types/openstack";
 
 export type PoolDialogAction =
-  { action: "create" } | { action: "edit" | "delete"; pool: OctaviaPool };
+  | { action: "create" }
+  | { action: "edit"; pool: OctaviaPool }
+  | { action: "delete"; pool: OctaviaPool };
+
+type PoolDialogOperations =
+  | {
+      target: Extract<PoolDialogAction, { action: "create" }>;
+      creation: {
+        provider?: string;
+        capabilities: OpenStackServiceCapabilities;
+        listeners: OctaviaListener[];
+      };
+      l7Policies?: never;
+    }
+  | {
+      target: Extract<PoolDialogAction, { action: "edit" }>;
+      creation?: never;
+      l7Policies?: never;
+    }
+  | {
+      target: Extract<PoolDialogAction, { action: "delete" }>;
+      creation?: never;
+      l7Policies: OctaviaL7Policy[];
+    };
 
 const NO_LISTENER = "none";
 const NO_PERSISTENCE = "none";
@@ -63,24 +87,19 @@ const NO_PERSISTENCE = "none";
 export function PoolMutationDialog({
   target,
   loadBalancerId,
-  provider,
-  capabilities,
-  listeners,
+  creation,
   l7Policies,
   scope,
   onClose,
+  onRefresh,
   onSuccess,
 }: {
-  target: PoolDialogAction;
   loadBalancerId: string;
-  provider?: string;
-  capabilities: OpenStackServiceCapabilities;
-  listeners: OctaviaListener[];
-  l7Policies: OctaviaL7Policy[];
   scope: MutationScope;
   onClose: () => void;
+  onRefresh: () => void;
   onSuccess: (message: string) => void;
-}) {
+} & PoolDialogOperations) {
   const creating = target.action === "create";
   const pool = creating ? undefined : target.pool;
   const [initial] = useState(() => ({
@@ -103,6 +122,8 @@ export function PoolMutationDialog({
   );
   const [cookieName, setCookieName] = useState(initialCookieName);
   const [error, setError] = useState<string | null>(null);
+  const [requiresReopen, setRequiresReopen] = useState(false);
+  const [submission] = useState(() => ({ scope, loadBalancerId }));
   const [pending, startTransition] = useTransition();
   const inFlight = useRef(false);
   const quota = useProjectQuotaImpact({
@@ -112,40 +133,60 @@ export function PoolMutationDialog({
     requests: [{ metricId: "pool", requested: 1 }],
     serviceId: "load-balancing",
   });
-  const eligibleListeners = listeners.filter(
-    (listener) =>
-      canAttachNewOctaviaPool(listener) &&
-      availablePoolProtocols(provider, capabilities, listener.protocol).length >
-        0,
-  );
+  const protocolsFor = (listenerProtocol?: string) =>
+    creation
+      ? availablePoolProtocols(
+          creation.provider,
+          creation.capabilities,
+          listenerProtocol,
+        )
+      : [];
+  const eligibleListeners =
+    creation?.listeners.filter(
+      (listener) =>
+        canAttachNewOctaviaPool(listener) &&
+        protocolsFor(listener.protocol).length > 0,
+    ) ?? [];
   const selectedListener = eligibleListeners.find(
     ({ id }) => id === listenerId,
   );
-  const protocols = availablePoolProtocols(
-    provider,
-    capabilities,
-    selectedListener?.protocol,
-  );
+  const protocols = protocolsFor(selectedListener?.protocol);
   const staleListener = listenerId !== NO_LISTENER && !selectedListener;
   const close = () => {
     if (!inFlight.current) onClose();
   };
   const run = (input: OctaviaPoolMutation) => {
-    if (inFlight.current) return;
+    if (inFlight.current || requiresReopen) return;
     inFlight.current = true;
     setError(null);
     startTransition(async () => {
       try {
         const result = await mutateLoadBalancerPoolAction(
-          scope,
-          loadBalancerId,
+          submission.scope,
+          submission.loadBalancerId,
           input,
         );
-        if (result.ok) onSuccess(result.message);
-        else setError(result.error.message);
-      } catch {
+        if (result.ok) {
+          onSuccess(result.message);
+          return;
+        }
+        const { code, message } = result.error;
+        const { needsRefresh, needsReopen } = poolMutationRecovery(
+          code,
+          creating,
+        );
+        if (needsRefresh) onRefresh();
+        if (needsReopen) setRequiresReopen(true);
         setError(
-          "The result could not be confirmed. Refresh the load balancer before retrying.",
+          needsReopen
+            ? `${message} Close this dialog to check the pool before retrying.`
+            : message,
+        );
+      } catch {
+        setRequiresReopen(true);
+        onRefresh();
+        setError(
+          "The result could not be confirmed. Close this dialog to check the load balancer before retrying.",
         );
       } finally {
         inFlight.current = false;
@@ -154,7 +195,9 @@ export function PoolMutationDialog({
   };
 
   if (target.action === "delete") {
-    const blocked = octaviaPoolDeletionBlock(target.pool, l7Policies);
+    const blocked = l7Policies
+      ? octaviaPoolDeletionBlock(target.pool, l7Policies)
+      : "The pool's L7 policy dependencies are unavailable. Refresh before deleting it.";
     return (
       <MutationConfirmationDialog
         open
@@ -175,7 +218,7 @@ export function PoolMutationDialog({
         variant="destructive"
         pending={pending}
         error={error}
-        confirmDisabled={Boolean(blocked)}
+        confirmDisabled={requiresReopen || Boolean(blocked)}
         onConfirm={() => {
           if (!blocked)
             run({
@@ -222,6 +265,7 @@ export function PoolMutationDialog({
     algorithm === initial.algorithm &&
     !persistenceChanged;
   const disabled =
+    requiresReopen ||
     Boolean(persistenceError) ||
     (creating
       ? staleListener ||
@@ -311,11 +355,7 @@ export function PoolMutationDialog({
                   const listener = eligibleListeners.find(
                     ({ id }) => id === next,
                   );
-                  const allowed = availablePoolProtocols(
-                    provider,
-                    capabilities,
-                    listener?.protocol,
-                  );
+                  const allowed = protocolsFor(listener?.protocol);
                   if (!allowed.includes(protocol) && allowed[0]) {
                     setProtocol(
                       listener?.protocol === "HTTPS" &&
