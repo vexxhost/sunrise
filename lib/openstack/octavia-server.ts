@@ -1,5 +1,6 @@
 import "server-only";
 
+import { z } from "zod";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import {
   isOpenStackNotFoundError,
@@ -29,10 +30,10 @@ import type {
   OctaviaListener,
   OctaviaLoadBalancer,
   OctaviaLoadBalancerDetails,
-  OctaviaLoadBalancerStats,
   OctaviaMember,
   OctaviaPool,
   OctaviaStatusNode,
+  OctaviaTrafficStats,
 } from "@/types/openstack";
 
 const SERVICE_TYPE = "load-balancer";
@@ -147,6 +148,39 @@ async function octaviaGet<T>(
     apiVersion,
     errorMode,
   });
+}
+
+const trafficCounter = z
+  .number()
+  .int()
+  .nonnegative()
+  .optional()
+  .catch(undefined);
+const trafficStatsResponse = z.object({
+  stats: z.object({
+    active_connections: trafficCounter,
+    bytes_in: trafficCounter,
+    bytes_out: trafficCounter,
+    request_errors: trafficCounter,
+    total_connections: trafficCounter,
+  }),
+});
+
+async function readTrafficStats(
+  scope: OctaviaScope,
+  collection: "listeners" | "loadbalancers",
+  id: string,
+): Promise<OctaviaTrafficStats | null> {
+  const payload = await octaviaGet<unknown>(
+    scope,
+    `/v2/lbaas/${collection}/${encodeURIComponent(id)}/stats`,
+    "return-null",
+  );
+  const parsed = trafficStatsResponse.safeParse(payload);
+  return parsed.success &&
+    Object.values(parsed.data.stats).some((counter) => counter !== undefined)
+    ? parsed.data.stats
+    : null;
 }
 
 function parseAvailabilityZones(payload: unknown) {
@@ -547,7 +581,8 @@ export async function getLoadBalancerListenerDetails(
   if (loadBalancer.id !== parentId) {
     throw new OpenStackRequestError(404, "Load balancer not found");
   }
-  return { loadBalancer, listener, capabilities };
+  const stats = await readTrafficStats(scope, "listeners", listenerId);
+  return { loadBalancer, listener, capabilities, stats };
 }
 
 export async function getLoadBalancerPool(
@@ -920,11 +955,7 @@ async function readLoadBalancerDetails(
   let loadBalancer = await readParent();
   const [firstListenerResults, stats, status] = await Promise.all([
     readListeners(loadBalancer),
-    octaviaGet<{ stats: OctaviaLoadBalancerStats }>(
-      scope,
-      `/v2/lbaas/loadbalancers/${encodeURIComponent(loadBalancerId)}/stats`,
-      "return-null",
-    ),
+    readTrafficStats(scope, "loadbalancers", loadBalancerId),
     octaviaGet<{ statuses: { loadbalancer: OctaviaStatusNode } }>(
       scope,
       `/v2/lbaas/loadbalancers/${encodeURIComponent(loadBalancerId)}/status`,
@@ -1026,7 +1057,7 @@ async function readLoadBalancerDetails(
 
   return {
     loadBalancer,
-    stats: stats?.stats ?? null,
+    stats,
     statusTree: status?.statuses?.loadbalancer ?? null,
     listeners,
     pools,

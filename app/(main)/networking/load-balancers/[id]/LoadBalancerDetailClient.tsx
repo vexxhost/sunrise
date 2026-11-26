@@ -42,6 +42,7 @@ import {
   PoolMutationDialog,
   type PoolDialogAction,
 } from "@/components/LoadBalancer/PoolMutationDialog";
+import { TrafficStatistics } from "@/components/LoadBalancer/TrafficStatistics";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
@@ -95,17 +96,6 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
       {formatOctaviaStatus(status)}
     </Badge>
   );
-}
-
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value < 0) return "-";
-  if (value === 0) return "0 B";
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
-  const exponent = Math.min(
-    Math.floor(Math.log(value) / Math.log(1024)),
-    units.length - 1,
-  );
-  return `${(value / 1024 ** exponent).toFixed(exponent === 0 ? 0 : 1)} ${units[exponent]}`;
 }
 
 function nameOrId(name: string | undefined, id: string) {
@@ -450,24 +440,7 @@ export function LoadBalancerDetailClient({
         </DetailSection>
       </div>
 
-      {data.stats ? (
-        <DetailSection title="Traffic statistics">
-          <div className="grid gap-px bg-border sm:grid-cols-2 lg:grid-cols-5">
-            {[
-              ["Active connections", data.stats.active_connections],
-              ["Total connections", data.stats.total_connections],
-              ["Request errors", data.stats.request_errors],
-              ["Bytes in", formatBytes(data.stats.bytes_in)],
-              ["Bytes out", formatBytes(data.stats.bytes_out)],
-            ].map(([label, value]) => (
-              <div className="bg-background p-3" key={label}>
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="mt-1 text-sm font-medium">{value}</p>
-              </div>
-            ))}
-          </div>
-        </DetailSection>
-      ) : null}
+      {data.stats ? <TrafficStatistics stats={data.stats} /> : null}
 
       <section id="listeners" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
