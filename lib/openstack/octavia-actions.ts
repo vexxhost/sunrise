@@ -83,6 +83,7 @@ import {
   getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
   listLoadBalancerPoolChoices,
+  listLoadBalancerPoolRedirectPolicies,
   listLoadBalancers,
   listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
@@ -1433,7 +1434,9 @@ export async function mutateLoadBalancerPoolAction(
     invalidates: [
       "/networking/load-balancers",
       `/networking/load-balancers/${parentId}`,
-      ...(poolId ? [loadBalancerPoolPath(parentId, poolId)] : []),
+      ...(value.action === "edit" && poolId
+        ? [loadBalancerPoolPath(parentId, poolId)]
+        : []),
       "/quotas",
     ],
     successMessage: operation[value.action].message,
@@ -1963,6 +1966,20 @@ export async function getLoadBalancerDetailsAction(
   projectId?: string,
 ): Promise<OctaviaLoadBalancerDetails> {
   return getLoadBalancerDetails(id, regionId, projectId);
+}
+
+export async function listLoadBalancerPoolRedirectPoliciesAction(
+  loadBalancerId: string,
+  poolId: string,
+  regionId: string,
+  projectId: string,
+) {
+  return listLoadBalancerPoolRedirectPolicies(
+    loadBalancerId,
+    poolId,
+    regionId,
+    projectId,
+  );
 }
 
 export async function getLoadBalancerListenerDetailsAction(

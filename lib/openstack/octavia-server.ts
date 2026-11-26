@@ -819,6 +819,27 @@ export async function listOctaviaPoolRedirectPolicies(
 ): Promise<OctaviaL7Policy[]> {
   const poolId = requireUuid(id, "pool ID");
   const scope = await resolveScope(regionId, projectId);
+  return readPoolRedirectPolicies(scope, poolId);
+}
+
+export async function listLoadBalancerPoolRedirectPolicies(
+  loadBalancerId: string,
+  id: string,
+  regionId: string,
+  projectId: string,
+): Promise<Array<Pick<OctaviaL7Policy, "redirect_pool_id">>> {
+  const parentId = requireUuid(
+    loadBalancerId,
+    "load balancer ID",
+  ).toLowerCase();
+  const poolId = requireUuid(id, "pool ID").toLowerCase();
+  const scope = await resolveScope(regionId, projectId);
+  await readPool(scope, parentId, poolId);
+  const policies = await readPoolRedirectPolicies(scope, poolId);
+  return policies.map(({ redirect_pool_id }) => ({ redirect_pool_id }));
+}
+
+async function readPoolRedirectPolicies(scope: OctaviaScope, poolId: string) {
   const filters = { project_id: scope.projectId, redirect_pool_id: poolId };
   const policies = await listCollection<OctaviaL7Policy>(
     scope,

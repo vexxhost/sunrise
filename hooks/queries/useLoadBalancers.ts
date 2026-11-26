@@ -6,6 +6,7 @@ import {
   listLoadBalancerAvailabilityZonesAction,
   listLoadBalancerFloatingIpsAction,
   listLoadBalancerPoolChoicesAction,
+  listLoadBalancerPoolRedirectPoliciesAction,
   listLoadBalancersAction,
 } from "@/lib/openstack/octavia-actions";
 
@@ -115,5 +116,33 @@ export function loadBalancerPoolDetailsQueryOptions(
         regionId,
         projectId,
       ),
+  });
+}
+
+export function loadBalancerPoolRedirectPoliciesQueryOptions(
+  regionId: string,
+  projectId: string,
+  loadBalancerId: string,
+  poolId: string,
+) {
+  return queryOptions({
+    queryKey: [
+      ...loadBalancerPoolDetailsQueryOptions(
+        regionId,
+        projectId,
+        loadBalancerId,
+        poolId,
+      ).queryKey,
+      "redirect-policies",
+    ],
+    queryFn: () =>
+      listLoadBalancerPoolRedirectPoliciesAction(
+        loadBalancerId,
+        poolId,
+        regionId,
+        projectId,
+      ),
+    retry: false,
+    staleTime: 0,
   });
 }
