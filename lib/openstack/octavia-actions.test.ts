@@ -1084,6 +1084,9 @@ describe("Octavia listener actions", () => {
           apiVersion: "load-balancer 2.0",
           body: { listener: { default_pool_id: after } },
           successMessage: "Default pool change requested.",
+          invalidates: expect.arrayContaining([
+            `/networking/load-balancers/${loadBalancerId}/listeners/${listenerId}`,
+          ]),
         }),
       );
       if (after) {
@@ -1582,6 +1585,11 @@ describe("Octavia listener actions", () => {
       expect.objectContaining({
         method: "DELETE",
         path: "/v2/lbaas/listeners/" + listenerId,
+        invalidates: [
+          "/networking/load-balancers",
+          `/networking/load-balancers/${loadBalancerId}`,
+          "/quotas",
+        ],
       }),
     );
     expect(mocks.executeOpenStackMutation.mock.calls[0][0]).not.toHaveProperty(

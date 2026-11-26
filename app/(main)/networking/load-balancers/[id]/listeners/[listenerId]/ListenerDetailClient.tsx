@@ -6,10 +6,14 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { Network, Pencil, RefreshCw } from "lucide-react";
+import { Network, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
-import { ListenerMutationDialog } from "@/components/LoadBalancer/ListenerMutationDialog";
+import {
+  ListenerMutationDialog,
+  type ListenerDialogAction,
+} from "@/components/LoadBalancer/ListenerMutationDialog";
 import { TrafficStatistics } from "@/components/LoadBalancer/TrafficStatistics";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
@@ -49,8 +53,13 @@ export function ListenerDetailClient({
   projectId: string;
   regionId: string;
 }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
+  const [action, setAction] = useState<Exclude<
+    ListenerDialogAction,
+    { action: "create" }
+  > | null>(null);
+  const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ message: string; at: number } | null>(
     null,
   );
@@ -68,6 +77,7 @@ export function ListenerDetailClient({
   } = useSuspenseQuery({
     ...query,
     refetchInterval: ({ state }) =>
+      !deletionNotice &&
       !state.error &&
       ((notice && Date.now() - notice.at < 20_000) ||
         (state.data &&
@@ -86,11 +96,50 @@ export function ListenerDetailClient({
   const headers = insertedHeaders
     ? Object.entries(insertedHeaders).sort(([a], [b]) => a.localeCompare(b))
     : [];
-  const canEdit =
+  const parentHref = `/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#listeners`;
+  const canChange =
     !isFetching &&
     !isRefetchError &&
+    Array.isArray(loadBalancer.listeners) &&
+    loadBalancer.listeners.some((reference) => reference?.id === listener.id) &&
     canChangeOctaviaListeners(loadBalancer) &&
     canChangeOctaviaListener(listener);
+
+  const openAction = (kind: "edit" | "delete") => {
+    setNotice(null);
+    setAction({ action: kind, listener });
+  };
+
+  const onSuccess = (message: string) => {
+    const deleted = action?.action === "delete";
+    setAction(null);
+    void queryClient.invalidateQueries({
+      queryKey: loadBalancerDetailsQueryOptions(
+        regionId,
+        projectId,
+        loadBalancerId,
+      ).queryKey,
+      refetchType: deleted ? "none" : "active",
+    });
+    if (deleted) {
+      setDeletionNotice(message);
+      void queryClient.invalidateQueries({
+        queryKey: [regionId, projectId, "project-quotas", "load-balancing"],
+      });
+      router.replace(parentHref);
+    } else {
+      setNotice({ message, at: Date.now() });
+    }
+  };
+
+  if (deletionNotice) {
+    return (
+      <MutationAlert variant="success">
+        {deletionNotice}{" "}
+        <ResourceLink href={parentHref}>Return to listeners</ResourceLink>
+      </MutationAlert>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -119,15 +168,23 @@ export function ListenerDetailClient({
             Refresh
           </Button>
           <Button
+            type="button"
             variant="outline"
-            disabled={!canEdit}
-            onClick={() => {
-              setNotice(null);
-              setEditing(true);
-            }}
+            disabled={!canChange}
+            onClick={() => openAction("edit")}
           >
             <Pencil className="size-4" />
             Edit listener
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            tone="danger"
+            disabled={!canChange}
+            onClick={() => openAction("delete")}
+          >
+            <Trash2 className="size-4" />
+            Delete listener
           </Button>
         </div>
       </div>
@@ -145,9 +202,7 @@ export function ListenerDetailClient({
       <div className="grid gap-6 lg:grid-cols-2">
         <DetailSection title="Listener">
           <DetailField label="Load balancer">
-            <ResourceLink
-              href={`/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#listeners`}
-            >
+            <ResourceLink href={parentHref}>
               {loadBalancer.name || loadBalancer.id}
             </ResourceLink>
           </DetailField>
@@ -260,24 +315,14 @@ export function ListenerDetailClient({
 
       <TrafficStatistics stats={stats} />
 
-      {editing ? (
+      {action ? (
         <ListenerMutationDialog
-          target={{ action: "edit", listener }}
+          target={action}
           loadBalancer={loadBalancer}
           capabilities={capabilities}
           scope={{ projectId, regionId }}
-          onClose={() => setEditing(false)}
-          onSuccess={(message) => {
-            setNotice({ message, at: Date.now() });
-            setEditing(false);
-            void queryClient.invalidateQueries({
-              queryKey: loadBalancerDetailsQueryOptions(
-                regionId,
-                projectId,
-                loadBalancerId,
-              ).queryKey,
-            });
-          }}
+          onClose={() => setAction(null)}
+          onSuccess={onSuccess}
         />
       ) : null}
     </div>
