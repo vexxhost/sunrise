@@ -36,7 +36,7 @@ import {
 } from "@/lib/openstack/octavia-actions";
 import {
   formatOctaviaMemberAddress,
-  poolChildMutationRecovery,
+  poolMutationRecovery,
 } from "@/lib/openstack/octavia-pool-settings";
 import type { OctaviaMember, OctaviaPool } from "@/types/openstack";
 
@@ -117,7 +117,7 @@ export function MemberMutationDialog({
           return;
         }
         const { code, message } = result.error;
-        const { needsRefresh, needsReopen } = poolChildMutationRecovery(
+        const { needsRefresh, needsReopen } = poolMutationRecovery(
           code,
           creating,
         );

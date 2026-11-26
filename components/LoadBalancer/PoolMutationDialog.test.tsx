@@ -38,19 +38,27 @@ function renderDialog(
 ) {
   return renderToStaticMarkup(
     <PoolMutationDialog
-      target={target}
+      {...(target.action === "create"
+        ? {
+            target,
+            creation: {
+              provider: "amphorav2",
+              capabilities: {
+                discoveryStatus: "available" as const,
+                message: "",
+                microversions: { minimum: "2.0", maximum: "2.30" },
+                serviceType: "load-balancer" as const,
+              },
+              listeners: [],
+            },
+          }
+        : target.action === "delete"
+          ? { target, l7Policies }
+          : { target })}
       loadBalancerId="11111111-1111-4111-8111-111111111111"
-      provider="amphorav2"
-      capabilities={{
-        discoveryStatus: "available",
-        message: "",
-        microversions: { minimum: "2.0", maximum: "2.30" },
-        serviceType: "load-balancer",
-      }}
-      listeners={[]}
-      l7Policies={l7Policies}
       scope={{ projectId: "project-a", regionId: "RegionOne" }}
       onClose={() => {}}
+      onRefresh={() => {}}
       onSuccess={() => {}}
     />,
   );

@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { Layers, Plus, RefreshCw, Trash2, UserPlus } from "lucide-react";
+import {
+  Layers,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import {
@@ -13,6 +20,10 @@ import {
   MemberMutationDialog,
   type MemberDialogAction,
 } from "@/components/LoadBalancer/MemberMutationDialog";
+import {
+  PoolMutationDialog,
+  type PoolDialogAction,
+} from "@/components/LoadBalancer/PoolMutationDialog";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
@@ -56,6 +67,7 @@ import {
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 
 type PoolDetailAction =
+  | { kind: "edit-pool"; target: Extract<PoolDialogAction, { action: "edit" }> }
   | { kind: "member"; target: MemberDialogAction }
   | { kind: "monitor"; target: HealthMonitorDialogAction };
 
@@ -170,13 +182,32 @@ export function PoolDetailClient({
             <CopyButton value={pool.id} label="Copy pool ID" />
           </div>
         </div>
-        <Button
-          variant="outline"
-          loading={isFetching}
-          onClick={() => void refetch()}
-        >
-          <RefreshCw className="size-4" /> Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {writesSupported ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={
+                !canChangePoolChildren || !canChangeOctaviaListener(pool)
+              }
+              onClick={() =>
+                openAction({
+                  kind: "edit-pool",
+                  target: { action: "edit", pool },
+                })
+              }
+            >
+              <Pencil className="size-4" /> Edit pool
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            loading={isFetching}
+            onClick={() => void refetch()}
+          >
+            <RefreshCw className="size-4" /> Refresh
+          </Button>
+        </div>
       </div>
 
       {isRefetchError ? (
@@ -492,6 +523,16 @@ export function PoolDetailClient({
           </p>
         )}
       </section>
+      {action?.kind === "edit-pool" ? (
+        <PoolMutationDialog
+          target={action.target}
+          loadBalancerId={loadBalancerId}
+          scope={{ projectId, regionId }}
+          onClose={() => setAction(null)}
+          onRefresh={refreshPoolData}
+          onSuccess={onSuccess}
+        />
+      ) : null}
       {action?.kind === "member" ? (
         <MemberMutationDialog
           target={action.target}

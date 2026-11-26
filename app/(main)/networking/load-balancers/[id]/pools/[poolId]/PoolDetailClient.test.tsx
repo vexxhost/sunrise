@@ -16,6 +16,9 @@ vi.mock("@/components/LoadBalancer/MemberMutationDialog", () => ({
 vi.mock("@/components/LoadBalancer/HealthMonitorMutationDialog", () => ({
   HealthMonitorMutationDialog: () => null,
 }));
+vi.mock("@/components/LoadBalancer/PoolMutationDialog", () => ({
+  PoolMutationDialog: () => null,
+}));
 
 import { PoolDetailClient } from "./PoolDetailClient";
 
@@ -94,6 +97,12 @@ function addMonitorButton(markup: string) {
   )?.[0];
 }
 
+function editPoolButton(markup: string) {
+  return markup.match(
+    /<button\b[^>]*>(?:(?!<\/button>)[\s\S])*Edit pool<\/button>/,
+  )?.[0];
+}
+
 describe("pool details view", () => {
   it("shows configured persistence, an IPv6 member, the monitor, and verified links", () => {
     const markup = renderDetail({
@@ -145,11 +154,12 @@ describe("pool details view", () => {
     expect(unavailable).toContain("Some listener details are unavailable.");
   });
 
-  it("does not offer member controls for an unsupported provider", () => {
+  it("does not offer pool edit or member controls for an unsupported provider", () => {
     const markup = renderDetail({
       loadBalancer: { ...loadBalancer, provider: "ovn" },
     });
     expect(addMemberButton(markup)).toBeUndefined();
+    expect(editPoolButton(markup)).toBeUndefined();
   });
 
   it.each([{ pools: [] }, { provisioning_status: "PENDING_UPDATE" }])(
@@ -159,6 +169,7 @@ describe("pool details view", () => {
         loadBalancer: { ...loadBalancer, ...parentChanges },
       });
       expect(addMemberButton(markup)).toContain(' disabled=""');
+      expect(editPoolButton(markup)).toContain(' disabled=""');
     },
   );
 
@@ -173,6 +184,28 @@ describe("pool details view", () => {
       ' disabled=""',
     );
   });
+
+  it.each(["ACTIVE", "ERROR", "PENDING_UPDATE"])(
+    "gates pool editing for pool provisioning status %s, independent of member details",
+    (provisioning_status) => {
+      const edit = editPoolButton(
+        renderDetail({ pool: { ...pool, provisioning_status }, members: null }),
+      );
+      expect(edit).toBeDefined();
+      expect(edit?.includes(' disabled=""')).toBe(
+        provisioning_status === "PENDING_UPDATE",
+      );
+    },
+  );
+
+  it.each([{ isFetching: true }, { isRefetchError: true }])(
+    "disables pool editing until current details are available: %j",
+    (queryState) => {
+      expect(editPoolButton(renderDetail({}, queryState))).toContain(
+        ' disabled=""',
+      );
+    },
+  );
 
   it("adds monitors only for supported providers and pools with no monitor reference", () => {
     expect(addMonitorButton(renderDetail())).toBeDefined();

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { MutationErrorCode } from "@/lib/mutations";
-import { poolChildMutationRecovery } from "./octavia-pool-settings";
+import { poolMutationRecovery } from "./octavia-pool-settings";
 
-describe("pool child mutation recovery", () => {
+describe("pool mutation recovery", () => {
   it.each([
     ["conflict", false, true, true],
     ["conflict", true, true, false],
@@ -19,7 +19,7 @@ describe("pool child mutation recovery", () => {
   ])[])(
     "refreshes or locks the dialog after %s (retain draft on conflict: %s)",
     (code, retainDraft, needsRefresh, needsReopen) => {
-      expect(poolChildMutationRecovery(code, retainDraft)).toEqual({
+      expect(poolMutationRecovery(code, retainDraft)).toEqual({
         needsRefresh,
         needsReopen,
       });

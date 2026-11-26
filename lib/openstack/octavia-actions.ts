@@ -1433,6 +1433,7 @@ export async function mutateLoadBalancerPoolAction(
     invalidates: [
       "/networking/load-balancers",
       `/networking/load-balancers/${parentId}`,
+      ...(poolId ? [loadBalancerPoolPath(parentId, poolId)] : []),
       "/quotas",
     ],
     successMessage: operation[value.action].message,

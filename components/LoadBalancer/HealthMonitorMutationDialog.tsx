@@ -41,7 +41,7 @@ import {
   healthMonitorSettingsSchema,
   type HealthMonitorSettings,
 } from "@/lib/openstack/octavia-health-monitor-settings";
-import { poolChildMutationRecovery } from "@/lib/openstack/octavia-pool-settings";
+import { poolMutationRecovery } from "@/lib/openstack/octavia-pool-settings";
 import type { OctaviaHealthMonitor, OctaviaPool } from "@/types/openstack";
 
 export type HealthMonitorDialogAction =
@@ -159,7 +159,7 @@ export function HealthMonitorMutationDialog({
           return;
         }
         const { code, message } = result.error;
-        const { needsRefresh, needsReopen } = poolChildMutationRecovery(code);
+        const { needsRefresh, needsReopen } = poolMutationRecovery(code);
         if (needsRefresh) onRefresh();
         if (needsReopen) setRequiresReopen(true);
         setError(
