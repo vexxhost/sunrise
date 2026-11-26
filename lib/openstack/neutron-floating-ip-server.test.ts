@@ -14,6 +14,7 @@ vi.mock("@/lib/openstack/request-server", () => ({
 import {
   listFloatingIpsForAddresses,
   listFloatingIpsForPort,
+  listUnassociatedFloatingIps,
 } from "@/lib/openstack/neutron-floating-ip-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
 
@@ -108,6 +109,47 @@ describe("Neutron floating IP references", () => {
       listFloatingIpsForAddresses(["203.0.113.10", "203.0.113.10"]),
     ).resolves.toEqual([]);
     expect(mocks.openstackRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("only offers unused project IPv4 addresses and keeps the project filter on later pages", async () => {
+    const freeIp = {
+      ...floatingIp(firstId, "203.0.113.10"),
+      fixed_ip_address: null,
+      port_id: null,
+      router_id: null,
+    };
+    mocks.openstackRequest
+      .mockResolvedValueOnce({
+        floatingips: [
+          { ...freeIp, project_id: "project-b" },
+          { ...freeIp, floating_ip_address: "2001:db8::1" },
+          { ...freeIp, port_id: portId },
+          { ...freeIp, port_forwardings: [{ protocol: "tcp" }] },
+          { ...freeIp, router_id: portId },
+        ],
+        floatingips_links: [
+          {
+            href: `/v2.0/floatingips?marker=${markerId}&project_id=project-b`,
+            rel: "next",
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ floatingips: [freeIp] });
+    await expect(
+      listUnassociatedFloatingIps("RegionOne", "project-a"),
+    ).resolves.toEqual([
+      {
+        floating_ip_address: freeIp.floating_ip_address,
+        id: firstId,
+        port_id: null,
+        fixed_ip_address: null,
+      },
+    ]);
+    expect(mocks.openstackRequest).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        path: `/v2.0/floatingips?limit=100&project_id=project-a&marker=${markerId}`,
+      }),
+    );
   });
 
   it("rejects malformed responses instead of reporting an empty match", async () => {
