@@ -16,6 +16,10 @@ import {
   type MutationResult,
   type MutationScope,
 } from "@/lib/mutations";
+import {
+  parseMutationInput,
+  validationFailure,
+} from "@/lib/mutation-validation";
 import type { Snapshot, Volume } from "@/types/openstack";
 import { z } from "zod";
 
@@ -79,32 +83,8 @@ export type UpdateVolumeAttachmentInput = z.input<
   typeof volumeAttachmentUpdateSchema
 >;
 
-function validationFailure(scope: MutationScope, message: string) {
-  return mutationFailure(
-    { code: "validation-failed", message, retryable: false },
-    scope,
-  );
-}
-
-function parseInput<T>(
-  schema: z.ZodType<T>,
-  value: unknown,
-  scope: MutationScope,
-) {
-  const parsed = schema.safeParse(value);
-  return parsed.success
-    ? ({ ok: true, value: parsed.data } as const)
-    : ({
-        ok: false,
-        result: validationFailure(
-          scope,
-          parsed.error.issues[0]?.message ?? "Review the values and try again.",
-        ),
-      } as const);
-}
-
 function parseResourceId(scope: MutationScope, id: string) {
-  return parseInput(resourceIdSchema, id, scope);
+  return parseMutationInput(resourceIdSchema, id, scope);
 }
 
 function unsupportedCapability(scope: MutationScope, message: string) {
@@ -201,7 +181,7 @@ export async function createVolumeAction(
   scope: MutationScope,
   input: CreateVolumeInput,
 ): Promise<MutationResult<Volume>> {
-  const parsed = parseInput(volumeCreateSchema, input, scope);
+  const parsed = parseMutationInput(volumeCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
 
@@ -239,7 +219,7 @@ export async function updateVolumeAction(
 ): Promise<MutationResult<Volume>> {
   const parsedId = parseResourceId(scope, id);
   if (!parsedId.ok) return parsedId.result;
-  const parsed = parseInput(volumeUpdateSchema, input, scope);
+  const parsed = parseMutationInput(volumeUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
 
   return executeOpenStackMutation<Volume>({
@@ -289,7 +269,7 @@ export async function createSnapshotAction(
   scope: MutationScope,
   input: CreateSnapshotInput,
 ): Promise<MutationResult<Snapshot>> {
-  const parsed = parseInput(snapshotCreateSchema, input, scope);
+  const parsed = parseMutationInput(snapshotCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
   const request = await snapshotRequestOptions(scope, value.volumeId);
@@ -348,7 +328,7 @@ export async function attachVolumeAction(
   scope: MutationScope,
   input: AttachVolumeInput,
 ): Promise<MutationResult<null>> {
-  const parsed = parseInput(volumeAttachSchema, input, scope);
+  const parsed = parseMutationInput(volumeAttachSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
 
@@ -380,7 +360,7 @@ export async function detachVolumeAction(
   scope: MutationScope,
   input: DetachVolumeInput,
 ): Promise<MutationResult<null>> {
-  const parsed = parseInput(volumeDetachSchema, input, scope);
+  const parsed = parseMutationInput(volumeDetachSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
 
@@ -405,7 +385,11 @@ export async function updateVolumeAttachmentAction(
   scope: MutationScope,
   input: UpdateVolumeAttachmentInput,
 ): Promise<MutationResult<null>> {
-  const parsed = parseInput(volumeAttachmentUpdateSchema, input, scope);
+  const parsed = parseMutationInput(
+    volumeAttachmentUpdateSchema,
+    input,
+    scope,
+  );
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
   let requestedMicroversion = NOVA_VOLUME_ATTACHMENT_UPDATE_MICROVERSION;
