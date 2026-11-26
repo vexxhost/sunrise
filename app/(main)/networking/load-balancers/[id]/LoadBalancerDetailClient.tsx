@@ -959,6 +959,7 @@ export function LoadBalancerDetailClient({
           scope={{ projectId, regionId }}
           neutronAvailable={neutronLookupAvailable}
           onClose={() => setMemberAction(null)}
+          onRefresh={refreshTopology}
           onSuccess={(message) => {
             setMemberNotice({ message, at: Date.now() });
             setMemberAction(null);

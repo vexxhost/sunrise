@@ -27,6 +27,7 @@ import {
   isOctaviaAmphoraProvider,
   isOctaviaProvisioning,
   loadBalancerListenerPath,
+  loadBalancerPoolPath,
   octaviaListenerDeletionBlock,
 } from "@/lib/openstack/octavia";
 import {
@@ -1657,7 +1658,11 @@ export async function mutateOctaviaPoolMemberAction(
     successMessage: operation[value.action].message,
     apiVersion: `load-balancer ${supported.version}`,
     ...(body ? { body: { member: body } } : {}),
-    invalidates: [`/networking/load-balancers/${parentId}`, "/quotas"],
+    invalidates: [
+      `/networking/load-balancers/${parentId}`,
+      loadBalancerPoolPath(parentId, targetPoolId),
+      "/quotas",
+    ],
     transform: (payload) => {
       if (value.action === "delete") return null;
       const response = z

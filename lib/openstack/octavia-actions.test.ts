@@ -364,6 +364,11 @@ describe("Octavia member actions", () => {
         method: "POST",
         path: `/v2/lbaas/pools/${poolId}/members`,
         apiVersion: "load-balancer 2.0",
+        invalidates: [
+          `/networking/load-balancers/${loadBalancerId}`,
+          `/networking/load-balancers/${loadBalancerId}/pools/${poolId}`,
+          "/quotas",
+        ],
         body: {
           member: {
             name: "backend",
