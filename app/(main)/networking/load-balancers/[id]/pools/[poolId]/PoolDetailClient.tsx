@@ -1,10 +1,16 @@
 "use client";
 
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { Layers, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { Layers, RefreshCw, Trash2, UserPlus } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import {
+  MemberMutationDialog,
+  type MemberDialogAction,
+} from "@/components/LoadBalancer/MemberMutationDialog";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
+import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { Badge } from "@/components/ui/badge";
@@ -18,14 +24,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { loadBalancerPoolDetailsQueryOptions } from "@/hooks/queries/useLoadBalancers";
 import {
+  loadBalancerDetailsQueryOptions,
+  loadBalancerPoolDetailsQueryOptions,
+} from "@/hooks/queries/useLoadBalancers";
+import {
+  canChangeOctaviaListener,
+  canChangeOctaviaListeners,
   formatOctaviaStatus,
+  isOctaviaAmphoraProvider,
   isOctaviaProvisioning,
   loadBalancerListenerPath,
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
 import {
+  canChangeOctaviaPoolMembers,
   formatOctaviaMemberAddress,
   formatPoolAlgorithm,
   formatPoolPersistence,
@@ -45,15 +58,25 @@ function Status({ status }: { status: string | undefined }) {
 
 export function PoolDetailClient({
   loadBalancerId,
+  neutronAvailable,
   poolId,
   projectId,
   regionId,
 }: {
   loadBalancerId: string;
+  neutronAvailable: boolean;
   poolId: string;
   projectId: string;
   regionId: string;
 }) {
+  const queryClient = useQueryClient();
+  const [memberAction, setMemberAction] = useState<MemberDialogAction | null>(
+    null,
+  );
+  const [memberNotice, setMemberNotice] = useState<{
+    message: string;
+    at: number;
+  } | null>(null);
   const { data, isFetching, isRefetchError, refetch } = useSuspenseQuery({
     ...loadBalancerPoolDetailsQueryOptions(
       regionId,
@@ -70,12 +93,42 @@ export function PoolDetailClient({
         ...(details.members ?? []),
         ...(details.healthMonitor ? [details.healthMonitor] : []),
       ];
-      return resources.some(isOctaviaProvisioning) ? 5_000 : false;
+      return (memberNotice && Date.now() - memberNotice.at < 20_000) ||
+        resources.some(isOctaviaProvisioning)
+        ? 5_000
+        : false;
     },
   });
   const { loadBalancer, pool, healthMonitor, members, listeners } = data;
   const persistence = readPoolPersistence(pool.session_persistence);
   const parentHref = `/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#pools`;
+  const memberChangesSupported = isOctaviaAmphoraProvider(
+    loadBalancer.provider,
+  );
+  const canChangeMembers =
+    memberChangesSupported &&
+    !isFetching &&
+    !isRefetchError &&
+    members !== null &&
+    loadBalancer.pools?.some(({ id }) => id === pool.id) &&
+    canChangeOctaviaListeners(loadBalancer) &&
+    canChangeOctaviaPoolMembers(pool);
+  const refreshMemberData = () => {
+    void queryClient.invalidateQueries({
+      queryKey: loadBalancerDetailsQueryOptions(
+        regionId,
+        projectId,
+        loadBalancerId,
+      ).queryKey,
+    });
+    void queryClient.invalidateQueries({
+      queryKey: [regionId, projectId, "project-quotas", "load-balancing"],
+    });
+  };
+  const openMemberAction = (target: MemberDialogAction) => {
+    setMemberNotice(null);
+    setMemberAction(target);
+  };
 
   return (
     <div className="space-y-6">
@@ -241,7 +294,25 @@ export function PoolDetailClient({
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold">Members</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Members</h2>
+          {memberChangesSupported ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!canChangeMembers}
+              onClick={() => openMemberAction({ action: "create", pool })}
+            >
+              <UserPlus className="size-4" /> Add member
+            </Button>
+          ) : null}
+        </div>
+        {memberNotice ? (
+          <MutationAlert variant="success">
+            {memberNotice.message}
+          </MutationAlert>
+        ) : null}
         {members?.length ? (
           <div className="overflow-hidden rounded-md border">
             <Table>
@@ -253,6 +324,9 @@ export function PoolDetailClient({
                   <TableHead>Operating</TableHead>
                   <TableHead>Provisioning</TableHead>
                   <TableHead>Administrative state</TableHead>
+                  {memberChangesSupported ? (
+                    <TableHead className="text-right">Actions</TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -272,6 +346,45 @@ export function PoolDetailClient({
                     <TableCell>
                       {member.admin_state_up ? "Up" : "Down"}
                     </TableCell>
+                    {memberChangesSupported ? (
+                      <TableCell>
+                        <div className="flex justify-end gap-1">
+                          <EditActionButton
+                            type="button"
+                            compact
+                            label={`Edit member ${member.name || member.id}`}
+                            disabled={
+                              !canChangeMembers ||
+                              !canChangeOctaviaListener(member)
+                            }
+                            onClick={() =>
+                              openMemberAction({ action: "edit", member, pool })
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            tone="danger"
+                            size="icon-sm"
+                            aria-label={`Remove member ${member.name || member.id}`}
+                            title="Remove pool member"
+                            disabled={
+                              !canChangeMembers ||
+                              !canChangeOctaviaListener(member)
+                            }
+                            onClick={() =>
+                              openMemberAction({
+                                action: "delete",
+                                member,
+                                pool,
+                              })
+                            }
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    ) : null}
                   </TableRow>
                 ))}
               </TableBody>
@@ -285,6 +398,21 @@ export function PoolDetailClient({
           </p>
         )}
       </section>
+      {memberAction ? (
+        <MemberMutationDialog
+          target={memberAction}
+          loadBalancerId={loadBalancerId}
+          scope={{ projectId, regionId }}
+          neutronAvailable={neutronAvailable}
+          onClose={() => setMemberAction(null)}
+          onRefresh={refreshMemberData}
+          onSuccess={(message) => {
+            setMemberAction(null);
+            setMemberNotice({ message, at: Date.now() });
+            refreshMemberData();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

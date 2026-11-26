@@ -19,6 +19,10 @@ export default async function PoolPage({
   const regionId = snapshot.region.id;
   const projectId = snapshot.project.id;
   if (!regionId || !projectId) return null;
+  const neutronAvailable = snapshot.destinations.some(
+    ({ id, status }) =>
+      id === "networking.networks" && status !== "unavailable",
+  );
 
   const queryClient = makeQueryClient();
   const query = loadBalancerPoolDetailsQueryOptions(
@@ -38,6 +42,7 @@ export default async function PoolPage({
     <PrefetchHydrationBoundary queries={[query]} queryClient={queryClient}>
       <PoolDetailClient
         loadBalancerId={loadBalancerId}
+        neutronAvailable={neutronAvailable}
         poolId={normalizedPoolId}
         projectId={projectId}
         regionId={regionId}

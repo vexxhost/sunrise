@@ -49,6 +49,7 @@ export function MemberMutationDialog({
   scope,
   neutronAvailable,
   onClose,
+  onRefresh,
   onSuccess,
 }: {
   target: MemberDialogAction;
@@ -56,6 +57,7 @@ export function MemberMutationDialog({
   scope: MutationScope;
   neutronAvailable: boolean;
   onClose: () => void;
+  onRefresh: () => void;
   onSuccess: (message: string) => void;
 }) {
   const creating = target.action === "create";
@@ -75,6 +77,7 @@ export function MemberMutationDialog({
   const [port, setPort] = useState("");
   const [subnetId, setSubnetId] = useState(VIP_SUBNET);
   const [error, setError] = useState<string | null>(null);
+  const [requiresReopen, setRequiresReopen] = useState(false);
   const [pending, startTransition] = useTransition();
   const inFlight = useRef(false);
   const quota = useProjectQuotaImpact({
@@ -95,7 +98,7 @@ export function MemberMutationDialog({
     if (!inFlight.current && !pending) onClose();
   };
   const run = (input: OctaviaMemberMutation) => {
-    if (inFlight.current) return;
+    if (inFlight.current || requiresReopen) return;
     inFlight.current = true;
     setError(null);
     startTransition(async () => {
@@ -106,11 +109,32 @@ export function MemberMutationDialog({
           initial.poolId,
           input,
         );
-        if (result.ok) onSuccess(result.message);
-        else setError(result.error.message);
-      } catch {
+        if (result.ok) {
+          onSuccess(result.message);
+          return;
+        }
+        const { code, message } = result.error;
+        const unconfirmed =
+          code === "invalid-response" || code === "network-error";
+        const needsRefresh =
+          code === "conflict" || code === "not-found" || unconfirmed;
+        const needsReopen =
+          code === "context-changed" ||
+          code === "not-found" ||
+          unconfirmed ||
+          (!creating && code === "conflict");
+        if (needsRefresh) onRefresh();
+        if (needsReopen) setRequiresReopen(true);
         setError(
-          "The result could not be confirmed. Refresh the load balancer before retrying.",
+          needsReopen
+            ? `${message} Close this dialog to check the pool before retrying.`
+            : message,
+        );
+      } catch {
+        setRequiresReopen(true);
+        onRefresh();
+        setError(
+          "The result could not be confirmed. Close this dialog to check the pool before retrying.",
         );
       } finally {
         inFlight.current = false;
@@ -135,6 +159,7 @@ export function MemberMutationDialog({
         }
         confirmLabel="Remove member"
         variant="destructive"
+        confirmDisabled={requiresReopen}
         pending={pending}
         error={error}
         onConfirm={() => run({ action: "delete", id: target.member.id })}
@@ -154,6 +179,7 @@ export function MemberMutationDialog({
   const weightChanged =
     initial.weight !== undefined && weightNumber !== initial.weight;
   const canSubmit =
+    !requiresReopen &&
     validWeight &&
     (creating
       ? validAddress &&
