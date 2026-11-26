@@ -6,10 +6,11 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { Network, Pencil } from "lucide-react";
+import { Network, Pencil, RefreshCw } from "lucide-react";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
 import { ListenerMutationDialog } from "@/components/LoadBalancer/ListenerMutationDialog";
+import { TrafficStatistics } from "@/components/LoadBalancer/TrafficStatistics";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
 import { ResourceLink } from "@/components/resources/ResourceLink";
@@ -60,8 +61,10 @@ export function ListenerDetailClient({
     listenerId,
   );
   const {
-    data: { loadBalancer, listener, capabilities },
+    data: { loadBalancer, listener, capabilities, stats },
+    isFetching,
     isRefetchError,
+    refetch,
   } = useSuspenseQuery({
     ...query,
     refetchInterval: ({ state }) =>
@@ -84,6 +87,7 @@ export function ListenerDetailClient({
     ? Object.entries(insertedHeaders).sort(([a], [b]) => a.localeCompare(b))
     : [];
   const canEdit =
+    !isFetching &&
     !isRefetchError &&
     canChangeOctaviaListeners(loadBalancer) &&
     canChangeOctaviaListener(listener);
@@ -105,23 +109,33 @@ export function ListenerDetailClient({
             <CopyButton value={listener.id} label="Copy listener ID" />
           </div>
         </div>
-        <Button
-          variant="outline"
-          disabled={!canEdit}
-          onClick={() => {
-            setNotice(null);
-            setEditing(true);
-          }}
-        >
-          <Pencil className="size-4" />
-          Edit listener
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            loading={isFetching}
+            onClick={() => void refetch()}
+          >
+            <RefreshCw className="size-4" />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!canEdit}
+            onClick={() => {
+              setNotice(null);
+              setEditing(true);
+            }}
+          >
+            <Pencil className="size-4" />
+            Edit listener
+          </Button>
+        </div>
       </div>
 
       {isRefetchError ? (
         <MutationAlert variant="warning">
-          Listener settings could not be refreshed. Reload the page before
-          editing.
+          Listener details could not be refreshed. The last loaded data is
+          shown.
         </MutationAlert>
       ) : null}
       {notice ? (
@@ -243,6 +257,8 @@ export function ListenerDetailClient({
           </DetailField>
         </DetailSection>
       </div>
+
+      <TrafficStatistics stats={stats} />
 
       {editing ? (
         <ListenerMutationDialog

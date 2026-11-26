@@ -309,7 +309,7 @@ describe("Octavia project scoping", () => {
     );
   });
 
-  it("loads a listener deep link through only the scoped parent and listener", async () => {
+  it("loads a listener deep link and its stats through the scoped parent", async () => {
     const parentId = "44444444-4444-4444-8444-444444444444";
     const listenerId = "22222222-2222-4222-8222-222222222222";
     const listener = {
@@ -318,11 +318,20 @@ describe("Octavia project scoping", () => {
       loadbalancers: [{ id: parentId }],
       insert_headers: { "X-Forwarded-For": "true" },
     };
-    mocks.openstackRequest.mockImplementation(async ({ path }) =>
-      path.endsWith(parentId)
+    const stats = {
+      active_connections: 0,
+      bytes_in: 2048,
+      bytes_out: 16384,
+      request_errors: 1,
+      total_connections: 42,
+    };
+    const statsPath = `/v2/lbaas/listeners/${listenerId}/stats`;
+    mocks.openstackRequest.mockImplementation(async ({ path }) => {
+      if (path === statsPath) return { stats };
+      return path.endsWith(parentId)
         ? { loadbalancer: loadBalancer(parentId, "project-a", "application") }
-        : { listener },
-    );
+        : { listener };
+    });
     await expect(
       getLoadBalancerListenerDetails(
         parentId,
@@ -330,12 +339,25 @@ describe("Octavia project scoping", () => {
         "RegionOne",
         "project-a",
       ),
-    ).resolves.toMatchObject({ listener, loadBalancer: { id: parentId } });
-    expect(mocks.openstackRequest).toHaveBeenCalledTimes(2);
+    ).resolves.toMatchObject({
+      listener,
+      loadBalancer: { id: parentId },
+      stats,
+    });
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(3);
     expect(mocks.openstackRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         path: `/v2/lbaas/listeners/${listenerId}`,
         apiVersion: "load-balancer 2.12",
+      }),
+    );
+    expect(mocks.openstackRequest).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        path: statsPath,
+        regionId: "RegionOne",
+        apiVersion: undefined,
+        errorMode: "return-null",
       }),
     );
     mocks.openstackRequest.mockClear();
@@ -362,7 +384,51 @@ describe("Octavia project scoping", () => {
         getLoadBalancerListenerDetails(parentId, listenerId),
       ).rejects.toMatchObject({ status: 404 });
     }
+    expect(mocks.openstackRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({ path: statsPath }),
+    );
   });
+
+  it.each([
+    { payload: null, expected: null },
+    { payload: { stats: {} }, expected: null },
+    { payload: { stats: [] }, expected: null },
+    {
+      payload: {
+        stats: {
+          active_connections: 0,
+          bytes_in: "1200",
+          bytes_out: null,
+          request_errors: -1,
+          total_connections: 1.5,
+        },
+      },
+      expected: { active_connections: 0 },
+    },
+  ])(
+    "keeps listener settings available for optional stats: $payload",
+    async ({ payload, expected }) => {
+      const parentId = "44444444-4444-4444-8444-444444444444";
+      const listenerId = "22222222-2222-4222-8222-222222222222";
+      const listener = {
+        id: listenerId,
+        project_id: "project-a",
+        loadbalancers: [{ id: parentId }],
+      };
+      mocks.openstackRequest.mockImplementation(async ({ path }) => {
+        if (path.endsWith("/stats")) return payload;
+        return path.endsWith(parentId)
+          ? { loadbalancer: loadBalancer(parentId, "project-a", "application") }
+          : { listener };
+      });
+      const details = await getLoadBalancerListenerDetails(
+        parentId,
+        listenerId,
+      );
+      expect(details.listener).toEqual(listener);
+      expect(details.stats).toEqual(expected);
+    },
+  );
 
   it("checks both the returned listener and its parent before a mutation", async () => {
     const parentId = "11111111-1111-4111-8111-111111111111";

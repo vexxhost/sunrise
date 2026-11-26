@@ -159,12 +159,12 @@ export interface OctaviaL7Rule {
   l7policy_id: string;
 }
 
-export interface OctaviaLoadBalancerStats {
-  active_connections: number;
-  bytes_in: number;
-  bytes_out: number;
-  request_errors: number;
-  total_connections: number;
+export interface OctaviaTrafficStats {
+  active_connections?: number;
+  bytes_in?: number;
+  bytes_out?: number;
+  request_errors?: number;
+  total_connections?: number;
 }
 
 export interface OctaviaStatusNode {
@@ -184,7 +184,7 @@ export interface OctaviaStatusNode {
 
 export interface OctaviaLoadBalancerDetails {
   loadBalancer: OctaviaLoadBalancer;
-  stats: OctaviaLoadBalancerStats | null;
+  stats: OctaviaTrafficStats | null;
   statusTree: OctaviaStatusNode | null;
   listeners: OctaviaListener[];
   pools: OctaviaPool[];
