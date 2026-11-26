@@ -23,6 +23,7 @@ import {
   type HealthMonitorDialogAction,
 } from "@/components/LoadBalancer/HealthMonitorMutationDialog";
 import { HealthMonitorTable } from "@/components/LoadBalancer/HealthMonitorTable";
+import { L7PolicyPanel } from "@/components/LoadBalancer/L7PolicyPanel";
 import {
   ListenerMutationDialog,
   type ListenerDialogAction,
@@ -152,6 +153,7 @@ export function LoadBalancerDetailClient({
     message: string;
     at: number;
   } | null>(null);
+  const [l7ChangedAt, setL7ChangedAt] = useState(0);
   const detailsQuery = useMemo(
     () => loadBalancerDetailsQueryOptions(regionId, projectId, id),
     [id, projectId, regionId],
@@ -163,12 +165,15 @@ export function LoadBalancerDetailClient({
       (poolNotice && Date.now() - poolNotice.at < 20_000) ||
       (memberNotice && Date.now() - memberNotice.at < 20_000) ||
       (monitorNotice && Date.now() - monitorNotice.at < 20_000) ||
+      Date.now() - l7ChangedAt < 20_000 ||
       (state.data &&
         (isOctaviaProvisioning(state.data.loadBalancer) ||
           state.data.listeners.some(isOctaviaProvisioning) ||
           state.data.pools.some(isOctaviaProvisioning) ||
           state.data.members.some(isOctaviaProvisioning) ||
-          state.data.healthMonitors.some(isOctaviaProvisioning)))
+          state.data.healthMonitors.some(isOctaviaProvisioning) ||
+          state.data.l7Policies.some(isOctaviaProvisioning) ||
+          state.data.l7Rules.some(isOctaviaProvisioning)))
         ? 5_000
         : false,
     refetchOnReconnect: false,
@@ -251,14 +256,6 @@ export function LoadBalancerDetailClient({
       member,
     ]);
   }
-  const rulesByPolicy = new Map<string, typeof data.l7Rules>();
-  for (const rule of data.l7Rules) {
-    rulesByPolicy.set(rule.l7policy_id, [
-      ...(rulesByPolicy.get(rule.l7policy_id) ?? []),
-      rule,
-    ]);
-  }
-
   return (
     <div className="max-w-screen-xl space-y-6">
       <RecentResourceTracker
@@ -929,59 +926,16 @@ export function LoadBalancerDetailClient({
         </section>
       ) : null}
 
-      {data.l7Policies.length ? (
-        <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold">L7 policies</h2>
-            <Badge variant="outline">{data.l7Policies.length}</Badge>
-          </div>
-          <div className="overflow-hidden rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Policy</TableHead>
-                  <TableHead>Listener</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Redirect pool</TableHead>
-                  <TableHead>Position</TableHead>
-                  <TableHead>Rules</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.l7Policies.map((policy) => (
-                  <TableRow key={policy.id}>
-                    <TableCell>{nameOrId(policy.name, policy.id)}</TableCell>
-                    <TableCell>
-                      {nameOrId(
-                        listenerById.get(policy.listener_id)?.name,
-                        policy.listener_id,
-                      )}
-                    </TableCell>
-                    <TableCell>{formatOctaviaStatus(policy.action)}</TableCell>
-                    <TableCell>
-                      {policy.redirect_pool_id
-                        ? nameOrId(
-                            poolById.get(policy.redirect_pool_id)?.name,
-                            policy.redirect_pool_id,
-                          )
-                        : "-"}
-                    </TableCell>
-                    <TableCell>{policy.position}</TableCell>
-                    <TableCell>
-                      {(rulesByPolicy.get(policy.id) ?? [])
-                        .map(
-                          (rule) =>
-                            `${formatOctaviaStatus(rule.type)} ${formatOctaviaStatus(rule.compare_type)} ${rule.value}`,
-                        )
-                        .join(" · ") || "-"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </section>
-      ) : null}
+      <L7PolicyPanel
+        data={data}
+        supportsChanges={poolChangesSupported}
+        busy={!listenerChangesAvailable}
+        scope={{ projectId, regionId }}
+        onChanged={() => {
+          setL7ChangedAt(Date.now());
+          refreshTopology();
+        }}
+      />
 
       {listenerAction ? (
         <ListenerMutationDialog

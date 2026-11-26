@@ -716,7 +716,63 @@ export async function listOctaviaPoolRedirectPolicies(
   );
 }
 
-class MissingPoolTopologyResourceError extends Error {
+async function readListenerL7Policy(
+  scope: OctaviaScope,
+  listenerId: string,
+  policyId: string,
+) {
+  const policy = await getProjectResource<OctaviaL7Policy>(
+    scope,
+    "l7policies",
+    "l7policy",
+    policyId,
+  );
+  if (policy.id !== policyId || policy.listener_id !== listenerId) {
+    throw new OpenStackRequestError(
+      404,
+      "L7 policy not found on this listener",
+    );
+  }
+  return policy;
+}
+
+export async function getOctaviaListenerL7Policy(
+  listenerId: string,
+  policyId: string,
+  regionId?: string,
+  projectId?: string,
+) {
+  const parentId = requireUuid(listenerId, "listener ID");
+  const id = requireUuid(policyId, "L7 policy ID");
+  const scope = await resolveScope(regionId, projectId);
+  return readListenerL7Policy(scope, parentId, id);
+}
+
+export async function getOctaviaL7Rule(
+  policyId: string,
+  ruleId: string,
+  regionId?: string,
+  projectId?: string,
+): Promise<OctaviaL7Rule> {
+  const parentId = requireUuid(policyId, "L7 policy ID");
+  const id = requireUuid(ruleId, "L7 rule ID");
+  const scope = await resolveScope(regionId, projectId);
+  const payload = await octaviaGet<{ rule: OctaviaL7Rule }>(
+    scope,
+    `/v2/lbaas/l7policies/${parentId}/rules/${id}`,
+  );
+  const rule = payload?.rule;
+  if (
+    rule?.id !== id ||
+    !belongsToProject(rule.project_id, scope.projectId) ||
+    (rule.l7policy_id !== undefined && rule.l7policy_id !== parentId)
+  ) {
+    throw new OpenStackRequestError(404, "L7 rule not found on this policy");
+  }
+  return { ...rule, l7policy_id: parentId };
+}
+
+class MissingTopologyResourceError extends Error {
   constructor(cause: unknown) {
     super("Octavia returned a missing pool or child resource in the topology", {
       cause,
@@ -724,12 +780,12 @@ class MissingPoolTopologyResourceError extends Error {
   }
 }
 
-async function readPoolTopologyResource<T>(request: Promise<T>) {
+async function readTopologyResource<T>(request: Promise<T>) {
   try {
     return await request;
   } catch (error) {
     if (isOpenStackNotFoundError(error))
-      throw new MissingPoolTopologyResourceError(error);
+      throw new MissingTopologyResourceError(error);
     throw error;
   }
 }
@@ -745,8 +801,8 @@ export async function getLoadBalancerDetails(
   try {
     return await readLoadBalancerDetails(scope, loadBalancerId, capabilities);
   } catch (error) {
-    if (!(error instanceof MissingPoolTopologyResourceError)) throw error;
-    // A deleted pool or monitor can still be referenced by an earlier read.
+    if (!(error instanceof MissingTopologyResourceError)) throw error;
+    // An earlier parent read can still reference a just-deleted child.
     return readLoadBalancerDetails(scope, loadBalancerId, capabilities);
   }
 }
@@ -811,25 +867,20 @@ async function readLoadBalancerDetails(
     ],
     "pool",
   );
-  const l7PolicyIds = referenceIds(
-    listeners.flatMap(({ l7policies = [] }) => l7policies),
-    "L7 policy",
-  );
   const [initialPools, l7Policies] = await Promise.all([
     Promise.all(
       poolIds.map((poolId) =>
-        readPoolTopologyResource(
+        readTopologyResource(
           getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
         ),
       ),
     ),
     Promise.all(
-      l7PolicyIds.map((policyId) =>
-        getProjectResource<OctaviaL7Policy>(
-          scope,
-          "l7policies",
-          "l7policy",
-          policyId,
+      listeners.flatMap((listener) =>
+        referenceIds(listener.l7policies, "L7 policy").map((policyId) =>
+          readTopologyResource(
+            readListenerL7Policy(scope, listener.id, policyId),
+          ),
         ),
       ),
     ),
@@ -841,7 +892,7 @@ async function readLoadBalancerDetails(
   ).filter((poolId) => !initialPoolIds.has(poolId));
   const redirectPools = await Promise.all(
     redirectPoolIds.map((poolId) =>
-      readPoolTopologyResource(
+      readTopologyResource(
         getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
       ),
     ),
@@ -852,7 +903,7 @@ async function readLoadBalancerDetails(
       monitorId == null
         ? []
         : [
-            readPoolTopologyResource(
+            readTopologyResource(
               readPoolHealthMonitor(scope, poolId, monitorId),
             ),
           ],
@@ -863,7 +914,7 @@ async function readLoadBalancerDetails(
     healthMonitorsPromise,
     Promise.all(
       pools.map(async (pool) => {
-        const members = await readPoolTopologyResource(
+        const members = await readTopologyResource(
           listCollection<OctaviaMember>(
             scope,
             "members",
@@ -877,14 +928,23 @@ async function readLoadBalancerDetails(
     ),
     Promise.all(
       l7Policies.map(async (policy) => {
-        const rules = await listCollection<OctaviaL7Rule>(
-          scope,
-          "rules",
-          nestedCollectionPath(
-            `/v2/lbaas/l7policies/${encodeURIComponent(policy.id)}/rules`,
+        const rules = await readTopologyResource(
+          listCollection<OctaviaL7Rule>(
+            scope,
+            "rules",
+            nestedCollectionPath(
+              `/v2/lbaas/l7policies/${encodeURIComponent(policy.id)}/rules`,
+            ),
           ),
         );
-        return rules.map((rule) => ({ ...rule, l7policy_id: policy.id }));
+        return rules
+          .filter(
+            (rule) =>
+              belongsToProject(rule.project_id, scope.projectId) &&
+              (rule.l7policy_id === undefined ||
+                rule.l7policy_id === policy.id),
+          )
+          .map((rule) => ({ ...rule, l7policy_id: policy.id }));
       }),
     ),
   ]);
