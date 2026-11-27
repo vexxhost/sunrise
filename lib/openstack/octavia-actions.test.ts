@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { mutationErrorForStatus, mutationFailure } from "@/lib/mutations";
 
 const mocks = vi.hoisted(() => ({
+  getSecret: vi.fn(),
+  listSecrets: vi.fn(),
   discoverLoadBalancerCapabilities: vi.fn(),
   executeOpenStackMutation: vi.fn(),
   getLoadBalancer: vi.fn(),
@@ -18,6 +20,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/mutation-context", () => ({
   guardMutationContext: mocks.guardMutationContext,
+}));
+vi.mock("@/lib/openstack/barbican-server", () => ({
+  getSecret: mocks.getSecret,
+  listSecrets: mocks.listSecrets,
 }));
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverLoadBalancerCapabilities: mocks.discoverLoadBalancerCapabilities,
@@ -50,6 +56,7 @@ vi.mock("@/lib/openstack/octavia-server", () => ({
 import {
   createLoadBalancerAction,
   deleteLoadBalancerAction,
+  listOctaviaTlsSecretsAction,
   mutateLoadBalancerListenerAction,
   mutateLoadBalancerPoolAction,
   mutateOctaviaHealthMonitorAction,
@@ -1474,6 +1481,16 @@ describe("Octavia pool actions", () => {
 });
 
 describe("Octavia listener actions", () => {
+  const secretId = "612b9ffa-fbc9-42ea-a78f-600c003c5103";
+  const tlsSecret = {
+    id: secretId,
+    secret_ref: `https://barbican.example.test/v1/secrets/${secretId}`,
+    name: "application certificate",
+    status: "ACTIVE",
+    secret_type: "opaque",
+    content_types: { default: "application/octet-stream" },
+    expiration: null,
+  };
   const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
   const previousPoolId = "564c3265-5933-44c7-a8da-3101e2e66a29";
   const current = { name: "http", description: "", adminStateUp: true };
@@ -1482,6 +1499,12 @@ describe("Octavia listener actions", () => {
     action: "create",
     port: 8080,
     protocol: "HTTP",
+  } as const;
+  const createTls = {
+    ...create,
+    protocol: "TERMINATED_HTTPS",
+    port: 443,
+    tlsSecretId: secretId,
   } as const;
   const edit = {
     ...current,
@@ -1528,6 +1551,100 @@ describe("Octavia listener actions", () => {
       provisioning_status: "ACTIVE",
     });
     mocks.executeOpenStackMutation.mockResolvedValue({ ok: true });
+    mocks.getSecret.mockResolvedValue(tlsSecret);
+  });
+
+  it("creates terminated HTTPS with a fresh Barbican metadata reference only", async () => {
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, createTls);
+    expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(secretId);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.0",
+        method: "POST",
+        body: {
+          listener: {
+            name: current.name,
+            description: current.description,
+            admin_state_up: true,
+            loadbalancer_id: loadBalancerId,
+            protocol: "TERMINATED_HTTPS",
+            protocol_port: 443,
+            default_tls_container_ref: tlsSecret.secret_ref,
+          },
+        },
+      }),
+    );
+    const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+    expect(
+      transform({
+        listener: {
+          ...listener,
+          default_tls_container_ref: tlsSecret.secret_ref,
+        },
+      }),
+    ).toBeNull();
+    expect(() => transform({ listener })).toThrow("invalid listener");
+  });
+
+  it("rejects certificate-free termination, a URL from the client, and TLS options on passthrough", async () => {
+    for (const value of [
+      { ...createTls, tlsSecretId: undefined },
+      { ...createTls, tlsSecretId: tlsSecret.secret_ref },
+      { ...createTls, protocol: "HTTPS" as const },
+    ]) {
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, value),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+    }
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects termination on providers other than Amphora", async () => {
+    mocks.getLoadBalancer.mockResolvedValueOnce(
+      existingLoadBalancer({ provider: "ovn" }),
+    );
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, createTls),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { status: "PENDING" },
+    { expiration: "2001-01-01T00:00:00Z" },
+    { expiration: "invalid" },
+    { content_types: {} },
+    { secret_type: "symmetric" },
+    { id: loadBalancerId },
+    { secret_ref: tlsSecret.secret_ref.replace(secretId, loadBalancerId) },
+  ])("rejects unusable or mismatched secret metadata: %j", async (changes) => {
+    mocks.getSecret.mockResolvedValueOnce({ ...tlsSecret, ...changes });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, createTls),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("returns only the IDs and names of eligible secrets, under the guarded scope", async () => {
+    mocks.listSecrets.mockResolvedValueOnce({
+      items: [tlsSecret, { ...tlsSecret, content_types: {} }],
+    });
+    await expect(listOctaviaTlsSecretsAction(scope)).resolves.toEqual([
+      { id: secretId, name: tlsSecret.name },
+    ]);
+    expect(mocks.guardMutationContext).toHaveBeenCalledExactlyOnceWith(scope);
+    expect(mocks.getSecret).not.toHaveBeenCalled();
   });
 
   it.each([

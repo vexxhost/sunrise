@@ -62,6 +62,7 @@ export interface OctaviaListener {
   allowed_cidrs?: string[] | null;
   insert_headers?: Record<string, string> | null;
   default_pool_id?: string | null;
+  default_tls_container_ref?: string | null;
   loadbalancers?: OctaviaResourceReference[];
   l7policies?: OctaviaResourceReference[];
   tags?: string[];

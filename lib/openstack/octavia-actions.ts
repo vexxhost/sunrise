@@ -2,6 +2,7 @@
 
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
+import { getSecret, listSecrets } from "@/lib/openstack/barbican-server";
 
 import {
   microversionSupport,
@@ -44,6 +45,7 @@ import {
   availableListenerProtocols,
   editableListenerInsertHeaders,
   isListenerInsertHeaderEnabled,
+  isOctaviaTlsSecretCandidate,
   LISTENER_CIDR_LENGTH_MAX,
   LISTENER_CIDR_MAX,
   LISTENER_INSERT_HEADERS,
@@ -206,6 +208,7 @@ const listenerMutationSchema = z.discriminatedUnion("action", [
     action: z.literal("create"),
     protocol: z.enum(OCTAVIA_LISTENER_PROTOCOLS),
     port: z.number().int().min(1).max(65535),
+    tlsSecretId: uuidSchema.toLowerCase().optional(),
   }),
   listenerFieldsWithSettings.extend({
     action: z.literal("edit"),
@@ -886,6 +889,33 @@ export async function mutateLoadBalancerListenerAction(
       protocol_port: value.port,
       loadbalancer_id: parentId,
     };
+    if (value.protocol === "TERMINATED_HTTPS") {
+      if (!value.tlsSecretId)
+        return validationFailure(
+          activeScope,
+          "Select a default PKCS#12 secret in Key Manager.",
+        );
+      try {
+        const secret = await getSecret(value.tlsSecretId);
+        if (
+          secret.id.toLowerCase() !== value.tlsSecretId ||
+          !isOctaviaTlsSecretCandidate(secret)
+        ) {
+          return validationFailure(
+            activeScope,
+            "Select an active, unexpired binary secret containing a PKCS#12 bundle.",
+          );
+        }
+        body.default_tls_container_ref = secret.secret_ref;
+      } catch (error) {
+        return preflightFailure(error, activeScope, "selected TLS secret");
+      }
+    } else if (value.tlsSecretId) {
+      return validationFailure(
+        activeScope,
+        "A default certificate is only used with Terminated HTTPS.",
+      );
+    }
   } else {
     if (
       !Array.isArray(existing.value.listeners) ||
@@ -1185,6 +1215,7 @@ export async function mutateLoadBalancerListenerAction(
             id: uuidSchema,
             project_id: z.string(),
             loadbalancers: z.tuple([z.object({ id: uuidSchema })]),
+            default_tls_container_ref: z.string().nullish(),
           }),
         })
         .safeParse(payload);
@@ -1193,7 +1224,11 @@ export async function mutateLoadBalancerListenerAction(
         (listenerId && response.data.listener.id !== listenerId) ||
         response.data.listener.loadbalancers[0].id !== parentId ||
         normalizeProjectId(response.data.listener.project_id) !==
-          normalizeProjectId(activeScope.projectId)
+          normalizeProjectId(activeScope.projectId) ||
+        (value.action === "create" &&
+          value.protocol === "TERMINATED_HTTPS" &&
+          response.data.listener.default_tls_container_ref !==
+            body?.default_tls_container_ref)
       ) {
         throw new Error("Octavia returned an invalid listener");
       }
@@ -2095,6 +2130,19 @@ export async function listLoadBalancerFlavorsAction(
   projectId?: string,
 ) {
   return listLoadBalancerFlavors(regionId, projectId);
+}
+
+export async function listOctaviaTlsSecretsAction(scope: MutationScope) {
+  const guarded = await guardMutationContext(scope);
+  if (!guarded.ok) throw new Error(guarded.result.error.message);
+  const { items } = await listSecrets();
+  const now = Date.now();
+  return items
+    .filter((secret) => isOctaviaTlsSecretCandidate(secret, now))
+    .map((secret) => ({
+      id: secret.id.toLowerCase(),
+      name: secret.name,
+    }));
 }
 
 export async function listLoadBalancerPoolChoicesAction(

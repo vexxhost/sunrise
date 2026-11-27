@@ -43,6 +43,7 @@ import {
   LISTENER_NUMERIC_FIELDS,
   LISTENER_NUMERIC_KEYS,
   listenerSettingUnavailable,
+  octaviaTlsSecretId,
   readListenerInsertHeaders,
 } from "@/lib/openstack/octavia-listener-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
@@ -95,6 +96,9 @@ export function ListenerDetailClient({
   });
   const insertedHeaders = readListenerInsertHeaders(listener.insert_headers);
   const defaultPoolId = listener.default_pool_id;
+  const defaultTlsSecretId = octaviaTlsSecretId(
+    listener.default_tls_container_ref,
+  );
   const supportsRoutingChanges =
     isOctaviaAmphoraProvider(loadBalancer.provider) &&
     isL7HttpListener(listener);
@@ -255,6 +259,22 @@ export function ListenerDetailClient({
                 : listener.protocol}
           </DetailField>
           <DetailField label="Port">{listener.protocol_port}</DetailField>
+          {listener.protocol === "TERMINATED_HTTPS" ? (
+            <DetailField label="Default certificate">
+              {defaultTlsSecretId ? (
+                <ResourceLink
+                  href={`/key-manager/secrets/${defaultTlsSecretId}`}
+                  className="wrap-anywhere font-mono"
+                >
+                  {defaultTlsSecretId}
+                </ResourceLink>
+              ) : listener.default_tls_container_ref ? (
+                "External certificate reference"
+              ) : (
+                "Not reported"
+              )}
+            </DetailField>
+          ) : null}
           <DetailField label="Operating status">
             <Badge variant={octaviaStatusVariant(listener.operating_status)}>
               {formatOctaviaStatus(listener.operating_status)}

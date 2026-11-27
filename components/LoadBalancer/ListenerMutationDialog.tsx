@@ -7,6 +7,7 @@ import { Plus, RefreshCw, Save } from "lucide-react";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -32,10 +33,14 @@ import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { MutationScope } from "@/lib/mutations";
 import type { OpenStackServiceCapabilities } from "@/lib/openstack/capabilities";
 import {
+  listOctaviaTlsSecretsAction,
   mutateLoadBalancerListenerAction,
   type OctaviaListenerMutation,
 } from "@/lib/openstack/octavia-actions";
-import { octaviaListenerDeletionBlock } from "@/lib/openstack/octavia";
+import {
+  isOctaviaAmphoraProvider,
+  octaviaListenerDeletionBlock,
+} from "@/lib/openstack/octavia";
 import {
   availableListenerProtocols,
   editableListenerInsertHeaders,
@@ -104,6 +109,19 @@ export function ListenerMutationDialog({
   const [protocol, setProtocol] = useState<OctaviaListenerProtocol>(
     protocols[0],
   );
+  const [tlsSecretId, setTlsSecretId] = useState("");
+  const tlsSecrets = useQuery({
+    queryKey: [
+      initial.scope.regionId,
+      initial.scope.projectId,
+      "octavia",
+      "tls-secrets",
+    ],
+    queryFn: () => listOctaviaTlsSecretsAction(initial.scope),
+    enabled: creating && isOctaviaAmphoraProvider(loadBalancer.provider),
+    staleTime: 0,
+    retry: false,
+  });
   const [port, setPort] = useState("");
   const [numbers, setNumbers] = useState<
     Partial<Record<ListenerNumericField, string>>
@@ -210,6 +228,9 @@ export function ListenerMutationDialog({
   const activeProtocol = creating
     ? protocol
     : (initial.listener?.protocol ?? "");
+  const tlsProtocol = creating && protocol === "TERMINATED_HTTPS";
+  const tlsOptions = tlsSecrets.isError ? [] : (tlsSecrets.data ?? []);
+  const selectedTlsSecret = tlsOptions.find(({ id }) => id === tlsSecretId);
   const poolChoices = poolQuery.isError
     ? []
     : (poolQuery.data ?? []).filter((pool) =>
@@ -339,7 +360,10 @@ export function ListenerMutationDialog({
   const allowed =
     !settingsError &&
     (creating
-      ? validPort && protocols.includes(protocol) && quota.issues.length === 0
+      ? validPort &&
+        protocols.includes(protocol) &&
+        quota.issues.length === 0 &&
+        (!tlsProtocol || Boolean(selectedTlsSecret))
       : changed &&
         (!defaultPoolChange ||
           defaultPoolChange.after === null ||
@@ -354,7 +378,15 @@ export function ListenerMutationDialog({
       ...(advancedChanged ? { settings } : {}),
     };
     if (target.action === "create") {
-      run({ action: "create", ...fields, protocol, port: portNumber });
+      run({
+        action: "create",
+        ...fields,
+        protocol,
+        port: portNumber,
+        ...(tlsProtocol && selectedTlsSecret
+          ? { tlsSecretId: selectedTlsSecret.id }
+          : {}),
+      });
     } else {
       run({
         action: "edit",
@@ -427,11 +459,22 @@ export function ListenerMutationDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {protocols.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option === "HTTPS" ? "HTTPS passthrough" : option}
-                      </SelectItem>
-                    ))}
+                    {protocols
+                      .filter(
+                        (option) =>
+                          option !== "TERMINATED_HTTPS" ||
+                          tlsSecrets.isSuccess ||
+                          tlsProtocol,
+                      )
+                      .map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option === "HTTPS"
+                            ? "HTTPS passthrough"
+                            : option === "TERMINATED_HTTPS"
+                              ? "Terminated HTTPS"
+                              : option}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -449,6 +492,52 @@ export function ListenerMutationDialog({
                   disabled={pending}
                 />
               </div>
+            </div>
+          ) : null}
+          {tlsProtocol ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="octavia-listener-tls-secret">
+                Default certificate
+              </Label>
+              <Select
+                disabled={pending || !tlsOptions.length}
+                value={selectedTlsSecret?.id ?? ""}
+                onValueChange={setTlsSecretId}
+              >
+                <SelectTrigger
+                  id="octavia-listener-tls-secret"
+                  aria-describedby="octavia-listener-tls-help"
+                >
+                  <SelectValue
+                    placeholder={
+                      tlsOptions.length
+                        ? "Select a Barbican secret"
+                        : "No certificates available"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
+                  {tlsOptions.map(({ id, name }) => (
+                    <SelectItem key={id} value={id} className="wrap-anywhere">
+                      {name || id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p
+                id="octavia-listener-tls-help"
+                className="text-xs text-muted-foreground"
+              >
+                Choose an unencrypted PKCS#12 bundle stored as a binary secret
+                in{" "}
+                <ResourceLink href="/key-manager/secrets" target="_blank">
+                  Key Manager
+                </ResourceLink>
+                .
+              </p>
+              {tlsSecrets.isError ? (
+                <MutationAlert>Could not load TLS secrets.</MutationAlert>
+              ) : null}
             </div>
           ) : null}
           <Label
