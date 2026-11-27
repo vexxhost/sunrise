@@ -1908,7 +1908,7 @@ export async function mutateOctaviaHealthMonitorAction(
   }
   const supported = await supportedMutationMicroversion(
     activeScope,
-    OCTAVIA_BASELINE_MICROVERSION,
+    type === "UDP-CONNECT" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION,
     "Changing health monitors",
     capabilities,
   );
