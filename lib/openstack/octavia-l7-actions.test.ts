@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getLoadBalancerPool: vi.fn(),
   getOctaviaL7Rule: vi.fn(),
   getOctaviaListenerL7Policy: vi.fn(),
+  listOctaviaListenerL7PolicyOrder: vi.fn(),
 }));
 
 vi.mock("@/lib/mutation-context", () => ({
@@ -25,6 +26,7 @@ vi.mock("@/lib/openstack/octavia-server", () => ({
   getLoadBalancerPool: mocks.getLoadBalancerPool,
   getOctaviaL7Rule: mocks.getOctaviaL7Rule,
   getOctaviaListenerL7Policy: mocks.getOctaviaListenerL7Policy,
+  listOctaviaListenerL7PolicyOrder: mocks.listOctaviaListenerL7PolicyOrder,
 }));
 
 import {
@@ -39,6 +41,7 @@ const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
 const policyId = "564c3265-5933-44c7-a8da-3101e2e66a29";
 const ruleId = "9bc17a79-6c39-447b-9e95-c06bfb3a7e0c";
 const otherId = "a34d1dd5-1b92-4551-ab9a-30354c96f614";
+const thirdId = "230630da-7cc9-45a3-97bc-f519aaa46066";
 const scope = { projectId: "project-a", regionId: "RegionOne" };
 const policySettings = {
   name: "api",
@@ -54,6 +57,7 @@ const policy = {
   project_id: scope.projectId,
   provisioning_status: "ACTIVE",
   admin_state_up: false,
+  position: 1,
   rules: [{ id: ruleId }],
 };
 const rule = {
@@ -70,6 +74,13 @@ const policyPath = `/v2/lbaas/l7policies/${policyId}`;
 const sourceRule = { id: ruleId, settings: pathSettings };
 const mutate = (input: OctaviaL7Mutation) =>
   mutateOctaviaL7Action(scope, loadBalancerId, listenerId, input);
+const editPolicy = {
+  action: "edit-policy",
+  policyId,
+  source: policySettings,
+  settings: { ...policySettings, name: "application" },
+} as const;
+const order = { before: [policyId, otherId, thirdId], position: 3 };
 
 describe("Octavia L7 path routing", () => {
   beforeEach(() => {
@@ -150,6 +161,68 @@ describe("Octavia L7 path routing", () => {
       ).resolves.toMatchObject({ ok: false });
     }
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("moves a disabled policy with one Octavia update", async () => {
+    mocks.listOctaviaListenerL7PolicyOrder.mockResolvedValue(order.before);
+    await expect(mutate({ ...editPolicy, order })).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(mocks.listOctaviaListenerL7PolicyOrder).toHaveBeenCalledTimes(1);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: policyPath,
+        body: { l7policy: { ...editPolicy.settings, position: 3 } },
+      }),
+    );
+  });
+
+  it("does not read or send position when only editing settings", async () => {
+    await expect(mutate(editPolicy)).resolves.toMatchObject({ ok: true });
+    expect(mocks.listOctaviaListenerL7PolicyOrder).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ body: { l7policy: editPolicy.settings } }),
+    );
+  });
+
+  it.each([
+    { latest: null },
+    { latest: [policyId, thirdId, otherId] },
+    { latest: [policyId, otherId] },
+  ])(
+    "blocks a move when the current order differs or is unknown: $latest",
+    async ({ latest }) => {
+      mocks.listOctaviaListenerL7PolicyOrder.mockResolvedValue(latest);
+      await expect(mutate({ ...editPolicy, order })).resolves.toMatchObject({
+        ok: false,
+        error: { code: "conflict" },
+      });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("blocks a move when the individual policy and collection disagree", async () => {
+    mocks.getOctaviaListenerL7Policy.mockResolvedValue({
+      ...policy,
+      position: 2,
+    });
+    mocks.listOctaviaListenerL7PolicyOrder.mockResolvedValue(order.before);
+    await expect(mutate({ ...editPolicy, order })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "conflict" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects a move outside the policy list", async () => {
+    await expect(
+      mutate({ ...editPolicy, order: { ...order, position: 4 } }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
   });
 
   it("does not look up a policy outside the listener's references", async () => {

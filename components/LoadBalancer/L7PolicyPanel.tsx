@@ -37,6 +37,7 @@ import {
   isL7HttpPool,
   l7PolicyRuleIds,
   readL7Path,
+  readL7PolicyOrder,
   readL7PoolPolicy,
   type L7RoutingPool,
 } from "@/lib/openstack/octavia-l7-settings";
@@ -285,14 +286,28 @@ export function L7PolicyPanel({
                                       !poolChoices.length ||
                                       (Boolean(rule) && !ruleActive)
                                     }
-                                    onSelect={() =>
+                                    onSelect={() => {
+                                      const policyOrder = listener
+                                        ? readL7PolicyOrder(
+                                            listener,
+                                            l7Policies.filter(
+                                              (entry) =>
+                                                entry.listener_id ===
+                                                listenerId,
+                                            ),
+                                          )
+                                        : null;
                                       open({
                                         action: "edit-policy",
                                         listenerId,
                                         policyId,
                                         source: current,
-                                      })
-                                    }
+                                        policyOrder:
+                                          policyOrder && policyOrder.length > 1
+                                            ? policyOrder
+                                            : undefined,
+                                      });
+                                    }}
                                   >
                                     <Pencil /> Edit policy
                                   </DropdownMenuItem>

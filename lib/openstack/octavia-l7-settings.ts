@@ -59,6 +59,29 @@ export function l7PolicyRuleIds(policy: Pick<OctaviaL7Policy, "rules">) {
   return parsed.success ? parsed.data.map(({ id }) => id) : null;
 }
 
+export function readL7PolicyOrder(
+  listener: Pick<OctaviaListener, "l7policies">,
+  policies: readonly Pick<OctaviaL7Policy, "id" | "position">[],
+) {
+  const references = z
+    .array(z.object({ id: z.uuid() }))
+    .safeParse(listener.l7policies);
+  if (!references.success || references.data.length !== policies.length)
+    return null;
+
+  const remaining = new Set(references.data.map(({ id }) => id));
+  const ordered = policies.toSorted((a, b) => a.position - b.position);
+  if (
+    ordered.some(
+      ({ id, position }, index) =>
+        position !== index + 1 || !remaining.delete(id),
+    )
+  )
+    return null;
+
+  return ordered.map(({ id }) => id);
+}
+
 export function readL7PoolPolicy(policy: OctaviaL7Policy) {
   if (policy.action !== L7_POOL_ACTION) return null;
   const parsed = l7PoolPolicySchema.safeParse({
