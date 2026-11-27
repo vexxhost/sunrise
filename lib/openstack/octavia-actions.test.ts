@@ -491,6 +491,81 @@ describe("Octavia member actions", () => {
     );
   });
 
+  it.each(["HTTP", "TCP", "HTTPS"])(
+    "creates a backup member in an Amphora %s pool",
+    async (protocol) => {
+      mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol });
+      await mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+        ...create,
+        backup: true,
+      });
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          apiVersion: "load-balancer 2.1",
+          body: { member: expect.objectContaining({ backup: true }) },
+        }),
+      );
+    },
+  );
+
+  it("reads and updates backup mode at the negotiated version and sends false explicitly", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol: "HTTPS" });
+    mocks.getOctaviaPoolMember.mockResolvedValue({ ...member, backup: true });
+    const higherMinimum = capabilities();
+    higherMinimum.microversions.minimum = "2.3";
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue(higherMinimum);
+    await mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+      ...edit,
+      weight: current.weight,
+      backup: false,
+      source: { ...current, backup: true },
+    });
+    expect(mocks.getOctaviaPoolMember).toHaveBeenCalledExactlyOnceWith(
+      poolId,
+      memberId,
+      scope.regionId,
+      scope.projectId,
+      "load-balancer 2.3",
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.3",
+        body: { member: { backup: false } },
+      }),
+    );
+  });
+
+  it.each([true, undefined])(
+    "rejects changing backup mode when its source is stale or missing (%s)",
+    async (backup) => {
+      mocks.getOctaviaPoolMember.mockResolvedValue({ ...member, backup });
+      await expect(
+        mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+          ...edit,
+          backup: true,
+          source: { ...current, backup: false },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects backup writes when the API ceiling is too low or the pool protocol is out of scope", async () => {
+    const request = { ...create, backup: true };
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValueOnce({
+      ...capabilities(),
+      configuredMicroversionMaximum: "2.0",
+    });
+    await expect(
+      mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, request),
+    ).resolves.toMatchObject({ ok: false });
+    mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol: "UDP" });
+    await expect(
+      mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, request),
+    ).resolves.toMatchObject({ ok: false });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it.each([3, undefined])(
     "blocks a stale or missing weight (%s)",
     async (weight) => {
@@ -527,6 +602,7 @@ describe("Octavia member actions", () => {
       memberId,
       scope.regionId,
       scope.projectId,
+      undefined,
     );
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({

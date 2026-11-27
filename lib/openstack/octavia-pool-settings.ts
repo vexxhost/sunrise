@@ -210,6 +210,33 @@ export function canChangeOctaviaPoolMembers(
   );
 }
 
+export function isOctaviaBackupMemberPool(
+  provider: string | undefined,
+  protocol: string,
+) {
+  // Amphora handles HTTPS passthrough in HAProxy alongside HTTP and TCP.
+  return (
+    isOctaviaAmphoraProvider(provider) &&
+    (protocol === "HTTP" || protocol === "TCP" || protocol === "HTTPS")
+  );
+}
+
+export function memberBackupMicroversion(
+  capabilities: OpenStackServiceCapabilities,
+  provider: string | undefined,
+  protocol: string,
+) {
+  if (!isOctaviaBackupMemberPool(provider, protocol)) return undefined;
+  const support = microversionSupport(capabilities, "2.1", "Backup members");
+  return support.status === "supported"
+    ? support.requestedMicroversion
+    : undefined;
+}
+
+export function formatOctaviaMemberRole(backup: unknown) {
+  return backup === true ? "Backup" : backup === false ? "Primary" : "-";
+}
+
 export function poolMutationRecovery(
   code: MutationErrorCode,
   retainDraftOnConflict = false,

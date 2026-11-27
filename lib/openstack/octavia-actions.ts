@@ -63,6 +63,7 @@ import {
   canAttachNewOctaviaPool,
   canChangeOctaviaPoolMembers,
   canUseOctaviaPoolAsDefault,
+  memberBackupMicroversion,
   OCTAVIA_POOL_ALGORITHMS,
   OCTAVIA_POOL_PERSISTENCE_MODES,
   OCTAVIA_POOL_PROTOCOLS,
@@ -271,6 +272,7 @@ const memberFields = z.object({
   name: z.string().max(255),
   adminStateUp: z.boolean(),
   weight: memberWeightSchema.optional(),
+  backup: z.boolean().optional(),
 });
 const memberMutationSchema = z.discriminatedUnion("action", [
   memberFields.extend({
@@ -1538,6 +1540,20 @@ export async function mutateOctaviaPoolMemberAction(
       activeScope,
     );
   }
+  const changesBackup = value.action !== "delete" && value.backup !== undefined;
+  const backupVersion = changesBackup
+    ? memberBackupMicroversion(
+        capabilities,
+        existing.value.provider,
+        pool.protocol,
+      )
+    : undefined;
+  if (changesBackup && !backupVersion) {
+    return validationFailure(
+      activeScope,
+      "Backup members require an Amphora HTTP, TCP, or HTTPS passthrough pool and confirmed Octavia API 2.1 support.",
+    );
+  }
   const memberId = value.action === "create" ? null : value.id.toLowerCase();
   let body: Record<string, unknown> | undefined;
   if (value.action === "create") {
@@ -1567,6 +1583,7 @@ export async function mutateOctaviaPoolMemberAction(
       protocol_port: value.port,
       admin_state_up: value.adminStateUp,
       ...(value.weight !== undefined ? { weight: value.weight } : {}),
+      ...(value.backup !== undefined ? { backup: value.backup } : {}),
       ...(subnetId ? { subnet_id: subnetId } : {}),
     };
   } else {
@@ -1587,6 +1604,7 @@ export async function mutateOctaviaPoolMemberAction(
         id,
         activeScope.regionId,
         activeScope.projectId,
+        backupVersion ? `load-balancer ${backupVersion}` : undefined,
       );
     } catch (error) {
       return preflightFailure(error, activeScope, "pool member");
@@ -1600,7 +1618,10 @@ export async function mutateOctaviaPoolMemberAction(
         value.source.adminStateUp !== member.admin_state_up ||
         (value.weight !== undefined &&
           (member.weight === undefined ||
-            value.source.weight !== member.weight))
+            value.source.weight !== member.weight)) ||
+        (value.backup !== undefined &&
+          (typeof member.backup !== "boolean" ||
+            value.source.backup !== member.backup))
       ) {
         return mutationFailure(
           {
@@ -1620,6 +1641,9 @@ export async function mutateOctaviaPoolMemberAction(
         ...(value.weight !== undefined && value.weight !== member.weight
           ? { weight: value.weight }
           : {}),
+        ...(value.backup !== undefined && value.backup !== member.backup
+          ? { backup: value.backup }
+          : {}),
       };
       if (!Object.keys(body).length) {
         return {
@@ -1634,7 +1658,8 @@ export async function mutateOctaviaPoolMemberAction(
   }
   const supported = await supportedMutationMicroversion(
     activeScope,
-    pool.protocol === "UDP" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION,
+    backupVersion ??
+      (pool.protocol === "UDP" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION),
     "Changing pool members",
     capabilities,
   );

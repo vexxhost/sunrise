@@ -51,6 +51,7 @@ export function MemberMutationDialog({
   loadBalancerId,
   scope,
   neutronAvailable,
+  backupMembersSupported,
   onClose,
   onRefresh,
   onSuccess,
@@ -59,6 +60,7 @@ export function MemberMutationDialog({
   loadBalancerId: string;
   scope: MutationScope;
   neutronAvailable: boolean;
+  backupMembersSupported: boolean;
   onClose: () => void;
   onRefresh: () => void;
   onSuccess: (message: string) => void;
@@ -72,10 +74,18 @@ export function MemberMutationDialog({
     name: member?.name ?? "",
     adminStateUp: member?.admin_state_up ?? true,
     weight: creating ? 1 : (member?.weight ?? undefined),
+    backup: backupMembersSupported
+      ? creating
+        ? false
+        : typeof member?.backup === "boolean"
+          ? member.backup
+          : undefined
+      : undefined,
   }));
   const [name, setName] = useState(initial.name);
   const [adminStateUp, setAdminStateUp] = useState(initial.adminStateUp);
   const [weight, setWeight] = useState(String(initial.weight ?? ""));
+  const [backup, setBackup] = useState(initial.backup ?? false);
   const [address, setAddress] = useState("");
   const [port, setPort] = useState("");
   const [subnetId, setSubnetId] = useState(VIP_SUBNET);
@@ -176,6 +186,8 @@ export function MemberMutationDialog({
     (/^\d+$/.test(weight) && weightNumber <= 256);
   const weightChanged =
     initial.weight !== undefined && weightNumber !== initial.weight;
+  const showBackup = initial.backup !== undefined;
+  const backupChanged = showBackup && backup !== initial.backup;
   const canSubmit =
     !requiresReopen &&
     validWeight &&
@@ -186,7 +198,8 @@ export function MemberMutationDialog({
         quota.issues.length === 0
       : name !== initial.name ||
         adminStateUp !== initial.adminStateUp ||
-        weightChanged);
+        weightChanged ||
+        backupChanged);
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
       <DialogContent
@@ -214,6 +227,7 @@ export function MemberMutationDialog({
                 address: address.trim(),
                 port: portNumber,
                 weight: weightNumber,
+                ...(backupChanged ? { backup } : {}),
                 subnetId: selectedSubnet?.id,
               });
             } else if (target.action === "edit") {
@@ -223,10 +237,12 @@ export function MemberMutationDialog({
                 name,
                 adminStateUp,
                 ...(weightChanged ? { weight: weightNumber } : {}),
+                ...(backupChanged ? { backup } : {}),
                 source: {
                   name: initial.name,
                   adminStateUp: initial.adminStateUp,
                   weight: initial.weight,
+                  ...(backupChanged ? { backup: initial.backup } : {}),
                 },
               });
             }
@@ -355,6 +371,17 @@ export function MemberMutationDialog({
               }
             />
           </div>
+          {showBackup ? (
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="octavia-member-backup"
+                checked={backup}
+                onCheckedChange={(value) => setBackup(value === true)}
+                disabled={pending}
+              />
+              <Label htmlFor="octavia-member-backup">Backup member</Label>
+            </div>
+          ) : null}
           <div className="flex items-center gap-2">
             <Checkbox
               id="octavia-member-admin-state"

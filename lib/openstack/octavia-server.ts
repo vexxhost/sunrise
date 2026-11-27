@@ -23,6 +23,10 @@ import {
 } from "@/lib/openstack/octavia-listener-settings";
 import { healthMonitorBelongsToPool } from "@/lib/openstack/octavia-health-monitor-settings";
 import { readL7PolicyOrder } from "@/lib/openstack/octavia-l7-settings";
+import {
+  isOctaviaBackupMemberPool,
+  memberBackupMicroversion,
+} from "@/lib/openstack/octavia-pool-settings";
 import { getSession } from "@/lib/session";
 import type {
   OctaviaAvailabilityZone,
@@ -625,13 +629,18 @@ async function readPool(scope: OctaviaScope, parentId: string, poolId: string) {
   return pool;
 }
 
-async function readPoolMembers(scope: OctaviaScope, poolId: string) {
+async function readPoolMembers(
+  scope: OctaviaScope,
+  poolId: string,
+  backupVersion?: string,
+) {
   const members = await listCollection<OctaviaMember>(
     scope,
     "members",
     nestedCollectionPath(
       `/v2/lbaas/pools/${encodeURIComponent(poolId)}/members`,
     ),
+    backupVersion ? `load-balancer ${backupVersion}` : undefined,
   );
   return members
     .filter(
@@ -680,8 +689,18 @@ export async function getLoadBalancerPoolDetails(
     [pool.healthmonitor_id],
     "health monitor",
   )[0];
+  const backupVersion = isOctaviaBackupMemberPool(
+    loadBalancer.provider,
+    pool.protocol,
+  )
+    ? memberBackupMicroversion(
+        await discoverLoadBalancerCapabilities(scope.regionId),
+        loadBalancer.provider,
+        pool.protocol,
+      )
+    : undefined;
   const [memberList, listenerList, healthMonitor] = await Promise.all([
-    optionalPoolChild(readPoolMembers(scope, poolId)),
+    optionalPoolChild(readPoolMembers(scope, poolId, backupVersion)),
     Promise.all(
       referenceIds(pool.listeners, "listener").map((listenerId) =>
         optionalPoolChild(readListener(scope, parentId, listenerId)),
@@ -698,6 +717,7 @@ export async function getLoadBalancerPoolDetails(
     members: memberList,
     listeners: listenerList,
     healthMonitor,
+    backupMembersSupported: Boolean(backupVersion),
   };
 }
 
@@ -706,13 +726,19 @@ export async function getOctaviaPoolMember(
   id: string,
   regionId?: string,
   projectId?: string,
+  apiVersion?: string,
 ): Promise<OctaviaMember> {
   const parentId = requireUuid(poolId, "pool ID");
   const memberId = requireUuid(id, "member ID");
   const scope = await resolveScope(regionId, projectId);
   const payload = await octaviaGet<{
     member: Omit<OctaviaMember, "pool_id"> & { pool_id?: string };
-  }>(scope, `/v2/lbaas/pools/${parentId}/members/${memberId}`);
+  }>(
+    scope,
+    `/v2/lbaas/pools/${parentId}/members/${memberId}`,
+    "throw",
+    apiVersion,
+  );
   const member = payload?.member;
   if (
     member?.id !== memberId ||
@@ -1199,7 +1225,12 @@ async function readLoadBalancerDetails(
     healthMonitorsPromise,
     Promise.all(
       pools.map(async (pool) => {
-        return readTopologyResource(readPoolMembers(scope, pool.id));
+        const version = memberBackupMicroversion(
+          capabilities,
+          loadBalancer.provider,
+          pool.protocol,
+        );
+        return readTopologyResource(readPoolMembers(scope, pool.id, version));
       }),
     ),
     Promise.all(

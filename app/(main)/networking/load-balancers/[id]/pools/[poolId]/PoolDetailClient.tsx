@@ -66,6 +66,7 @@ import {
 import {
   canChangeOctaviaPoolMembers,
   formatOctaviaMemberAddress,
+  formatOctaviaMemberRole,
   formatPoolAlgorithm,
   formatPoolPersistence,
   octaviaPoolDeletionBlock,
@@ -131,7 +132,14 @@ export function PoolDetailClient({
         : false;
     },
   });
-  const { loadBalancer, pool, healthMonitor, members, listeners } = data;
+  const {
+    loadBalancer,
+    pool,
+    healthMonitor,
+    members,
+    listeners,
+    backupMembersSupported,
+  } = data;
   const persistence = readPoolPersistence(pool.session_persistence);
   const parentHref = `/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#pools`;
   const writesSupported = isOctaviaAmphoraProvider(loadBalancer.provider);
@@ -565,6 +573,7 @@ export function PoolDetailClient({
                   <TableHead>Member</TableHead>
                   <TableHead>Address</TableHead>
                   <TableHead>Weight</TableHead>
+                  {backupMembersSupported ? <TableHead>Role</TableHead> : null}
                   <TableHead>Operating</TableHead>
                   <TableHead>Provisioning</TableHead>
                   <TableHead>Administrative state</TableHead>
@@ -581,6 +590,11 @@ export function PoolDetailClient({
                       {formatOctaviaMemberAddress(member)}
                     </TableCell>
                     <TableCell>{member.weight ?? "-"}</TableCell>
+                    {backupMembersSupported ? (
+                      <TableCell>
+                        {formatOctaviaMemberRole(member.backup)}
+                      </TableCell>
+                    ) : null}
                     <TableCell>
                       <Status status={member.operating_status} />
                     </TableCell>
@@ -669,6 +683,7 @@ export function PoolDetailClient({
           loadBalancerId={loadBalancerId}
           scope={{ projectId, regionId }}
           neutronAvailable={neutronAvailable}
+          backupMembersSupported={backupMembersSupported}
           onClose={() => setAction(null)}
           onRefresh={refreshPoolData}
           onSuccess={onSuccess}
