@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   discoverLoadBalancerCapabilities: vi.fn(),
   executeOpenStackMutation: vi.fn(),
   getLoadBalancer: vi.fn(),
+  getLoadBalancerFlavor: vi.fn(),
   getLoadBalancerListener: vi.fn(),
   getLoadBalancerPool: vi.fn(),
   getOctaviaPoolHealthMonitor: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverLoadBalancerCapabilities: mocks.discoverLoadBalancerCapabilities,
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION: "2.14",
   OCTAVIA_BASELINE_MICROVERSION: "2.0",
+  OCTAVIA_FLAVORS_MICROVERSION: "2.6",
   OCTAVIA_TAGS_MICROVERSION: "2.5",
 }));
 vi.mock("@/lib/openstack/mutations", () => ({
@@ -33,12 +35,14 @@ vi.mock("@/lib/openstack/request-server", () => ({
 vi.mock("@/lib/openstack/octavia-server", () => ({
   getLoadBalancer: mocks.getLoadBalancer,
   getLoadBalancerDetails: vi.fn(),
+  getLoadBalancerFlavor: mocks.getLoadBalancerFlavor,
   getLoadBalancerListener: mocks.getLoadBalancerListener,
   getLoadBalancerListenerDetails: vi.fn(),
   getLoadBalancerPool: mocks.getLoadBalancerPool,
   getOctaviaPoolHealthMonitor: mocks.getOctaviaPoolHealthMonitor,
   getOctaviaPoolMember: mocks.getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones: vi.fn(),
+  listLoadBalancerFlavors: vi.fn(),
   listLoadBalancers: vi.fn(),
   listOctaviaPoolRedirectPolicies: mocks.listOctaviaPoolRedirectPolicies,
 }));
@@ -2066,6 +2070,8 @@ describe("Octavia listener actions", () => {
 describe("Octavia load balancer mutation actions", () => {
   const fixedVip = { name: "fixed-vip", vipSubnetId, vipAddress: "10.0.0.72" };
   const visibleSubnet = { id: vipSubnetId, cidr: "10.0.0.0/25", ip_version: 4 };
+  const flavorId = "8f94060c-8d5b-4472-9cfd-e8a2b909481d";
+  const flavor = { id: flavorId, name: "Standalone", enabled: true };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -2075,6 +2081,7 @@ describe("Octavia load balancer mutation actions", () => {
     });
     mocks.discoverLoadBalancerCapabilities.mockResolvedValue(capabilities());
     mocks.getLoadBalancer.mockResolvedValue(existingLoadBalancer());
+    mocks.getLoadBalancerFlavor.mockResolvedValue(flavor);
     mocks.executeOpenStackMutation.mockImplementation(async (options) => ({
       data: null,
       message: options.successMessage,
@@ -2114,6 +2121,121 @@ describe("Octavia load balancer mutation actions", () => {
       }),
     );
     expect(mocks.openstackRequest).not.toHaveBeenCalled();
+    expect(mocks.getLoadBalancerFlavor).not.toHaveBeenCalled();
+  });
+
+  it("verifies the selected flavor and uses the flavor microversion alongside tags", async () => {
+    await expect(
+      createLoadBalancerAction(scope, {
+        name: "application",
+        vipSubnetId,
+        flavorId: flavorId.toUpperCase(),
+        tags: ["env:test"],
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    expect(mocks.getLoadBalancerFlavor).toHaveBeenCalledExactlyOnceWith(
+      flavorId,
+      "load-balancer 2.6",
+      scope.regionId,
+      scope.projectId,
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.6",
+        body: {
+          loadbalancer: expect.objectContaining({
+            flavor_id: flavorId,
+            tags: ["env:test"],
+          }),
+        },
+      }),
+    );
+    const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+    const result = existingLoadBalancer({ flavor_id: flavorId });
+    expect(transform({ loadbalancer: result })).toBe(result);
+    expect(() => transform({ loadbalancer: existingLoadBalancer() })).toThrow(
+      "requested flavor",
+    );
+    expect(() =>
+      transform({ loadbalancer: { ...result, flavor_id: loadBalancerId } }),
+    ).toThrow("requested flavor");
+  });
+
+  it("uses the highest requested microversion when combining a flavor and availability zone", async () => {
+    await createLoadBalancerAction(scope, {
+      name: "application",
+      vipSubnetId,
+      flavorId,
+      availabilityZone: "nova",
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.14",
+        body: {
+          loadbalancer: expect.objectContaining({
+            flavor_id: flavorId,
+            availability_zone: "nova",
+          }),
+        },
+      }),
+    );
+  });
+
+  it("rejects a flavor above the configured ceiling without looking it up or creating an LB", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValueOnce({
+      ...capabilities(),
+      configuredMicroversionMaximum: "2.5",
+    });
+    await expect(
+      createLoadBalancerAction(scope, {
+        name: "application",
+        vipSubnetId,
+        flavorId,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "service-unavailable" },
+    });
+    expect(mocks.getLoadBalancerFlavor).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects disabled and deleted selections rather than silently using the default", async () => {
+    mocks.getLoadBalancerFlavor
+      .mockResolvedValueOnce({ ...flavor, enabled: false })
+      .mockRejectedValueOnce(
+        new OpenStackRequestError(404, "Flavor not found"),
+      );
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(
+        createLoadBalancerAction(scope, {
+          name: "application",
+          vipSubnetId,
+          flavorId,
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: {
+          code: "validation-failed",
+          message: expect.stringContaining("no longer available"),
+        },
+      });
+    }
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid flavor ID before requesting mutation context", async () => {
+    await expect(
+      createLoadBalancerAction(scope, {
+        name: "application",
+        vipSubnetId,
+        flavorId: "cloud-default",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.guardMutationContext).not.toHaveBeenCalled();
   });
 
   it("requests the fixed IPv4 VIP on the freshly verified subnet using the baseline API", async () => {

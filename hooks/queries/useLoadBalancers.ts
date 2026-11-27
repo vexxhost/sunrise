@@ -5,6 +5,7 @@ import {
   getLoadBalancerListenerRoutingAction,
   getLoadBalancerPoolDetailsAction,
   listLoadBalancerAvailabilityZonesAction,
+  listLoadBalancerFlavorsAction,
   listLoadBalancerFloatingIpsAction,
   listLoadBalancerPoolChoicesAction,
   listLoadBalancerPoolRedirectPoliciesAction,
@@ -19,6 +20,17 @@ export function loadBalancerAvailabilityZonesQueryOptions(
     queryKey: [regionId, projectId, "load-balancer-availability-zones"],
     queryFn: () => listLoadBalancerAvailabilityZonesAction(regionId, projectId),
     enabled: Boolean(regionId && projectId),
+  });
+}
+
+export function loadBalancerFlavorsQueryOptions(
+  regionId: string,
+  projectId: string,
+) {
+  return queryOptions({
+    queryKey: [regionId, projectId, "octavia", "flavors"],
+    queryFn: () => listLoadBalancerFlavorsAction(regionId, projectId),
+    staleTime: 0,
   });
 }
 

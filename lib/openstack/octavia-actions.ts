@@ -11,6 +11,7 @@ import {
   discoverLoadBalancerCapabilities,
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION,
   OCTAVIA_BASELINE_MICROVERSION,
+  OCTAVIA_FLAVORS_MICROVERSION,
   OCTAVIA_TAGS_MICROVERSION,
 } from "@/lib/openstack/capabilities-server";
 import { guardMutationContext } from "@/lib/mutation-context";
@@ -79,6 +80,7 @@ import {
 import {
   getLoadBalancer,
   getLoadBalancerDetails,
+  getLoadBalancerFlavor,
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerListenerRouting,
@@ -87,6 +89,7 @@ import {
   getOctaviaPoolHealthMonitor,
   getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
+  listLoadBalancerFlavors,
   listLoadBalancerPoolChoices,
   listLoadBalancerPoolRedirectPolicies,
   listLoadBalancers,
@@ -121,6 +124,7 @@ const createLoadBalancerSchema = z.object({
   description: z.string().trim().max(255).optional(),
   vipSubnetId: uuidSchema.toLowerCase(),
   vipAddress: z.string().trim().pipe(z.ipv4(INVALID_FIXED_VIP)).optional(),
+  flavorId: uuidSchema.toLowerCase().optional(),
   availabilityZone: z
     .string()
     .min(1)
@@ -448,9 +452,11 @@ async function supportedMutationMicroversion(
 
 function requiredCreateMicroversion(value: {
   availabilityZone?: string;
+  flavorId?: string;
   tags: string[];
 }) {
   if (value.availabilityZone) return OCTAVIA_AVAILABILITY_ZONE_MICROVERSION;
+  if (value.flavorId) return OCTAVIA_FLAVORS_MICROVERSION;
   if (value.tags.length) return OCTAVIA_TAGS_MICROVERSION;
   return OCTAVIA_BASELINE_MICROVERSION;
 }
@@ -560,6 +566,31 @@ export async function createLoadBalancerAction(
     "Creating this load balancer",
   );
   if (!supported.ok) return supported.result;
+  const apiVersion = `load-balancer ${supported.version}`;
+  if (value.flavorId) {
+    const noLongerAvailable = () =>
+      validationFailure(
+        activeScope,
+        "This flavor is no longer available. Select another flavor or use the cloud default.",
+      );
+    try {
+      const flavor = await getLoadBalancerFlavor(
+        value.flavorId,
+        apiVersion,
+        activeScope.regionId,
+        activeScope.projectId,
+      );
+      if (!flavor.enabled) return noLongerAvailable();
+    } catch (error) {
+      if (error instanceof OpenStackRequestError && error.status === 404)
+        return noLongerAvailable();
+      return preflightFailure(
+        error,
+        activeScope,
+        "selected load balancer flavor",
+      );
+    }
+  }
 
   const result = await executeOpenStackMutation<OctaviaLoadBalancer>({
     actionLabel: "create a load balancer",
@@ -567,7 +598,7 @@ export async function createLoadBalancerAction(
     ...OCTAVIA_SERVICE,
     path: "/v2/lbaas/loadbalancers",
     method: "POST",
-    apiVersion: `load-balancer ${supported.version}`,
+    apiVersion,
     body: {
       loadbalancer: {
         name: value.name,
@@ -575,6 +606,7 @@ export async function createLoadBalancerAction(
         project_id: activeScope.projectId,
         vip_subnet_id: value.vipSubnetId,
         ...(value.vipAddress ? { vip_address: value.vipAddress } : {}),
+        ...(value.flavorId ? { flavor_id: value.flavorId } : {}),
         availability_zone: value.availabilityZone || undefined,
         admin_state_up: value.adminStateUp,
         tags: value.tags.length ? parsedTags.tags : undefined,
@@ -584,6 +616,12 @@ export async function createLoadBalancerAction(
     successMessage: `Load balancer ${value.name} is being created.`,
     transform: (payload) => {
       const created = loadBalancerFromPayload(payload, activeScope.projectId);
+      if (
+        value.flavorId &&
+        created.flavor_id?.toLowerCase() !== value.flavorId
+      ) {
+        throw new Error("Octavia did not return the requested flavor");
+      }
       if (
         value.vipAddress &&
         (created.vip_address !== value.vipAddress ||
@@ -2050,6 +2088,13 @@ export async function listLoadBalancerAvailabilityZonesAction(
   projectId?: string,
 ) {
   return listLoadBalancerAvailabilityZones(regionId, projectId);
+}
+
+export async function listLoadBalancerFlavorsAction(
+  regionId?: string,
+  projectId?: string,
+) {
+  return listLoadBalancerFlavors(regionId, projectId);
 }
 
 export async function listLoadBalancerPoolChoicesAction(
