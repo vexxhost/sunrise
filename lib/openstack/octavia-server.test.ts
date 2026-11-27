@@ -743,11 +743,12 @@ describe("Octavia project scoping", () => {
     );
   });
 
-  it("checks the pool's project and parent before revealing redirect dependencies", async () => {
+  it("verifies the pool and resolves redirect owners through a paginated listener collection", async () => {
     const parentId = "11111111-1111-4111-8111-111111111111";
     const poolId = "22222222-2222-4222-8222-222222222222";
     const listenerId = "33333333-3333-4333-8333-333333333333";
     const foreignListenerId = "44444444-4444-4444-8444-444444444444";
+    const foreignProjectListenerId = "88888888-8888-4888-8888-888888888888";
     const pool = {
       id: poolId,
       project_id: "project-a",
@@ -782,6 +783,12 @@ describe("Octavia project scoping", () => {
       admin_state_up: false,
       provisioning_status: "ACTIVE",
     };
+    const owner = {
+      id: listenerId,
+      project_id: "project-a",
+      name: "web",
+      loadbalancers: [{ id: parentId }],
+    };
     mocks.openstackRequest
       .mockResolvedValueOnce({ pool })
       .mockResolvedValueOnce({
@@ -797,24 +804,30 @@ describe("Octavia project scoping", () => {
             id: "77777777-7777-4777-8777-777777777777",
             listener_id: foreignListenerId,
           },
+          {
+            ...policy,
+            id: "99999999-9999-4999-8999-999999999999",
+            listener_id: foreignProjectListenerId,
+          },
         ],
       })
       .mockResolvedValueOnce({
-        listener: {
-          id: listenerId,
-          project_id: "project-a",
-          name: "web",
-          loadbalancers: [{ id: parentId }],
-        },
+        listeners: [
+          {
+            ...owner,
+            id: foreignListenerId,
+            loadbalancers: [{ id: foreignListenerId }],
+          },
+          { ...owner, id: foreignProjectListenerId, project_id: "project-b" },
+        ],
+        listeners_links: [
+          {
+            rel: "next",
+            href: "https://octavia.example/v2/lbaas/listeners?limit=100&marker=first",
+          },
+        ],
       })
-      .mockResolvedValueOnce({
-        listener: {
-          id: foreignListenerId,
-          project_id: "project-a",
-          name: "unrelated listener",
-          loadbalancers: [{ id: foreignListenerId }],
-        },
-      });
+      .mockResolvedValueOnce({ listeners: [owner] });
     await expect(request()).resolves.toMatchObject([
       { redirect_pool_id: poolId, listener: { id: listenerId, name: "web" } },
       { position: 2, listener: { id: listenerId, name: "web" } },
@@ -823,15 +836,58 @@ describe("Octavia project scoping", () => {
         listener_id: foreignListenerId,
         listener: null,
       },
+      {
+        redirect_pool_id: poolId,
+        listener_id: foreignProjectListenerId,
+        listener: null,
+      },
     ]);
     expect(mocks.openstackRequest.mock.calls.map(([{ path }]) => path)).toEqual(
       [
         `/v2/lbaas/pools/${poolId}`,
         `/v2/lbaas/l7policies?limit=100&project_id=project-a&redirect_pool_id=${poolId}`,
-        `/v2/lbaas/listeners/${listenerId}`,
-        `/v2/lbaas/listeners/${foreignListenerId}`,
+        `/v2/lbaas/listeners?limit=100&project_id=project-a&loadbalancer_id=${parentId}`,
+        `/v2/lbaas/listeners?limit=100&marker=first&project_id=project-a&loadbalancer_id=${parentId}`,
       ],
     );
+  });
+
+  it("keeps redirect dependencies visible if Octavia denies listing listeners", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const poolId = "22222222-2222-4222-8222-222222222222";
+    const policy = {
+      id: "55555555-5555-4555-8555-555555555555",
+      name: "route",
+      listener_id: "33333333-3333-4333-8333-333333333333",
+      project_id: "project-a",
+      redirect_pool_id: poolId,
+    };
+    mocks.openstackRequest
+      .mockResolvedValueOnce({
+        pool: {
+          id: poolId,
+          project_id: "project-a",
+          loadbalancers: [{ id: parentId }],
+        },
+      })
+      .mockResolvedValueOnce({ l7policies: [policy] })
+      .mockRejectedValueOnce(new OpenStackRequestError(403, "Forbidden"));
+    await expect(
+      listLoadBalancerPoolRedirectPolicies(
+        parentId,
+        poolId,
+        "RegionOne",
+        "project-a",
+      ),
+    ).resolves.toMatchObject([
+      {
+        name: "route",
+        redirect_pool_id: poolId,
+        listener_id: policy.listener_id,
+        listener: null,
+      },
+    ]);
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(3);
   });
 
   it.each([
