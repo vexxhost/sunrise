@@ -2,10 +2,10 @@
 
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import {
-  mutationFailure,
   type MutationResult,
   type MutationScope,
 } from "@/lib/mutations";
+import { parseMutationInput } from "@/lib/mutation-validation";
 import type {
   ContainerFormat,
   DiskFormat,
@@ -50,31 +50,11 @@ const imageUpdateSchema = z.object({
 export type CreateImageInput = z.input<typeof imageCreateSchema>;
 export type UpdateImageInput = z.input<typeof imageUpdateSchema>;
 
-function validationFailure(scope: MutationScope, message: string) {
-  return mutationFailure(
-    { code: "validation-failed", message, retryable: false },
-    scope,
-  );
-}
-
-function parseInput<T>(schema: z.ZodType<T>, value: unknown, scope: MutationScope) {
-  const parsed = schema.safeParse(value);
-  return parsed.success
-    ? ({ ok: true, value: parsed.data } as const)
-    : ({
-        ok: false,
-        result: validationFailure(
-          scope,
-          parsed.error.issues[0]?.message ?? "Review the values and try again.",
-        ),
-      } as const);
-}
-
 export async function createImageAction(
   scope: MutationScope,
   input: CreateImageInput,
 ): Promise<MutationResult<Image>> {
-  const parsed = parseInput(imageCreateSchema, input, scope);
+  const parsed = parseMutationInput(imageCreateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
 
@@ -111,9 +91,9 @@ export async function updateImageAction(
   id: string,
   input: UpdateImageInput,
 ): Promise<MutationResult<Image>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
-  const parsed = parseInput(imageUpdateSchema, input, scope);
+  const parsed = parseMutationInput(imageUpdateSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const value = parsed.value;
   const operations: ImagePatchOperation[] = [
@@ -149,7 +129,7 @@ export async function deleteImageAction(
   scope: MutationScope,
   id: string,
 ): Promise<MutationResult<null>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
 
   return executeOpenStackMutation({

@@ -4,10 +4,13 @@ import { openstackRequest } from "@/lib/openstack/request-server";
 import { executeOpenStackMutation } from "@/lib/openstack/mutations";
 import { getSession } from "@/lib/session";
 import {
-  mutationFailure,
   type MutationResult,
   type MutationScope,
 } from "@/lib/mutations";
+import {
+  parseMutationInput,
+  validationFailure,
+} from "@/lib/mutation-validation";
 import { z } from "zod";
 import type {
   CreateServerImageRequest,
@@ -126,38 +129,6 @@ export type ServerSecurityGroupInput = z.input<
 export type ServerLifecycleAction =
   "start" | "stop" | "soft-reboot" | "hard-reboot";
 
-function validationFailure(scope: MutationScope, message: string) {
-  return mutationFailure(
-    {
-      code: "validation-failed",
-      message,
-      retryable: false,
-    },
-    scope,
-  );
-}
-
-function parseInput<T>(
-  schema: z.ZodType<T>,
-  value: unknown,
-  scope: MutationScope,
-):
-  | { ok: true; value: T }
-  | { ok: false; result: ReturnType<typeof validationFailure> } {
-  const parsed = schema.safeParse(value);
-  if (!parsed.success) {
-    return {
-      ok: false,
-      result: validationFailure(
-        scope,
-        parsed.error.issues[0]?.message ?? "Review the values and try again.",
-      ),
-    };
-  }
-
-  return { ok: true, value: parsed.data };
-}
-
 function encodeUserData(value?: string | null) {
   return value ? Buffer.from(value, "utf8").toString("base64") : value;
 }
@@ -207,7 +178,7 @@ export async function createServerAction(
   scope: MutationScope,
   input: LaunchServerInput,
 ): Promise<MutationResult<Server>> {
-  const parsed = parseInput(launchServerSchema, input, scope);
+  const parsed = parseMutationInput(launchServerSchema, input, scope);
   if (!parsed.ok) return parsed.result;
 
   const payload = parsed.value;
@@ -295,7 +266,7 @@ export async function deleteServerAction(
   scope: MutationScope,
   id: string,
 ): Promise<MutationResult<null>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
 
   return executeOpenStackMutation({
@@ -320,7 +291,7 @@ export async function attachPortAction(
   scope: MutationScope,
   input: AttachPortInput,
 ): Promise<MutationResult<InterfaceAttachment>> {
-  const parsed = parseInput(attachPortSchema, input, scope);
+  const parsed = parseMutationInput(attachPortSchema, input, scope);
   if (!parsed.ok) return parsed.result;
 
   const { portId, serverId } = parsed.value;
@@ -362,7 +333,7 @@ export async function detachPortAction(
   scope: MutationScope,
   input: AttachPortInput,
 ): Promise<MutationResult<null>> {
-  const parsed = parseInput(attachPortSchema, input, scope);
+  const parsed = parseMutationInput(attachPortSchema, input, scope);
   if (!parsed.ok) return parsed.result;
 
   const { portId, serverId } = parsed.value;
@@ -392,7 +363,7 @@ export async function runServerLifecycleAction(
   id: string,
   action: ServerLifecycleAction,
 ): Promise<MutationResult<null>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
 
   const actionConfig = {
@@ -515,9 +486,9 @@ export async function rebuildServerAction(
   id: string,
   input: RebuildServerInput,
 ): Promise<MutationResult<Server>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
-  const parsed = parseInput(rebuildServerSchema, input, scope);
+  const parsed = parseMutationInput(rebuildServerSchema, input, scope);
   if (!parsed.ok) return parsed.result;
   const payload = parsed.value;
 
@@ -564,9 +535,9 @@ export async function replaceServerMetadataAction(
   id: string,
   metadata: Record<string, string>,
 ): Promise<MutationResult<Record<string, string>>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
-  const parsedMetadata = parseInput(metadataSchema, metadata, scope);
+  const parsedMetadata = parseMutationInput(metadataSchema, metadata, scope);
   if (!parsedMetadata.ok) return parsedMetadata.result;
 
   return executeOpenStackMutation<Record<string, string>>({
@@ -599,7 +570,7 @@ export async function createKeypairAction(
   scope: MutationScope,
   input: KeypairInput,
 ): Promise<MutationResult<Keypair>> {
-  const parsed = parseInput(keypairSchema, input, scope);
+  const parsed = parseMutationInput(keypairSchema, input, scope);
   if (!parsed.ok) return parsed.result;
 
   return executeOpenStackMutation<Keypair>({
@@ -642,7 +613,7 @@ export async function deleteKeypairAction(
   scope: MutationScope,
   name: string,
 ): Promise<MutationResult<null>> {
-  const parsed = parseInput(keypairSchema.shape.name, name, scope);
+  const parsed = parseMutationInput(keypairSchema.shape.name, name, scope);
   if (!parsed.ok) return parsed.result;
 
   return executeOpenStackMutation({
@@ -663,9 +634,9 @@ export async function resizeServerAction(
   id: string,
   input: ResizeServerInput,
 ): Promise<MutationResult<null>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
-  const parsed = parseInput(resizeServerSchema, input, scope);
+  const parsed = parseMutationInput(resizeServerSchema, input, scope);
   if (!parsed.ok) return parsed.result;
 
   return executeOpenStackMutation({
@@ -690,7 +661,7 @@ export async function confirmResizeServerAction(
   scope: MutationScope,
   id: string,
 ): Promise<MutationResult<null>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
 
   return executeOpenStackMutation({
@@ -715,7 +686,7 @@ export async function revertResizeServerAction(
   scope: MutationScope,
   id: string,
 ): Promise<MutationResult<null>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
 
   return executeOpenStackMutation({
@@ -742,9 +713,9 @@ async function changeServerSecurityGroupAction(
   input: ServerSecurityGroupInput,
   action: "addSecurityGroup" | "removeSecurityGroup",
 ): Promise<MutationResult<null>> {
-  const parsedId = parseInput(resourceIdSchema, id, scope);
+  const parsedId = parseMutationInput(resourceIdSchema, id, scope);
   if (!parsedId.ok) return parsedId.result;
-  const parsed = parseInput(serverSecurityGroupSchema, input, scope);
+  const parsed = parseMutationInput(serverSecurityGroupSchema, input, scope);
   if (!parsed.ok) return parsed.result;
 
   const adding = action === "addSecurityGroup";
