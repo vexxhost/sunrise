@@ -22,6 +22,7 @@ import {
   listenerReadApiVersion,
 } from "@/lib/openstack/octavia-listener-settings";
 import { healthMonitorBelongsToPool } from "@/lib/openstack/octavia-health-monitor-settings";
+import { readL7PolicyOrder } from "@/lib/openstack/octavia-l7-settings";
 import { getSession } from "@/lib/session";
 import type {
   OctaviaAvailabilityZone,
@@ -1010,6 +1011,30 @@ export async function getOctaviaListenerL7Policy(
   const id = requireUuid(policyId, "L7 policy ID");
   const scope = await resolveScope(regionId, projectId);
   return readListenerL7Policy(scope, parentId, id);
+}
+
+export async function listOctaviaListenerL7PolicyOrder(
+  listener: Pick<OctaviaListener, "id" | "l7policies">,
+  regionId: string | undefined,
+  projectId: string,
+) {
+  const scope = await resolveScope(regionId, projectId);
+  const filters = { project_id: scope.projectId, listener_id: listener.id };
+  const policies = await listCollection<OctaviaL7Policy>(
+    scope,
+    "l7policies",
+    collectionPath("l7policies", scope.projectId, filters),
+    undefined,
+    new URLSearchParams(filters),
+  );
+  return readL7PolicyOrder(
+    listener,
+    policies.filter(
+      (policy) =>
+        policy?.listener_id === listener.id &&
+        belongsToProject(policy.project_id, scope.projectId),
+    ),
+  );
 }
 
 export async function getOctaviaL7Rule(

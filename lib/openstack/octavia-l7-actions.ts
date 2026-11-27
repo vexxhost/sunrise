@@ -36,11 +36,18 @@ import {
   getLoadBalancerPool,
   getOctaviaL7Rule,
   getOctaviaListenerL7Policy,
+  listOctaviaListenerL7PolicyOrder,
 } from "@/lib/openstack/octavia-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
 
 const idSchema = z.uuid().toLowerCase();
 const pathSnapshot = z.object({ id: idSchema, settings: l7PathSchema });
+const orderChange = z
+  .object({
+    before: z.array(idSchema).min(2),
+    position: z.number().int().min(1),
+  })
+  .refine(({ before, position }) => position <= before.length);
 const mutationSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create-policy"),
@@ -51,6 +58,7 @@ const mutationSchema = z.discriminatedUnion("action", [
     policyId: idSchema,
     settings: l7PoolPolicySchema,
     source: l7PoolPolicySchema,
+    order: orderChange.optional(),
   }),
   z
     .object({
@@ -308,11 +316,38 @@ export async function mutateOctaviaL7Action(
           "The path rule changed. Refresh and try again.",
         );
       switch (value.action) {
-        case "edit-policy":
+        case "edit-policy": {
           if (!sameL7PoolPolicy(current, value.source)) return conflict(active);
           poolId = value.settings.redirect_pool_id;
-          body = { l7policy: value.settings };
+          const { order } = value;
+          if (order) {
+            const latest = await listOctaviaListenerL7PolicyOrder(
+              listener,
+              regionId,
+              projectId,
+            );
+            if (
+              !latest ||
+              latest.length !== order.before.length ||
+              latest.some((id, index) => id !== order.before[index]) ||
+              latest[policy.position - 1] !== policy.id
+            ) {
+              return conflict(
+                active,
+                "The listener's policy order changed or could not be verified. Refresh and try again.",
+              );
+            }
+          }
+          body = {
+            l7policy: {
+              ...value.settings,
+              ...(order && order.position !== policy.position
+                ? { position: order.position }
+                : {}),
+            },
+          };
           break;
+        }
         case "set-enabled":
           if (
             policy.admin_state_up === value.enabled ||

@@ -60,6 +60,7 @@ export type L7DialogTarget =
       listenerId: string;
       policyId: string;
       source: L7PoolPolicySettings;
+      policyOrder?: string[];
     }
   | { action: "add-rule"; listenerId: string; policyId: string; label: string }
   | {
@@ -108,6 +109,13 @@ export function L7PolicyDialog({
       ? target.source
       : { name: "", description: "", redirect_pool_id: "" },
   );
+  const policyOrder =
+    target.action === "edit-policy" ? target.policyOrder : undefined;
+  const currentPosition =
+    target.action === "edit-policy" && policyOrder
+      ? policyOrder.indexOf(target.policyId) + 1
+      : 0;
+  const [position, setPosition] = useState(() => String(currentPosition));
   const [rule, setRule] = useState<L7Path>(() =>
     target.action === "edit-rule"
       ? target.sourceRule.settings
@@ -223,9 +231,19 @@ export function L7PolicyDialog({
   const parsedRule = l7PathSchema.safeParse(rule);
   const matchingPool = pools.some(({ id }) => id === policy.redirect_pool_id);
   const matchingListener = listeners.some(({ id }) => id === listenerId);
+  const nextPosition = Number(position);
+  const validPosition =
+    !policyOrder ||
+    (Number.isInteger(nextPosition) &&
+      nextPosition >= 1 &&
+      nextPosition <= policyOrder.length);
+  const orderChange =
+    policyOrder && nextPosition !== currentPosition
+      ? { before: policyOrder, position: nextPosition }
+      : undefined;
   const changed =
     target.action === "edit-policy"
-      ? !sameL7PoolPolicy(policy, target.source)
+      ? Boolean(orderChange) || !sameL7PoolPolicy(policy, target.source)
       : target.action === "edit-rule"
         ? !sameL7Path(rule, target.sourceRule.settings)
         : true;
@@ -254,7 +272,12 @@ export function L7PolicyDialog({
           onSubmit={(event) => {
             event.preventDefault();
             setAttempted(true);
-            if (pending || !changed || (creating && quota.issues.length))
+            if (
+              pending ||
+              !changed ||
+              !validPosition ||
+              (creating && quota.issues.length)
+            )
               return;
             if (policyForm && parsedPolicy.success && matchingPool) {
               if (target.action === "create-policy" && matchingListener) {
@@ -265,6 +288,7 @@ export function L7PolicyDialog({
                   policyId: target.policyId,
                   settings: parsedPolicy.data,
                   source: target.source,
+                  ...(orderChange ? { order: orderChange } : {}),
                 });
               }
             } else if (!policyForm && parsedRule.success) {
@@ -356,6 +380,22 @@ export function L7PolicyDialog({
                   </SelectContent>
                 </Select>
               </div>
+              {policyOrder ? (
+                <div className="space-y-2">
+                  <Label htmlFor="l7-policy-position">Position</Label>
+                  <Input
+                    id="l7-policy-position"
+                    type="number"
+                    required
+                    min={1}
+                    max={policyOrder.length}
+                    step={1}
+                    value={position}
+                    disabled={pending}
+                    onChange={(event) => setPosition(event.target.value)}
+                  />
+                </div>
+              ) : null}
             </>
           ) : (
             <>
@@ -418,6 +458,7 @@ export function L7PolicyDialog({
               loading={pending}
               disabled={
                 !changed ||
+                !validPosition ||
                 (creating && quota.issues.length > 0) ||
                 (policyForm &&
                   (!matchingPool ||

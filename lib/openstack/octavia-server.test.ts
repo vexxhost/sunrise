@@ -33,6 +33,7 @@ import {
   listLoadBalancerPoolChoices,
   listLoadBalancerPoolRedirectPolicies,
   listLoadBalancers,
+  listOctaviaListenerL7PolicyOrder,
   listOctaviaPoolRedirectPolicies,
 } from "@/lib/openstack/octavia-server";
 import { OpenStackRequestError } from "@/lib/openstack/request";
@@ -522,6 +523,52 @@ describe("Octavia project scoping", () => {
       listener: { ...listener, l7policies: undefined },
     });
     await expect(read()).rejects.toThrow("routing policy references");
+  });
+
+  it("verifies policy positions from the full scoped collection, not the reference order", async () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const firstId = "22222222-2222-4222-8222-222222222222";
+    const secondId = "33333333-3333-4333-8333-333333333333";
+    const listener = { id, l7policies: [{ id: secondId }, { id: firstId }] };
+    const first = {
+      id: firstId,
+      listener_id: id,
+      project_id: "project-a",
+      position: 1,
+    };
+    const second = { ...first, id: secondId, position: 2 };
+    const read = () =>
+      listOctaviaListenerL7PolicyOrder(listener, "RegionOne", "project-a");
+    mocks.openstackRequest
+      .mockResolvedValueOnce({
+        l7policies: [second, { ...first, listener_id: firstId }],
+        l7policies_links: [
+          { rel: "next", href: `/v2/lbaas/l7policies?marker=${secondId}` },
+        ],
+      })
+      .mockResolvedValueOnce({
+        l7policies: [first, { ...second, project_id: "project-b" }],
+      });
+    await expect(read()).resolves.toEqual([firstId, secondId]);
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(2);
+    for (const [{ path }] of mocks.openstackRequest.mock.calls) {
+      const url = new URL(path, "https://octavia.invalid");
+      expect(url.pathname).toBe("/v2/lbaas/l7policies");
+      expect(url.searchParams.get("listener_id")).toBe(id);
+      expect(url.searchParams.get("project_id")).toBe("project-a");
+    }
+
+    for (const policies of [
+      [first],
+      [first, { ...second, position: 1 }],
+      [first, { ...second, position: 3 }],
+      [first, { ...second, id: firstId }],
+      [first, { ...second, id }],
+      [first, second, { ...second, id, position: 3 }],
+    ]) {
+      mocks.openstackRequest.mockResolvedValueOnce({ l7policies: policies });
+      await expect(read()).resolves.toBeNull();
+    }
   });
 
   it.each([false, true])(
