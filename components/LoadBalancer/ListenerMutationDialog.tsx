@@ -49,6 +49,7 @@ import {
   LISTENER_NUMERIC_KEYS,
   listenerCidrError,
   listenerSettingUnavailable,
+  octaviaTlsSecretId,
   readListenerInsertHeaders,
   sameListenerCidrs,
   type ListenerNumericField,
@@ -70,6 +71,7 @@ type ListenerHeaderChanges = NonNullable<
 >;
 
 const NO_DEFAULT_POOL = "none";
+const KEEP_TLS_CERTIFICATE = "keep-current";
 
 export function ListenerMutationDialog({
   target,
@@ -110,6 +112,14 @@ export function ListenerMutationDialog({
     protocols[0],
   );
   const [tlsSecretId, setTlsSecretId] = useState("");
+  const currentTlsRef = initial.listener?.default_tls_container_ref;
+  const currentTlsSecretId = octaviaTlsSecretId(currentTlsRef);
+  const canRotateTls =
+    target.action === "edit" &&
+    initial.listener?.protocol === "TERMINATED_HTTPS" &&
+    isOctaviaAmphoraProvider(loadBalancer.provider) &&
+    typeof currentTlsRef === "string" &&
+    Boolean(currentTlsRef.trim());
   const tlsSecrets = useQuery({
     queryKey: [
       initial.scope.regionId,
@@ -118,7 +128,9 @@ export function ListenerMutationDialog({
       "tls-secrets",
     ],
     queryFn: () => listOctaviaTlsSecretsAction(initial.scope),
-    enabled: creating && isOctaviaAmphoraProvider(loadBalancer.provider),
+    enabled:
+      canRotateTls ||
+      (creating && isOctaviaAmphoraProvider(loadBalancer.provider)),
     staleTime: 0,
     retry: false,
   });
@@ -229,8 +241,19 @@ export function ListenerMutationDialog({
     ? protocol
     : (initial.listener?.protocol ?? "");
   const tlsProtocol = creating && protocol === "TERMINATED_HTTPS";
-  const tlsOptions = tlsSecrets.isError ? [] : (tlsSecrets.data ?? []);
+  const tlsOptions = tlsSecrets.isError
+    ? []
+    : (tlsSecrets.data ?? []).filter(
+        ({ id }) => !canRotateTls || id !== currentTlsSecretId,
+      );
   const selectedTlsSecret = tlsOptions.find(({ id }) => id === tlsSecretId);
+  const currentTlsSecretName = tlsSecrets.data?.find(
+    ({ id }) => id === currentTlsSecretId,
+  )?.name;
+  const defaultCertificateChange =
+    canRotateTls && currentTlsRef && tlsSecretId
+      ? { before: currentTlsRef, after: tlsSecretId }
+      : undefined;
   const poolChoices = poolQuery.isError
     ? []
     : (poolQuery.data ?? []).filter((pool) =>
@@ -356,6 +379,7 @@ export function ListenerMutationDialog({
     adminStateUp !== initial.adminStateUp ||
     advancedChanged ||
     headersChanged ||
+    defaultCertificateChange !== undefined ||
     defaultPoolChange !== undefined;
   const allowed =
     !settingsError &&
@@ -365,6 +389,7 @@ export function ListenerMutationDialog({
         quota.issues.length === 0 &&
         (!tlsProtocol || Boolean(selectedTlsSecret))
       : changed &&
+        (!defaultCertificateChange || Boolean(selectedTlsSecret)) &&
         (!defaultPoolChange ||
           defaultPoolChange.after === null ||
           Boolean(selectedPool)));
@@ -393,6 +418,9 @@ export function ListenerMutationDialog({
         id: target.listener.id,
         ...fields,
         ...(headersChanged ? { insertHeaders } : {}),
+        ...(defaultCertificateChange
+          ? { defaultCertificate: defaultCertificateChange }
+          : {}),
         ...(defaultPoolChange ? { defaultPool: defaultPoolChange } : {}),
         source: {
           name: initial.name,
@@ -494,32 +522,73 @@ export function ListenerMutationDialog({
               </div>
             </div>
           ) : null}
-          {tlsProtocol ? (
+          {tlsProtocol || canRotateTls ? (
             <div className="space-y-1.5">
+              {canRotateTls ? (
+                <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+                  <span className="text-muted-foreground">
+                    Current certificate
+                  </span>
+                  {currentTlsSecretId ? (
+                    <ResourceLink
+                      href={`/key-manager/secrets/${currentTlsSecretId}`}
+                      target="_blank"
+                      className="wrap-anywhere font-mono text-xs"
+                    >
+                      {currentTlsSecretName
+                        ? `${currentTlsSecretName} (${currentTlsSecretId.slice(0, 8)})`
+                        : currentTlsSecretId}
+                    </ResourceLink>
+                  ) : (
+                    <span>External certificate reference</span>
+                  )}
+                </div>
+              ) : null}
               <Label htmlFor="octavia-listener-tls-secret">
-                Default certificate
+                {canRotateTls
+                  ? "Replacement certificate"
+                  : "Default certificate"}
               </Label>
               <Select
-                disabled={pending || !tlsOptions.length}
-                value={selectedTlsSecret?.id ?? ""}
-                onValueChange={setTlsSecretId}
+                disabled={
+                  pending || (!tlsOptions.length && !defaultCertificateChange)
+                }
+                value={
+                  selectedTlsSecret?.id ??
+                  (canRotateTls && !tlsSecretId ? KEEP_TLS_CERTIFICATE : "")
+                }
+                onValueChange={(id) =>
+                  setTlsSecretId(id === KEEP_TLS_CERTIFICATE ? "" : id)
+                }
               >
                 <SelectTrigger
                   id="octavia-listener-tls-secret"
                   aria-describedby="octavia-listener-tls-help"
+                  aria-invalid={Boolean(
+                    defaultCertificateChange && !selectedTlsSecret,
+                  )}
                 >
                   <SelectValue
                     placeholder={
-                      tlsOptions.length
-                        ? "Select a Barbican secret"
-                        : "No certificates available"
+                      defaultCertificateChange
+                        ? "Replacement unavailable"
+                        : tlsOptions.length
+                          ? "Select a Barbican secret"
+                          : "No certificates available"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
+                  {canRotateTls ? (
+                    <SelectItem value={KEEP_TLS_CERTIFICATE}>
+                      Keep current certificate
+                    </SelectItem>
+                  ) : null}
                   {tlsOptions.map(({ id, name }) => (
                     <SelectItem key={id} value={id} className="wrap-anywhere">
-                      {name || id}
+                      {canRotateTls && name
+                        ? `${name} (${id.slice(0, 8)})`
+                        : name || id}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -537,6 +606,14 @@ export function ListenerMutationDialog({
               </p>
               {tlsSecrets.isError ? (
                 <MutationAlert>Could not load TLS secrets.</MutationAlert>
+              ) : defaultCertificateChange && !selectedTlsSecret ? (
+                <MutationAlert>
+                  The selected replacement is no longer available.
+                </MutationAlert>
+              ) : canRotateTls && tlsSecrets.isSuccess && !tlsOptions.length ? (
+                <p className="text-xs text-muted-foreground">
+                  No replacement certificates available.
+                </p>
               ) : null}
             </div>
           ) : null}
