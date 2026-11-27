@@ -4,6 +4,7 @@ import { z } from "zod";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import {
   isOpenStackNotFoundError,
+  OpenStackConnectionError,
   OpenStackRequestError,
 } from "@/lib/openstack/request";
 import {
@@ -32,6 +33,7 @@ import type {
   OctaviaLoadBalancerDetails,
   OctaviaMember,
   OctaviaPool,
+  OctaviaPoolRedirectPolicy,
   OctaviaStatusNode,
   OctaviaTrafficStats,
 } from "@/types/openstack";
@@ -827,7 +829,7 @@ export async function listLoadBalancerPoolRedirectPolicies(
   id: string,
   regionId: string,
   projectId: string,
-): Promise<Array<Pick<OctaviaL7Policy, "redirect_pool_id">>> {
+): Promise<OctaviaPoolRedirectPolicy[]> {
   const parentId = requireUuid(
     loadBalancerId,
     "load balancer ID",
@@ -836,7 +838,49 @@ export async function listLoadBalancerPoolRedirectPolicies(
   const scope = await resolveScope(regionId, projectId);
   await readPool(scope, parentId, poolId);
   const policies = await readPoolRedirectPolicies(scope, poolId);
-  return policies.map(({ redirect_pool_id }) => ({ redirect_pool_id }));
+  const listenerIds = new Set(
+    policies
+      .map(({ listener_id }) => listener_id)
+      .filter((id) => typeof id === "string" && UUID_PATTERN.test(id)),
+  );
+  const listeners = new Map(
+    await Promise.all(
+      [...listenerIds].map(async (id) => {
+        try {
+          const { name } = await readListener(scope, parentId, id);
+          return [id, { id, name }] as const;
+        } catch (error) {
+          if (
+            error instanceof OpenStackRequestError ||
+            error instanceof OpenStackConnectionError
+          ) {
+            return [id, null] as const;
+          }
+          throw error;
+        }
+      }),
+    ),
+  );
+  return policies.map(
+    ({
+      id,
+      name,
+      position,
+      listener_id,
+      redirect_pool_id,
+      admin_state_up,
+      provisioning_status,
+    }) => ({
+      id,
+      name,
+      position,
+      listener_id,
+      redirect_pool_id,
+      admin_state_up,
+      provisioning_status,
+      listener: listeners.get(listener_id) ?? null,
+    }),
+  );
 }
 
 async function readPoolRedirectPolicies(scope: OctaviaScope, poolId: string) {

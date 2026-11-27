@@ -746,6 +746,8 @@ describe("Octavia project scoping", () => {
   it("checks the pool's project and parent before revealing redirect dependencies", async () => {
     const parentId = "11111111-1111-4111-8111-111111111111";
     const poolId = "22222222-2222-4222-8222-222222222222";
+    const listenerId = "33333333-3333-4333-8333-333333333333";
+    const foreignListenerId = "44444444-4444-4444-8444-444444444444";
     const pool = {
       id: poolId,
       project_id: "project-a",
@@ -769,22 +771,66 @@ describe("Octavia project scoping", () => {
       expect(mocks.openstackRequest).toHaveBeenCalledTimes(1);
     }
 
+    mocks.openstackRequest.mockClear();
+    const policy = {
+      id: "55555555-5555-4555-8555-555555555555",
+      project_id: "project-a",
+      redirect_pool_id: poolId,
+      listener_id: listenerId,
+      name: "internal",
+      position: 1,
+      admin_state_up: false,
+      provisioning_status: "ACTIVE",
+    };
     mocks.openstackRequest
       .mockResolvedValueOnce({ pool })
       .mockResolvedValueOnce({
         l7policies: [
+          policy,
           {
-            project_id: "project-a",
-            redirect_pool_id: poolId,
-            name: "internal",
+            ...policy,
+            id: "66666666-6666-4666-8666-666666666666",
+            position: 2,
+          },
+          {
+            ...policy,
+            id: "77777777-7777-4777-8777-777777777777",
+            listener_id: foreignListenerId,
           },
         ],
+      })
+      .mockResolvedValueOnce({
+        listener: {
+          id: listenerId,
+          project_id: "project-a",
+          name: "web",
+          loadbalancers: [{ id: parentId }],
+        },
+      })
+      .mockResolvedValueOnce({
+        listener: {
+          id: foreignListenerId,
+          project_id: "project-a",
+          name: "unrelated listener",
+          loadbalancers: [{ id: foreignListenerId }],
+        },
       });
-    await expect(request()).resolves.toEqual([{ redirect_pool_id: poolId }]);
-    expect(mocks.openstackRequest).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        path: `/v2/lbaas/l7policies?limit=100&project_id=project-a&redirect_pool_id=${poolId}`,
-      }),
+    await expect(request()).resolves.toMatchObject([
+      { redirect_pool_id: poolId, listener: { id: listenerId, name: "web" } },
+      { position: 2, listener: { id: listenerId, name: "web" } },
+      {
+        redirect_pool_id: poolId,
+        listener_id: foreignListenerId,
+        listener: null,
+      },
+    ]);
+    expect(mocks.openstackRequest.mock.calls.map(([{ path }]) => path)).toEqual(
+      [
+        `/v2/lbaas/pools/${poolId}`,
+        `/v2/lbaas/l7policies?limit=100&project_id=project-a&redirect_pool_id=${poolId}`,
+        `/v2/lbaas/listeners/${listenerId}`,
+        `/v2/lbaas/listeners/${foreignListenerId}`,
+      ],
     );
   });
 

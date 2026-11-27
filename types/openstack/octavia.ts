@@ -144,6 +144,17 @@ export interface OctaviaL7Policy {
   tags?: string[];
 }
 
+export type OctaviaPoolRedirectPolicy = Pick<
+  OctaviaL7Policy,
+  | "id"
+  | "name"
+  | "position"
+  | "listener_id"
+  | "redirect_pool_id"
+  | "admin_state_up"
+  | "provisioning_status"
+> & { listener: Pick<OctaviaListener, "id" | "name"> | null };
+
 export interface OctaviaL7Rule {
   id: string;
   project_id: string;
