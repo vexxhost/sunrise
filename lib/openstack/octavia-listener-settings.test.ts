@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   availableListenerProtocols,
+  octaviaTlsSecretId,
   listenerCidrError,
   listenerParentReadApiVersion,
   listenerReadApiVersion,
@@ -27,6 +28,7 @@ describe("Octavia listener capability rules", () => {
       "TCP",
       "HTTPS",
       "UDP",
+      "TERMINATED_HTTPS",
     ]);
     expect(availableListenerProtocols("ovn", capabilities)).toEqual([
       "TCP",
@@ -40,13 +42,30 @@ describe("Octavia listener capability rules", () => {
         ...capabilities,
         configuredMicroversionMaximum: "2.0",
       }),
-    ).toEqual(["HTTP", "TCP", "HTTPS"]);
+    ).toEqual(["HTTP", "TCP", "HTTPS", "TERMINATED_HTTPS"]);
     expect(
       availableListenerProtocols("amphora", {
         ...capabilities,
         discoveryStatus: "unavailable",
       }),
     ).not.toContain("UDP");
+  });
+
+  it("recognizes Barbican secret URLs, including prefixed endpoints", () => {
+    const id = "612b9ffa-fbc9-42ea-a78f-600c003c5103";
+    expect(
+      octaviaTlsSecretId(`https://example.test/barbican/v1/secrets/${id}`),
+    ).toBe(id);
+    for (const ref of [
+      `https://example.test/v1/containers/${id}`,
+      `https://example.test/v1/secrets/${id}/payload`,
+      `https://example.test/v1/secrets/${id}?token=1`,
+      `https://user:pass@example.test/v1/secrets/${id}`,
+      `ftp://example.test/v1/secrets/${id}`,
+      id,
+      null,
+    ])
+      expect(octaviaTlsSecretId(ref)).toBeNull();
   });
 
   it("negotiates optional fields separately from the parent VIP data", () => {

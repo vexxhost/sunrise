@@ -7,16 +7,54 @@ import {
   isOctaviaAmphoraProvider,
   loadBalancerVipAddresses,
 } from "@/lib/openstack/octavia";
-import type { OctaviaLoadBalancer } from "@/types/openstack";
+import type { BarbicanSecret, OctaviaLoadBalancer } from "@/types/openstack";
 
 export const OCTAVIA_LISTENER_PROTOCOLS = [
   "HTTP",
   "TCP",
   "HTTPS",
   "UDP",
+  "TERMINATED_HTTPS",
 ] as const;
 export type OctaviaListenerProtocol =
   (typeof OCTAVIA_LISTENER_PROTOCOLS)[number];
+
+export function octaviaTlsSecretId(ref: unknown) {
+  if (typeof ref !== "string") return null;
+  try {
+    const url = new URL(ref);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    )
+      return null;
+    return (
+      url.pathname
+        .match(
+          /\/v1\/secrets\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i,
+        )?.[1]
+        .toLowerCase() ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function isOctaviaTlsSecretCandidate(
+  secret: BarbicanSecret,
+  now = Date.now(),
+) {
+  return (
+    octaviaTlsSecretId(secret.secret_ref) === secret.id.toLowerCase() &&
+    secret.status === "ACTIVE" &&
+    secret.secret_type === "opaque" &&
+    secret.content_types.default === "application/octet-stream" &&
+    (secret.expiration === null || Date.parse(secret.expiration) > now)
+  );
+}
 
 const LISTENER_BASELINE = "2.0";
 const LISTENER_TIMEOUTS = "2.1";
