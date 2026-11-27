@@ -33,6 +33,7 @@ import {
 import {
   canChangeHealthMonitor,
   changedHealthMonitorFields,
+  healthMonitorHttpOptionsMicroversion,
   healthMonitorSettingsSchema,
   healthMonitorSnapshotSchema,
   healthMonitorTypeForPool,
@@ -1759,6 +1760,10 @@ export type OctaviaHealthMonitorMutation = z.input<
   typeof healthMonitorMutationSchema
 >;
 
+function hasHttpMonitorOptions(body?: Record<string, unknown>) {
+  return body?.http_version !== undefined || body?.domain_name !== undefined;
+}
+
 export async function mutateOctaviaHealthMonitorAction(
   scope: MutationScope,
   loadBalancerId: string,
@@ -1828,6 +1833,32 @@ export async function mutateOctaviaHealthMonitorAction(
   if (!canChangeOctaviaListeners(pool))
     return pendingMutationFailure(activeScope);
 
+  // Use the draft's delta to distinguish a real option change from fields the read may omit.
+  const requestedEdit =
+    value.action === "edit"
+      ? changedHealthMonitorFields(value.source, value.settings)
+      : {};
+  const changesHttpOptions = hasHttpMonitorOptions(
+    value.action === "create" ? value.settings : requestedEdit,
+  );
+  const httpOptionsVersion = changesHttpOptions
+    ? healthMonitorHttpOptionsMicroversion(
+        capabilities,
+        existing.value.provider,
+        pool.protocol,
+      )
+    : undefined;
+  if (changesHttpOptions && !httpOptionsVersion) {
+    return mutationFailure(
+      {
+        code: "service-unavailable",
+        message:
+          "HTTP monitor request options require confirmed Octavia API 2.10 support.",
+        retryable: false,
+      },
+      activeScope,
+    );
+  }
   const monitorId = value.action === "create" ? null : value.id.toLowerCase();
   let body: Record<string, unknown> | undefined;
   if (value.action === "create") {
@@ -1863,6 +1894,7 @@ export async function mutateOctaviaHealthMonitorAction(
         monitorId!,
         activeScope.regionId,
         activeScope.projectId,
+        value.action === "edit" ? httpOptionsVersion : undefined,
       );
     } catch (error) {
       return preflightFailure(error, activeScope, "health monitor");
@@ -1882,7 +1914,11 @@ export async function mutateOctaviaHealthMonitorAction(
         !current ||
         current.type !== value.source.type ||
         current.type !== value.settings.type ||
-        Object.keys(changedHealthMonitorFields(current, value.source)).length
+        Object.keys(
+          changedHealthMonitorFields(current, value.source, {
+            includeHttpOptions: changesHttpOptions,
+          }),
+        ).length
       ) {
         return mutationFailure(
           {
@@ -1894,7 +1930,37 @@ export async function mutateOctaviaHealthMonitorAction(
           activeScope,
         );
       }
-      body = changedHealthMonitorFields(current, value.settings);
+      body = requestedEdit;
+      if (
+        changesHttpOptions &&
+        current.type === "HTTP" &&
+        value.source.type === "HTTP"
+      ) {
+        if (
+          value.source.http_version === undefined ||
+          value.source.domain_name === undefined
+        ) {
+          return mutationFailure(
+            {
+              code: "conflict",
+              message:
+                "The monitor's HTTP options could not be verified. Refresh and try again.",
+              retryable: true,
+            },
+            activeScope,
+          );
+        }
+        if (
+          current.domain_name &&
+          (body.http_version === 1 ||
+            (body.http_version === null && body.domain_name !== null))
+        ) {
+          return validationFailure(
+            activeScope,
+            "Clear the Host header before changing to HTTP/1.0.",
+          );
+        }
+      }
       if (!Object.keys(body).length) {
         return {
           ok: true,
@@ -1908,7 +1974,8 @@ export async function mutateOctaviaHealthMonitorAction(
   }
   const supported = await supportedMutationMicroversion(
     activeScope,
-    type === "UDP-CONNECT" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION,
+    httpOptionsVersion ??
+      (type === "UDP-CONNECT" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION),
     "Changing health monitors",
     capabilities,
   );

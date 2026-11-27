@@ -21,7 +21,10 @@ import {
   listenerParentReadApiVersion,
   listenerReadApiVersion,
 } from "@/lib/openstack/octavia-listener-settings";
-import { healthMonitorBelongsToPool } from "@/lib/openstack/octavia-health-monitor-settings";
+import {
+  healthMonitorBelongsToPool,
+  healthMonitorHttpOptionsMicroversion,
+} from "@/lib/openstack/octavia-health-monitor-settings";
 import { readL7PolicyOrder } from "@/lib/openstack/octavia-l7-settings";
 import {
   isOctaviaBackupMemberPool,
@@ -689,16 +692,26 @@ export async function getLoadBalancerPoolDetails(
     [pool.healthmonitor_id],
     "health monitor",
   )[0];
-  const backupVersion = isOctaviaBackupMemberPool(
+  const capabilities = isOctaviaBackupMemberPool(
     loadBalancer.provider,
     pool.protocol,
   )
-    ? memberBackupMicroversion(
-        await discoverLoadBalancerCapabilities(scope.regionId),
-        loadBalancer.provider,
-        pool.protocol,
-      )
+    ? await discoverLoadBalancerCapabilities(scope.regionId)
     : undefined;
+  const backupVersion =
+    capabilities &&
+    memberBackupMicroversion(
+      capabilities,
+      loadBalancer.provider,
+      pool.protocol,
+    );
+  const httpOptionsVersion =
+    capabilities &&
+    healthMonitorHttpOptionsMicroversion(
+      capabilities,
+      loadBalancer.provider,
+      pool.protocol,
+    );
   const [memberList, listenerList, healthMonitor] = await Promise.all([
     optionalPoolChild(readPoolMembers(scope, poolId, backupVersion)),
     Promise.all(
@@ -707,7 +720,9 @@ export async function getLoadBalancerPoolDetails(
       ),
     ),
     monitorId
-      ? optionalPoolChild(readPoolHealthMonitor(scope, poolId, monitorId))
+      ? optionalPoolChild(
+          readPoolHealthMonitor(scope, poolId, monitorId, httpOptionsVersion),
+        )
       : null,
   ]);
 
@@ -718,6 +733,7 @@ export async function getLoadBalancerPoolDetails(
     listeners: listenerList,
     healthMonitor,
     backupMembersSupported: Boolean(backupVersion),
+    httpMonitorOptionsSupported: Boolean(httpOptionsVersion),
   };
 }
 
@@ -754,12 +770,14 @@ async function readPoolHealthMonitor(
   scope: OctaviaScope,
   poolId: string,
   monitorId: string,
+  httpOptionsVersion?: string,
 ) {
   const monitor = await getProjectResource<OctaviaHealthMonitor>(
     scope,
     "healthmonitors",
     "healthmonitor",
     monitorId,
+    httpOptionsVersion ? `load-balancer ${httpOptionsVersion}` : undefined,
   );
   if (
     monitor.id !== monitorId ||
@@ -778,11 +796,12 @@ export async function getOctaviaPoolHealthMonitor(
   id: string,
   regionId?: string,
   projectId?: string,
+  httpOptionsVersion?: string,
 ) {
   const parentId = requireUuid(poolId, "pool ID");
   const monitorId = requireUuid(id, "health monitor ID");
   const scope = await resolveScope(regionId, projectId);
-  return readPoolHealthMonitor(scope, parentId, monitorId);
+  return readPoolHealthMonitor(scope, parentId, monitorId, httpOptionsVersion);
 }
 
 function poolBelongsToLoadBalancer(pool: OctaviaPool, parentId: string) {
@@ -1210,12 +1229,21 @@ async function readLoadBalancerDetails(
   );
   const pools = [...initialPools, ...redirectPools];
   const healthMonitorsPromise = Promise.all(
-    pools.flatMap(({ id: poolId, healthmonitor_id: monitorId }) =>
+    pools.flatMap(({ id: poolId, protocol, healthmonitor_id: monitorId }) =>
       monitorId == null
         ? []
         : [
             readTopologyResource(
-              readPoolHealthMonitor(scope, poolId, monitorId),
+              readPoolHealthMonitor(
+                scope,
+                poolId,
+                monitorId,
+                healthMonitorHttpOptionsMicroversion(
+                  capabilities,
+                  loadBalancer.provider,
+                  protocol,
+                ),
+              ),
             ),
           ],
     ),

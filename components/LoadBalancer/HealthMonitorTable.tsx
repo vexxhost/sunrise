@@ -94,7 +94,13 @@ export function HealthMonitorTable({
                           <div className="text-muted-foreground">
                             <span className="font-mono">
                               {monitor.http_method} {monitor.url_path}
+                              {typeof monitor.http_version === "number"
+                                ? ` HTTP/${monitor.http_version.toFixed(1)}`
+                                : null}
                             </span>
+                            {monitor.domain_name ? (
+                              <div>Host: {monitor.domain_name}</div>
+                            ) : null}
                             {monitor.expected_codes ? (
                               <div>{monitor.expected_codes}</div>
                             ) : null}

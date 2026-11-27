@@ -87,6 +87,7 @@ import {
   memberBackupMicroversion,
 } from "@/lib/openstack/octavia-pool-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
+import { healthMonitorHttpOptionsMicroversion } from "@/lib/openstack/octavia-health-monitor-settings";
 import type {
   OpenStackFeatureSupport,
   OpenStackServiceCapabilities,
@@ -980,6 +981,13 @@ export function LoadBalancerDetailClient({
       {monitorAction ? (
         <HealthMonitorMutationDialog
           target={monitorAction}
+          httpOptionsSupported={Boolean(
+            healthMonitorHttpOptionsMicroversion(
+              octaviaCapabilities,
+              loadBalancer.provider,
+              monitorAction.pool.protocol,
+            ),
+          )}
           loadBalancerId={loadBalancer.id}
           scope={{ projectId, regionId }}
           onClose={() => setMonitorAction(null)}

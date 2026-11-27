@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  microversionSupport,
+  type OpenStackServiceCapabilities,
+} from "@/lib/openstack/capabilities";
+import { isOctaviaAmphoraProvider } from "@/lib/openstack/octavia";
 import type { OctaviaHealthMonitor, OctaviaPool } from "@/types/openstack";
 
 const transportMonitorTypes = ["TCP", "UDP-CONNECT"] as const;
@@ -18,6 +23,24 @@ export const HEALTH_MONITOR_MAX_SECONDS = 2_147_483;
 export const HEALTH_MONITOR_MAX_RETRIES = 10;
 export const HEALTH_MONITOR_MAX_PATH = 2048;
 export const HEALTH_MONITOR_MAX_CODES = 64;
+export const HEALTH_MONITOR_HOST_MAX_LENGTH = 254;
+
+export function healthMonitorHttpOptionsMicroversion(
+  capabilities: OpenStackServiceCapabilities,
+  provider: string | undefined,
+  protocol: string,
+) {
+  if (protocol !== "HTTP" || !isOctaviaAmphoraProvider(provider))
+    return undefined;
+  const support = microversionSupport(
+    capabilities,
+    "2.10",
+    "HTTP monitor request options",
+  );
+  return support.status === "supported"
+    ? support.requestedMicroversion
+    : undefined;
+}
 
 export function healthMonitorTypeForPool(pool: Pick<OctaviaPool, "protocol">) {
   switch (pool.protocol) {
@@ -82,7 +105,25 @@ const httpFields = z.object({
   http_method: z.enum(HEALTH_MONITOR_HTTP_METHODS),
   url_path: z.string(),
   expected_codes: z.string(),
+  http_version: z.literal([1, 1.1]).nullish(),
+  domain_name: z.string().nullish(),
 });
+
+const hostSchema = z
+  .string()
+  .trim()
+  .max(HEALTH_MONITOR_HOST_MAX_LENGTH)
+  .refine(
+    (host) =>
+      host.replace(/\.$/, "").length <= 253 &&
+      host
+        .replace(/\.$/, "")
+        .split(".")
+        .every((label) =>
+          /^[A-Za-z0-9_](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label),
+        ),
+    "Enter a DNS name without a scheme, port, or path.",
+  );
 
 const secondsSchema = z.number().int().min(1).max(HEALTH_MONITOR_MAX_SECONDS);
 const retrySchema = z.number().int().min(1).max(HEALTH_MONITOR_MAX_RETRIES);
@@ -104,6 +145,7 @@ export const healthMonitorSettingsSchema = z
       .extend({
         type: z.literal("HTTP"),
         ...httpFields.shape,
+        domain_name: hostSchema.nullish(),
         url_path: z
           .string()
           .max(HEALTH_MONITOR_MAX_PATH)
@@ -127,7 +169,17 @@ export const healthMonitorSettingsSchema = z
   .refine(({ timeout, delay }) => timeout < delay, {
     path: ["timeout"],
     message: "The timeout must be shorter than the interval.",
-  });
+  })
+  .refine(
+    (settings) =>
+      settings.type !== "HTTP" ||
+      !settings.domain_name ||
+      settings.http_version === 1.1,
+    {
+      path: ["domain_name"],
+      message: "A Host header requires HTTP/1.1.",
+    },
+  );
 
 export const healthMonitorSnapshotSchema = z.discriminatedUnion("type", [
   monitorFields.extend({ type: z.enum(transportMonitorTypes) }),
@@ -137,18 +189,30 @@ export const healthMonitorSnapshotSchema = z.discriminatedUnion("type", [
 export type HealthMonitorSettings = z.infer<typeof healthMonitorSnapshotSchema>;
 
 export function readHealthMonitorSettings(monitor: OctaviaHealthMonitor) {
-  const parsed = healthMonitorSnapshotSchema.safeParse(monitor);
+  const parsed = healthMonitorSnapshotSchema.safeParse({
+    ...monitor,
+    http_version: httpFields.shape.http_version.safeParse(monitor.http_version)
+      .data,
+    domain_name: httpFields.shape.domain_name.safeParse(monitor.domain_name)
+      .data,
+  });
   return parsed.success ? parsed.data : null;
 }
 
 export function changedHealthMonitorFields(
   before: HealthMonitorSettings,
   after: HealthMonitorSettings,
+  { includeHttpOptions = true } = {},
 ) {
   const baseline: Partial<Record<string, unknown>> = before;
   return Object.fromEntries(
     Object.entries(after).filter(
-      ([key, value]) => key !== "type" && value !== baseline[key],
+      ([key, value]) =>
+        key !== "type" &&
+        (includeHttpOptions ||
+          (key !== "http_version" && key !== "domain_name")) &&
+        value !== undefined &&
+        value !== baseline[key],
     ),
   );
 }

@@ -34,6 +34,7 @@ import {
 import {
   changedHealthMonitorFields,
   HEALTH_MONITOR_HTTP_METHODS,
+  HEALTH_MONITOR_HOST_MAX_LENGTH,
   HEALTH_MONITOR_MAX_CODES,
   HEALTH_MONITOR_MAX_PATH,
   HEALTH_MONITOR_MAX_RETRIES,
@@ -103,6 +104,7 @@ export function HealthMonitorMutationDialog({
   target,
   loadBalancerId,
   scope,
+  httpOptionsSupported,
   onClose,
   onRefresh,
   onSuccess,
@@ -110,12 +112,18 @@ export function HealthMonitorMutationDialog({
   target: HealthMonitorDialogAction;
   loadBalancerId: string;
   scope: MutationScope;
+  httpOptionsSupported: boolean;
   onClose: () => void;
   onRefresh: () => void;
   onSuccess: (message: string) => void;
 }) {
   const creating = target.action === "create";
-  const [original] = useState(() => ({ scope, loadBalancerId, target }));
+  const [original] = useState(() => ({
+    scope,
+    loadBalancerId,
+    target,
+    httpOptionsSupported,
+  }));
   const [fields, setFields] = useState(() =>
     target.action === "edit"
       ? target.source
@@ -203,8 +211,27 @@ export function HealthMonitorMutationDialog({
       />
     );
   }
+  const sourceHttp =
+    original.target.action === "edit" && original.target.source.type === "HTTP"
+      ? original.target.source
+      : undefined;
+  const showHttpOptions =
+    original.httpOptionsSupported &&
+    (creating ||
+      (sourceHttp?.http_version !== undefined &&
+        sourceHttp.domain_name !== undefined));
   const draft = {
     ...fields,
+    ...(fields.type === "HTTP"
+      ? showHttpOptions
+        ? {
+            domain_name:
+              fields.domain_name === undefined
+                ? undefined
+                : fields.domain_name?.trim() || null,
+          }
+        : { http_version: undefined, domain_name: undefined }
+      : {}),
     delay: Number(numbers.delay),
     timeout: Number(numbers.timeout),
     max_retries: Number(numbers.max_retries),
@@ -351,6 +378,75 @@ export function HealthMonitorMutationDialog({
                   disabled={pending}
                 />
               </div>
+              {showHttpOptions ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="health-monitor-http-version">
+                      HTTP version
+                    </Label>
+                    <Select
+                      value={fields.http_version?.toFixed(1) ?? "default"}
+                      onValueChange={(value) => {
+                        const version =
+                          value === "1.1"
+                            ? 1.1
+                            : value === "1.0"
+                              ? 1
+                              : creating
+                                ? undefined
+                                : null;
+                        setFields({
+                          ...fields,
+                          http_version: version,
+                          domain_name:
+                            version === 1.1
+                              ? fields.domain_name
+                              : creating
+                                ? undefined
+                                : null,
+                        });
+                      }}
+                      disabled={pending}
+                    >
+                      <SelectTrigger
+                        id="health-monitor-http-version"
+                        className="w-full"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">Cloud default</SelectItem>
+                        <SelectItem
+                          value="1.0"
+                          disabled={Boolean(sourceHttp?.domain_name)}
+                        >
+                          HTTP/1.0
+                        </SelectItem>
+                        <SelectItem value="1.1">HTTP/1.1</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="health-monitor-http-host">
+                      Host header
+                    </Label>
+                    <Input
+                      id="health-monitor-http-host"
+                      value={fields.domain_name ?? ""}
+                      placeholder="health.example.com"
+                      maxLength={HEALTH_MONITOR_HOST_MAX_LENGTH}
+                      disabled={pending || fields.http_version !== 1.1}
+                      onChange={(event) =>
+                        setFields({
+                          ...fields,
+                          domain_name:
+                            event.target.value || (creating ? undefined : null),
+                        })
+                      }
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : null}
           <div className="flex items-center gap-2">
