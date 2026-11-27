@@ -1491,6 +1491,8 @@ describe("Octavia listener actions", () => {
     content_types: { default: "application/octet-stream" },
     expiration: null,
   };
+  const currentSecretId = "433cddf1-dd24-43ae-89b0-bda35b058229";
+  const currentTlsRef = tlsSecret.secret_ref.replace(secretId, currentSecretId);
   const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
   const previousPoolId = "564c3265-5933-44c7-a8da-3101e2e66a29";
   const current = { name: "http", description: "", adminStateUp: true };
@@ -1527,6 +1529,19 @@ describe("Octavia listener actions", () => {
     protocol: "HTTPS",
     allowed_cidrs: ["192.0.2.0/24"],
     timeout_client_data: 50_000,
+  };
+  const tlsListener = {
+    ...listener,
+    protocol: "TERMINATED_HTTPS",
+    default_tls_container_ref: currentTlsRef,
+    default_pool_id: poolId,
+    sni_container_refs: [currentTlsRef],
+    client_ca_tls_container_ref: "existing-client-ca",
+  };
+  const rotate = {
+    ...edit,
+    name: current.name,
+    defaultCertificate: { before: currentTlsRef, after: secretId },
   };
 
   beforeEach(() => {
@@ -1645,6 +1660,122 @@ describe("Octavia listener actions", () => {
     ]);
     expect(mocks.guardMutationContext).toHaveBeenCalledExactlyOnceWith(scope);
     expect(mocks.getSecret).not.toHaveBeenCalled();
+  });
+
+  it("rotates only the default reference and checks the response without retrieving the old secret", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValueOnce(tlsListener);
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, rotate);
+    expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(secretId);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        path: `/v2/lbaas/listeners/${listenerId}`,
+        method: "PUT",
+        apiVersion: "load-balancer 2.0",
+        successMessage: "Default certificate change requested.",
+        body: { listener: { default_tls_container_ref: tlsSecret.secret_ref } },
+      }),
+    );
+    const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+    expect(
+      transform({
+        listener: {
+          ...tlsListener,
+          default_tls_container_ref: tlsSecret.secret_ref,
+        },
+      }),
+    ).toBeNull();
+    expect(() => transform({ listener: tlsListener })).toThrow(
+      "invalid listener",
+    );
+  });
+
+  it.each([undefined, null, tlsSecret.secret_ref])(
+    "rejects a stale or missing certificate snapshot: %s",
+    async (ref) => {
+      mocks.getLoadBalancerListener.mockResolvedValueOnce({
+        ...tlsListener,
+        default_tls_container_ref: ref,
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, rotate),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "conflict" },
+      });
+      expect(mocks.getSecret).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["amphorav2", "HTTPS"],
+    ["ovn", "TERMINATED_HTTPS"],
+  ])("rejects rotation on %s/%s", async (provider, protocol) => {
+    mocks.getLoadBalancer.mockResolvedValueOnce(
+      existingLoadBalancer({ provider, listeners: [{ id: listenerId }] }),
+    );
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      protocol,
+    });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, rotate),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("allows replacing a legacy certificate container with a PKCS#12 secret", async () => {
+    const before = currentTlsRef.replace("/secrets/", "/containers/");
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      default_tls_container_ref: before,
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...rotate,
+      defaultCertificate: { before, after: secretId },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        body: { listener: { default_tls_container_ref: tlsSecret.secret_ref } },
+      }),
+    );
+  });
+
+  it("does not resend the current certificate as part of an ordinary edit", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValueOnce(tlsListener);
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...edit,
+      defaultCertificate: { before: currentTlsRef, after: currentSecretId },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        body: { listener: { name: edit.name } },
+      }),
+    );
+  });
+
+  it("does not attempt rotation with an expired or inaccessible replacement", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue(tlsListener);
+    mocks.getSecret
+      .mockResolvedValueOnce({
+        ...tlsSecret,
+        expiration: "2001-01-01T00:00:00Z",
+      })
+      .mockRejectedValueOnce(new OpenStackRequestError(403, "Denied"));
+    for (const code of ["validation-failed", "permission-denied"]) {
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, rotate),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code },
+      });
+    }
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it.each([
