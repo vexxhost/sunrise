@@ -121,6 +121,8 @@ export interface OctaviaHealthMonitor {
   max_retries_down?: number;
   url_path?: string | null;
   http_method?: string | null;
+  http_version?: number | null;
+  domain_name?: string | null;
   expected_codes?: string | null;
   pools?: OctaviaResourceReference[];
   tags?: string[];

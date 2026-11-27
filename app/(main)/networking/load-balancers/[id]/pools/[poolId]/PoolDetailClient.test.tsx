@@ -189,6 +189,8 @@ describe("pool details view", () => {
         id: "monitor",
         type: "HTTP",
         delay: 5,
+        http_version: 1.1,
+        domain_name: "health.example.test",
         timeout: 3,
         url_path: "/health",
         expected_codes: "200",
@@ -199,6 +201,8 @@ describe("pool details view", () => {
     expect(markup).toContain("Health check:");
     expect(markup).toContain("[2001:db8::2]:8080");
     expect(markup).toContain("/health");
+    expect(markup).toContain("HTTP/1.1");
+    expect(markup).toContain("health.example.test");
     expect(markup).toContain(`href="${parentPath}/listeners/${listenerId}"`);
     expect(markup).toContain(`href="${parentPath}#pools"`);
     expect(markup).toContain('aria-label="Edit member member"');

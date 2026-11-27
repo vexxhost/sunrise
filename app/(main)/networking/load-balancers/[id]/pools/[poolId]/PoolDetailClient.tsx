@@ -136,6 +136,7 @@ export function PoolDetailClient({
     loadBalancer,
     pool,
     healthMonitor,
+    httpMonitorOptionsSupported,
     members,
     listeners,
     backupMembersSupported,
@@ -469,6 +470,16 @@ export function PoolDetailClient({
                   {healthMonitor.http_method}
                 </DetailField>
               ) : null}
+              {typeof healthMonitor.http_version === "number" ? (
+                <DetailField label="HTTP version">
+                  HTTP/{healthMonitor.http_version.toFixed(1)}
+                </DetailField>
+              ) : null}
+              {healthMonitor.domain_name ? (
+                <DetailField label="Host header">
+                  {healthMonitor.domain_name}
+                </DetailField>
+              ) : null}
               {healthMonitor.url_path ? (
                 <DetailField label="URL path">
                   {healthMonitor.url_path}
@@ -692,6 +703,7 @@ export function PoolDetailClient({
       {action?.kind === "monitor" ? (
         <HealthMonitorMutationDialog
           target={action.target}
+          httpOptionsSupported={httpMonitorOptionsSupported}
           loadBalancerId={loadBalancerId}
           scope={{ projectId, regionId }}
           onClose={() => setAction(null)}

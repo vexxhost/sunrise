@@ -33,6 +33,7 @@ import {
 import {
   canChangeHealthMonitor,
   changedHealthMonitorFields,
+  healthMonitorHttpOptionsMicroversion,
   healthMonitorSettingsSchema,
   healthMonitorSnapshotSchema,
   healthMonitorTypeForPool,
@@ -1759,6 +1760,10 @@ export type OctaviaHealthMonitorMutation = z.input<
   typeof healthMonitorMutationSchema
 >;
 
+function hasHttpMonitorOptions(body?: Record<string, unknown>) {
+  return body?.http_version !== undefined || body?.domain_name !== undefined;
+}
+
 export async function mutateOctaviaHealthMonitorAction(
   scope: MutationScope,
   loadBalancerId: string,
@@ -1828,6 +1833,11 @@ export async function mutateOctaviaHealthMonitorAction(
   if (!canChangeOctaviaListeners(pool))
     return pendingMutationFailure(activeScope);
 
+  const httpOptionsVersion = healthMonitorHttpOptionsMicroversion(
+    capabilities,
+    existing.value.provider,
+    pool.protocol,
+  );
   const monitorId = value.action === "create" ? null : value.id.toLowerCase();
   let body: Record<string, unknown> | undefined;
   if (value.action === "create") {
@@ -1863,6 +1873,7 @@ export async function mutateOctaviaHealthMonitorAction(
         monitorId!,
         activeScope.regionId,
         activeScope.projectId,
+        value.action === "edit" ? httpOptionsVersion : undefined,
       );
     } catch (error) {
       return preflightFailure(error, activeScope, "health monitor");
@@ -1895,6 +1906,37 @@ export async function mutateOctaviaHealthMonitorAction(
         );
       }
       body = changedHealthMonitorFields(current, value.settings);
+      if (
+        hasHttpMonitorOptions(body) &&
+        httpOptionsVersion &&
+        current.type === "HTTP" &&
+        value.source.type === "HTTP"
+      ) {
+        if (
+          value.source.http_version === undefined ||
+          value.source.domain_name === undefined
+        ) {
+          return mutationFailure(
+            {
+              code: "conflict",
+              message:
+                "The monitor's HTTP options could not be verified. Refresh and try again.",
+              retryable: true,
+            },
+            activeScope,
+          );
+        }
+        if (
+          current.domain_name &&
+          (body.http_version === 1 ||
+            (body.http_version === null && body.domain_name !== null))
+        ) {
+          return validationFailure(
+            activeScope,
+            "Clear the Host header before changing to HTTP/1.0.",
+          );
+        }
+      }
       if (!Object.keys(body).length) {
         return {
           ok: true,
@@ -1906,9 +1948,22 @@ export async function mutateOctaviaHealthMonitorAction(
       }
     }
   }
+  const changesHttpOptions = hasHttpMonitorOptions(body);
+  if (changesHttpOptions && !httpOptionsVersion) {
+    return mutationFailure(
+      {
+        code: "service-unavailable",
+        message:
+          "HTTP monitor request options require confirmed Octavia API 2.10 support.",
+        retryable: false,
+      },
+      activeScope,
+    );
+  }
   const supported = await supportedMutationMicroversion(
     activeScope,
-    type === "UDP-CONNECT" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION,
+    (changesHttpOptions ? httpOptionsVersion : undefined) ??
+      (type === "UDP-CONNECT" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION),
     "Changing health monitors",
     capabilities,
   );

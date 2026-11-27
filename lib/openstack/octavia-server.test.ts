@@ -1390,6 +1390,47 @@ describe("Octavia project scoping", () => {
       },
     );
 
+    it.each(["2.9", "2.10"])(
+      "honors the HTTP monitor options ceiling %s on the pool details read",
+      async (configuredMicroversionMaximum) => {
+        const supported = configuredMicroversionMaximum === "2.10";
+        const monitorPath = `/v2/lbaas/healthmonitors/${monitorId}`;
+        const httpMonitor = {
+          ...monitor,
+          type: "HTTP",
+          ...(supported
+            ? { http_version: 1.1, domain_name: "health.example.test" }
+            : {}),
+        };
+        mocks.discoverLoadBalancerCapabilities.mockResolvedValueOnce({
+          discoveryStatus: "available",
+          microversions: { minimum: "2.0", maximum: "2.30" },
+          configuredMicroversionMaximum,
+        });
+        mockDetails({
+          [`/v2/lbaas/loadbalancers/${parentId}`]: {
+            loadbalancer: {
+              ...loadBalancer(parentId, "project-a", "edge"),
+              provider: "amphorav2",
+            },
+          },
+          [`/v2/lbaas/pools/${poolId}`]: {
+            pool: { ...pool, protocol: "HTTP" },
+          },
+          [monitorPath]: { healthmonitor: httpMonitor },
+        });
+        const details = await getLoadBalancerPoolDetails(parentId, poolId);
+        expect(details.httpMonitorOptionsSupported).toBe(supported);
+        expect(details.healthMonitor).toEqual(httpMonitor);
+        expect(mocks.openstackRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            path: monitorPath,
+            apiVersion: supported ? "load-balancer 2.10" : undefined,
+          }),
+        );
+      },
+    );
+
     it("rejects another region before making requests", async () => {
       await expect(
         getLoadBalancerPoolDetails(parentId, poolId, "RegionTwo"),

@@ -113,6 +113,11 @@ describe("Octavia health monitor actions", () => {
     pools: [{ id: poolId }],
   };
   const create = { action: "create", settings } as const;
+  const withHost = {
+    ...settings,
+    http_version: 1.1,
+    domain_name: "health.example.test",
+  } as const;
   const edit = {
     action: "edit",
     id: monitorId,
@@ -169,6 +174,128 @@ describe("Octavia health monitor actions", () => {
         healthmonitor: { ...monitor, project_id: "another-project" },
       }),
     ).toThrow();
+  });
+
+  it("uses the HTTP options microversion for HTTP/1.1 and a Host header", async () => {
+    await mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+      ...create,
+      settings: withHost,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.10",
+        body: { healthmonitor: { ...withHost, pool_id: poolId } },
+      }),
+    );
+  });
+
+  it.each([
+    { http_version: 1 as const },
+    { domain_name: "https://health.example.test/path" },
+  ])("rejects invalid HTTP monitor options: %j", async (override) => {
+    await expect(
+      mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+        ...create,
+        settings: { ...withHost, ...override },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
+  });
+
+  it("rejects advanced options above the configured ceiling but allows ordinary settings", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      ...capabilities(),
+      configuredMicroversionMaximum: "2.9",
+    });
+    await expect(
+      mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+        ...create,
+        settings: withHost,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "service-unavailable" },
+    });
+    await mutateOctaviaHealthMonitorAction(
+      scope,
+      loadBalancerId,
+      poolId,
+      create,
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ apiVersion: "load-balancer 2.0" }),
+    );
+  });
+
+  it("does not change HTTP options on a stale or incomplete snapshot", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      healthmonitor_id: monitorId,
+    });
+    mocks.getOctaviaPoolHealthMonitor.mockResolvedValue({
+      ...monitor,
+      ...withHost,
+    });
+    for (const source of [
+      settings,
+      { ...withHost, domain_name: "stale.example.test" },
+    ]) {
+      await expect(
+        mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+          ...edit,
+          source,
+          settings: { ...withHost, domain_name: "updated.example.test" },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    }
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("leaves HTTP options unchanged on normal edits and resets both explicitly", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      healthmonitor_id: monitorId,
+    });
+    mocks.getOctaviaPoolHealthMonitor.mockResolvedValue({
+      ...monitor,
+      ...withHost,
+    });
+    await mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+      ...edit,
+      source: withHost,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.0",
+        body: { healthmonitor: { http_method: "HEAD", expected_codes: "204" } },
+      }),
+    );
+    await expect(
+      mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+        ...edit,
+        source: withHost,
+        settings: { ...settings, http_version: 1, domain_name: null },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    await mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+      ...edit,
+      source: withHost,
+      settings: { ...settings, http_version: null, domain_name: null },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.10",
+        body: { healthmonitor: { http_version: null, domain_name: null } },
+      }),
+    );
   });
 
   it("lets the session refresh redirect through when reading a monitor", async () => {
@@ -373,6 +500,7 @@ describe("Octavia health monitor actions", () => {
       monitorId,
       scope.regionId,
       scope.projectId,
+      "2.10",
     );
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
       expect.objectContaining({
