@@ -357,7 +357,7 @@ export function ListenerDetailClient({
       <TrafficStatistics stats={stats} />
 
       {showRouting ? (
-        <>
+        <div id="l7-policies" className="space-y-3">
           {routing.isError ? (
             <MutationAlert variant="warning">
               Listener routing policies could not be refreshed.
@@ -394,7 +394,7 @@ export function ListenerDetailClient({
               </p>
             </DetailSection>
           ) : null}
-        </>
+        </div>
       ) : null}
 
       {action ? (

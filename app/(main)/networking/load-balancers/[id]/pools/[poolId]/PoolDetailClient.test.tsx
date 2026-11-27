@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  useQuery: vi.fn(() => ({})),
+  useQuery: vi.fn(),
   useSuspenseQuery: vi.fn(),
 }));
 
@@ -70,7 +70,9 @@ const monitor = {
 function renderDetail(
   overrides: Record<string, unknown> = {},
   queryState: { isFetching?: boolean; isRefetchError?: boolean } = {},
+  redirects: Record<string, unknown> = { data: [] },
 ) {
+  mocks.useQuery.mockReturnValue(redirects);
   mocks.useSuspenseQuery.mockReturnValue({
     ...queryState,
     data: {
@@ -118,13 +120,56 @@ function deletePoolButton(markup: string) {
 }
 
 describe("pool details view", () => {
-  it("offers deletion for a settled pool without checking L7 until the dialog opens", () => {
+  it("offers deletion and loads redirect dependencies for a settled pool", () => {
     const button = deletePoolButton(renderDetail());
     expect(button).toBeDefined();
     expect(button).not.toContain(' disabled=""');
     expect(mocks.useQuery).toHaveBeenLastCalledWith(
-      expect.objectContaining({ enabled: false }),
+      expect.objectContaining({ enabled: true }),
     );
+  });
+
+  it("shows policies independently from default listeners and links only verified owners", () => {
+    const markup = renderDetail(
+      {},
+      {},
+      {
+        data: [
+          {
+            id: "policy-a",
+            name: "API path",
+            position: 1,
+            admin_state_up: false,
+            provisioning_status: "ACTIVE",
+            listener_id: listenerId,
+            listener: { id: listenerId, name: "web" },
+          },
+          {
+            id: "policy-b",
+            name: "Other path",
+            position: 2,
+            admin_state_up: true,
+            listener_id: "unverified-id",
+            listener: null,
+          },
+        ],
+      },
+    );
+    expect(markup).toContain("None attached");
+    expect(markup).toContain("API path");
+    expect(markup).toContain("Disabled");
+    expect(markup).toContain(
+      `href="${parentPath}/listeners/${listenerId}#l7-policies"`,
+    );
+    expect(markup).toContain("unverified-id");
+    expect(markup).not.toContain("listeners/unverified-id");
+  });
+
+  it("does not imply an empty redirect list when the read fails", () => {
+    const markup = renderDetail({}, {}, { isError: true });
+    expect(markup).toContain("L7 redirects are unavailable.");
+    expect(markup).not.toContain("No L7 policies target");
+    expect(markup).toContain("No members configured.");
   });
   it("shows configured persistence, an IPv6 member, the monitor, and verified links", () => {
     const markup = renderDetail({
@@ -160,6 +205,7 @@ describe("pool details view", () => {
 
   it("distinguishes empty resources from unavailable child data", () => {
     const empty = renderDetail();
+    expect(empty).toContain("No L7 policies target this pool.");
     expect(empty).toContain("No health monitor configured.");
     expect(empty).toContain("No members configured.");
     const unavailable = renderDetail({

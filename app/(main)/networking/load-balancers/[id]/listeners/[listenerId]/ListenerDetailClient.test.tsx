@@ -135,6 +135,7 @@ describe("listener detail routing", () => {
       ],
     });
     expect(markup).toContain("Create routing policy");
+    expect(markup).toContain('id="l7-policies"');
     expect(markup).toContain("No L7 policies are configured.");
     expect(markup).not.toContain(">Listener</th>");
   });
@@ -145,6 +146,7 @@ describe("listener detail routing", () => {
       "Listener routing policies could not be refreshed.",
     );
     expect(markup).toContain("Traffic statistics");
+    expect(markup).toContain('id="l7-policies"');
     expect(markup).toContain("Edit listener");
     expect(markup).not.toContain("Create routing policy");
   });

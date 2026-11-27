@@ -4,6 +4,7 @@ import { z } from "zod";
 import { openstackRequest } from "@/lib/openstack/request-server";
 import {
   isOpenStackNotFoundError,
+  OpenStackConnectionError,
   OpenStackRequestError,
 } from "@/lib/openstack/request";
 import {
@@ -32,6 +33,7 @@ import type {
   OctaviaLoadBalancerDetails,
   OctaviaMember,
   OctaviaPool,
+  OctaviaPoolRedirectPolicy,
   OctaviaStatusNode,
   OctaviaTrafficStats,
 } from "@/types/openstack";
@@ -544,9 +546,7 @@ async function readListener(
   );
   if (
     listener.id !== listenerId ||
-    !Array.isArray(listener.loadbalancers) ||
-    listener.loadbalancers.length !== 1 ||
-    listener.loadbalancers[0]?.id !== parentId
+    !listenerBelongsToLoadBalancer(listener, parentId)
   ) {
     throw new OpenStackRequestError(
       404,
@@ -554,6 +554,17 @@ async function readListener(
     );
   }
   return listener;
+}
+
+function listenerBelongsToLoadBalancer(
+  listener: Pick<OctaviaListener, "loadbalancers">,
+  parentId: string,
+) {
+  return (
+    Array.isArray(listener.loadbalancers) &&
+    listener.loadbalancers.length === 1 &&
+    listener.loadbalancers[0]?.id === parentId
+  );
 }
 
 export async function getLoadBalancerListenerDetails(
@@ -827,7 +838,7 @@ export async function listLoadBalancerPoolRedirectPolicies(
   id: string,
   regionId: string,
   projectId: string,
-): Promise<Array<Pick<OctaviaL7Policy, "redirect_pool_id">>> {
+): Promise<OctaviaPoolRedirectPolicy[]> {
   const parentId = requireUuid(
     loadBalancerId,
     "load balancer ID",
@@ -836,7 +847,74 @@ export async function listLoadBalancerPoolRedirectPolicies(
   const scope = await resolveScope(regionId, projectId);
   await readPool(scope, parentId, poolId);
   const policies = await readPoolRedirectPolicies(scope, poolId);
-  return policies.map(({ redirect_pool_id }) => ({ redirect_pool_id }));
+  const listenerIds = new Set(
+    policies
+      .map(({ listener_id }) => listener_id)
+      .filter((id) => typeof id === "string" && UUID_PATTERN.test(id)),
+  );
+  const listeners = await readRedirectPolicyOwners(
+    scope,
+    parentId,
+    listenerIds,
+  );
+  return policies.map(
+    ({
+      id,
+      name,
+      position,
+      listener_id,
+      redirect_pool_id,
+      admin_state_up,
+      provisioning_status,
+    }) => ({
+      id,
+      name,
+      position,
+      listener_id,
+      redirect_pool_id,
+      admin_state_up,
+      provisioning_status,
+      listener: listeners.get(listener_id) ?? null,
+    }),
+  );
+}
+
+async function readRedirectPolicyOwners(
+  scope: OctaviaScope,
+  parentId: string,
+  ownerIds: ReadonlySet<string>,
+) {
+  const owners = new Map<string, Pick<OctaviaListener, "id" | "name">>();
+  if (!ownerIds.size) return owners;
+
+  const filters = { project_id: scope.projectId, loadbalancer_id: parentId };
+  try {
+    const listeners = await listCollection<OctaviaListener>(
+      scope,
+      "listeners",
+      collectionPath("listeners", scope.projectId, filters),
+      undefined,
+      new URLSearchParams(filters),
+    );
+    // A cloud can ignore collection filters; only verified owners get links.
+    for (const listener of listeners) {
+      if (
+        ownerIds.has(listener?.id) &&
+        belongsToProject(listener.project_id, scope.projectId) &&
+        listenerBelongsToLoadBalancer(listener, parentId)
+      ) {
+        owners.set(listener.id, { id: listener.id, name: listener.name });
+      }
+    }
+  } catch (error) {
+    if (
+      !(error instanceof OpenStackRequestError) &&
+      !(error instanceof OpenStackConnectionError)
+    ) {
+      throw error;
+    }
+  }
+  return owners;
 }
 
 async function readPoolRedirectPolicies(scope: OctaviaScope, poolId: string) {

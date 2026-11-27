@@ -109,7 +109,7 @@ export function PoolDetailClient({
     message: string;
     at: number;
   } | null>(null);
-  const { data, isFetching, isRefetchError, refetch } = useSuspenseQuery({
+  const { data, isFetching, isRefetchError } = useSuspenseQuery({
     ...loadBalancerPoolDetailsQueryOptions(
       regionId,
       projectId,
@@ -142,10 +142,6 @@ export function PoolDetailClient({
     loadBalancer.pools?.some(({ id }) => id === pool.id) &&
     canChangeOctaviaListeners(loadBalancer);
   const canChangePool = canChangePoolChildren && canChangeOctaviaListener(pool);
-  const deletionTarget =
-    action?.kind === "pool" && action.target.action === "delete"
-      ? action.target.pool
-      : null;
   const redirectPolicies = useQuery({
     ...loadBalancerPoolRedirectPoliciesQueryOptions(
       regionId,
@@ -153,13 +149,17 @@ export function PoolDetailClient({
       loadBalancerId,
       poolId,
     ),
-    enabled: Boolean(
-      deletionTarget && !octaviaPoolDeletionBlock(deletionTarget, []),
-    ),
+    enabled: !deletionNotice,
+    refetchInterval: ({ state }) =>
+      !deletionNotice && !state.error && state.data?.some(isOctaviaProvisioning)
+        ? 5_000
+        : false,
   });
+  const redirectsUnavailable =
+    redirectPolicies.isError || redirectPolicies.isPaused;
   const l7Policies = redirectPolicies.isFetching
     ? undefined
-    : redirectPolicies.isError || redirectPolicies.isPaused
+    : redirectsUnavailable
       ? null
       : (redirectPolicies.data ?? null);
   const canChangeMembers =
@@ -185,6 +185,13 @@ export function PoolDetailClient({
   const refreshPoolData = () => invalidatePoolData();
   const openAction = (next: PoolDetailAction) => {
     setNotice(null);
+    if (
+      next.kind === "pool" &&
+      next.target.action === "delete" &&
+      !octaviaPoolDeletionBlock(next.target.pool, [])
+    ) {
+      void redirectPolicies.refetch();
+    }
     setAction(next);
   };
   const openMemberAction = (target: MemberDialogAction) => {
@@ -254,8 +261,8 @@ export function PoolDetailClient({
           ) : null}
           <Button
             variant="outline"
-            loading={isFetching}
-            onClick={() => void refetch()}
+            loading={isFetching || redirectPolicies.isFetching}
+            onClick={refreshPoolData}
           >
             <RefreshCw className="size-4" /> Refresh
           </Button>
@@ -474,6 +481,66 @@ export function PoolDetailClient({
           )}
         </DetailSection>
       </div>
+
+      <DetailSection title="L7 redirects">
+        {redirectsUnavailable ? (
+          <p className="px-3 py-2 text-sm text-muted-foreground">
+            {redirectPolicies.data
+              ? "L7 redirects could not be refreshed. The last loaded data is shown."
+              : "L7 redirects are unavailable."}
+          </p>
+        ) : null}
+        {redirectPolicies.data?.length ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Policy</TableHead>
+                <TableHead>Listener</TableHead>
+                <TableHead>Position</TableHead>
+                <TableHead>State</TableHead>
+                <TableHead>Provisioning</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {redirectPolicies.data.map((policy) => (
+                <TableRow key={policy.id}>
+                  <TableCell className="whitespace-normal wrap-anywhere">
+                    {policy.name || policy.id}
+                  </TableCell>
+                  <TableCell className="whitespace-normal wrap-anywhere">
+                    {policy.listener ? (
+                      <ResourceLink
+                        href={`${loadBalancerListenerPath(loadBalancer.id, policy.listener.id)}#l7-policies`}
+                      >
+                        {policy.listener.name || policy.listener.id}
+                      </ResourceLink>
+                    ) : (
+                      policy.listener_id || "Unavailable"
+                    )}
+                  </TableCell>
+                  <TableCell>{policy.position ?? "-"}</TableCell>
+                  <TableCell>
+                    {policy.admin_state_up === true
+                      ? "Enabled"
+                      : policy.admin_state_up === false
+                        ? "Disabled"
+                        : "Unknown"}
+                  </TableCell>
+                  <TableCell>
+                    <Status status={policy.provisioning_status} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : !redirectsUnavailable ? (
+          <p className="px-3 py-2 text-sm text-muted-foreground">
+            {redirectPolicies.data
+              ? "No L7 policies target this pool."
+              : "Loading L7 redirects"}
+          </p>
+        ) : null}
+      </DetailSection>
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
