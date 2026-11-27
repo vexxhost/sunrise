@@ -491,7 +491,7 @@ describe("Octavia member actions", () => {
     );
   });
 
-  it.each(["HTTP", "TCP"])(
+  it.each(["HTTP", "TCP", "HTTPS"])(
     "creates a backup member in an Amphora %s pool",
     async (protocol) => {
       mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol });
@@ -509,6 +509,7 @@ describe("Octavia member actions", () => {
   );
 
   it("reads and updates backup mode at the negotiated version and sends false explicitly", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol: "HTTPS" });
     mocks.getOctaviaPoolMember.mockResolvedValue({ ...member, backup: true });
     const higherMinimum = capabilities();
     higherMinimum.microversions.minimum = "2.3";

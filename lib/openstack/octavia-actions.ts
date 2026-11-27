@@ -1551,7 +1551,7 @@ export async function mutateOctaviaPoolMemberAction(
   if (changesBackup && !backupVersion) {
     return validationFailure(
       activeScope,
-      "Backup members require an Amphora HTTP or TCP pool and confirmed Octavia API 2.1 support.",
+      "Backup members require an Amphora HTTP, TCP, or HTTPS passthrough pool and confirmed Octavia API 2.1 support.",
     );
   }
   const memberId = value.action === "create" ? null : value.id.toLowerCase();

@@ -1349,7 +1349,7 @@ describe("Octavia project scoping", () => {
             },
           },
           [`/v2/lbaas/pools/${poolId}`]: {
-            pool: { ...pool, protocol: "HTTP" },
+            pool: { ...pool, protocol: "HTTPS" },
           },
           [`${memberPath}?limit=100`]: {
             members: [

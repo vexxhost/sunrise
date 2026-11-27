@@ -214,9 +214,10 @@ export function isOctaviaBackupMemberPool(
   provider: string | undefined,
   protocol: string,
 ) {
+  // Amphora handles HTTPS passthrough in HAProxy alongside HTTP and TCP.
   return (
     isOctaviaAmphoraProvider(provider) &&
-    (protocol === "HTTP" || protocol === "TCP")
+    (protocol === "HTTP" || protocol === "TCP" || protocol === "HTTPS")
   );
 }
 
