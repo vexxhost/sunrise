@@ -298,6 +298,86 @@ describe("Octavia health monitor actions", () => {
     );
   });
 
+  it.each([
+    { description: "the baseline read omits HTTP options", reported: {} },
+    {
+      description: "another editor changed the Host header",
+      reported: { http_version: 1.1, domain_name: "new.example.test" },
+    },
+  ])(
+    "saves a timing edit during discovery loss when $description",
+    async ({ reported }) => {
+      mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+        discoveryStatus: "unavailable",
+        serviceType: "load-balancer",
+        message: "Discovery unavailable.",
+      });
+      mocks.getLoadBalancerPool.mockResolvedValue({
+        ...pool,
+        healthmonitor_id: monitorId,
+      });
+      mocks.getOctaviaPoolHealthMonitor.mockResolvedValue({
+        ...monitor,
+        ...reported,
+      });
+      await expect(
+        mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+          ...edit,
+          source: withHost,
+          settings: { ...withHost, delay: 15 },
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(mocks.getOctaviaPoolHealthMonitor).toHaveBeenCalledWith(
+        poolId,
+        monitorId,
+        scope.regionId,
+        scope.projectId,
+        undefined,
+      );
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          apiVersion: "load-balancer 2.0",
+          body: { healthmonitor: { delay: 15 } },
+        }),
+      );
+    },
+  );
+
+  it("still rejects stale timing and advanced edits when discovery is unavailable", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+      serviceType: "load-balancer",
+      message: "Discovery unavailable.",
+    });
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      healthmonitor_id: monitorId,
+    });
+    mocks.getOctaviaPoolHealthMonitor.mockResolvedValue({
+      ...monitor,
+      delay: 12,
+    });
+    await expect(
+      mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+        ...edit,
+        source: withHost,
+        settings: { ...withHost, delay: 15 },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    await expect(
+      mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+        ...edit,
+        source: withHost,
+        settings: { ...withHost, domain_name: "updated.example.test" },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "service-unavailable" },
+    });
+    expect(mocks.getOctaviaPoolHealthMonitor).toHaveBeenCalledTimes(1);
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
   it("lets the session refresh redirect through when reading a monitor", async () => {
     mocks.getLoadBalancerPool.mockResolvedValueOnce({
       ...pool,
@@ -500,7 +580,7 @@ describe("Octavia health monitor actions", () => {
       monitorId,
       scope.regionId,
       scope.projectId,
-      "2.10",
+      undefined,
     );
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
       expect.objectContaining({

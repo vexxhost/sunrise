@@ -1833,11 +1833,32 @@ export async function mutateOctaviaHealthMonitorAction(
   if (!canChangeOctaviaListeners(pool))
     return pendingMutationFailure(activeScope);
 
-  const httpOptionsVersion = healthMonitorHttpOptionsMicroversion(
-    capabilities,
-    existing.value.provider,
-    pool.protocol,
+  // Use the draft's delta to distinguish a real option change from fields the read may omit.
+  const requestedEdit =
+    value.action === "edit"
+      ? changedHealthMonitorFields(value.source, value.settings)
+      : {};
+  const changesHttpOptions = hasHttpMonitorOptions(
+    value.action === "create" ? value.settings : requestedEdit,
   );
+  const httpOptionsVersion = changesHttpOptions
+    ? healthMonitorHttpOptionsMicroversion(
+        capabilities,
+        existing.value.provider,
+        pool.protocol,
+      )
+    : undefined;
+  if (changesHttpOptions && !httpOptionsVersion) {
+    return mutationFailure(
+      {
+        code: "service-unavailable",
+        message:
+          "HTTP monitor request options require confirmed Octavia API 2.10 support.",
+        retryable: false,
+      },
+      activeScope,
+    );
+  }
   const monitorId = value.action === "create" ? null : value.id.toLowerCase();
   let body: Record<string, unknown> | undefined;
   if (value.action === "create") {
@@ -1893,7 +1914,11 @@ export async function mutateOctaviaHealthMonitorAction(
         !current ||
         current.type !== value.source.type ||
         current.type !== value.settings.type ||
-        Object.keys(changedHealthMonitorFields(current, value.source)).length
+        Object.keys(
+          changedHealthMonitorFields(current, value.source, {
+            includeHttpOptions: changesHttpOptions,
+          }),
+        ).length
       ) {
         return mutationFailure(
           {
@@ -1905,10 +1930,9 @@ export async function mutateOctaviaHealthMonitorAction(
           activeScope,
         );
       }
-      body = changedHealthMonitorFields(current, value.settings);
+      body = requestedEdit;
       if (
-        hasHttpMonitorOptions(body) &&
-        httpOptionsVersion &&
+        changesHttpOptions &&
         current.type === "HTTP" &&
         value.source.type === "HTTP"
       ) {
@@ -1948,21 +1972,9 @@ export async function mutateOctaviaHealthMonitorAction(
       }
     }
   }
-  const changesHttpOptions = hasHttpMonitorOptions(body);
-  if (changesHttpOptions && !httpOptionsVersion) {
-    return mutationFailure(
-      {
-        code: "service-unavailable",
-        message:
-          "HTTP monitor request options require confirmed Octavia API 2.10 support.",
-        retryable: false,
-      },
-      activeScope,
-    );
-  }
   const supported = await supportedMutationMicroversion(
     activeScope,
-    (changesHttpOptions ? httpOptionsVersion : undefined) ??
+    httpOptionsVersion ??
       (type === "UDP-CONNECT" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION),
     "Changing health monitors",
     capabilities,

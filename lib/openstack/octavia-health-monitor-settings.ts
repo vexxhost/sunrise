@@ -202,12 +202,17 @@ export function readHealthMonitorSettings(monitor: OctaviaHealthMonitor) {
 export function changedHealthMonitorFields(
   before: HealthMonitorSettings,
   after: HealthMonitorSettings,
+  { includeHttpOptions = true } = {},
 ) {
   const baseline: Partial<Record<string, unknown>> = before;
   return Object.fromEntries(
     Object.entries(after).filter(
       ([key, value]) =>
-        key !== "type" && value !== undefined && value !== baseline[key],
+        key !== "type" &&
+        (includeHttpOptions ||
+          (key !== "http_version" && key !== "domain_name")) &&
+        value !== undefined &&
+        value !== baseline[key],
     ),
   );
 }
