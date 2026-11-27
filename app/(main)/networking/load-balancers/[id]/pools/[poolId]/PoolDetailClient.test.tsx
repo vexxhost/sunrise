@@ -203,6 +203,27 @@ describe("pool details view", () => {
     expect(addMemberButton(markup)).not.toContain(' disabled=""');
   });
 
+  it("shows reported backup and primary roles only for supported pools", () => {
+    const members = [
+      { id: "backup", address: "192.0.2.10", protocol_port: 80, backup: true },
+      {
+        id: "primary",
+        address: "192.0.2.11",
+        protocol_port: 80,
+        backup: false,
+      },
+      { id: "unknown", address: "192.0.2.12", protocol_port: 80 },
+    ];
+    const supported = renderDetail({ backupMembersSupported: true, members });
+    expect(supported).toContain(">Role</th>");
+    expect(supported).toContain(">Backup</td>");
+    expect(supported).toContain(">Primary</td>");
+    expect(supported.match(/>Primary<\/td>/g)).toHaveLength(1);
+    expect(
+      renderDetail({ backupMembersSupported: false, members }),
+    ).not.toContain(">Role</th>");
+  });
+
   it("distinguishes empty resources from unavailable child data", () => {
     const empty = renderDetail();
     expect(empty).toContain("No L7 policies target this pool.");

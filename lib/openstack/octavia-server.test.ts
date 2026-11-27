@@ -1331,6 +1331,48 @@ describe("Octavia project scoping", () => {
       expect(mocks.discoverLoadBalancerCapabilities).not.toHaveBeenCalled();
     });
 
+    it.each([true, false])(
+      "negotiates the backup field only when allowed (supported: %s)",
+      async (supported) => {
+        if (!supported) {
+          mocks.discoverLoadBalancerCapabilities.mockResolvedValueOnce({
+            discoveryStatus: "available",
+            microversions: { minimum: "2.0", maximum: "2.30" },
+            configuredMicroversionMaximum: "2.0",
+          });
+        }
+        mockDetails({
+          [`/v2/lbaas/loadbalancers/${parentId}`]: {
+            loadbalancer: {
+              ...loadBalancer(parentId, "project-a", "edge"),
+              provider: "amphorav2",
+            },
+          },
+          [`/v2/lbaas/pools/${poolId}`]: {
+            pool: { ...pool, protocol: "HTTP" },
+          },
+          [`${memberPath}?limit=100`]: {
+            members: [
+              {
+                id: memberId,
+                project_id: "project-a",
+                ...(supported ? { backup: true } : {}),
+              },
+            ],
+          },
+        });
+        const details = await getLoadBalancerPoolDetails(parentId, poolId);
+        expect(details.backupMembersSupported).toBe(supported);
+        expect(details.members?.[0].backup).toBe(supported ? true : undefined);
+        expect(mocks.openstackRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            path: `${memberPath}?limit=100`,
+            apiVersion: supported ? "load-balancer 2.1" : undefined,
+          }),
+        );
+      },
+    );
+
     it.each([
       { loadbalancers: [{ id: otherId }] },
       { project_id: "project-b" },

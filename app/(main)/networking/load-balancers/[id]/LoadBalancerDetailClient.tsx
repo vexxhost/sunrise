@@ -82,7 +82,9 @@ import {
   canChangeOctaviaPoolMembers,
   describePoolPersistence,
   formatOctaviaMemberAddress,
+  formatOctaviaMemberRole,
   formatPoolAlgorithm,
+  memberBackupMicroversion,
 } from "@/lib/openstack/octavia-pool-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 import type {
@@ -175,6 +177,17 @@ export function LoadBalancerDetailClient({
   const { loadBalancer } = data;
   const listenerChangesAvailable = canChangeOctaviaListeners(loadBalancer);
   const poolChangesSupported = isOctaviaAmphoraProvider(loadBalancer.provider);
+  const backupPoolIds = new Set(
+    data.pools
+      .filter((pool) =>
+        memberBackupMicroversion(
+          octaviaCapabilities,
+          loadBalancer.provider,
+          pool.protocol,
+        ),
+      )
+      .map(({ id }) => id),
+  );
   const openPoolAction = (target: PoolDialogAction) => {
     setPoolNotice(null);
     setPoolAction(target);
@@ -748,6 +761,7 @@ export function LoadBalancerDetailClient({
                   <TableHead>Pool</TableHead>
                   <TableHead>Address</TableHead>
                   <TableHead>Weight</TableHead>
+                  {backupPoolIds.size ? <TableHead>Role</TableHead> : null}
                   <TableHead>Admin state</TableHead>
                   <TableHead>Operating</TableHead>
                   <TableHead>Provisioning</TableHead>
@@ -780,6 +794,15 @@ export function LoadBalancerDetailClient({
                           {formatOctaviaMemberAddress(member)}
                         </TableCell>
                         <TableCell>{member.weight ?? "-"}</TableCell>
+                        {backupPoolIds.size ? (
+                          <TableCell>
+                            {formatOctaviaMemberRole(
+                              backupPoolIds.has(member.pool_id)
+                                ? member.backup
+                                : undefined,
+                            )}
+                          </TableCell>
+                        ) : null}
                         <TableCell>
                           {member.admin_state_up ? "Up" : "Down"}
                         </TableCell>
@@ -849,7 +872,11 @@ export function LoadBalancerDetailClient({
                   <TableRow>
                     <TableCell
                       className="py-8 text-center text-muted-foreground"
-                      colSpan={poolChangesSupported ? 8 : 7}
+                      colSpan={
+                        7 +
+                        Number(poolChangesSupported) +
+                        Number(backupPoolIds.size > 0)
+                      }
                     >
                       No pool members are configured.
                     </TableCell>
@@ -939,6 +966,7 @@ export function LoadBalancerDetailClient({
           loadBalancerId={loadBalancer.id}
           scope={{ projectId, regionId }}
           neutronAvailable={neutronLookupAvailable}
+          backupMembersSupported={backupPoolIds.has(memberAction.pool.id)}
           onClose={() => setMemberAction(null)}
           onRefresh={refreshTopology}
           onSuccess={(message) => {
