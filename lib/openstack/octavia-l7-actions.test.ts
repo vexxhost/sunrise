@@ -48,7 +48,16 @@ const policySettings = {
   description: "",
   redirect_pool_id: poolId,
 };
-const pathSettings = { value: "/api/", compare_type: "STARTS_WITH" } as const;
+const pathSettings = {
+  type: "PATH",
+  value: "/api/",
+  compare_type: "STARTS_WITH",
+} as const;
+const hostnameSettings = {
+  type: "HOST_NAME",
+  compare_type: "EQUAL_TO",
+  value: "App.example.test",
+} as const;
 const policy = {
   ...policySettings,
   id: policyId,
@@ -63,7 +72,6 @@ const policy = {
 const rule = {
   ...pathSettings,
   id: ruleId,
-  type: "PATH",
   project_id: scope.projectId,
   provisioning_status: "ACTIVE",
   admin_state_up: true,
@@ -82,7 +90,7 @@ const editPolicy = {
 } as const;
 const order = { before: [policyId, otherId, thirdId], position: 3 };
 
-describe("Octavia L7 path routing", () => {
+describe("Octavia L7 pool routing", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.guardMutationContext.mockResolvedValue({
@@ -268,7 +276,6 @@ describe("Octavia L7 path routing", () => {
         body: {
           rule: {
             ...pathSettings,
-            type: "PATH",
             invert: false,
             admin_state_up: true,
           },
@@ -283,6 +290,117 @@ describe("Octavia L7 path routing", () => {
     expect(() =>
       transform({ rule: { ...rule, project_id: "other" } }),
     ).toThrow();
+  });
+
+  it.each([
+    "*.example.test",
+    "https://app.example.test",
+    "app.example.test:65536",
+    "app.example.test:0",
+    "app.example.test:abc",
+    "app.example.test:",
+    "app.example.test:80:443",
+    "app.example.test/",
+    "app..example.test",
+    "-app.example.test",
+    "app.example.test\n",
+    `${"x".repeat(64)}.example.test`,
+  ])("rejects malformed hostnames: %j", async (value) => {
+    await expect(
+      mutate({
+        action: "add-rule",
+        policyId,
+        settings: { ...hostnameSettings, value },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
+  });
+
+  it.each(["App.example.test", "App.example.test:8080"])(
+    "adds the exact Host value %s",
+    async (value) => {
+      mocks.getOctaviaListenerL7Policy.mockResolvedValue({
+        ...policy,
+        rules: [],
+      });
+      const settings = { ...hostnameSettings, value };
+      await mutate({ action: "add-rule", policyId, settings });
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: "POST",
+          path: policyPath + "/rules",
+          body: {
+            rule: { ...settings, invert: false, admin_state_up: true },
+          },
+        }),
+      );
+    },
+  );
+
+  it("rejects a non-exact hostname comparison before checking resources", async () => {
+    await expect(
+      mutate({
+        action: "add-rule",
+        policyId,
+        settings: { ...hostnameSettings, compare_type: "STARTS_WITH" },
+      } as unknown as OctaviaL7Mutation),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
+  });
+
+  it("updates an exact hostname without sending the rule type or allowing it to change", async () => {
+    mocks.getOctaviaL7Rule.mockResolvedValue({ ...rule, ...hostnameSettings });
+    const edit = {
+      action: "edit-rule",
+      policyId,
+      sourceRule: { id: ruleId, settings: hostnameSettings },
+    } as const;
+    await expect(
+      mutate({ ...edit, settings: pathSettings }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    await mutate({
+      ...edit,
+      settings: { ...hostnameSettings, value: "api.example.test" },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: policyPath + "/rules/" + ruleId,
+        body: { rule: { compare_type: "EQUAL_TO", value: "api.example.test" } },
+      }),
+    );
+  });
+
+  it("enables a policy only if the hostname rule snapshot still matches", async () => {
+    const enable = {
+      action: "set-enabled",
+      policyId,
+      enabled: true,
+      poolId,
+      sourceRule: { id: ruleId, settings: hostnameSettings },
+    } as const;
+    await expect(mutate(enable)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "conflict" },
+    });
+    mocks.getOctaviaL7Rule.mockResolvedValue({ ...rule, ...hostnameSettings });
+    await mutate(enable);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: policyPath,
+        body: { l7policy: { admin_state_up: true } },
+      }),
+    );
   });
 
   it("does not activate a ruleless, stale, inverted, disabled or pending rule", async () => {
@@ -330,7 +448,7 @@ describe("Octavia L7 path routing", () => {
     const edit = {
       action: "edit-rule",
       policyId,
-      settings: { value: "/ready", compare_type: "EQUAL_TO" },
+      settings: { type: "PATH", value: "/ready", compare_type: "EQUAL_TO" },
       sourceRule,
     } as const;
     mocks.getOctaviaListenerL7Policy.mockResolvedValueOnce({
@@ -344,7 +462,7 @@ describe("Octavia L7 path routing", () => {
       expect.objectContaining({
         method: "PUT",
         path: policyPath + "/rules/" + ruleId,
-        body: { rule: edit.settings },
+        body: { rule: { value: "/ready", compare_type: "EQUAL_TO" } },
       }),
     );
   });

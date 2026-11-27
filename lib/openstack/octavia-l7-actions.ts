@@ -22,13 +22,13 @@ import {
   isL7HttpListener,
   isL7HttpPool,
   L7_POOL_ACTION,
-  l7PathSchema,
   l7PolicyRuleIds,
   l7PoolPolicySchema,
-  readL7Path,
+  l7RuleSettingsSchema,
   readL7PoolPolicy,
-  sameL7Path,
+  readL7RuleSettings,
   sameL7PoolPolicy,
+  sameL7RuleSettings,
 } from "@/lib/openstack/octavia-l7-settings";
 import {
   getLoadBalancer,
@@ -41,7 +41,7 @@ import {
 import { OpenStackRequestError } from "@/lib/openstack/request";
 
 const idSchema = z.uuid().toLowerCase();
-const pathSnapshot = z.object({ id: idSchema, settings: l7PathSchema });
+const ruleSnapshot = z.object({ id: idSchema, settings: l7RuleSettingsSchema });
 const orderChange = z
   .object({
     before: z.array(idSchema).min(2),
@@ -66,7 +66,7 @@ const mutationSchema = z.discriminatedUnion("action", [
       policyId: idSchema,
       enabled: z.boolean(),
       poolId: idSchema,
-      sourceRule: pathSnapshot.nullable(),
+      sourceRule: ruleSnapshot.nullable(),
     })
     .refine(({ enabled, sourceRule }) => !enabled || sourceRule !== null),
   z.object({ action: z.literal("delete-policy"), policyId: idSchema }),
@@ -74,23 +74,23 @@ const mutationSchema = z.discriminatedUnion("action", [
     action: z.literal("delete-failed-policy"),
     policyId: idSchema,
     poolId: idSchema,
-    sourceRule: pathSnapshot.nullable(),
+    sourceRule: ruleSnapshot.nullable(),
   }),
   z.object({
     action: z.literal("add-rule"),
     policyId: idSchema,
-    settings: l7PathSchema,
+    settings: l7RuleSettingsSchema,
   }),
   z.object({
     action: z.literal("edit-rule"),
     policyId: idSchema,
-    sourceRule: pathSnapshot,
-    settings: l7PathSchema,
+    sourceRule: ruleSnapshot,
+    settings: l7RuleSettingsSchema,
   }),
   z.object({
     action: z.literal("delete-rule"),
     policyId: idSchema,
-    sourceRule: pathSnapshot,
+    sourceRule: ruleSnapshot,
   }),
 ]);
 
@@ -136,12 +136,20 @@ const operations = {
     "delete this failed routing policy",
     "Failed routing policy deletion requested.",
   ],
-  "add-rule": ["POST", "add a path rule", "Path rule creation requested."],
-  "edit-rule": ["PUT", "edit this path rule", "Path rule update requested."],
+  "add-rule": [
+    "POST",
+    "add a routing rule",
+    "Routing rule creation requested.",
+  ],
+  "edit-rule": [
+    "PUT",
+    "edit this routing rule",
+    "Routing rule update requested.",
+  ],
   "delete-rule": [
     "DELETE",
-    "delete this path rule",
-    "Path rule deletion requested.",
+    "delete this routing rule",
+    "Routing rule deletion requested.",
   ],
 } as const;
 
@@ -184,7 +192,7 @@ export async function mutateOctaviaL7Action(
     if (!isOctaviaAmphoraProvider(lb.provider)) {
       return unavailable(
         active,
-        "Path routing is not available for this load balancer provider.",
+        "L7 routing is not available for this load balancer provider.",
       );
     }
     if (!canChangeOctaviaListeners(lb)) return conflict(active);
@@ -197,7 +205,7 @@ export async function mutateOctaviaL7Action(
     if (!isL7HttpListener(listener)) {
       return unavailable(
         active,
-        "Path routing is only available on HTTP listeners.",
+        "L7 routing is only available on HTTP listeners.",
       );
     }
     if (!canChangeOctaviaListeners(listener)) return conflict(active);
@@ -235,7 +243,7 @@ export async function mutateOctaviaL7Action(
       ) {
         return unavailable(
           active,
-          "Only pool routing policies with one basic path rule or no rules can be changed here.",
+          "Only pool routing policies with one supported rule or no rules can be changed here.",
         );
       }
       const deletingFailedPolicy = value.action === "delete-failed-policy";
@@ -266,11 +274,11 @@ export async function mutateOctaviaL7Action(
       if (value.action === "delete-policy" && rules.length) {
         return conflict(
           active,
-          "Remove the path rule before deleting its policy.",
+          "Remove the routing rule before deleting its policy.",
         );
       }
       if (value.action === "add-rule" && rules.length) {
-        return conflict(active, "This policy already has a path rule.");
+        return conflict(active, "This policy already has a routing rule.");
       }
       if (
         "sourceRule" in value &&
@@ -278,10 +286,10 @@ export async function mutateOctaviaL7Action(
       ) {
         return conflict(
           active,
-          "The path rule changed. Refresh and try again.",
+          "The routing rule changed. Refresh and try again.",
         );
       }
-      let currentPath;
+      let currentRule;
       if (rules.length) {
         const rule = await getOctaviaL7Rule(
           policy.id,
@@ -299,21 +307,22 @@ export async function mutateOctaviaL7Action(
             : canChangeOctaviaListeners(rule))
         )
           return conflict(active);
-        currentPath = readL7Path(rule);
-        if (!currentPath)
+        currentRule = readL7RuleSettings(rule);
+        if (!currentRule)
           return unavailable(
             active,
-            "This rule is not a supported path comparison.",
+            "This routing rule uses an unsupported type, comparison, or value.",
           );
       }
       if (
         "sourceRule" in value &&
         value.sourceRule &&
-        (!currentPath || !sameL7Path(currentPath, value.sourceRule.settings))
+        (!currentRule ||
+          !sameL7RuleSettings(currentRule, value.sourceRule.settings))
       )
         return conflict(
           active,
-          "The path rule changed. Refresh and try again.",
+          "The routing rule changed. Refresh and try again.",
         );
       switch (value.action) {
         case "edit-policy": {
@@ -362,16 +371,25 @@ export async function mutateOctaviaL7Action(
           body = {
             rule: {
               ...value.settings,
-              type: "PATH",
               invert: false,
               admin_state_up: true,
             },
           };
           break;
         case "edit-rule":
+          if (value.settings.type !== value.sourceRule.settings.type)
+            return unavailable(
+              active,
+              "Remove and re-add the rule to change what it matches.",
+            );
           ruleId = value.sourceRule.id;
           path += `/rules/${ruleId}`;
-          body = { rule: value.settings };
+          body = {
+            rule: {
+              compare_type: value.settings.compare_type,
+              value: value.settings.value,
+            },
+          };
           break;
         case "delete-rule":
           ruleId = value.sourceRule.id;
