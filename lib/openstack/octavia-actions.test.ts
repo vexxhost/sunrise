@@ -491,6 +491,81 @@ describe("Octavia member actions", () => {
     );
   });
 
+  it("sends independent health check overrides without changing the member's traffic endpoint", async () => {
+    await mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+      ...create,
+      monitorAddress: " 2001:db8::2 ",
+      monitorPort: 65535,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.0",
+        body: {
+          member: expect.objectContaining({
+            address: create.address,
+            protocol_port: create.port,
+            monitor_address: "2001:db8::2",
+            monitor_port: 65535,
+          }),
+        },
+      }),
+    );
+  });
+
+  it("explicitly clears one monitor override and leaves the other untouched", async () => {
+    mocks.getOctaviaPoolMember.mockResolvedValue({
+      ...member,
+      monitor_address: "192.0.2.20",
+      monitor_port: 9090,
+    });
+    await mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+      ...edit,
+      weight: current.weight,
+      monitorAddress: null,
+      source: { ...current, monitorAddress: "192.0.2.20" },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ body: { member: { monitor_address: null } } }),
+    );
+  });
+
+  it.each([9090, undefined])(
+    "does not overwrite a stale or unreported monitor port: %s",
+    async (monitor_port) => {
+      mocks.getOctaviaPoolMember.mockResolvedValue({ ...member, monitor_port });
+      await expect(
+        mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+          ...edit,
+          monitorPort: 8081,
+          source: { ...current, monitorPort: null },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { monitorPort: 0 },
+    { monitorPort: 65536 },
+    { monitorAddress: "https://example.test" },
+    { monitorAddress: "192.0.2.1/32" },
+  ])(
+    "rejects invalid health check override %j before preflight",
+    async (override) => {
+      await expect(
+        mutateOctaviaPoolMemberAction(scope, loadBalancerId, poolId, {
+          ...create,
+          ...override,
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+      expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["HTTP", "TCP", "HTTPS"])(
     "creates a backup member in an Amphora %s pool",
     async (protocol) => {

@@ -64,6 +64,8 @@ import {
   canChangeOctaviaPoolMembers,
   canUseOctaviaPoolAsDefault,
   memberBackupMicroversion,
+  octaviaMemberIpSchema,
+  octaviaMemberPortSchema,
   OCTAVIA_POOL_ALGORITHMS,
   OCTAVIA_POOL_PERSISTENCE_MODES,
   OCTAVIA_POOL_PROTOCOLS,
@@ -273,15 +275,14 @@ const memberFields = z.object({
   adminStateUp: z.boolean(),
   weight: memberWeightSchema.optional(),
   backup: z.boolean().optional(),
+  monitorAddress: octaviaMemberIpSchema.nullish(),
+  monitorPort: octaviaMemberPortSchema.nullish(),
 });
 const memberMutationSchema = z.discriminatedUnion("action", [
   memberFields.extend({
     action: z.literal("create"),
-    address: z
-      .string()
-      .trim()
-      .pipe(z.union([z.ipv4(), z.ipv6()])),
-    port: z.number().int().min(1).max(65535),
+    address: octaviaMemberIpSchema,
+    port: octaviaMemberPortSchema,
     subnetId: uuidSchema.optional(),
   }),
   memberFields.extend({
@@ -1584,6 +1585,10 @@ export async function mutateOctaviaPoolMemberAction(
       admin_state_up: value.adminStateUp,
       ...(value.weight !== undefined ? { weight: value.weight } : {}),
       ...(value.backup !== undefined ? { backup: value.backup } : {}),
+      ...(value.monitorAddress != null
+        ? { monitor_address: value.monitorAddress }
+        : {}),
+      ...(value.monitorPort != null ? { monitor_port: value.monitorPort } : {}),
       ...(subnetId ? { subnet_id: subnetId } : {}),
     };
   } else {
@@ -1621,7 +1626,13 @@ export async function mutateOctaviaPoolMemberAction(
             value.source.weight !== member.weight)) ||
         (value.backup !== undefined &&
           (typeof member.backup !== "boolean" ||
-            value.source.backup !== member.backup))
+            value.source.backup !== member.backup)) ||
+        (value.monitorAddress !== undefined &&
+          (value.source.monitorAddress === undefined ||
+            value.source.monitorAddress !== member.monitor_address)) ||
+        (value.monitorPort !== undefined &&
+          (value.source.monitorPort === undefined ||
+            value.source.monitorPort !== member.monitor_port))
       ) {
         return mutationFailure(
           {
@@ -1643,6 +1654,14 @@ export async function mutateOctaviaPoolMemberAction(
           : {}),
         ...(value.backup !== undefined && value.backup !== member.backup
           ? { backup: value.backup }
+          : {}),
+        ...(value.monitorAddress !== undefined &&
+        value.monitorAddress !== member.monitor_address
+          ? { monitor_address: value.monitorAddress }
+          : {}),
+        ...(value.monitorPort !== undefined &&
+        value.monitorPort !== member.monitor_port
+          ? { monitor_port: value.monitorPort }
           : {}),
       };
       if (!Object.keys(body).length) {
