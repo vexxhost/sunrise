@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, RefreshCw, Save } from "lucide-react";
+import { Plus, RefreshCw, Save, Trash2, Undo2 } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
@@ -51,6 +51,7 @@ import {
   listenerSettingUnavailable,
   octaviaTlsSecretId,
   readListenerInsertHeaders,
+  readOctaviaSniRefs,
   sameListenerCidrs,
   type ListenerNumericField,
   type OctaviaListenerProtocol,
@@ -72,6 +73,7 @@ type ListenerHeaderChanges = NonNullable<
 
 const NO_DEFAULT_POOL = "none";
 const KEEP_TLS_CERTIFICATE = "keep-current";
+const NO_SNI_ADDITION = "no-addition";
 
 export function ListenerMutationDialog({
   target,
@@ -104,6 +106,7 @@ export function ListenerMutationDialog({
     adminStateUp: listener?.admin_state_up ?? true,
     listener,
     cidrs: originalCidrs,
+    sniRefs: readOctaviaSniRefs(listener?.sni_container_refs),
   }));
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
@@ -112,6 +115,8 @@ export function ListenerMutationDialog({
     protocols[0],
   );
   const [tlsSecretId, setTlsSecretId] = useState("");
+  const [sniSecretId, setSniSecretId] = useState("");
+  const [removedSniRefs, setRemovedSniRefs] = useState<string[]>([]);
   const currentTlsRef = initial.listener?.default_tls_container_ref;
   const currentTlsSecretId = octaviaTlsSecretId(currentTlsRef);
   const canRotateTls =
@@ -254,6 +259,27 @@ export function ListenerMutationDialog({
     canRotateTls && currentTlsRef && tlsSecretId
       ? { before: currentTlsRef, after: tlsSecretId }
       : undefined;
+  const sniOptions =
+    canRotateTls && initial.sniRefs
+      ? tlsOptions.filter(
+          ({ id }) =>
+            id !== tlsSecretId &&
+            !initial.sniRefs?.some((ref) => octaviaTlsSecretId(ref) === id),
+        )
+      : [];
+  const selectedSniSecret = sniOptions.find(({ id }) => id === sniSecretId);
+  const sniCertificateChange =
+    canRotateTls &&
+    currentTlsRef &&
+    initial.sniRefs &&
+    (sniSecretId || removedSniRefs.length)
+      ? {
+          before: initial.sniRefs,
+          beforeDefault: currentTlsRef,
+          remove: removedSniRefs,
+          add: sniSecretId || undefined,
+        }
+      : undefined;
   const poolChoices = poolQuery.isError
     ? []
     : (poolQuery.data ?? []).filter((pool) =>
@@ -379,6 +405,7 @@ export function ListenerMutationDialog({
     adminStateUp !== initial.adminStateUp ||
     advancedChanged ||
     headersChanged ||
+    sniCertificateChange !== undefined ||
     defaultCertificateChange !== undefined ||
     defaultPoolChange !== undefined;
   const allowed =
@@ -390,6 +417,7 @@ export function ListenerMutationDialog({
         (!tlsProtocol || Boolean(selectedTlsSecret))
       : changed &&
         (!defaultCertificateChange || Boolean(selectedTlsSecret)) &&
+        (!sniSecretId || Boolean(selectedSniSecret)) &&
         (!defaultPoolChange ||
           defaultPoolChange.after === null ||
           Boolean(selectedPool)));
@@ -422,6 +450,9 @@ export function ListenerMutationDialog({
           ? { defaultCertificate: defaultCertificateChange }
           : {}),
         ...(defaultPoolChange ? { defaultPool: defaultPoolChange } : {}),
+        ...(sniCertificateChange
+          ? { sniCertificates: sniCertificateChange }
+          : {}),
         source: {
           name: initial.name,
           description: initial.description,
@@ -616,6 +647,101 @@ export function ListenerMutationDialog({
                 </p>
               ) : null}
             </div>
+          ) : null}
+          {canRotateTls && initial.sniRefs ? (
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="text-sm font-medium">SNI certificates</legend>
+              {initial.sniRefs.length ? (
+                <ul className="divide-y rounded-md border">
+                  {initial.sniRefs.map((ref, index) => {
+                    const id = octaviaTlsSecretId(ref);
+                    const secretName = tlsSecrets.data?.find(
+                      (secret) => secret.id === id,
+                    )?.name;
+                    const label =
+                      secretName && id
+                        ? `${secretName} (${id.slice(0, 8)})`
+                        : (id ?? `External certificate ${index + 1}`);
+                    const removed = removedSniRefs.includes(ref);
+                    const command = removed
+                      ? `Keep SNI certificate ${label}`
+                      : `Remove SNI certificate ${label}`;
+                    return (
+                      <li
+                        key={ref}
+                        className="flex min-w-0 items-center justify-between gap-2 p-2 text-sm"
+                      >
+                        <span
+                          className={
+                            removed
+                              ? "min-w-0 wrap-anywhere text-muted-foreground line-through"
+                              : "min-w-0 wrap-anywhere"
+                          }
+                        >
+                          {label}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          tone={removed ? undefined : "danger"}
+                          disabled={pending}
+                          title={command}
+                          aria-label={command}
+                          onClick={() =>
+                            setRemovedSniRefs((refs) =>
+                              removed
+                                ? refs.filter((value) => value !== ref)
+                                : [...refs, ref],
+                            )
+                          }
+                        >
+                          {removed ? <Undo2 /> : <Trash2 />}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No SNI certificates configured.
+                </p>
+              )}
+              <Label htmlFor="octavia-listener-sni-add">
+                Add SNI certificate
+              </Label>
+              <Select
+                disabled={pending || (!sniOptions.length && !sniSecretId)}
+                value={
+                  selectedSniSecret?.id ?? (sniSecretId ? "" : NO_SNI_ADDITION)
+                }
+                onValueChange={(id) =>
+                  setSniSecretId(id === NO_SNI_ADDITION ? "" : id)
+                }
+              >
+                <SelectTrigger
+                  id="octavia-listener-sni-add"
+                  aria-invalid={Boolean(sniSecretId && !selectedSniSecret)}
+                >
+                  <SelectValue placeholder="Selected certificate unavailable" />
+                </SelectTrigger>
+                <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
+                  <SelectItem value={NO_SNI_ADDITION}>
+                    Do not add a certificate
+                  </SelectItem>
+                  {sniOptions.map(({ id, name }) => (
+                    <SelectItem key={id} value={id} className="wrap-anywhere">
+                      {name ? `${name} (${id.slice(0, 8)})` : id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {sniSecretId && !selectedSniSecret ? (
+                <MutationAlert>
+                  Select a different SNI certificate or clear the selection.
+                </MutationAlert>
+              ) : null}
+            </fieldset>
           ) : null}
           <Label
             className="flex items-center gap-2"

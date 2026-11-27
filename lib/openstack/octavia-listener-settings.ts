@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { detectIpVersion, getCidrValidationError } from "@/lib/network-address";
 import {
   microversionSupport,
@@ -41,6 +42,20 @@ export function octaviaTlsSecretId(ref: unknown) {
   } catch {
     return null;
   }
+}
+
+export const octaviaSniRefsSchema = z
+  .array(z.string().min(1).max(255))
+  .refine((refs) => new Set(refs).size === refs.length);
+
+export function readOctaviaSniRefs(value: unknown) {
+  const parsed = octaviaSniRefsSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+export function sameOctaviaSniRefs(a: readonly string[], b: readonly string[]) {
+  const refs = new Set(a);
+  return a.length === b.length && b.every((ref) => refs.has(ref));
 }
 
 export function isOctaviaTlsSecretCandidate(

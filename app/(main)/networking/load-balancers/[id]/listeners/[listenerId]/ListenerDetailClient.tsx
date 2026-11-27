@@ -45,6 +45,7 @@ import {
   listenerSettingUnavailable,
   octaviaTlsSecretId,
   readListenerInsertHeaders,
+  readOctaviaSniRefs,
 } from "@/lib/openstack/octavia-listener-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 
@@ -99,6 +100,7 @@ export function ListenerDetailClient({
   const defaultTlsSecretId = octaviaTlsSecretId(
     listener.default_tls_container_ref,
   );
+  const sniRefs = readOctaviaSniRefs(listener.sni_container_refs);
   const supportsRoutingChanges =
     isOctaviaAmphoraProvider(loadBalancer.provider) &&
     isL7HttpListener(listener);
@@ -270,6 +272,35 @@ export function ListenerDetailClient({
                 </ResourceLink>
               ) : listener.default_tls_container_ref ? (
                 "External certificate reference"
+              ) : (
+                "Not reported"
+              )}
+            </DetailField>
+          ) : null}
+          {listener.protocol === "TERMINATED_HTTPS" ? (
+            <DetailField label="SNI certificates">
+              {sniRefs?.length ? (
+                <ul className="min-w-0 space-y-1">
+                  {sniRefs.map((ref, index) => {
+                    const id = octaviaTlsSecretId(ref);
+                    return (
+                      <li key={ref}>
+                        {id ? (
+                          <ResourceLink
+                            href={`/key-manager/secrets/${id}`}
+                            className="wrap-anywhere font-mono"
+                          >
+                            {id}
+                          </ResourceLink>
+                        ) : (
+                          `External certificate ${index + 1}`
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : sniRefs ? (
+                "None"
               ) : (
                 "Not reported"
               )}
