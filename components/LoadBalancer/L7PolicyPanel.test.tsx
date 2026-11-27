@@ -177,20 +177,23 @@ describe("Octavia L7 error recovery controls", () => {
     expect(markup).not.toContain("Disable policy");
   });
 
-  it("shows a supported hostname rule with edit and enable actions", () => {
-    const markup = renderPanel(
-      { ...policy, admin_state_up: false },
-      {
-        ...rule,
-        type: "HOST_NAME",
-        compare_type: "EQUAL_TO",
-        value: "api.example.test",
-      },
-    );
-    expect(markup).toContain("Hostname Equal To");
-    expect(markup).toContain("api.example.test");
-    expect(markup).toContain("Edit rule");
-    expect(markup).toContain("Enable policy");
-    expect(markup).not.toContain("Add rule");
-  });
+  it.each(["api.example.test", "[2001:db8::10]:8080"])(
+    "shows edit and enable actions for an existing Host rule: %s",
+    (value) => {
+      const markup = renderPanel(
+        { ...policy, admin_state_up: false },
+        {
+          ...rule,
+          type: "HOST_NAME",
+          compare_type: "EQUAL_TO",
+          value,
+        },
+      );
+      expect(markup).toContain("Hostname Equal To");
+      expect(markup).toContain(value);
+      expect(markup).toContain("Edit rule");
+      expect(markup).toContain("Enable policy");
+      expect(markup).not.toContain("Add rule");
+    },
+  );
 });

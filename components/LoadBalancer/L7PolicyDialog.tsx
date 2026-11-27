@@ -447,7 +447,7 @@ export function L7PolicyDialog({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="l7-rule-value">
-                  {rule.type === "PATH" ? "Path" : "Hostname (optional port)"}
+                  {rule.type === "PATH" ? "Path" : "Host (optional port)"}
                 </Label>
                 <Input
                   id="l7-rule-value"

@@ -302,10 +302,23 @@ describe("Octavia L7 pool routing", () => {
     "app.example.test:80:443",
     "app.example.test/",
     "app..example.test",
+    "app.example.test..",
     "-app.example.test",
     "app.example.test\n",
     `${"x".repeat(64)}.example.test`,
-  ])("rejects malformed hostnames: %j", async (value) => {
+    "2001:db8::10",
+    "[2001:db8::10",
+    "[2001:::10]",
+    "[2001:db8::10]extra",
+    "[2001:db8::10]\n",
+    "[2001:db8::10]:65536",
+    "[2001:db8::10]:",
+    "[2001:db8::10]:443:80",
+    "[2001:db8::10]/path",
+    "[fe80::1%25eth0]",
+    "[192.0.2.10]",
+    "[not-ipv6]",
+  ])("rejects malformed Host values: %j", async (value) => {
     await expect(
       mutate({
         action: "add-rule",
@@ -319,26 +332,31 @@ describe("Octavia L7 pool routing", () => {
     expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
   });
 
-  it.each(["App.example.test", "App.example.test:8080"])(
-    "adds the exact Host value %s",
-    async (value) => {
-      mocks.getOctaviaListenerL7Policy.mockResolvedValue({
-        ...policy,
-        rules: [],
-      });
-      const settings = { ...hostnameSettings, value };
-      await mutate({ action: "add-rule", policyId, settings });
-      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
-          method: "POST",
-          path: policyPath + "/rules",
-          body: {
-            rule: { ...settings, invert: false, admin_state_up: true },
-          },
-        }),
-      );
-    },
-  );
+  it.each([
+    "App.example.test",
+    "App.example.test:8080",
+    "App.example.test.:8080",
+    "192.0.2.10",
+    "[2001:db8::10]",
+    "[2001:0DB8::10]:8080",
+    "[::ffff:192.0.2.10]:443",
+  ])("adds the exact Host value %s", async (value) => {
+    mocks.getOctaviaListenerL7Policy.mockResolvedValue({
+      ...policy,
+      rules: [],
+    });
+    const settings = { ...hostnameSettings, value };
+    await mutate({ action: "add-rule", policyId, settings });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "POST",
+        path: policyPath + "/rules",
+        body: {
+          rule: { ...settings, invert: false, admin_state_up: true },
+        },
+      }),
+    );
+  });
 
   it("rejects a non-exact hostname comparison before checking resources", async () => {
     await expect(
@@ -399,6 +417,26 @@ describe("Octavia L7 pool routing", () => {
         method: "PUT",
         path: policyPath,
         body: { l7policy: { admin_state_up: true } },
+      }),
+    );
+  });
+
+  it("edits an existing bracketed IPv6 Host rule without normalizing it", async () => {
+    const existing = { ...hostnameSettings, value: "[2001:db8::10]" };
+    mocks.getOctaviaL7Rule.mockResolvedValue({ ...rule, ...existing });
+    await mutate({
+      action: "edit-rule",
+      policyId,
+      sourceRule: { id: ruleId, settings: existing },
+      settings: { ...existing, value: "[2001:0DB8::10]:8080" },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        path: policyPath + "/rules/" + ruleId,
+        body: {
+          rule: { compare_type: "EQUAL_TO", value: "[2001:0DB8::10]:8080" },
+        },
       }),
     );
   });

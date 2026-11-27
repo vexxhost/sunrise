@@ -29,6 +29,8 @@ const l7PathRuleSchema = z
   })
   .strict();
 
+const ipv6AddressSchema = z.ipv6();
+
 const l7HostnameRuleSchema = z.strictObject({
   type: z.literal("HOST_NAME"),
   compare_type: z.literal("EQUAL_TO"),
@@ -36,15 +38,18 @@ const l7HostnameRuleSchema = z.strictObject({
     .string()
     .max(L7_HOST_VALUE_MAX_LENGTH)
     .refine((value) => {
-      if (/[^a-z0-9.:-]/i.test(value)) return false;
       // Amphora compares the full Host header, including an explicit port.
-      const [host, port, extra] = value.split(":");
+      const match =
+        /^(?:\[([a-f0-9:.]+)\]|([a-z0-9.-]+))(?::([0-9]{1,5}))?$/i.exec(value);
+      if (!match || match[0] !== value) return false;
+      const [, literal, hostname, port] = match;
+      if (port !== undefined && (Number(port) < 1 || Number(port) > 65535))
+        return false;
+      if (literal !== undefined)
+        return ipv6AddressSchema.safeParse(literal).success;
+
+      const host = hostname.endsWith(".") ? hostname.slice(0, -1) : hostname;
       return (
-        extra === undefined &&
-        (port === undefined ||
-          (/^[0-9]{1,5}$/.test(port) &&
-            Number(port) >= 1 &&
-            Number(port) <= 65535)) &&
         host.length <= 253 &&
         host
           .split(".")
@@ -52,7 +57,7 @@ const l7HostnameRuleSchema = z.strictObject({
             /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),
           )
       );
-    }, "Enter a hostname with an optional port, without a scheme, path, or wildcard."),
+    }, "Enter a hostname, IPv4 address, or bracketed IPv6 address (for example, [2001:db8::10]), with an optional port."),
 });
 
 export const l7RuleSettingsSchema = z.discriminatedUnion("type", [
