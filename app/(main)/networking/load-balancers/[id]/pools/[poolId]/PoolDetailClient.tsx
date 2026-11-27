@@ -25,6 +25,7 @@ import {
   MemberMutationDialog,
   type MemberDialogAction,
 } from "@/components/LoadBalancer/MemberMutationDialog";
+import { MemberEndpoint } from "@/components/LoadBalancer/MemberEndpoint";
 import {
   PoolMutationDialog,
   type PoolDialogAction,
@@ -65,7 +66,6 @@ import {
 } from "@/lib/openstack/octavia-health-monitor-settings";
 import {
   canChangeOctaviaPoolMembers,
-  formatOctaviaMemberAddress,
   formatOctaviaMemberRole,
   formatPoolAlgorithm,
   formatPoolPersistence,
@@ -586,8 +586,8 @@ export function PoolDetailClient({
                 {members.map((member) => (
                   <TableRow key={member.id}>
                     <TableCell>{member.name || member.id}</TableCell>
-                    <TableCell className="font-mono">
-                      {formatOctaviaMemberAddress(member)}
+                    <TableCell>
+                      <MemberEndpoint member={member} />
                     </TableCell>
                     <TableCell>{member.weight ?? "-"}</TableCell>
                     {backupMembersSupported ? (

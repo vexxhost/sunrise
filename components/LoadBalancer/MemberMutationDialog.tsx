@@ -36,6 +36,8 @@ import {
 } from "@/lib/openstack/octavia-actions";
 import {
   formatOctaviaMemberAddress,
+  octaviaMemberIpSchema,
+  octaviaMemberPortSchema,
   poolMutationRecovery,
 } from "@/lib/openstack/octavia-pool-settings";
 import type { OctaviaMember, OctaviaPool } from "@/types/openstack";
@@ -74,6 +76,13 @@ export function MemberMutationDialog({
     name: member?.name ?? "",
     adminStateUp: member?.admin_state_up ?? true,
     weight: creating ? 1 : (member?.weight ?? undefined),
+    monitorAddress: creating
+      ? null
+      : octaviaMemberIpSchema.nullable().safeParse(member?.monitor_address)
+          .data,
+    monitorPort: creating
+      ? null
+      : octaviaMemberPortSchema.nullable().safeParse(member?.monitor_port).data,
     backup: backupMembersSupported
       ? creating
         ? false
@@ -88,6 +97,12 @@ export function MemberMutationDialog({
   const [backup, setBackup] = useState(initial.backup ?? false);
   const [address, setAddress] = useState("");
   const [port, setPort] = useState("");
+  const [monitorAddress, setMonitorAddress] = useState(
+    initial.monitorAddress ?? "",
+  );
+  const [monitorPort, setMonitorPort] = useState(
+    String(initial.monitorPort ?? ""),
+  );
   const [subnetId, setSubnetId] = useState(VIP_SUBNET);
   const [error, setError] = useState<string | null>(null);
   const [requiresReopen, setRequiresReopen] = useState(false);
@@ -188,9 +203,37 @@ export function MemberMutationDialog({
     initial.weight !== undefined && weightNumber !== initial.weight;
   const showBackup = initial.backup !== undefined;
   const backupChanged = showBackup && backup !== initial.backup;
+  const parsedMonitorAddress = octaviaMemberIpSchema
+    .nullable()
+    .safeParse(monitorAddress.trim() || null);
+  const parsedMonitorPort = octaviaMemberPortSchema
+    .nullable()
+    .safeParse(
+      monitorPort === ""
+        ? null
+        : /^\d+$/.test(monitorPort)
+          ? Number(monitorPort)
+          : NaN,
+    );
+  const monitorAddressChanged =
+    initial.monitorAddress !== undefined &&
+    parsedMonitorAddress.success &&
+    parsedMonitorAddress.data !== initial.monitorAddress;
+  const monitorPortChanged =
+    initial.monitorPort !== undefined &&
+    parsedMonitorPort.success &&
+    parsedMonitorPort.data !== initial.monitorPort;
+  const monitorChanges = {
+    ...(monitorAddressChanged
+      ? { monitorAddress: parsedMonitorAddress.data }
+      : {}),
+    ...(monitorPortChanged ? { monitorPort: parsedMonitorPort.data } : {}),
+  };
   const canSubmit =
     !requiresReopen &&
     validWeight &&
+    parsedMonitorAddress.success &&
+    parsedMonitorPort.success &&
     (creating
       ? validAddress &&
         validPort &&
@@ -199,7 +242,9 @@ export function MemberMutationDialog({
       : name !== initial.name ||
         adminStateUp !== initial.adminStateUp ||
         weightChanged ||
-        backupChanged);
+        backupChanged ||
+        monitorAddressChanged ||
+        monitorPortChanged);
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
       <DialogContent
@@ -228,6 +273,7 @@ export function MemberMutationDialog({
                 port: portNumber,
                 weight: weightNumber,
                 ...(backupChanged ? { backup } : {}),
+                ...monitorChanges,
                 subnetId: selectedSubnet?.id,
               });
             } else if (target.action === "edit") {
@@ -238,11 +284,18 @@ export function MemberMutationDialog({
                 adminStateUp,
                 ...(weightChanged ? { weight: weightNumber } : {}),
                 ...(backupChanged ? { backup } : {}),
+                ...monitorChanges,
                 source: {
                   name: initial.name,
                   adminStateUp: initial.adminStateUp,
                   weight: initial.weight,
                   ...(backupChanged ? { backup: initial.backup } : {}),
+                  ...(monitorAddressChanged
+                    ? { monitorAddress: initial.monitorAddress }
+                    : {}),
+                  ...(monitorPortChanged
+                    ? { monitorPort: initial.monitorPort }
+                    : {}),
                 },
               });
             }
@@ -370,6 +423,74 @@ export function MemberMutationDialog({
                 initial.weight === undefined ? "Not reported" : undefined
               }
             />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="octavia-member-monitor-address">
+                Health check address
+              </Label>
+              <Input
+                id="octavia-member-monitor-address"
+                value={monitorAddress}
+                onChange={(event) => setMonitorAddress(event.target.value)}
+                placeholder={
+                  initial.monitorAddress === undefined
+                    ? "Not reported"
+                    : member?.address || address || "Member address"
+                }
+                disabled={pending || initial.monitorAddress === undefined}
+                aria-invalid={!parsedMonitorAddress.success}
+                aria-describedby={
+                  !parsedMonitorAddress.success
+                    ? "octavia-member-monitor-address-error"
+                    : undefined
+                }
+              />
+              {!parsedMonitorAddress.success ? (
+                <p
+                  id="octavia-member-monitor-address-error"
+                  className="text-sm text-destructive"
+                >
+                  Enter a valid IPv4 or IPv6 address.
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="octavia-member-monitor-port">
+                Health check port
+              </Label>
+              <Input
+                id="octavia-member-monitor-port"
+                type="number"
+                min={1}
+                max={65535}
+                step={1}
+                value={monitorPort}
+                onChange={(event) => setMonitorPort(event.target.value)}
+                placeholder={
+                  initial.monitorPort === undefined
+                    ? "Not reported"
+                    : member
+                      ? String(member.protocol_port)
+                      : port || "Member port"
+                }
+                disabled={pending || initial.monitorPort === undefined}
+                aria-invalid={!parsedMonitorPort.success}
+                aria-describedby={
+                  !parsedMonitorPort.success
+                    ? "octavia-member-monitor-port-error"
+                    : undefined
+                }
+              />
+              {!parsedMonitorPort.success ? (
+                <p
+                  id="octavia-member-monitor-port-error"
+                  className="text-sm text-destructive"
+                >
+                  Enter a port from 1 to 65535.
+                </p>
+              ) : null}
+            </div>
           </div>
           {showBackup ? (
             <div className="flex items-center gap-2">

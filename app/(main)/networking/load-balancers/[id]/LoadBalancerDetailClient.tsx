@@ -38,6 +38,7 @@ import {
   type MemberDialogAction,
 } from "@/components/LoadBalancer/MemberMutationDialog";
 import { OctaviaTagList } from "@/components/LoadBalancer/OctaviaTags";
+import { MemberEndpoint } from "@/components/LoadBalancer/MemberEndpoint";
 import {
   PoolMutationDialog,
   type PoolDialogAction,
@@ -81,7 +82,6 @@ import {
 import {
   canChangeOctaviaPoolMembers,
   describePoolPersistence,
-  formatOctaviaMemberAddress,
   formatOctaviaMemberRole,
   formatPoolAlgorithm,
   memberBackupMicroversion,
@@ -790,8 +790,8 @@ export function LoadBalancerDetailClient({
                             member.pool_id,
                           )}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {formatOctaviaMemberAddress(member)}
+                        <TableCell>
+                          <MemberEndpoint member={member} />
                         </TableCell>
                         <TableCell>{member.weight ?? "-"}</TableCell>
                         {backupPoolIds.size ? (

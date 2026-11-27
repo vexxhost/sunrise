@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import {
   microversionSupport,
   type OpenStackServiceCapabilities,
@@ -259,6 +261,28 @@ export function formatOctaviaMemberAddress(
     ? `[${member.address}]`
     : member.address;
   return `${address}:${member.protocol_port}`;
+}
+
+export const octaviaMemberIpSchema = z
+  .string()
+  .trim()
+  .pipe(z.union([z.ipv4(), z.ipv6()]));
+export const octaviaMemberPortSchema = z.number().int().min(1).max(65535);
+
+export function formatOctaviaMemberMonitor(
+  member: Pick<
+    OctaviaMember,
+    "address" | "protocol_port" | "monitor_address" | "monitor_port"
+  >,
+) {
+  const { monitor_address, monitor_port } = member;
+  if (monitor_address == null && monitor_port == null) return null;
+  // Null means to use the backend endpoint; omission does not report a setting.
+  const address = monitor_address === null ? member.address : monitor_address;
+  const port = monitor_port === null ? member.protocol_port : monitor_port;
+  if (address && port !== undefined)
+    return formatOctaviaMemberAddress({ address, protocol_port: port });
+  return address ?? (port === undefined ? null : `port ${port}`);
 }
 
 export function octaviaPoolDeletionBlock(

@@ -178,6 +178,8 @@ describe("pool details view", () => {
           id: "member",
           address: "2001:db8::1",
           protocol_port: 8080,
+          monitor_address: "2001:db8::2",
+          monitor_port: null,
           weight: 0,
           provisioning_status: "ACTIVE",
         },
@@ -194,6 +196,8 @@ describe("pool details view", () => {
     });
     expect(markup).toContain("app_session");
     expect(markup).toContain("[2001:db8::1]:8080");
+    expect(markup).toContain("Health check:");
+    expect(markup).toContain("[2001:db8::2]:8080");
     expect(markup).toContain("/health");
     expect(markup).toContain(`href="${parentPath}/listeners/${listenerId}"`);
     expect(markup).toContain(`href="${parentPath}#pools"`);
