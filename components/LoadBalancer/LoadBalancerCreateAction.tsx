@@ -37,12 +37,17 @@ import {
   visibleSubnetsQueryOptions,
 } from "@/hooks/queries/useNetworks";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
-import { loadBalancerAvailabilityZonesQueryOptions } from "@/hooks/queries/useLoadBalancers";
+import {
+  loadBalancerAvailabilityZonesQueryOptions,
+  loadBalancerFlavorsQueryOptions,
+} from "@/hooks/queries/useLoadBalancers";
 import { useClearCreateActionIntent } from "@/hooks/useClearCreateActionIntent";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
 import { createLoadBalancerAction } from "@/lib/openstack/octavia-actions";
 import { validateOctaviaTags } from "@/lib/openstack/octavia-tags";
 import { fixedVipAddressError } from "@/lib/openstack/octavia-vip-address";
+
+const DEFAULT_FLAVOR = "cloud-default";
 
 export function LoadBalancerCreateAction({
   availabilityZoneSupport,
@@ -65,6 +70,7 @@ export function LoadBalancerCreateAction({
   const [vipSubnetId, setVipSubnetId] = useState("");
   const [vipAddress, setVipAddress] = useState("");
   const [availabilityZone, setAvailabilityZone] = useState("");
+  const [flavorId, setFlavorId] = useState(DEFAULT_FLAVOR);
   const [adminStateUp, setAdminStateUp] = useState(true);
   const [tags, setTags] = useState<OctaviaTagDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +89,10 @@ export function LoadBalancerCreateAction({
   const zones = useQuery({
     ...loadBalancerAvailabilityZonesQueryOptions(regionId, projectId),
     enabled: open && availabilityZoneLookupEnabled,
+  });
+  const flavors = useQuery({
+    ...loadBalancerFlavorsQueryOptions(regionId, projectId),
+    enabled: open,
   });
   const effectiveAvailabilityZoneSupport =
     zones.data?.support ?? availabilityZoneSupport;
@@ -124,6 +134,14 @@ export function LoadBalancerCreateAction({
     [zones.data],
   );
   const submittedTags = octaviaTagsFromDrafts(tags);
+  const flavorOptions = flavors.isError ? [] : (flavors.data ?? []);
+  const selectedFlavor = flavorOptions.find(({ id }) => id === flavorId);
+  const showFlavors =
+    flavors.isLoading ||
+    flavorOptions.length > 0 ||
+    flavorId !== DEFAULT_FLAVOR;
+  const selectedFlavorUnavailable =
+    flavorId !== DEFAULT_FLAVOR && !selectedFlavor;
   const subnetQueryFailed = subnets.isError;
   const selectedSubnet = subnetOptions.find(
     (subnet) => subnet.id === vipSubnetId,
@@ -133,6 +151,7 @@ export function LoadBalancerCreateAction({
     Boolean(name.trim() && selectedSubnet) &&
     !vipError &&
     !subnetQueryFailed &&
+    !selectedFlavorUnavailable &&
     quota.issues.length === 0;
   const noVisibleSubnets = subnets.isSuccess && subnetOptions.length === 0;
   const zoneLookupMessage = zones.isError
@@ -147,6 +166,7 @@ export function LoadBalancerCreateAction({
     setVipSubnetId("");
     setVipAddress("");
     setAvailabilityZone("");
+    setFlavorId(DEFAULT_FLAVOR);
     setAdminStateUp(true);
     setTags([]);
     setError(null);
@@ -180,6 +200,7 @@ export function LoadBalancerCreateAction({
           description: description || undefined,
           vipSubnetId,
           vipAddress: vipAddress.trim() || undefined,
+          flavorId: selectedFlavor?.id,
           availabilityZone:
             availabilityZonesAvailable && availabilityZone
               ? availabilityZone
@@ -190,6 +211,8 @@ export function LoadBalancerCreateAction({
       );
       if (!result.ok) {
         setError(result.error.message);
+        if (selectedFlavor && result.error.code === "validation-failed")
+          void flavors.refetch();
         return;
       }
       await Promise.all([
@@ -321,9 +344,63 @@ export function LoadBalancerCreateAction({
                   />
                 </div>
               ) : null}
+              {showFlavors ? (
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor="load-balancer-flavor">Flavor</Label>
+                  <Select
+                    disabled={pending || flavors.isLoading}
+                    value={
+                      flavors.isLoading || selectedFlavorUnavailable
+                        ? ""
+                        : flavorId
+                    }
+                    onValueChange={setFlavorId}
+                  >
+                    <SelectTrigger
+                      id="load-balancer-flavor"
+                      aria-invalid={selectedFlavorUnavailable}
+                      aria-describedby={
+                        selectedFlavor?.description
+                          ? "load-balancer-flavor-description"
+                          : undefined
+                      }
+                    >
+                      <SelectValue
+                        placeholder={
+                          flavors.isLoading
+                            ? "Loading flavors"
+                            : "Flavor unavailable"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
+                      <SelectItem value={DEFAULT_FLAVOR}>
+                        Cloud default
+                      </SelectItem>
+                      {flavorOptions.map(({ id, name }) => (
+                        <SelectItem
+                          key={id}
+                          value={id}
+                          className="wrap-anywhere"
+                        >
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedFlavor?.description ? (
+                    <p
+                      id="load-balancer-flavor-description"
+                      className="wrap-anywhere text-xs text-muted-foreground"
+                    >
+                      {selectedFlavor.description}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <div
                 className={
-                  availabilityZonesAvailable
+                  availabilityZonesAvailable !== showFlavors
                     ? "flex items-start gap-3 rounded-md border p-3"
                     : "flex items-start gap-3 rounded-md border p-3 sm:col-span-2"
                 }
@@ -372,6 +449,16 @@ export function LoadBalancerCreateAction({
                 title="Availability zones unavailable"
               >
                 {zoneLookupMessage}
+              </MutationAlert>
+            ) : null}
+            {selectedFlavorUnavailable ? (
+              <MutationAlert>
+                The selected flavor is unavailable. Select another flavor or use
+                the cloud default.
+              </MutationAlert>
+            ) : flavors.isError ? (
+              <MutationAlert variant="info" title="Flavors unavailable">
+                Load balancers can still be created with the cloud default.
               </MutationAlert>
             ) : null}
             {networks.isError && subnetOptions.length > 0 ? (

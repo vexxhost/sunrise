@@ -14,12 +14,14 @@ vi.mock("@/lib/openstack/request-server", () => ({
 vi.mock("@/lib/openstack/capabilities-server", () => ({
   discoverLoadBalancerCapabilities: mocks.discoverLoadBalancerCapabilities,
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION: "2.14",
+  OCTAVIA_FLAVORS_MICROVERSION: "2.6",
   OCTAVIA_TAGS_MICROVERSION: "2.5",
 }));
 
 import {
   getLoadBalancer,
   getLoadBalancerDetails,
+  getLoadBalancerFlavor,
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
   getLoadBalancerListenerRouting,
@@ -30,6 +32,7 @@ import {
   getOctaviaPoolHealthMonitor,
   getOctaviaPoolMember,
   listLoadBalancerAvailabilityZones,
+  listLoadBalancerFlavors,
   listLoadBalancerPoolChoices,
   listLoadBalancerPoolRedirectPolicies,
   listLoadBalancers,
@@ -50,6 +53,16 @@ function loadBalancer(id: string, projectId: string, name: string) {
 }
 
 describe("Octavia project scoping", () => {
+  const basic = {
+    id: "8f94060c-8d5b-4472-9cfd-e8a2b909481d",
+    name: "Basic",
+    enabled: true,
+  };
+  const highAvailability = {
+    id: "6e2af0af-6b30-411d-a541-fd668ddd91fe",
+    name: "HA",
+    enabled: true,
+  };
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSession.mockResolvedValue({
@@ -62,6 +75,121 @@ describe("Octavia project scoping", () => {
       microversions: { minimum: "2.0", maximum: "2.30" },
       serviceType: "load-balancer",
     });
+  });
+
+  it("lists only enabled flavors from the RegionOne catalog across pages", async () => {
+    mocks.openstackRequest
+      .mockResolvedValueOnce({
+        flavors: [highAvailability],
+        flavors_links: [
+          {
+            rel: "next",
+            href: `https://octavia.internal/v2/lbaas/flavors?marker=${highAvailability.id}`,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        flavors: [
+          {
+            ...basic,
+            description: "One amphora",
+            flavor_profile_id: "profile",
+          },
+          {
+            id: "8f94060c-8d5b-4472-9cfd-e8a2b909481e",
+            name: "Disabled",
+            enabled: false,
+          },
+        ],
+      });
+    await expect(
+      listLoadBalancerFlavors("RegionOne", "project-a"),
+    ).resolves.toEqual([
+      { ...basic, description: "One amphora" },
+      highAvailability,
+    ]);
+    expect(mocks.openstackRequest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.6",
+        regionId: "RegionOne",
+        path: "/v2/lbaas/flavors?limit=100",
+      }),
+    );
+    expect(mocks.openstackRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.6",
+        path: `/v2/lbaas/flavors?marker=${highAvailability.id}`,
+      }),
+    );
+  });
+
+  it("does not fetch the flavor catalog when the configured ceiling is below 2.6", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValueOnce({
+      discoveryStatus: "available",
+      microversions: { minimum: "2.0", maximum: "2.30" },
+      configuredMicroversionMaximum: "2.5",
+      serviceType: "load-balancer",
+      message: "",
+    });
+    await expect(
+      listLoadBalancerFlavors("RegionOne", "project-a"),
+    ).resolves.toEqual([]);
+    expect(mocks.openstackRequest).not.toHaveBeenCalled();
+  });
+
+  it("scopes both flavor lookup routes before requesting Octavia", async () => {
+    await expect(
+      listLoadBalancerFlavors("RegionTwo", "project-a"),
+    ).rejects.toThrow("region");
+    await expect(
+      getLoadBalancerFlavor(
+        basic.id,
+        "load-balancer 2.6",
+        "RegionOne",
+        "project-b",
+      ),
+    ).rejects.toThrow("project");
+    expect(mocks.openstackRequest).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes an empty flavor catalog from a malformed response", async () => {
+    mocks.openstackRequest
+      .mockResolvedValueOnce({ flavors: [] })
+      .mockResolvedValueOnce({ flavors: [{ ...basic, enabled: "true" }] });
+    await expect(listLoadBalancerFlavors()).resolves.toEqual([]);
+    await expect(listLoadBalancerFlavors()).rejects.toThrow(
+      "Invalid Octavia flavor catalog",
+    );
+  });
+
+  it("reads the selected flavor by UUID and refuses a different ID in the response", async () => {
+    mocks.openstackRequest
+      .mockResolvedValueOnce({ flavor: { ...basic, enabled: false } })
+      .mockResolvedValueOnce({ flavor: highAvailability });
+    await expect(
+      getLoadBalancerFlavor(
+        basic.id,
+        "load-balancer 2.14",
+        "RegionOne",
+        "project-a",
+      ),
+    ).resolves.toEqual({ ...basic, enabled: false });
+    expect(mocks.openstackRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.14",
+        path: `/v2/lbaas/flavors/${basic.id}`,
+      }),
+    );
+    await expect(
+      getLoadBalancerFlavor(
+        basic.id,
+        "load-balancer 2.6",
+        "RegionOne",
+        "project-a",
+      ),
+    ).rejects.toThrow("Invalid Octavia flavor response");
   });
 
   it("negotiates and filters load balancer availability zones", async () => {

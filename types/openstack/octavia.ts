@@ -8,6 +8,13 @@ export interface OctaviaAvailabilityZone {
   enabled: boolean;
 }
 
+export interface OctaviaFlavor {
+  id: string;
+  name: string;
+  description?: string | null;
+  enabled: boolean;
+}
+
 export interface OctaviaLoadBalancer {
   id: string;
   name: string;

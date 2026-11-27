@@ -10,6 +10,7 @@ import {
 import {
   discoverLoadBalancerCapabilities,
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION,
+  OCTAVIA_FLAVORS_MICROVERSION,
   OCTAVIA_TAGS_MICROVERSION,
 } from "@/lib/openstack/capabilities-server";
 import {
@@ -33,6 +34,7 @@ import {
 import { getSession } from "@/lib/session";
 import type {
   OctaviaAvailabilityZone,
+  OctaviaFlavor,
   OctaviaHealthMonitor,
   OctaviaL7Policy,
   OctaviaL7Rule,
@@ -331,6 +333,62 @@ async function listCollection<T>(
   }
 
   return items;
+}
+
+const octaviaFlavorSchema = z.object({
+  id: z.uuid().toLowerCase(),
+  name: z.string().trim().min(1),
+  description: z.string().nullish(),
+  enabled: z.boolean(),
+});
+
+export async function listLoadBalancerFlavors(
+  regionId?: string,
+  projectId?: string,
+): Promise<OctaviaFlavor[]> {
+  const scope = await resolveScope(regionId, projectId);
+  const capabilities = await discoverLoadBalancerCapabilities(scope.regionId);
+  const support = microversionSupport(
+    capabilities,
+    OCTAVIA_FLAVORS_MICROVERSION,
+    "Load balancer flavor selection",
+  );
+  if (support.status === "unsupported") return [];
+
+  const flavors = await listCollection<unknown>(
+    scope,
+    "flavors",
+    nestedCollectionPath("/v2/lbaas/flavors"),
+    `load-balancer ${support.requestedMicroversion ?? OCTAVIA_FLAVORS_MICROVERSION}`,
+  );
+  const parsed = z.array(octaviaFlavorSchema).safeParse(flavors);
+  if (!parsed.success) throw new Error("Invalid Octavia flavor catalog");
+
+  const byId = new Map(parsed.data.map((flavor) => [flavor.id, flavor]));
+  return [...byId.values()]
+    .filter(({ enabled }) => enabled)
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export async function getLoadBalancerFlavor(
+  flavorId: string,
+  apiVersion: string,
+  regionId: string | undefined,
+  projectId: string,
+): Promise<OctaviaFlavor> {
+  const id = requireUuid(flavorId, "Load balancer flavor").toLowerCase();
+  const scope = await resolveScope(regionId, projectId);
+  const payload = await octaviaGet<unknown>(
+    scope,
+    `/v2/lbaas/flavors/${id}`,
+    "throw",
+    apiVersion,
+  );
+  const parsed = z.object({ flavor: octaviaFlavorSchema }).safeParse(payload);
+  if (!parsed.success || parsed.data.flavor.id !== id) {
+    throw new Error("Invalid Octavia flavor response");
+  }
+  return parsed.data.flavor;
 }
 
 function belongsToProject(resourceProjectId: unknown, projectId: string) {
