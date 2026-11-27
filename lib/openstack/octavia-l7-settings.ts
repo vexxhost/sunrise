@@ -39,6 +39,11 @@ export const l7PoolPolicySchema = z
 
 export type L7PoolPolicySettings = z.infer<typeof l7PoolPolicySchema>;
 
+export type L7RoutingPool = Pick<
+  OctaviaPool,
+  "id" | "name" | "protocol" | "provisioning_status"
+>;
+
 export function isL7HttpListener(listener: Pick<OctaviaListener, "protocol">) {
   return listener.protocol === "HTTP";
 }

@@ -2,6 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 import {
   getLoadBalancerDetailsAction,
   getLoadBalancerListenerDetailsAction,
+  getLoadBalancerListenerRoutingAction,
   getLoadBalancerPoolDetailsAction,
   listLoadBalancerAvailabilityZonesAction,
   listLoadBalancerFloatingIpsAction,
@@ -88,6 +89,32 @@ export function loadBalancerListenerDetailsQueryOptions(
     ],
     queryFn: () =>
       getLoadBalancerListenerDetailsAction(
+        loadBalancerId,
+        listenerId,
+        regionId,
+        projectId,
+      ),
+  });
+}
+
+export function loadBalancerListenerRoutingQueryOptions(
+  regionId: string,
+  projectId: string,
+  loadBalancerId: string,
+  listenerId: string,
+) {
+  return queryOptions({
+    queryKey: [
+      ...loadBalancerListenerDetailsQueryOptions(
+        regionId,
+        projectId,
+        loadBalancerId,
+        listenerId,
+      ).queryKey,
+      "routing",
+    ],
+    queryFn: () =>
+      getLoadBalancerListenerRoutingAction(
         loadBalancerId,
         listenerId,
         regionId,

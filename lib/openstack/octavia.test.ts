@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   canDeleteLoadBalancer,
@@ -8,9 +8,31 @@ import {
   indexFloatingIpAddressesByPort,
   isClusterApiLoadBalancer,
   octaviaEndpointHost,
+  octaviaTopologyRefetchInterval,
 } from "@/lib/openstack/octavia";
 
 describe("Octavia presentation helpers", () => {
+  it("keeps polling through transient topology errors only in the post-write window", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(60_000);
+    try {
+      const failedRead = { changedAt: 60_000, failed: true, pending: true };
+      expect(octaviaTopologyRefetchInterval(failedRead)).toBe(5_000);
+      now.mockReturnValue(79_999);
+      expect(octaviaTopologyRefetchInterval(failedRead)).toBe(5_000);
+      now.mockReturnValue(80_000);
+      expect(octaviaTopologyRefetchInterval(failedRead)).toBe(false);
+      expect(
+        octaviaTopologyRefetchInterval({ ...failedRead, failed: false }),
+      ).toBe(5_000);
+      expect(
+        octaviaTopologyRefetchInterval({ failed: true, pending: true }),
+      ).toBe(false);
+      expect(octaviaTopologyRefetchInterval({ failed: false })).toBe(false);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("formats API status values for display", () => {
     expect(formatOctaviaStatus("PENDING_UPDATE")).toBe("Pending Update");
     expect(formatOctaviaStatus(undefined)).toBe("Unknown");

@@ -876,6 +876,52 @@ async function readListenerL7Policy(
   return policy;
 }
 
+async function readL7PolicyRules(scope: OctaviaScope, policyId: string) {
+  const rules = await listCollection<OctaviaL7Rule>(
+    scope,
+    "rules",
+    nestedCollectionPath(
+      `/v2/lbaas/l7policies/${encodeURIComponent(policyId)}/rules`,
+    ),
+  );
+  return rules
+    .filter(
+      (rule) =>
+        belongsToProject(rule.project_id, scope.projectId) &&
+        (rule.l7policy_id === undefined || rule.l7policy_id === policyId),
+    )
+    .map((rule) => ({ ...rule, l7policy_id: policyId }));
+}
+
+export async function getLoadBalancerListenerRouting(
+  loadBalancerId: string,
+  id: string,
+  regionId: string,
+  projectId: string,
+) {
+  const parentId = requireUuid(
+    loadBalancerId,
+    "load balancer ID",
+  ).toLowerCase();
+  const listenerId = requireUuid(id, "listener ID").toLowerCase();
+  const scope = await resolveScope(regionId, projectId);
+  const listener = await readListener(scope, parentId, listenerId);
+  if (!Array.isArray(listener.l7policies)) {
+    throw new Error(
+      "Octavia did not return the listener's routing policy references",
+    );
+  }
+  const l7Policies = await Promise.all(
+    referenceIds(listener.l7policies, "L7 policy").map((policyId) =>
+      readListenerL7Policy(scope, listenerId, policyId),
+    ),
+  );
+  const ruleLists = await Promise.all(
+    l7Policies.map(({ id: policyId }) => readL7PolicyRules(scope, policyId)),
+  );
+  return { l7Policies, l7Rules: ruleLists.flat() };
+}
+
 export async function getOctaviaListenerL7Policy(
   listenerId: string,
   policyId: string,
@@ -1054,25 +1100,9 @@ async function readLoadBalancerDetails(
       }),
     ),
     Promise.all(
-      l7Policies.map(async (policy) => {
-        const rules = await readTopologyResource(
-          listCollection<OctaviaL7Rule>(
-            scope,
-            "rules",
-            nestedCollectionPath(
-              `/v2/lbaas/l7policies/${encodeURIComponent(policy.id)}/rules`,
-            ),
-          ),
-        );
-        return rules
-          .filter(
-            (rule) =>
-              belongsToProject(rule.project_id, scope.projectId) &&
-              (rule.l7policy_id === undefined ||
-                rule.l7policy_id === policy.id),
-          )
-          .map((rule) => ({ ...rule, l7policy_id: policy.id }));
-      }),
+      l7Policies.map(({ id: policyId }) =>
+        readTopologyResource(readL7PolicyRules(scope, policyId)),
+      ),
     ),
   ]);
 

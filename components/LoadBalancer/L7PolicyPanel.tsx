@@ -38,6 +38,7 @@ import {
   l7PolicyRuleIds,
   readL7Path,
   readL7PoolPolicy,
+  type L7RoutingPool,
 } from "@/lib/openstack/octavia-l7-settings";
 import type { OctaviaLoadBalancerDetails } from "@/types/openstack";
 
@@ -45,15 +46,17 @@ export function L7PolicyPanel({
   data,
   supportsChanges,
   busy,
+  listenerScoped = false,
   scope,
   onChanged,
 }: {
   data: Pick<
     OctaviaLoadBalancerDetails,
-    "loadBalancer" | "listeners" | "pools" | "l7Policies" | "l7Rules"
-  >;
+    "loadBalancer" | "listeners" | "l7Policies" | "l7Rules"
+  > & { pools: L7RoutingPool[] };
   supportsChanges: boolean;
   busy: boolean;
+  listenerScoped?: boolean;
   scope: MutationScope;
   onChanged: () => void;
 }) {
@@ -101,7 +104,7 @@ export function L7PolicyPanel({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Listener</TableHead>
+              {listenerScoped ? null : <TableHead>Listener</TableHead>}
               <TableHead>Position</TableHead>
               <TableHead>Policy</TableHead>
               <TableHead>Action</TableHead>
@@ -118,7 +121,9 @@ export function L7PolicyPanel({
             {!l7Policies.length ? (
               <TableRow>
                 <TableCell
-                  colSpan={supportsChanges ? 9 : 8}
+                  colSpan={
+                    7 + Number(supportsChanges) + Number(!listenerScoped)
+                  }
                   className="py-8 text-center text-muted-foreground"
                 >
                   No L7 policies are configured.
@@ -175,9 +180,11 @@ export function L7PolicyPanel({
                 const policyId = policy.id;
                 return (
                   <TableRow key={policy.id}>
-                    <TableCell className="max-w-36 whitespace-normal wrap-anywhere">
-                      {listener?.name || listenerId}
-                    </TableCell>
+                    {listenerScoped ? null : (
+                      <TableCell className="max-w-36 whitespace-normal wrap-anywhere">
+                        {listener?.name || listenerId}
+                      </TableCell>
+                    )}
                     <TableCell>{policy.position}</TableCell>
                     <TableCell
                       className="max-w-36 whitespace-normal wrap-anywhere"
@@ -407,6 +414,7 @@ export function L7PolicyPanel({
           scope={scope}
           loadBalancerId={loadBalancer.id}
           listeners={listenerChoices}
+          listenerScoped={listenerScoped}
           pools={poolChoices}
           onClose={() => setTarget(null)}
           onSuccess={(message) => {

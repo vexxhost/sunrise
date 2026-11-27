@@ -116,6 +116,9 @@ describe("Octavia L7 path routing", () => {
       expect.objectContaining({
         method: "POST",
         path: "/v2/lbaas/l7policies",
+        invalidates: expect.arrayContaining([
+          `/networking/load-balancers/${loadBalancerId}/listeners/${listenerId}`,
+        ]),
         body: {
           l7policy: {
             ...policySettings,

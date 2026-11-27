@@ -22,6 +22,7 @@ import {
   getLoadBalancerDetails,
   getLoadBalancerListener,
   getLoadBalancerListenerDetails,
+  getLoadBalancerListenerRouting,
   getLoadBalancerPool,
   getLoadBalancerPoolDetails,
   getOctaviaL7Rule,
@@ -454,6 +455,73 @@ describe("Octavia project scoping", () => {
         { status: 404 },
       );
     }
+  });
+
+  it("loads only the verified listener's routing policies and rules", async () => {
+    const parentId = "11111111-1111-4111-8111-111111111111";
+    const listenerId = "22222222-2222-4222-8222-222222222222";
+    const policyId = "33333333-3333-4333-8333-333333333333";
+    const listener = {
+      id: listenerId,
+      project_id: "project-a",
+      loadbalancers: [{ id: parentId }],
+      l7policies: [{ id: policyId }],
+    };
+    const policy = {
+      id: policyId,
+      project_id: "project-a",
+      listener_id: listenerId,
+    };
+    const rule = { id: "rule", project_id: "project-a", value: "/api" };
+    const read = () =>
+      getLoadBalancerListenerRouting(
+        parentId,
+        listenerId,
+        "RegionOne",
+        "project-a",
+      );
+    mocks.openstackRequest
+      .mockResolvedValueOnce({ listener })
+      .mockResolvedValueOnce({ l7policy: policy })
+      .mockResolvedValueOnce({
+        rules: [
+          rule,
+          { ...rule, project_id: "another-project" },
+          { ...rule, l7policy_id: listenerId },
+        ],
+      });
+    await expect(read()).resolves.toEqual({
+      l7Policies: [policy],
+      l7Rules: [{ ...rule, l7policy_id: policyId }],
+    });
+    expect(mocks.openstackRequest.mock.calls.map(([{ path }]) => path)).toEqual(
+      [
+        `/v2/lbaas/listeners/${listenerId}`,
+        `/v2/lbaas/l7policies/${policyId}`,
+        `/v2/lbaas/l7policies/${policyId}/rules?limit=100`,
+      ],
+    );
+
+    mocks.openstackRequest.mockClear();
+    mocks.openstackRequest.mockResolvedValueOnce({
+      listener: { ...listener, loadbalancers: [{ id: policyId }] },
+    });
+    await expect(read()).rejects.toMatchObject({ status: 404 });
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(1);
+
+    mocks.openstackRequest.mockClear();
+    mocks.openstackRequest
+      .mockResolvedValueOnce({ listener })
+      .mockResolvedValueOnce({
+        l7policy: { ...policy, listener_id: parentId },
+      });
+    await expect(read()).rejects.toMatchObject({ status: 404 });
+    expect(mocks.openstackRequest).toHaveBeenCalledTimes(2);
+
+    mocks.openstackRequest.mockResolvedValueOnce({
+      listener: { ...listener, l7policies: undefined },
+    });
+    await expect(read()).rejects.toThrow("routing policy references");
   });
 
   it.each([false, true])(

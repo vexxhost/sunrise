@@ -10,6 +10,7 @@ import { Network, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { DetailField, DetailSection } from "@/components/Instance/DetailFields";
+import { L7PolicyPanel } from "@/components/LoadBalancer/L7PolicyPanel";
 import {
   ListenerMutationDialog,
   type ListenerDialogAction,
@@ -24,16 +25,20 @@ import { CopyButton } from "@/components/ui/copy-button";
 import {
   loadBalancerDetailsQueryOptions,
   loadBalancerListenerDetailsQueryOptions,
+  loadBalancerListenerRoutingQueryOptions,
   loadBalancerPoolChoicesQueryOptions,
 } from "@/hooks/queries/useLoadBalancers";
 import {
   canChangeOctaviaListener,
   canChangeOctaviaListeners,
   formatOctaviaStatus,
+  isOctaviaAmphoraProvider,
   isOctaviaProvisioning,
   loadBalancerPoolPath,
   octaviaStatusVariant,
+  octaviaTopologyRefetchInterval,
 } from "@/lib/openstack/octavia";
+import { isL7HttpListener } from "@/lib/openstack/octavia-l7-settings";
 import {
   LISTENER_NUMERIC_FIELDS,
   LISTENER_NUMERIC_KEYS,
@@ -60,6 +65,7 @@ export function ListenerDetailClient({
     { action: "create" }
   > | null>(null);
   const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
+  const [routingChangedAt, setRoutingChangedAt] = useState<number>();
   const [notice, setNotice] = useState<{ message: string; at: number } | null>(
     null,
   );
@@ -73,26 +79,55 @@ export function ListenerDetailClient({
     data: { loadBalancer, listener, capabilities, stats },
     isFetching,
     isRefetchError,
-    refetch,
   } = useSuspenseQuery({
     ...query,
     refetchInterval: ({ state }) =>
-      !deletionNotice &&
-      !state.error &&
-      ((notice && Date.now() - notice.at < 20_000) ||
-        (state.data &&
-          (isOctaviaProvisioning(state.data.listener) ||
-            isOctaviaProvisioning(state.data.loadBalancer))))
-        ? 5_000
-        : false,
+      deletionNotice
+        ? false
+        : octaviaTopologyRefetchInterval({
+            changedAt: notice?.at ?? routingChangedAt,
+            failed: Boolean(state.error),
+            pending:
+              state.data &&
+              (isOctaviaProvisioning(state.data.listener) ||
+                isOctaviaProvisioning(state.data.loadBalancer)),
+          }),
   });
   const insertedHeaders = readListenerInsertHeaders(listener.insert_headers);
   const defaultPoolId = listener.default_pool_id;
-  const { data: pools } = useQuery({
-    ...loadBalancerPoolChoicesQueryOptions(regionId, projectId, loadBalancerId),
-    enabled: Boolean(defaultPoolId),
+  const supportsRoutingChanges =
+    isOctaviaAmphoraProvider(loadBalancer.provider) &&
+    isL7HttpListener(listener);
+  const showRouting =
+    supportsRoutingChanges || Boolean(listener.l7policies?.length);
+  const routing = useQuery({
+    ...loadBalancerListenerRoutingQueryOptions(
+      regionId,
+      projectId,
+      loadBalancerId,
+      listenerId,
+    ),
+    enabled: showRouting && !deletionNotice,
+    refetchInterval: ({ state }) =>
+      deletionNotice
+        ? false
+        : octaviaTopologyRefetchInterval({
+            changedAt: routingChangedAt,
+            failed: Boolean(state.error),
+            pending:
+              state.data?.l7Policies.some(isOctaviaProvisioning) ||
+              state.data?.l7Rules.some(isOctaviaProvisioning),
+          }),
   });
-  const defaultPool = pools?.find(({ id }) => id === defaultPoolId);
+  const poolChoices = useQuery({
+    ...loadBalancerPoolChoicesQueryOptions(regionId, projectId, loadBalancerId),
+    enabled: (Boolean(defaultPoolId) || showRouting) && !deletionNotice,
+    refetchInterval: ({ state }) =>
+      !deletionNotice && !state.error && state.data?.some(isOctaviaProvisioning)
+        ? 5_000
+        : false,
+  });
+  const defaultPool = poolChoices.data?.find(({ id }) => id === defaultPoolId);
   const headers = insertedHeaders
     ? Object.entries(insertedHeaders).sort(([a], [b]) => a.localeCompare(b))
     : [];
@@ -110,9 +145,7 @@ export function ListenerDetailClient({
     setAction({ action: kind, listener });
   };
 
-  const onSuccess = (message: string) => {
-    const deleted = action?.action === "delete";
-    setAction(null);
+  const refreshTopology = (deleted = false) => {
     void queryClient.invalidateQueries({
       queryKey: loadBalancerDetailsQueryOptions(
         regionId,
@@ -121,11 +154,19 @@ export function ListenerDetailClient({
       ).queryKey,
       refetchType: deleted ? "none" : "active",
     });
+  };
+  const refreshQuota = () => {
+    void queryClient.invalidateQueries({
+      queryKey: [regionId, projectId, "project-quotas", "load-balancing"],
+    });
+  };
+  const onSuccess = (message: string) => {
+    const deleted = action?.action === "delete";
+    setAction(null);
+    refreshTopology(deleted);
     if (deleted) {
       setDeletionNotice(message);
-      void queryClient.invalidateQueries({
-        queryKey: [regionId, projectId, "project-quotas", "load-balancing"],
-      });
+      refreshQuota();
       router.replace(parentHref);
     } else {
       setNotice({ message, at: Date.now() });
@@ -162,7 +203,7 @@ export function ListenerDetailClient({
           <Button
             variant="outline"
             loading={isFetching}
-            onClick={() => void refetch()}
+            onClick={() => refreshTopology()}
           >
             <RefreshCw className="size-4" />
             Refresh
@@ -314,6 +355,47 @@ export function ListenerDetailClient({
       </div>
 
       <TrafficStatistics stats={stats} />
+
+      {showRouting ? (
+        <>
+          {routing.isError ? (
+            <MutationAlert variant="warning">
+              Listener routing policies could not be refreshed.
+            </MutationAlert>
+          ) : null}
+          {routing.data ? (
+            <L7PolicyPanel
+              listenerScoped
+              data={{
+                loadBalancer,
+                listeners: [listener],
+                pools: poolChoices.isError ? [] : (poolChoices.data ?? []),
+                ...routing.data,
+              }}
+              supportsChanges={supportsRoutingChanges}
+              busy={
+                !canChange ||
+                routing.isFetching ||
+                routing.isError ||
+                poolChoices.isFetching
+              }
+              scope={{ projectId, regionId }}
+              onChanged={() => {
+                setNotice(null);
+                setRoutingChangedAt(Date.now());
+                refreshTopology();
+                refreshQuota();
+              }}
+            />
+          ) : !routing.isError ? (
+            <DetailSection title="L7 policies">
+              <p className="px-3 py-2 text-sm text-muted-foreground">
+                Loading routing policies
+              </p>
+            </DetailSection>
+          ) : null}
+        </>
+      ) : null}
 
       {action ? (
         <ListenerMutationDialog
