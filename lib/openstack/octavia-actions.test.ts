@@ -103,6 +103,8 @@ describe("Octavia health monitor actions", () => {
     url_path: "/healthz",
     expected_codes: "200-204",
   } as const;
+  const { http_method, url_path, expected_codes, ...transport } = settings;
+  const udp = { ...transport, type: "UDP-CONNECT" } as const;
   const monitor = {
     ...settings,
     id: monitorId,
@@ -252,6 +254,110 @@ describe("Octavia health monitor actions", () => {
     expect(mocks.executeOpenStackMutation).toHaveBeenCalledWith(
       expect.objectContaining({
         body: { healthmonitor: { ...tcp, pool_id: poolId } },
+      }),
+    );
+  });
+
+  it("creates a UDP-CONNECT check with the UDP API version and no HTTP fields", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol: "UDP" });
+    await mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+      action: "create",
+      settings: udp,
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "POST",
+        apiVersion: "load-balancer 2.1",
+        body: { healthmonitor: { ...udp, pool_id: poolId } },
+      }),
+    );
+  });
+
+  it("rejects UDP-CONNECT checks with HTTP-only fields, on a non-UDP pool, or below the API ceiling", async () => {
+    await expect(
+      mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+        action: "create",
+        settings: {
+          ...udp,
+          http_method,
+          url_path,
+          expected_codes,
+        } as typeof udp,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getLoadBalancer).not.toHaveBeenCalled();
+    const createUdp = { action: "create", settings: udp } as const;
+    await expect(
+      mutateOctaviaHealthMonitorAction(
+        scope,
+        loadBalancerId,
+        poolId,
+        createUdp,
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    mocks.getLoadBalancerPool.mockResolvedValue({ ...pool, protocol: "UDP" });
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      ...capabilities(),
+      configuredMicroversionMaximum: "2.0",
+    });
+    await expect(
+      mutateOctaviaHealthMonitorAction(
+        scope,
+        loadBalancerId,
+        poolId,
+        createUdp,
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "service-unavailable" },
+    });
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("edits and deletes a verified UDP-CONNECT monitor without resending its type", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      protocol: "UDP",
+      healthmonitor_id: monitorId,
+    });
+    mocks.getOctaviaPoolHealthMonitor.mockResolvedValue({
+      ...monitor,
+      type: "UDP-CONNECT",
+    });
+    await mutateOctaviaHealthMonitorAction(scope, loadBalancerId, poolId, {
+      action: "edit",
+      id: monitorId,
+      source: udp,
+      settings: { ...udp, delay: 15 },
+    });
+    await mutateOctaviaHealthMonitorAction(
+      scope,
+      loadBalancerId,
+      poolId,
+      remove,
+    );
+    const path = `/v2/lbaas/healthmonitors/${monitorId}`;
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        path,
+        method: "PUT",
+        apiVersion: "load-balancer 2.1",
+        body: { healthmonitor: { delay: 15 } },
+      }),
+    );
+    expect(mocks.executeOpenStackMutation).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        path,
+        method: "DELETE",
+        apiVersion: "load-balancer 2.1",
       }),
     );
   });

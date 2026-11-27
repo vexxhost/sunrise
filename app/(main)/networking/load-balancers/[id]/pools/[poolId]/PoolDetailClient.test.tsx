@@ -319,13 +319,27 @@ describe("pool details view", () => {
       ),
     ).toBeUndefined();
     expect(
-      addMonitorButton(renderDetail({ pool: { ...pool, protocol: "UDP" } })),
+      addMonitorButton(renderDetail({ pool: { ...pool, protocol: "SCTP" } })),
     ).toBeUndefined();
     expect(
       addMonitorButton(
         renderDetail({ loadBalancer: { ...loadBalancer, provider: "ovn" } }),
       ),
     ).toBeUndefined();
+  });
+
+  it("allows UDP-CONNECT monitors on Amphora UDP pools", () => {
+    const udp = { ...pool, protocol: "UDP", session_persistence: null };
+    const empty = addMonitorButton(renderDetail({ pool: udp }));
+    expect(empty).toBeDefined();
+    expect(empty).not.toContain(' disabled=""');
+    const configured = renderDetail({
+      pool: { ...udp, healthmonitor_id: monitor.id },
+      healthMonitor: { ...monitor, type: "UDP-CONNECT" },
+    });
+    expect(configured).toContain("UDP-CONNECT");
+    expect(configured).toContain('aria-label="Edit health monitor"');
+    expect(configured).toContain('aria-label="Delete health monitor"');
   });
 
   it.each(["ACTIVE", "ERROR", "PENDING_UPDATE"])(

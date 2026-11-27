@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { OctaviaHealthMonitor, OctaviaPool } from "@/types/openstack";
 
-export const HEALTH_MONITOR_TYPES = ["HTTP", "TCP"] as const;
+const transportMonitorTypes = ["TCP", "UDP-CONNECT"] as const;
 export const HEALTH_MONITOR_HTTP_METHODS = [
   "GET",
   "HEAD",
@@ -20,7 +20,13 @@ export const HEALTH_MONITOR_MAX_PATH = 2048;
 export const HEALTH_MONITOR_MAX_CODES = 64;
 
 export function healthMonitorTypeForPool(pool: Pick<OctaviaPool, "protocol">) {
-  return HEALTH_MONITOR_TYPES.find((type) => type === pool.protocol);
+  switch (pool.protocol) {
+    case "HTTP":
+    case "TCP":
+      return pool.protocol;
+    case "UDP":
+      return "UDP-CONNECT";
+  }
 }
 
 export function healthMonitorBelongsToPool(
@@ -91,7 +97,7 @@ export const healthMonitorSettingsSchema = z
   .discriminatedUnion("type", [
     writableFields
       .extend({
-        type: z.literal("TCP"),
+        type: z.enum(transportMonitorTypes),
       })
       .strict(),
     writableFields
@@ -124,7 +130,7 @@ export const healthMonitorSettingsSchema = z
   });
 
 export const healthMonitorSnapshotSchema = z.discriminatedUnion("type", [
-  monitorFields.extend({ type: z.literal("TCP") }),
+  monitorFields.extend({ type: z.enum(transportMonitorTypes) }),
   monitorFields.extend({ type: z.literal("HTTP"), ...httpFields.shape }),
 ]);
 
