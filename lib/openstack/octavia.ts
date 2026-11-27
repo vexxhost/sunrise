@@ -61,6 +61,20 @@ export function isOctaviaProvisioning(
   return resource.provisioning_status?.toUpperCase().startsWith("PENDING_");
 }
 
+export function octaviaTopologyRefetchInterval({
+  changedAt,
+  failed,
+  pending,
+}: {
+  changedAt?: number;
+  failed: boolean;
+  pending?: boolean;
+}) {
+  // Related resources can briefly fail to read while Octavia applies a write.
+  const recovering = changedAt !== undefined && Date.now() - changedAt < 20_000;
+  return recovering || (!failed && pending) ? 5_000 : false;
+}
+
 export function canUpdateLoadBalancer(
   loadBalancer: Pick<OctaviaLoadBalancer, "provisioning_status">,
 ) {

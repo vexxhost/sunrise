@@ -36,6 +36,7 @@ import {
   isOctaviaProvisioning,
   loadBalancerPoolPath,
   octaviaStatusVariant,
+  octaviaTopologyRefetchInterval,
 } from "@/lib/openstack/octavia";
 import { isL7HttpListener } from "@/lib/openstack/octavia-l7-settings";
 import {
@@ -64,7 +65,7 @@ export function ListenerDetailClient({
     { action: "create" }
   > | null>(null);
   const [deletionNotice, setDeletionNotice] = useState<string | null>(null);
-  const [routingChangedAt, setRoutingChangedAt] = useState(0);
+  const [routingChangedAt, setRoutingChangedAt] = useState<number>();
   const [notice, setNotice] = useState<{ message: string; at: number } | null>(
     null,
   );
@@ -81,15 +82,16 @@ export function ListenerDetailClient({
   } = useSuspenseQuery({
     ...query,
     refetchInterval: ({ state }) =>
-      !deletionNotice &&
-      !state.error &&
-      ((notice && Date.now() - notice.at < 20_000) ||
-        Date.now() - routingChangedAt < 20_000 ||
-        (state.data &&
-          (isOctaviaProvisioning(state.data.listener) ||
-            isOctaviaProvisioning(state.data.loadBalancer))))
-        ? 5_000
-        : false,
+      deletionNotice
+        ? false
+        : octaviaTopologyRefetchInterval({
+            changedAt: notice?.at ?? routingChangedAt,
+            failed: Boolean(state.error),
+            pending:
+              state.data &&
+              (isOctaviaProvisioning(state.data.listener) ||
+                isOctaviaProvisioning(state.data.loadBalancer)),
+          }),
   });
   const insertedHeaders = readListenerInsertHeaders(listener.insert_headers);
   const defaultPoolId = listener.default_pool_id;
@@ -107,13 +109,15 @@ export function ListenerDetailClient({
     ),
     enabled: showRouting && !deletionNotice,
     refetchInterval: ({ state }) =>
-      !deletionNotice &&
-      !state.error &&
-      (Date.now() - routingChangedAt < 20_000 ||
-        state.data?.l7Policies.some(isOctaviaProvisioning) ||
-        state.data?.l7Rules.some(isOctaviaProvisioning))
-        ? 5_000
-        : false,
+      deletionNotice
+        ? false
+        : octaviaTopologyRefetchInterval({
+            changedAt: routingChangedAt,
+            failed: Boolean(state.error),
+            pending:
+              state.data?.l7Policies.some(isOctaviaProvisioning) ||
+              state.data?.l7Rules.some(isOctaviaProvisioning),
+          }),
   });
   const poolChoices = useQuery({
     ...loadBalancerPoolChoicesQueryOptions(regionId, projectId, loadBalancerId),
@@ -377,6 +381,7 @@ export function ListenerDetailClient({
               }
               scope={{ projectId, regionId }}
               onChanged={() => {
+                setNotice(null);
                 setRoutingChangedAt(Date.now());
                 refreshTopology();
                 refreshQuota();
