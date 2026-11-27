@@ -107,7 +107,7 @@ describe("Octavia L7 error recovery controls", () => {
     expect(markup).toMatch(
       /<button>(?:(?!<\/button>)[\s\S])*Delete failed policy<\/button>/,
     );
-    expect(markup).not.toContain("Delete path rule");
+    expect(markup).not.toContain("Delete rule");
     expect(markup).not.toContain("Disable policy");
     expect(renderPanel(policy)).not.toContain("Delete failed policy");
   });
@@ -135,7 +135,11 @@ describe("Octavia L7 error recovery controls", () => {
             poolId,
             sourceRule: {
               id: ruleId,
-              settings: { compare_type: "EQUAL_TO", value: "/ready" },
+              settings: {
+                type: "PATH",
+                compare_type: "EQUAL_TO",
+                value: "/ready",
+              },
             },
           },
         }}
@@ -147,7 +151,7 @@ describe("Octavia L7 error recovery controls", () => {
         onSuccess={() => {}}
       />,
     );
-    expect(markup).toContain("and its path rule");
+    expect(markup).toContain("and its rule");
     expect(markup).toContain("/ready");
     expect(markup).toContain("Its listener and pool will remain.");
   });
@@ -163,7 +167,7 @@ describe("Octavia L7 error recovery controls", () => {
       null,
     );
     expect(disabled).not.toContain("Enable policy");
-    expect(disabled).toContain("Add path rule");
+    expect(disabled).toContain("Add rule");
     expect(disabled).toContain("Delete policy");
   });
 
@@ -172,4 +176,24 @@ describe("Octavia L7 error recovery controls", () => {
     expect(markup).toContain("Unavailable");
     expect(markup).not.toContain("Disable policy");
   });
+
+  it.each(["api.example.test", "[2001:db8::10]:8080"])(
+    "shows edit and enable actions for an existing Host rule: %s",
+    (value) => {
+      const markup = renderPanel(
+        { ...policy, admin_state_up: false },
+        {
+          ...rule,
+          type: "HOST_NAME",
+          compare_type: "EQUAL_TO",
+          value,
+        },
+      );
+      expect(markup).toContain("Hostname Equal To");
+      expect(markup).toContain(value);
+      expect(markup).toContain("Edit rule");
+      expect(markup).toContain("Enable policy");
+      expect(markup).not.toContain("Add rule");
+    },
+  );
 });

@@ -30,13 +30,14 @@ import {
   type OctaviaL7Mutation,
 } from "@/lib/openstack/octavia-l7-actions";
 import {
+  L7_HOST_VALUE_MAX_LENGTH,
   L7_PATH_MAX_LENGTH,
-  l7PathSchema,
   l7PoolPolicySchema,
-  sameL7Path,
+  l7RuleSettingsSchema,
   sameL7PoolPolicy,
-  type L7Path,
+  sameL7RuleSettings,
   type L7PoolPolicySettings,
+  type L7RuleSettings,
   type L7RoutingPool,
 } from "@/lib/openstack/octavia-l7-settings";
 import type { OctaviaListener } from "@/types/openstack";
@@ -48,7 +49,7 @@ type ConfirmationInput = Extract<
       "set-enabled" | "delete-policy" | "delete-failed-policy" | "delete-rule";
   }
 >;
-type PathSnapshot = Extract<
+type RuleSnapshot = Extract<
   OctaviaL7Mutation,
   { action: "edit-rule" }
 >["sourceRule"];
@@ -68,7 +69,7 @@ export type L7DialogTarget =
       listenerId: string;
       policyId: string;
       label: string;
-      sourceRule: PathSnapshot;
+      sourceRule: RuleSnapshot;
     }
   | {
       action: "confirm";
@@ -116,10 +117,10 @@ export function L7PolicyDialog({
       ? policyOrder.indexOf(target.policyId) + 1
       : 0;
   const [position, setPosition] = useState(() => String(currentPosition));
-  const [rule, setRule] = useState<L7Path>(() =>
+  const [rule, setRule] = useState<L7RuleSettings>(() =>
     target.action === "edit-rule"
       ? target.sourceRule.settings
-      : { compare_type: "STARTS_WITH", value: "" },
+      : { type: "PATH", compare_type: "STARTS_WITH", value: "" },
   );
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +178,7 @@ export function L7PolicyDialog({
           ? "Delete routing policy"
           : input.action === "delete-failed-policy"
             ? "Delete failed policy"
-            : "Delete path rule";
+            : "Delete rule";
     const description =
       input.action === "set-enabled" ? (
         input.enabled ? (
@@ -193,7 +194,7 @@ export function L7PolicyDialog({
           {input.sourceRule ? (
             <>
               {" "}
-              and its path rule{" "}
+              and its rule{" "}
               <code className="wrap-anywhere">
                 {input.sourceRule.settings.value}
               </code>
@@ -226,9 +227,9 @@ export function L7PolicyDialog({
   const policyForm =
     target.action === "create-policy" || target.action === "edit-policy";
   const verb = creating ? (policyForm ? "Create" : "Add") : "Edit";
-  const title = verb + (policyForm ? " routing policy" : " path rule");
+  const title = verb + (policyForm ? " routing policy" : " rule");
   const parsedPolicy = l7PoolPolicySchema.safeParse(policy);
-  const parsedRule = l7PathSchema.safeParse(rule);
+  const parsedRule = l7RuleSettingsSchema.safeParse(rule);
   const matchingPool = pools.some(({ id }) => id === policy.redirect_pool_id);
   const matchingListener = listeners.some(({ id }) => id === listenerId);
   const nextPosition = Number(position);
@@ -245,7 +246,7 @@ export function L7PolicyDialog({
     target.action === "edit-policy"
       ? Boolean(orderChange) || !sameL7PoolPolicy(policy, target.source)
       : target.action === "edit-rule"
-        ? !sameL7Path(rule, target.sourceRule.settings)
+        ? !sameL7RuleSettings(rule, target.sourceRule.settings)
         : true;
   const fieldError =
     !policyForm && attempted && !parsedRule.success
@@ -264,7 +265,7 @@ export function L7PolicyDialog({
               ? target.label
               : target.action === "edit-policy"
                 ? target.source.name || target.policyId
-                : "HTTP path routing to a pool. New policies start disabled."}
+                : "HTTP routing to a pool. New policies start disabled."}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -400,31 +401,66 @@ export function L7PolicyDialog({
           ) : (
             <>
               <div className="space-y-2">
-                <Label htmlFor="l7-path-comparison">Comparison</Label>
+                <Label htmlFor="l7-rule-type">Match field</Label>
                 <Select
-                  value={rule.compare_type}
-                  onValueChange={(compare: L7Path["compare_type"]) =>
-                    setRule({ ...rule, compare_type: compare })
-                  }
-                  disabled={pending}
+                  value={rule.type}
+                  onValueChange={(type: L7RuleSettings["type"]) => {
+                    setAttempted(false);
+                    setRule(
+                      type === "HOST_NAME"
+                        ? { type, compare_type: "EQUAL_TO", value: "" }
+                        : { type, compare_type: "STARTS_WITH", value: "" },
+                    );
+                  }}
+                  disabled={pending || target.action === "edit-rule"}
                 >
-                  <SelectTrigger id="l7-path-comparison" className="w-full">
+                  <SelectTrigger id="l7-rule-type" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="STARTS_WITH">Starts with</SelectItem>
-                    <SelectItem value="EQUAL_TO">Equals</SelectItem>
+                    <SelectItem value="PATH">Path</SelectItem>
+                    <SelectItem value="HOST_NAME">Hostname</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="l7-path-value">Path</Label>
+                <Label htmlFor="l7-rule-comparison">Comparison</Label>
+                {rule.type === "PATH" ? (
+                  <Select
+                    value={rule.compare_type}
+                    onValueChange={(compare_type: typeof rule.compare_type) =>
+                      setRule({ ...rule, compare_type })
+                    }
+                    disabled={pending}
+                  >
+                    <SelectTrigger id="l7-rule-comparison" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="STARTS_WITH">Starts with</SelectItem>
+                      <SelectItem value="EQUAL_TO">Equals</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input id="l7-rule-comparison" value="Equals" readOnly />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="l7-rule-value">
+                  {rule.type === "PATH" ? "Path" : "Host (optional port)"}
+                </Label>
                 <Input
-                  id="l7-path-value"
+                  id="l7-rule-value"
                   required
-                  placeholder="/api/"
+                  placeholder={
+                    rule.type === "PATH" ? "/api/" : "app.example.test"
+                  }
                   value={rule.value}
-                  maxLength={L7_PATH_MAX_LENGTH}
+                  maxLength={
+                    rule.type === "PATH"
+                      ? L7_PATH_MAX_LENGTH
+                      : L7_HOST_VALUE_MAX_LENGTH
+                  }
                   className="font-mono"
                   disabled={pending}
                   onChange={(event) =>

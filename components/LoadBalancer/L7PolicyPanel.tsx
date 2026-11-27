@@ -36,9 +36,9 @@ import {
   isL7HttpListener,
   isL7HttpPool,
   l7PolicyRuleIds,
-  readL7Path,
   readL7PolicyOrder,
   readL7PoolPolicy,
+  readL7RuleSettings,
   type L7RoutingPool,
 } from "@/lib/openstack/octavia-l7-settings";
 import type { OctaviaLoadBalancerDetails } from "@/types/openstack";
@@ -148,9 +148,9 @@ export function L7PolicyPanel({
                 const rule = rules[0];
                 const ruleIds = l7PolicyRuleIds(policy);
                 const current = readL7PoolPolicy(policy);
-                const path = rule && readL7Path(rule);
+                const settings = rule && readL7RuleSettings(rule);
                 const ruleSnapshot =
-                  rule && path ? { id: rule.id, settings: path } : undefined;
+                  rule && settings ? { id: rule.id, settings } : undefined;
                 const ruleRefsMatch =
                   ruleIds?.length === rules.length &&
                   (!ruleIds.length ||
@@ -205,7 +205,9 @@ export function L7PolicyPanel({
                       {rules.length
                         ? rules.map((item) => (
                             <div key={item.id}>
-                              {formatOctaviaStatus(item.type)}{" "}
+                              {item.type === "HOST_NAME"
+                                ? "Hostname"
+                                : formatOctaviaStatus(item.type)}{" "}
                               {item.invert ? "not " : ""}
                               {formatOctaviaStatus(item.compare_type)}{" "}
                               {item.key ? (
@@ -325,7 +327,7 @@ export function L7PolicyPanel({
                                           })
                                         }
                                       >
-                                        <Pencil /> Edit path rule
+                                        <Pencil /> Edit rule
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
                                         variant="destructive"
@@ -343,7 +345,7 @@ export function L7PolicyPanel({
                                           })
                                         }
                                       >
-                                        <Trash2 /> Delete path rule
+                                        <Trash2 /> Delete rule
                                       </DropdownMenuItem>
                                     </>
                                   ) : (
@@ -359,7 +361,7 @@ export function L7PolicyPanel({
                                           })
                                         }
                                       >
-                                        <Plus /> Add path rule
+                                        <Plus /> Add rule
                                       </DropdownMenuItem>
                                       <DropdownMenuItem
                                         variant="destructive"
