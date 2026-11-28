@@ -9,7 +9,7 @@ overrides:
 
   # CodeMirror extensions exchange class instances at runtime. Pin the core
   # packages exactly so pnpm cannot install incompatible duplicate copies.
-  "@codemirror/commands": "6.11.1"
+  "@codemirror/commands": "6.11.2"
   "@codemirror/language": "6.13.1"
   "@codemirror/state": "6.7.6"
-  "@codemirror/view": "6.43.15"
+  "@codemirror/view": "6.44.0"
