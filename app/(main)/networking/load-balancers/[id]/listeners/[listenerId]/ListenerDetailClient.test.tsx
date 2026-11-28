@@ -25,6 +25,7 @@ vi.mock("@/components/LoadBalancer/L7PolicyDialog", () => ({
 }));
 
 import { ListenerDetailClient } from "./ListenerDetailClient";
+import type { OctaviaListener } from "@/types/openstack";
 
 const loadBalancerId = "11111111-1111-4111-8111-111111111111";
 const listenerId = "22222222-2222-4222-8222-222222222222";
@@ -35,7 +36,7 @@ const loadBalancer = {
   listeners: [{ id: listenerId }] as Array<{ id: string } | null>,
   provisioning_status: "ACTIVE",
 };
-const listener = {
+const listener: Partial<OctaviaListener> = {
   id: listenerId,
   name: "http",
   protocol: "HTTP",
@@ -52,17 +53,21 @@ function renderDetails({
   isRefetchError = false,
   routing = {},
   pools = [],
+  barbicanNames = {},
 }: {
   parent?: Partial<typeof loadBalancer>;
-  child?: Partial<typeof listener>;
+  child?: Partial<OctaviaListener>;
   isFetching?: boolean;
   isRefetchError?: boolean;
   routing?: Record<string, unknown>;
   pools?: Array<Record<string, unknown>>;
+  barbicanNames?: Record<string, string>;
 } = {}) {
-  mocks.useQuery.mockImplementation(({ queryKey }) =>
-    queryKey?.[0] === "routing" ? routing : { data: pools },
-  );
+  mocks.useQuery.mockImplementation(({ queryKey }) => {
+    if (queryKey?.[3] === "octavia-reference-names")
+      return { data: barbicanNames };
+    return queryKey?.[0] === "routing" ? routing : { data: pools };
+  });
   mocks.useSuspenseQuery.mockReturnValue({
     data: {
       loadBalancer: { ...loadBalancer, ...parent },
@@ -119,6 +124,60 @@ describe("listener detail deletion", () => {
       );
     },
   );
+});
+
+it("deep-links every listener TLS reference with a descriptive label", () => {
+  const id = "aaaa1111-1111-4111-8111-111111111111";
+  const secret = `https://barbican.example/v1/secrets/${id}`;
+  const container = `https://barbican.example/key-manager/v1/containers/${id}`;
+  const markup = renderDetails({
+    child: {
+      protocol: "TERMINATED_HTTPS",
+      default_tls_container_ref: container,
+      sni_container_refs: [secret, "not a Barbican ref"],
+      client_authentication: "MANDATORY",
+      client_ca_tls_container_ref: secret,
+      client_crl_container_ref: secret,
+    },
+  });
+  expect(markup).toContain(
+    `href="/key-manager/containers/${id}">Open default certificate</a>`,
+  );
+  expect(markup).toContain(
+    `href="/key-manager/secrets/${id}">Open SNI certificate 1</a>`,
+  );
+  expect(markup).toContain("External certificate 2");
+  expect(markup).toContain(
+    `href="/key-manager/secrets/${id}">Open client CA</a>`,
+  );
+  expect(markup).toContain(
+    `href="/key-manager/secrets/${id}">Open client revocation list</a>`,
+  );
+  expect(markup).not.toContain("https://barbican.example");
+});
+
+it("uses the secret and container display names as link text when available", () => {
+  const id = "aaaa1111-1111-4111-8111-111111111111";
+  const markup = renderDetails({
+    child: {
+      protocol: "TERMINATED_HTTPS",
+      default_tls_container_ref: `https://barbican.example/v1/containers/${id}`,
+      client_ca_tls_container_ref: `https://barbican.example/v1/secrets/${id}`,
+      client_authentication: "MANDATORY",
+      client_crl_container_ref: "not a Barbican reference",
+    },
+    barbicanNames: {
+      [`containers/${id}`]: "Edge server certificate",
+      [`secrets/${id}`]: "Production client CA",
+    },
+  });
+  expect(markup).toContain(
+    `href="/key-manager/containers/${id}">Edge server certificate</a>`,
+  );
+  expect(markup).toContain(
+    `href="/key-manager/secrets/${id}">Production client CA</a>`,
+  );
+  expect(markup).toContain("External revocation list reference");
 });
 
 describe("listener detail routing", () => {

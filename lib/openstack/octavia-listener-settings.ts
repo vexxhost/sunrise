@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { detectIpVersion, getCidrValidationError } from "@/lib/network-address";
+import type { BarbicanReference } from "@/lib/openstack/barbican-references";
 import {
   microversionSupport,
   type OpenStackServiceCapabilities,
@@ -24,7 +25,9 @@ export const OCTAVIA_LISTENER_PROTOCOLS = [
 export type OctaviaListenerProtocol =
   (typeof OCTAVIA_LISTENER_PROTOCOLS)[number];
 
-export function octaviaTlsSecretId(ref: unknown) {
+export function parseOctaviaBarbicanReference(
+  ref: unknown,
+): BarbicanReference | null {
   if (typeof ref !== "string") return null;
   try {
     const url = new URL(ref);
@@ -36,16 +39,23 @@ export function octaviaTlsSecretId(ref: unknown) {
       url.hash
     )
       return null;
-    return (
-      url.pathname
-        .match(
-          /\/v1\/secrets\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i,
-        )?.[1]
-        .toLowerCase() ?? null
+    const match = url.pathname.match(
+      /\/v1\/(secrets|containers)\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i,
     );
+    if (!match) return null;
+    return {
+      collection:
+        match[1].toLowerCase() === "secrets" ? "secrets" : "containers",
+      id: match[2].toLowerCase(),
+    };
   } catch {
     return null;
   }
+}
+
+export function octaviaTlsSecretId(ref: unknown) {
+  const resource = parseOctaviaBarbicanReference(ref);
+  return resource?.collection === "secrets" ? resource.id : null;
 }
 
 export const octaviaSniRefsSchema = z
@@ -96,6 +106,8 @@ export const LISTENER_CLIENT_AUTH_LABELS = {
   OPTIONAL: "Optional",
   MANDATORY: "Required",
 } as const;
+export const LISTENER_CLIENT_AUTH_CRL_BLOCK =
+  "Authentication mode and the client CA are read-only while a revocation list is configured.";
 export const listenerClientAuthModeSchema = z.enum([
   "NONE",
   "OPTIONAL",
@@ -141,12 +153,8 @@ export function listenerClientAuthUnavailable(
     "Client certificate authentication",
   );
   if (support.status !== "supported") return support.message;
-  const config = readListenerClientAuth(listener);
-  if (!config)
+  if (!readListenerClientAuth(listener))
     return "Octavia did not report the client authentication configuration.";
-  if (config.crlRef !== null) {
-    return "This listener uses a client certificate revocation list. Manage its authentication settings outside Sunrise.";
-  }
   const defaultRef = listener.default_tls_container_ref;
   if (
     !(typeof defaultRef === "string" && defaultRef.trim()) &&
@@ -158,6 +166,12 @@ export function listenerClientAuthUnavailable(
     return "Octavia did not report a configured server certificate.";
   }
   return null;
+}
+
+export function canEditListenerClientCrl(
+  config: ReturnType<typeof readListenerClientAuth>,
+) {
+  return Boolean(config?.caRef && (config.mode !== "NONE" || config.crlRef));
 }
 
 export const LISTENER_NUMERIC_FIELDS = {

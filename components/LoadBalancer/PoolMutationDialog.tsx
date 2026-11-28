@@ -4,7 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Save } from "lucide-react";
 
-import { PoolTlsReferenceField } from "@/components/LoadBalancer/PoolTlsReferenceField";
+import { OctaviaBarbicanReference } from "@/components/LoadBalancer/OctaviaBarbicanReference";
+import { OctaviaTlsReferenceField } from "@/components/LoadBalancer/OctaviaTlsReferenceField";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
@@ -30,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
+import { useOctaviaBarbicanNames } from "@/hooks/queries/useOctaviaBarbicanNames";
 import type { MutationScope } from "@/lib/mutations";
 import type { OpenStackServiceCapabilities } from "@/lib/openstack/capabilities";
 import {
@@ -191,6 +193,13 @@ export function PoolMutationDialog({
         Boolean(poolTlsReadApiVersion(creation.capabilities))
       : target.action === "edit" && backendTlsSupported);
   const tlsBlock = creating ? null : poolTlsEditBlock(initial.tls);
+  const barbicanNames = useOctaviaBarbicanNames(
+    submission.scope.regionId,
+    submission.scope.projectId,
+    showBackendTls && initial.tls
+      ? [initial.tls.caRef, initial.tls.clientRef, initial.tls.crlRef]
+      : [],
+  );
   const showTlsReferences =
     target.action === "edit" &&
     showBackendTls &&
@@ -573,6 +582,15 @@ export function PoolMutationDialog({
           {showBackendTls ? (
             <fieldset className="min-w-0 space-y-2">
               <legend className="text-sm font-medium">Backend TLS</legend>
+              {initial.tls?.caRef ? (
+                <OctaviaBarbicanReference
+                  reference={initial.tls.caRef}
+                  names={barbicanNames}
+                  alternate="Open current member CA"
+                  newTab
+                  className="text-xs"
+                />
+              ) : null}
               {tlsBlock ? (
                 <p className="text-sm text-muted-foreground">{tlsBlock}</p>
               ) : (
@@ -663,14 +681,16 @@ export function PoolMutationDialog({
               )}
               {showTlsReferences
                 ? (["client", "crl"] as const).map((kind) => (
-                    <PoolTlsReferenceField
+                    <OctaviaTlsReferenceField
                       key={kind}
+                      names={barbicanNames}
+                      id={`pool-backend-${kind}`}
                       kind={kind}
-                      configured={Boolean(
+                      current={
                         kind === "client"
                           ? initial.tls?.clientRef
-                          : initial.tls?.crlRef,
-                      )}
+                          : initial.tls?.crlRef
+                      }
                       after={
                         referenceChange?.kind === kind
                           ? referenceChange.after

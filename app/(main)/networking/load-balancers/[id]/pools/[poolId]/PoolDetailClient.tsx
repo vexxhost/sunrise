@@ -26,6 +26,7 @@ import {
   type MemberDialogAction,
 } from "@/components/LoadBalancer/MemberMutationDialog";
 import { MemberEndpoint } from "@/components/LoadBalancer/MemberEndpoint";
+import { OctaviaBarbicanReference } from "@/components/LoadBalancer/OctaviaBarbicanReference";
 import {
   PoolMutationDialog,
   type PoolDialogAction,
@@ -50,6 +51,7 @@ import {
   loadBalancerPoolDetailsQueryOptions,
   loadBalancerPoolRedirectPoliciesQueryOptions,
 } from "@/hooks/queries/useLoadBalancers";
+import { useOctaviaBarbicanNames } from "@/hooks/queries/useOctaviaBarbicanNames";
 import {
   canChangeOctaviaListener,
   canChangeOctaviaListeners,
@@ -64,7 +66,6 @@ import {
   healthMonitorTypeForPool,
   readHealthMonitorSettings,
 } from "@/lib/openstack/octavia-health-monitor-settings";
-import { octaviaTlsSecretId } from "@/lib/openstack/octavia-listener-settings";
 import {
   canChangeOctaviaPoolMembers,
   formatOctaviaMemberRole,
@@ -144,9 +145,18 @@ export function PoolDetailClient({
     backendTlsSupported,
   } = data;
   const persistence = readPoolPersistence(pool.session_persistence);
-  const memberCaId = octaviaTlsSecretId(pool.ca_tls_container_ref);
-  const clientCertificateId = octaviaTlsSecretId(pool.tls_container_ref);
-  const revocationListId = octaviaTlsSecretId(pool.crl_container_ref);
+  const showBackendTls = pool.protocol === "HTTP" || pool.tls_enabled === true;
+  const barbicanNames = useOctaviaBarbicanNames(
+    regionId,
+    projectId,
+    showBackendTls && !deletionNotice
+      ? [
+          pool.ca_tls_container_ref,
+          pool.tls_container_ref,
+          pool.crl_container_ref,
+        ]
+      : [],
+  );
   const parentHref = `/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#pools`;
   const writesSupported = isOctaviaAmphoraProvider(loadBalancer.provider);
   const canChangePoolChildren =
@@ -315,7 +325,7 @@ export function PoolDetailClient({
               {persistence.cookie_name}
             </DetailField>
           ) : null}
-          {pool.protocol === "HTTP" || pool.tls_enabled === true ? (
+          {showBackendTls ? (
             <>
               <DetailField label="Backend TLS">
                 {pool.tls_enabled === true
@@ -326,56 +336,31 @@ export function PoolDetailClient({
               </DetailField>
               {pool.tls_enabled === true || pool.ca_tls_container_ref ? (
                 <DetailField label="Member CA certificate">
-                  {memberCaId ? (
-                    <ResourceLink
-                      href={`/key-manager/secrets/${memberCaId}`}
-                      className="wrap-anywhere font-mono"
-                    >
-                      {memberCaId}
-                    </ResourceLink>
-                  ) : pool.ca_tls_container_ref ? (
-                    "External certificate reference"
-                  ) : pool.ca_tls_container_ref === null ? (
-                    "None (member certificates are not verified)"
-                  ) : (
-                    "Not reported"
-                  )}
+                  <OctaviaBarbicanReference
+                    reference={pool.ca_tls_container_ref}
+                    names={barbicanNames}
+                    alternate="Open member CA"
+                    missing="None (member certificates are not verified)"
+                  />
                 </DetailField>
               ) : null}
               {pool.tls_enabled === true || pool.tls_container_ref ? (
                 <DetailField label="Backend client certificate">
-                  {clientCertificateId ? (
-                    <ResourceLink
-                      href={`/key-manager/secrets/${clientCertificateId}`}
-                      className="wrap-anywhere font-mono"
-                    >
-                      {clientCertificateId}
-                    </ResourceLink>
-                  ) : pool.tls_container_ref ? (
-                    "External client certificate reference"
-                  ) : pool.tls_container_ref === null ? (
-                    "None"
-                  ) : (
-                    "Not reported"
-                  )}
+                  <OctaviaBarbicanReference
+                    reference={pool.tls_container_ref}
+                    names={barbicanNames}
+                    alternate="Open backend client certificate"
+                  />
                 </DetailField>
               ) : null}
               {pool.tls_enabled === true || pool.crl_container_ref ? (
                 <DetailField label="Backend certificate revocation list">
-                  {revocationListId ? (
-                    <ResourceLink
-                      href={`/key-manager/secrets/${revocationListId}`}
-                      className="wrap-anywhere font-mono"
-                    >
-                      {revocationListId}
-                    </ResourceLink>
-                  ) : pool.crl_container_ref ? (
-                    "External revocation list reference"
-                  ) : pool.crl_container_ref === null ? (
-                    "None"
-                  ) : (
-                    "Not reported"
-                  )}
+                  <OctaviaBarbicanReference
+                    reference={pool.crl_container_ref}
+                    names={barbicanNames}
+                    alternate="Open backend revocation list"
+                    external="External revocation list reference"
+                  />
                 </DetailField>
               ) : null}
             </>

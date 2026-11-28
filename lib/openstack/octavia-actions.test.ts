@@ -2012,6 +2012,23 @@ describe("Octavia listener actions", () => {
       caSecretId: secretId,
     },
   } as const;
+  const existingClientCaId = "3e9e02df-9541-4753-ad31-96a44f7f8f86";
+  const existingClientCa = `https://barbican.example.test/v1/secrets/${existingClientCaId}`;
+  const clientAuthConfigured = {
+    mode: "MANDATORY",
+    caRef: existingClientCa,
+    crlRef: null,
+  } as const;
+  const withClientAuth = {
+    ...noClientAuth,
+    client_authentication: clientAuthConfigured.mode,
+    client_ca_tls_container_ref: existingClientCa,
+  };
+  const crlEdit = {
+    ...edit,
+    name: current.name,
+    clientCrl: { before: clientAuthConfigured, after: secretId },
+  } as const;
   const rotate = {
     ...edit,
     name: current.name,
@@ -2654,6 +2671,144 @@ describe("Octavia listener actions", () => {
       error: {
         message: expect.stringContaining("requires API microversion 2.8"),
       },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "old-crl"])(
+    "attaches or replaces only the listener CRL (previous: %s)",
+    async (previous) => {
+      const original = {
+        ...withClientAuth,
+        client_crl_container_ref: previous,
+      };
+      mocks.getLoadBalancerListener.mockResolvedValueOnce(original);
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...crlEdit,
+          clientCrl: {
+            ...crlEdit.clientCrl,
+            before: { ...clientAuthConfigured, crlRef: previous },
+          },
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(secretId);
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method: "PUT",
+          apiVersion: "load-balancer 2.8",
+          body: {
+            listener: { client_crl_container_ref: tlsSecret.secret_ref },
+          },
+        }),
+      );
+      const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+      const updated = {
+        ...original,
+        client_crl_container_ref: tlsSecret.secret_ref,
+      };
+      expect(transform({ listener: updated })).toBeNull();
+      for (const fields of [
+        { client_crl_container_ref: previous },
+        { client_ca_tls_container_ref: null },
+        { client_authentication: "OPTIONAL" },
+      ]) {
+        expect(() =>
+          transform({ listener: { ...updated, ...fields } }),
+        ).toThrow("requested client authentication configuration");
+      }
+    },
+  );
+
+  it.each(["MANDATORY", "NONE"] as const)(
+    "clears only the CRL when authentication mode is %s",
+    async (mode) => {
+      mocks.getLoadBalancerListener.mockResolvedValueOnce({
+        ...withClientAuth,
+        client_authentication: mode,
+        client_crl_container_ref: "old-crl",
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...crlEdit,
+          clientCrl: {
+            before: { ...clientAuthConfigured, mode, crlRef: "old-crl" },
+            after: null,
+          },
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(mocks.getSecret).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          apiVersion: "load-balancer 2.8",
+          body: { listener: { client_crl_container_ref: null } },
+        }),
+      );
+    },
+  );
+
+  it.each([
+    [
+      { client_ca_tls_container_ref: "new-ca" },
+      clientAuthConfigured,
+      "conflict",
+    ],
+    [{ client_crl_container_ref: undefined }, clientAuthConfigured, "conflict"],
+    [{ client_authentication: "OPTIONAL" }, clientAuthConfigured, "conflict"],
+    [
+      { client_authentication: "NONE", client_crl_container_ref: "old-crl" },
+      { ...clientAuthConfigured, mode: "NONE", crlRef: "old-crl" },
+      "validation-failed",
+    ],
+    [
+      { client_ca_tls_container_ref: null },
+      { ...clientAuthConfigured, caRef: null },
+      "validation-failed",
+    ],
+    [{ protocol: "HTTPS" }, clientAuthConfigured, "validation-failed"],
+  ] as const)(
+    "rejects stale or unsupported listener CRL changes (%j)",
+    async (fields, before, code) => {
+      mocks.getLoadBalancerListener.mockResolvedValueOnce({
+        ...withClientAuth,
+        ...fields,
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...crlEdit,
+          clientCrl: { before, after: secretId },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code } });
+      expect(mocks.getSecret).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects reuse of a listener certificate secret and mixed CRL and auth edits", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue(withClientAuth);
+    for (const after of [existingClientCaId, currentSecretId]) {
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...crlEdit,
+          clientCrl: { before: clientAuthConfigured, after },
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+    }
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...crlEdit,
+        clientAuthentication: {
+          before: clientAuthConfigured,
+          mode: "OPTIONAL",
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
     });
     expect(mocks.getSecret).not.toHaveBeenCalled();
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
