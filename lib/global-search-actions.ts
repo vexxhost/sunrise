@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { createLogger } from "@/lib/logging";
 import {
   buildGlobalSearchResources,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/openstack/request";
 import { parseExtensionAliases } from "@/lib/openstack/capabilities";
 import { NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION } from "@/lib/openstack/capabilities-server";
+import { readWithOctaviaLoadBalancerTags } from "@/lib/openstack/octavia-tags-server";
 import type { ResourceKind } from "@/lib/resource-preferences";
 import { barbicanIdFromRef } from "@/lib/openstack/barbican-schema";
 import { getServicePolicy } from "@/lib/deployment-config";
@@ -115,6 +116,8 @@ const openStackSources: OpenStackSearchSource[] = [
       `/v2/lbaas/loadbalancers?project_id=${encodeURIComponent(projectId)}&limit=${GLOBAL_SEARCH_RESOURCE_LIMIT}`,
     responseKey: "loadbalancers",
     projectIdField: "project_id",
+    projectIdRequired: true,
+    searchTags: true,
   },
   {
     kind: "network",
@@ -358,25 +361,25 @@ async function loadOpenStackSource({
     };
   }
 
-  const headers: Record<string, string> = { "X-Auth-Token": token };
-  if (source.apiVersion) {
-    headers[source.apiVersionHeader ?? "OpenStack-API-Version"] =
-      source.apiVersion;
-  }
-
   try {
-    const payload = asRecord(
-      await requestJson(
-        serviceUrl(
-          endpoint,
-          typeof source.path === "function"
-            ? source.path(projectId, searchTags)
-            : source.path,
-        ),
-        headers,
-      ),
-      `${source.label} search`,
+    const url = serviceUrl(
+      endpoint,
+      typeof source.path === "function"
+        ? source.path(projectId, searchTags)
+        : source.path,
     );
+    const read = (apiVersion?: string) =>
+      requestJson(url, {
+        "X-Auth-Token": token,
+        ...(apiVersion
+          ? { [source.apiVersionHeader ?? "OpenStack-API-Version"]: apiVersion }
+          : {}),
+      });
+    const { data, requestedTags: indexTags } =
+      source.kind === "load-balancer" && searchTags
+        ? await readWithOctaviaLoadBalancerTags(regionId, read)
+        : { data: await read(source.apiVersion), requestedTags: searchTags };
+    const payload = asRecord(data, `${source.label} search`);
     const responseItems = payload[source.responseKey];
     if (!Array.isArray(responseItems)) throw new Error("Invalid list response");
     const items = source.projectIdField
@@ -394,9 +397,10 @@ async function loadOpenStackSource({
     return {
       kind: source.kind,
       items: source.normalize ? items.map(source.normalize) : items,
-      searchTags,
+      searchTags: indexTags,
     };
   } catch (error) {
+    unstable_rethrow(error);
     if (error instanceof OpenStackRequestError && error.status === 401) {
       redirect("/auth/refresh");
     }

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  discoverLoadBalancerCapabilities: vi.fn(),
   getServiceCatalog: vi.fn(),
   getServicePolicy: vi.fn(),
   getSession: vi.fn(),
@@ -8,9 +9,15 @@ const mocks = vi.hoisted(() => ({
   isSunriseServiceEnabled: vi.fn(),
   requestJson: vi.fn(),
 }));
+vi.mock("@/lib/openstack/capabilities-server", () => ({
+  discoverLoadBalancerCapabilities: mocks.discoverLoadBalancerCapabilities,
+  NEUTRON_STANDARD_ATTRIBUTE_TAG_EXTENSION: "standard-attr-tag",
+  OCTAVIA_TAGS_MICROVERSION: "2.5",
+}));
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/navigation", () => ({
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
   redirect: vi.fn((path: string) => {
     throw new Error(`redirect:${path}`);
   }),
@@ -41,6 +48,9 @@ vi.mock("@/lib/openstack/request", async (importOriginal) => {
 });
 
 import { loadGlobalSearchIndex } from "@/lib/global-search-actions";
+import { globalSearchResourceValue } from "@/lib/global-search";
+import { commandPaletteFilter } from "@/lib/navigation-destinations";
+import { OpenStackRequestError } from "@/lib/openstack/request";
 
 const catalog = [
   {
@@ -340,5 +350,163 @@ describe("global search actions", () => {
       ],
       unavailableSources: [],
     });
+  });
+});
+
+describe("Octavia global search", () => {
+  const listUrl =
+    "https://octavia.example.test/v2/lbaas/loadbalancers?project_id=project-a&limit=100";
+  const loadBalancer = {
+    id: "lb-a",
+    name: "api ingress",
+    project_id: "PROJECTA",
+    tags: ["env:test", "team:platform"],
+  };
+  const capabilities = {
+    discoveryStatus: "available",
+    microversions: { minimum: "2.0", maximum: "2.30" },
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.getSession.mockResolvedValue({
+      keystoneProjectToken: "project-token",
+      projectId: "project-a",
+      regionId: "RegionOne",
+    });
+    mocks.getServiceCatalog.mockResolvedValue([
+      {
+        name: "octavia",
+        type: "load-balancer",
+        endpoints: [
+          {
+            interface: "public",
+            region: "RegionOne",
+            url: "https://octavia.example.test",
+          },
+        ],
+      },
+    ]);
+    mocks.getServicePolicy.mockReturnValue({});
+    mocks.isServiceEnabled.mockImplementation(
+      (_policy: unknown, service: string) => service === "load-balancer",
+    );
+    mocks.isSunriseServiceEnabled.mockReturnValue(false);
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue(capabilities);
+    mocks.requestJson.mockResolvedValue({ loadbalancers: [loadBalancer] });
+  });
+
+  it("indexes returned tags without including foreign or unowned records or following pagination", async () => {
+    mocks.requestJson.mockResolvedValue({
+      loadbalancers: [
+        loadBalancer,
+        { id: "lb-b", project_id: "project-b", tags: ["foreign"] },
+        { id: "lb-c", tags: ["unowned"] },
+      ],
+      loadbalancers_links: [{ rel: "next", href: `${listUrl}&marker=lb-a` }],
+    });
+
+    const result = await loadGlobalSearchIndex();
+
+    expect(
+      mocks.discoverLoadBalancerCapabilities,
+    ).toHaveBeenCalledExactlyOnceWith("RegionOne");
+    expect(mocks.requestJson).toHaveBeenCalledExactlyOnceWith(listUrl, {
+      "X-Auth-Token": "project-token",
+      "OpenStack-API-Version": "load-balancer 2.5",
+    });
+    expect(result.resources).toEqual([
+      expect.objectContaining({
+        id: "lb-a",
+        kind: "load-balancer",
+        href: "/networking/load-balancers/lb-a",
+        tags: loadBalancer.tags,
+      }),
+    ]);
+    expect(result.unavailableSources).toEqual([]);
+    const value = globalSearchResourceValue(result.resources[0]);
+    expect(commandPaletteFilter(value, "tag:team:platform")).toBeGreaterThan(0);
+    expect(commandPaletteFilter(value, "tag:unowned")).toBe(0);
+  });
+
+  it("uses the advertised minimum when it exceeds the tags microversion", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      ...capabilities,
+      microversions: { minimum: "2.6", maximum: "2.30" },
+    });
+    await loadGlobalSearchIndex();
+    expect(mocks.requestJson).toHaveBeenCalledExactlyOnceWith(listUrl, {
+      "X-Auth-Token": "project-token",
+      "OpenStack-API-Version": "load-balancer 2.6",
+    });
+  });
+
+  it.each([
+    { ...capabilities, microversions: { minimum: "2.0", maximum: "2.4" } },
+    { discoveryStatus: "unavailable", configuredMicroversionMaximum: "2.4" },
+  ])(
+    "keeps name and ID search but omits tags when disallowed: %j",
+    async (capability) => {
+      mocks.discoverLoadBalancerCapabilities.mockResolvedValue(capability);
+      const result = await loadGlobalSearchIndex();
+      expect(mocks.requestJson).toHaveBeenCalledExactlyOnceWith(listUrl, {
+        "X-Auth-Token": "project-token",
+      });
+      expect(result.unavailableSources).toEqual([]);
+      expect(result.resources[0]).toMatchObject({
+        id: "lb-a",
+        name: "api ingress",
+      });
+      expect(result.resources[0].tags).toBeUndefined();
+    },
+  );
+
+  it.each([400, 406])(
+    "falls back to name/ID search after %s with unknown capabilities",
+    async (status) => {
+      mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+        discoveryStatus: "unavailable",
+      });
+      mocks.requestJson.mockRejectedValueOnce(
+        new OpenStackRequestError(status, "Unsupported version"),
+      );
+      const result = await loadGlobalSearchIndex();
+
+      expect(mocks.requestJson.mock.calls).toEqual([
+        [
+          listUrl,
+          {
+            "X-Auth-Token": "project-token",
+            "OpenStack-API-Version": "load-balancer 2.5",
+          },
+        ],
+        [listUrl, { "X-Auth-Token": "project-token" }],
+      ]);
+      expect(result.unavailableSources).toEqual([]);
+      expect(result.resources[0].tags).toBeUndefined();
+    },
+  );
+
+  it("redirects rather than retrying an expired project token", async () => {
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValue({
+      discoveryStatus: "unavailable",
+    });
+    mocks.requestJson.mockRejectedValueOnce(
+      new OpenStackRequestError(401, "Unauthorized"),
+    );
+    await expect(loadGlobalSearchIndex()).rejects.toThrow(
+      "redirect:/auth/refresh",
+    );
+    expect(mocks.requestJson).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a session refresh redirect raised during Octavia discovery", async () => {
+    const redirect = Object.assign(new Error("NEXT_REDIRECT"), {
+      digest: "NEXT_REDIRECT;replace;/auth/refresh;307;",
+    });
+    mocks.discoverLoadBalancerCapabilities.mockRejectedValueOnce(redirect);
+
+    await expect(loadGlobalSearchIndex()).rejects.toBe(redirect);
+    expect(mocks.requestJson).not.toHaveBeenCalled();
   });
 });
