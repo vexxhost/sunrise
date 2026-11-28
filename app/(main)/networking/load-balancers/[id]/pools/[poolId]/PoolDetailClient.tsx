@@ -145,6 +145,7 @@ export function PoolDetailClient({
   } = data;
   const persistence = readPoolPersistence(pool.session_persistence);
   const memberCaId = octaviaTlsSecretId(pool.ca_tls_container_ref);
+  const revocationListId = octaviaTlsSecretId(pool.crl_container_ref);
   const parentHref = `/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#pools`;
   const writesSupported = isOctaviaAmphoraProvider(loadBalancer.provider);
   const canChangePoolChildren =
@@ -345,9 +346,22 @@ export function PoolDetailClient({
                   Configured
                 </DetailField>
               ) : null}
-              {pool.crl_container_ref ? (
+              {pool.tls_enabled === true || pool.crl_container_ref ? (
                 <DetailField label="Backend certificate revocation list">
-                  Configured
+                  {revocationListId ? (
+                    <ResourceLink
+                      href={`/key-manager/secrets/${revocationListId}`}
+                      className="wrap-anywhere font-mono"
+                    >
+                      {revocationListId}
+                    </ResourceLink>
+                  ) : pool.crl_container_ref ? (
+                    "External revocation list reference"
+                  ) : pool.crl_container_ref === null ? (
+                    "None"
+                  ) : (
+                    "Not reported"
+                  )}
                 </DetailField>
               ) : null}
             </>

@@ -116,9 +116,9 @@ describe("Octavia pool dialog", () => {
   };
 
   it("offers backend TLS at pool creation", () => {
-    expect(renderDialog({ action: "create" })).toContain(
-      "Encrypt connections to members",
-    );
+    const markup = renderDialog({ action: "create" });
+    expect(markup).toContain("Encrypt connections to members");
+    expect(markup).not.toContain('id="pool-backend-crl"');
   });
 
   it("does not offer to overwrite unreported or externally managed TLS settings", () => {
@@ -137,6 +137,29 @@ describe("Octavia pool dialog", () => {
     });
     expect(custom).not.toContain('id="pool-tls-enabled"');
     expect(custom).toContain("revocation list is configured");
+    expect(custom).toContain('id="pool-backend-crl"');
+    expect(custom).toContain("signed by the member CA");
+  });
+
+  it("does not offer CRL edits on unencrypted pools, missing CAs, or backend mTLS", () => {
+    const tls = {
+      tls_enabled: true,
+      ca_tls_container_ref: "member-ca",
+      tls_container_ref: null,
+      crl_container_ref: null,
+    };
+    for (const settings of [
+      { tls_enabled: false },
+      { ca_tls_container_ref: null },
+      { tls_container_ref: "backend-client-cert" },
+    ]) {
+      expect(
+        renderDialog({
+          action: "edit",
+          pool: { ...editablePool, ...tls, ...settings },
+        }),
+      ).not.toContain('id="pool-backend-crl"');
+    }
   });
 
   it("loads the configured cookie name without marking an edit dirty", () => {

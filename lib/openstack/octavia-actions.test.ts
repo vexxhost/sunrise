@@ -1017,6 +1017,8 @@ describe("Octavia pool actions", () => {
   const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
   const memberCaId = "612b9ffa-fbc9-42ea-a78f-600c003c5103";
   const memberCaRef = `https://barbican.example.test/v1/secrets/${memberCaId}`;
+  const crlId = "564c3265-5933-44c7-a8da-3101e2e66a29";
+  const crlRef = `https://barbican.example.test/v1/secrets/${crlId}`;
   const memberCa = {
     id: memberCaId,
     secret_ref: memberCaRef,
@@ -1032,6 +1034,7 @@ describe("Octavia pool actions", () => {
     tls_container_ref: null,
     crl_container_ref: null,
   };
+  const tlsConfigured = { ...tlsOff, enabled: true, caRef: memberCaRef };
   const fields = {
     name: "backend",
     description: "",
@@ -1247,6 +1250,153 @@ describe("Octavia pool actions", () => {
       error: { message: expect.stringContaining("2.8") },
     });
     expect(mocks.getSecret).toHaveBeenCalledTimes(1);
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "existing-crl"])(
+    "attaches or replaces only the revocation list (previous: %s)",
+    async (previousCrl) => {
+      mocks.getLoadBalancerPool.mockResolvedValueOnce({
+        ...pool,
+        ...tlsFields,
+        tls_enabled: true,
+        ca_tls_container_ref: memberCaRef,
+        crl_container_ref: previousCrl,
+      });
+      mocks.getSecret.mockResolvedValueOnce({
+        ...memberCa,
+        id: crlId,
+        secret_ref: crlRef,
+      });
+      await expect(
+        mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+          ...edit,
+          backendCrl: {
+            before: { ...tlsConfigured, crlRef: previousCrl },
+            after: crlId,
+          },
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(crlId);
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          apiVersion: "load-balancer 2.8",
+          body: { pool: { crl_container_ref: crlRef } },
+        }),
+      );
+      const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+      const reported = {
+        ...pool,
+        ...tlsFields,
+        tls_enabled: true,
+        ca_tls_container_ref: memberCaRef,
+        crl_container_ref: crlRef,
+        project_id: scope.projectId,
+        loadbalancers: [{ id: loadBalancerId }],
+      };
+      expect(transform({ pool: reported })).toBeNull();
+      for (const fields of [
+        { crl_container_ref: previousCrl },
+        { tls_enabled: false },
+        { ca_tls_container_ref: null },
+      ]) {
+        expect(() => transform({ pool: { ...reported, ...fields } })).toThrow(
+          "requested backend TLS configuration",
+        );
+      }
+    },
+  );
+
+  it("explicitly clears the CRL without modifying the CA or TLS mode", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValueOnce({
+      ...pool,
+      ...tlsFields,
+      tls_enabled: true,
+      ca_tls_container_ref: memberCaRef,
+      crl_container_ref: crlRef,
+    });
+    await mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+      ...edit,
+      backendCrl: { before: { ...tlsConfigured, crlRef }, after: null },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        apiVersion: "load-balancer 2.8",
+        body: { pool: { crl_container_ref: null } },
+      }),
+    );
+  });
+
+  it.each([
+    [{ ca_tls_container_ref: "new-ca" }, tlsConfigured, "conflict"],
+    [{ crl_container_ref: undefined }, tlsConfigured, "conflict"],
+    [{ crl_container_ref: "new-crl" }, tlsConfigured, "conflict"],
+    [
+      { tls_enabled: false },
+      { ...tlsConfigured, enabled: false },
+      "validation-failed",
+    ],
+    [
+      { ca_tls_container_ref: null },
+      { ...tlsConfigured, caRef: null },
+      "validation-failed",
+    ],
+    [
+      { tls_container_ref: "client-cert" },
+      { ...tlsConfigured, clientRef: "client-cert" },
+      "validation-failed",
+    ],
+    [{ protocol: "HTTPS" }, tlsConfigured, "validation-failed"],
+  ] as const)(
+    "rejects unsafe or stale revocation list changes (%j)",
+    async (fields, before, code) => {
+      mocks.getLoadBalancerPool.mockResolvedValueOnce({
+        ...pool,
+        ...tlsFields,
+        tls_enabled: true,
+        ca_tls_container_ref: memberCaRef,
+        ...fields,
+      });
+      await expect(
+        mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+          ...edit,
+          backendCrl: { before, after: crlId },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code } });
+      expect(mocks.getSecret).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a CA selected as the CRL and a combined TLS and CRL edit", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      ...tlsFields,
+      tls_enabled: true,
+      ca_tls_container_ref: memberCaRef,
+    });
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...edit,
+        backendCrl: { before: tlsConfigured, after: memberCaId },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...edit,
+        backendCrl: { before: tlsConfigured, after: crlId },
+        backendTls: { before: tlsConfigured, enabled: false },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 

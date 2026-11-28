@@ -63,8 +63,12 @@ export function poolTlsEditBlock(current: ReturnType<typeof readPoolTls>) {
   if (!current)
     return "Octavia did not report the complete backend TLS configuration.";
   return current.clientRef || current.crlRef
-    ? "Backend TLS is read-only when a client certificate or revocation list is configured."
+    ? "TLS mode and the member CA are read-only when a client certificate or revocation list is configured."
     : null;
+}
+
+export function canEditPoolCrl(current: PoolTlsSnapshot | null) {
+  return Boolean(current?.enabled && current.caRef && !current.clientRef);
 }
 
 export function samePoolTls(

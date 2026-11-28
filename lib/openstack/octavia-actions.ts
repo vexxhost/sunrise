@@ -73,6 +73,7 @@ import {
 } from "@/lib/openstack/octavia-listener-settings";
 import {
   availablePoolProtocols,
+  canEditPoolCrl,
   canAttachNewOctaviaPool,
   canChangeOctaviaPoolMembers,
   canUseOctaviaPoolAsDefault,
@@ -307,6 +308,12 @@ const poolMutationSchema = z.discriminatedUnion("action", [
         caSecretId: uuidSchema.toLowerCase().optional(),
       })
       .optional(),
+    backendCrl: z
+      .object({
+        before: poolTlsSnapshotSchema,
+        after: uuidSchema.toLowerCase().nullable(),
+      })
+      .optional(),
     persistence: z
       .object({
         before: poolPersistenceSnapshotSchema,
@@ -357,8 +364,16 @@ function validationFailure(scope: MutationScope, message: string) {
 async function resolveOctaviaTlsSecret(
   scope: MutationScope,
   id: string,
-  kind: "server" | "ca" = "server",
+  kind: "server" | "ca" | "crl" = "server",
 ) {
+  const labels = {
+    server: { format: "a PKCS#12 bundle", resource: "selected TLS secret" },
+    ca: { format: "a PEM CA certificate", resource: "selected CA secret" },
+    crl: {
+      format: "a PEM certificate revocation list",
+      resource: "selected revocation list secret",
+    },
+  } as const;
   try {
     const secret = await getSecret(id);
     if (
@@ -369,9 +384,7 @@ async function resolveOctaviaTlsSecret(
         ok: false,
         result: validationFailure(
           scope,
-          kind === "ca"
-            ? "Select an active, unexpired binary secret containing a PEM CA certificate."
-            : "Select an active, unexpired binary secret containing a PKCS#12 bundle.",
+          `Select an active, unexpired binary secret containing ${labels[kind].format}.`,
         ),
       } as const;
     }
@@ -379,11 +392,7 @@ async function resolveOctaviaTlsSecret(
   } catch (error) {
     return {
       ok: false,
-      result: preflightFailure(
-        error,
-        scope,
-        kind === "ca" ? "selected CA secret" : "selected TLS secret",
-      ),
+      result: preflightFailure(error, scope, labels[kind].resource),
     } as const;
   }
 }
@@ -1540,11 +1549,13 @@ export async function mutateLoadBalancerPoolAction(
   }
 
   const poolId = value.action === "create" ? null : value.id.toLowerCase();
-  const tlsVersion =
-    value.action !== "delete" && value.backendTls
-      ? poolTlsReadApiVersion(capabilities)
-      : undefined;
-  if (value.action !== "delete" && value.backendTls && !tlsVersion) {
+  const changesPoolTls =
+    (value.action !== "delete" && Boolean(value.backendTls)) ||
+    (value.action === "edit" && Boolean(value.backendCrl));
+  const tlsVersion = changesPoolTls
+    ? poolTlsReadApiVersion(capabilities)
+    : undefined;
+  if (changesPoolTls && !tlsVersion) {
     return validationFailure(
       activeScope,
       "Backend TLS requires Octavia API version 2.8 or later.",
@@ -1554,6 +1565,7 @@ export async function mutateLoadBalancerPoolAction(
   let protocol: string;
   let expectedTls: PoolTlsSnapshot | undefined;
   let caSecretId: string | undefined;
+  let crlSecretId: string | undefined;
   if (value.action === "create") {
     const listenerId = value.listenerId?.toLowerCase();
     let listenerProtocol: string | undefined;
@@ -1754,15 +1766,15 @@ export async function mutateLoadBalancerPoolAction(
               : after;
         }
       }
-      if (value.backendTls) {
+      const tlsChange = value.backendTls ?? value.backendCrl;
+      if (tlsChange) {
         if (protocol !== "HTTP")
           return validationFailure(
             activeScope,
             "Backend TLS is only configurable on HTTP pools in Sunrise.",
           );
-        const { before, enabled, caSecretId: requestedCa } = value.backendTls;
         const current = readPoolTls(pool);
-        if (!current || !samePoolTls(current, before)) {
+        if (!current || !samePoolTls(current, tlsChange.before)) {
           return mutationFailure(
             {
               code: "conflict",
@@ -1773,28 +1785,52 @@ export async function mutateLoadBalancerPoolAction(
             activeScope,
           );
         }
-        const blocked = poolTlsEditBlock(current);
-        if (blocked) return validationFailure(activeScope, blocked);
-        if (!enabled && requestedCa) {
-          return validationFailure(
-            activeScope,
-            "A replacement member CA can only be selected when backend TLS is enabled.",
-          );
+        if (value.backendCrl) {
+          if (value.backendTls || !canEditPoolCrl(current)) {
+            return validationFailure(
+              activeScope,
+              "A revocation list can only be changed separately on an encrypted HTTP pool with a member CA and no backend client certificate.",
+            );
+          }
+          const { after } = value.backendCrl;
+          if (after === null) {
+            if (current.crlRef !== null) {
+              body.crl_container_ref = null;
+              expectedTls = { ...current, crlRef: null };
+            }
+          } else if (after === octaviaTlsSecretId(current.caRef)) {
+            return validationFailure(
+              activeScope,
+              "The revocation list must be a different secret from the member CA.",
+            );
+          } else if (after !== octaviaTlsSecretId(current.crlRef)) {
+            crlSecretId = after;
+            expectedTls = current;
+          }
+        } else if (value.backendTls) {
+          const { enabled, caSecretId: requestedCa } = value.backendTls;
+          const blocked = poolTlsEditBlock(current);
+          if (blocked) return validationFailure(activeScope, blocked);
+          if (!enabled && requestedCa) {
+            return validationFailure(
+              activeScope,
+              "A replacement member CA can only be selected when backend TLS is enabled.",
+            );
+          }
+          if (enabled && !current.caRef && !requestedCa) {
+            return validationFailure(
+              activeScope,
+              "Select a member CA certificate to verify backend TLS connections.",
+            );
+          }
+          if (requestedCa && octaviaTlsSecretId(current.caRef) !== requestedCa)
+            caSecretId = requestedCa;
+          if (enabled !== current.enabled) body.tls_enabled = enabled;
+          if (enabled !== current.enabled || caSecretId)
+            expectedTls = { ...current, enabled };
         }
-        if (enabled && !current.caRef && !requestedCa) {
-          return validationFailure(
-            activeScope,
-            "Select a member CA certificate to verify backend TLS connections.",
-          );
-        }
-        if (requestedCa && octaviaTlsSecretId(current.caRef) !== requestedCa) {
-          caSecretId = requestedCa;
-        }
-        if (enabled !== current.enabled) body.tls_enabled = enabled;
-        if (enabled !== current.enabled || caSecretId)
-          expectedTls = { ...current, enabled };
       }
-      if (!Object.keys(body).length && !caSecretId) {
+      if (!Object.keys(body).length && !caSecretId && !crlSecretId) {
         return {
           ok: true,
           status: "success",
@@ -1817,11 +1853,19 @@ export async function mutateLoadBalancerPoolAction(
     capabilities,
   );
   if (!supported.ok) return supported.result;
-  if (caSecretId && expectedTls && body) {
-    const secret = await resolveOctaviaTlsSecret(activeScope, caSecretId, "ca");
+  const tlsSecretId = crlSecretId ?? caSecretId;
+  if (tlsSecretId && expectedTls && body) {
+    const secret = await resolveOctaviaTlsSecret(
+      activeScope,
+      tlsSecretId,
+      crlSecretId ? "crl" : "ca",
+    );
     if (!secret.ok) return secret.result;
-    expectedTls.caRef = secret.reference;
-    body.ca_tls_container_ref = secret.reference;
+    if (crlSecretId) {
+      expectedTls.crlRef = body.crl_container_ref = secret.reference;
+    } else {
+      expectedTls.caRef = body.ca_tls_container_ref = secret.reference;
+    }
   }
 
   const path = "/v2/lbaas/pools";
