@@ -53,6 +53,9 @@ import {
   LISTENER_NUMERIC_KEYS,
   LISTENER_SETTING_KEYS,
   listenerCidrError,
+  listenerClientAuthModeSchema,
+  listenerClientAuthSnapshotSchema,
+  listenerClientAuthUnavailable,
   listenerReadApiVersion,
   listenerSettingUnavailable,
   octaviaSniRefsSchema,
@@ -60,6 +63,7 @@ import {
   OCTAVIA_LISTENER_PROTOCOLS,
   OCTAVIA_SNI_CERTIFICATE_REQUIRED,
   readListenerInsertHeaders,
+  readListenerClientAuth,
   readOctaviaSniRefs,
   requiredListenerWriteVersion,
   sameListenerCidrs,
@@ -233,6 +237,13 @@ const listenerMutationSchema = z.discriminatedUnion("action", [
         add: uuidSchema.toLowerCase().optional(),
       })
       .optional(),
+    clientAuthentication: z
+      .object({
+        before: listenerClientAuthSnapshotSchema,
+        mode: listenerClientAuthModeSchema,
+        caSecretId: uuidSchema.toLowerCase().optional(),
+      })
+      .optional(),
     defaultPool: z
       .object({
         before: uuidSchema.nullable(),
@@ -328,7 +339,11 @@ function validationFailure(scope: MutationScope, message: string) {
   );
 }
 
-async function resolveListenerTlsSecret(scope: MutationScope, id: string) {
+async function resolveListenerTlsSecret(
+  scope: MutationScope,
+  id: string,
+  kind: "server" | "client-ca" = "server",
+) {
   try {
     const secret = await getSecret(id);
     if (
@@ -339,7 +354,9 @@ async function resolveListenerTlsSecret(scope: MutationScope, id: string) {
         ok: false,
         result: validationFailure(
           scope,
-          "Select an active, unexpired binary secret containing a PKCS#12 bundle.",
+          kind === "client-ca"
+            ? "Select an active, unexpired binary secret containing a PEM client CA certificate."
+            : "Select an active, unexpired binary secret containing a PKCS#12 bundle.",
         ),
       } as const;
     }
@@ -347,7 +364,13 @@ async function resolveListenerTlsSecret(scope: MutationScope, id: string) {
   } catch (error) {
     return {
       ok: false,
-      result: preflightFailure(error, scope, "selected TLS secret"),
+      result: preflightFailure(
+        error,
+        scope,
+        kind === "client-ca"
+          ? "selected client CA secret"
+          : "selected TLS secret",
+      ),
     } as const;
   }
 }
@@ -915,6 +938,8 @@ export async function mutateLoadBalancerListenerAction(
   let tlsSecretId: string | undefined;
   let sniUpdate:
     { keep: string[]; add?: string; currentDefault: string | null } | undefined;
+  let clientCaSecretId: string | undefined;
+  let expectedClientAuth: ReturnType<typeof readListenerClientAuth> = null;
   if (value.action === "create") {
     if (
       !availableListenerProtocols(
@@ -966,7 +991,8 @@ export async function mutateLoadBalancerListenerAction(
         value.id.toLowerCase(),
         activeScope.regionId,
         activeScope.projectId,
-        value.action === "edit" && (value.settings || value.insertHeaders)
+        value.action === "edit" &&
+          (value.settings || value.insertHeaders || value.clientAuthentication)
           ? listenerReadApiVersion(capabilities)
           : undefined,
       );
@@ -1084,6 +1110,49 @@ export async function mutateLoadBalancerListenerAction(
             currentDefault: beforeDefault,
           };
         }
+      }
+      if (value.clientAuthentication) {
+        const { before, mode, caSecretId } = value.clientAuthentication;
+        const current = readListenerClientAuth(listener);
+        if (
+          !current ||
+          before.mode !== current.mode ||
+          before.caRef !== current.caRef ||
+          before.crlRef !== current.crlRef
+        ) {
+          return mutationFailure(
+            {
+              code: "conflict",
+              message:
+                "Client certificate authentication changed or could not be verified. Refresh and try again.",
+              retryable: true,
+            },
+            activeScope,
+          );
+        }
+        const blocked = listenerClientAuthUnavailable(
+          existing.value.provider,
+          listener,
+          capabilities,
+        );
+        if (blocked) return validationFailure(activeScope, blocked);
+        if (mode === "NONE" && caSecretId) {
+          return validationFailure(
+            activeScope,
+            "A replacement client CA is only used with Optional or Required authentication.",
+          );
+        }
+        if (mode !== "NONE" && !current.caRef && !caSecretId) {
+          return validationFailure(
+            activeScope,
+            "Select a client CA certificate.",
+          );
+        }
+        if (caSecretId && octaviaTlsSecretId(current.caRef) !== caSecretId)
+          clientCaSecretId = caSecretId;
+        if (mode !== current.mode) body.client_authentication = mode;
+        if (mode !== current.mode || clientCaSecretId)
+          expectedClientAuth = { ...current, mode };
       }
       if (value.defaultPool) {
         const { before, after } = value.defaultPool;
@@ -1268,7 +1337,12 @@ export async function mutateLoadBalancerListenerAction(
         }
       }
     }
-    if (Object.keys(body).length === 0 && !tlsSecretId && !sniUpdate)
+    if (
+      Object.keys(body).length === 0 &&
+      !tlsSecretId &&
+      !sniUpdate &&
+      !clientCaSecretId
+    )
       return validationFailure(activeScope, "No listener settings changed.");
   }
 
@@ -1283,6 +1357,7 @@ export async function mutateLoadBalancerListenerAction(
       settingsKeys,
       value.action === "create" ? value.protocol : undefined,
       hasForwardedProto,
+      expectedClientAuth !== null,
     ),
     "Changing load balancer listeners",
     capabilities,
@@ -1305,6 +1380,16 @@ export async function mutateLoadBalancerListenerAction(
       sniReferences = [...sniReferences, secret.reference];
     }
     body.sni_container_refs = sniReferences;
+  }
+  if (clientCaSecretId && expectedClientAuth && body) {
+    const secret = await resolveListenerTlsSecret(
+      activeScope,
+      clientCaSecretId,
+      "client-ca",
+    );
+    if (!secret.ok) return secret.result;
+    expectedClientAuth.caRef = secret.reference;
+    body.client_ca_tls_container_ref = secret.reference;
   }
 
   return executeOpenStackMutation<null>({
@@ -1350,6 +1435,9 @@ export async function mutateLoadBalancerListenerAction(
             loadbalancers: z.tuple([z.object({ id: uuidSchema })]),
             default_tls_container_ref: z.string().nullish(),
             sni_container_refs: z.unknown().optional(),
+            client_authentication: z.unknown().optional(),
+            client_ca_tls_container_ref: z.unknown().optional(),
+            client_crl_container_ref: z.unknown().optional(),
           }),
         })
         .safeParse(payload);
@@ -1378,6 +1466,19 @@ export async function mutateLoadBalancerListenerAction(
             "Octavia did not return the requested SNI certificates",
           );
         }
+      }
+      if (
+        expectedClientAuth &&
+        (response.data.listener.client_authentication !==
+          expectedClientAuth.mode ||
+          response.data.listener.client_ca_tls_container_ref !==
+            expectedClientAuth.caRef ||
+          response.data.listener.client_crl_container_ref !==
+            expectedClientAuth.crlRef)
+      ) {
+        throw new Error(
+          "Octavia did not return the requested client authentication configuration",
+        );
       }
       return null;
     },

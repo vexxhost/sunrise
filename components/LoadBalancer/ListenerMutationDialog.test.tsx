@@ -37,7 +37,10 @@ const active = {
   admin_state_up: false,
 };
 
-function renderEdit(defaultRef: string | null | undefined) {
+function renderEdit(
+  defaultRef: string | null | undefined,
+  clientAuth?: { mode: string; caRef: string | null; crlRef: string | null },
+) {
   return renderToStaticMarkup(
     <ListenerMutationDialog
       target={{
@@ -49,6 +52,9 @@ function renderEdit(defaultRef: string | null | undefined) {
           protocol: "TERMINATED_HTTPS",
           protocol_port: 443,
           default_tls_container_ref: defaultRef,
+          client_authentication: clientAuth?.mode,
+          client_ca_tls_container_ref: clientAuth?.caRef,
+          client_crl_container_ref: clientAuth?.crlRef,
           sni_container_refs: [
             `https://barbican.example.test/v1/secrets/${secretId}`,
           ],
@@ -62,7 +68,8 @@ function renderEdit(defaultRef: string | null | undefined) {
       }}
       capabilities={{
         serviceType: "load-balancer",
-        discoveryStatus: "unavailable",
+        discoveryStatus: "available",
+        microversions: { minimum: "2.0", maximum: "2.12" },
         message: "",
       }}
       scope={scope}
@@ -88,5 +95,29 @@ describe("SNI-only listener editing", () => {
 
   it("does not offer SNI edits when the default certificate state was not reported", () => {
     expect(renderEdit(undefined)).not.toContain("Add SNI certificate");
+  });
+});
+
+describe("Listener client certificate authentication", () => {
+  it("shows the CA selector for a listener with client authentication enabled", () => {
+    const markup = renderEdit(null, {
+      mode: "OPTIONAL",
+      caRef: "existing-client-ca",
+      crlRef: null,
+    });
+    expect(markup).toContain('id="octavia-listener-client-auth"');
+    expect(markup).toContain('id="octavia-listener-client-ca"');
+    expect(markup).toContain("PEM-encoded CA certificate");
+  });
+
+  it("leaves authentication read-only when a CRL is configured", () => {
+    const markup = renderEdit(null, {
+      mode: "MANDATORY",
+      caRef: "existing-client-ca",
+      crlRef: "existing-crl",
+    });
+    expect(markup).not.toContain('id="octavia-listener-client-auth"');
+    expect(markup).toContain("revocation list");
+    expect(markup).toContain("Add SNI certificate");
   });
 });

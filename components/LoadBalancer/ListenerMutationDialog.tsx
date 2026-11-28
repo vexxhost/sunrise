@@ -45,16 +45,20 @@ import {
   availableListenerProtocols,
   editableListenerInsertHeaders,
   isListenerInsertHeaderEnabled,
+  LISTENER_CLIENT_AUTH_LABELS,
   LISTENER_NUMERIC_FIELDS,
   LISTENER_NUMERIC_KEYS,
   listenerCidrError,
+  listenerClientAuthUnavailable,
   listenerSettingUnavailable,
   octaviaTlsSecretId,
   OCTAVIA_SNI_CERTIFICATE_REQUIRED,
   readListenerInsertHeaders,
+  readListenerClientAuth,
   readOctaviaSniRefs,
   sameListenerCidrs,
   type ListenerNumericField,
+  type ListenerClientAuthMode,
   type OctaviaListenerProtocol,
   type OctaviaListenerSettings,
 } from "@/lib/openstack/octavia-listener-settings";
@@ -75,6 +79,7 @@ type ListenerHeaderChanges = NonNullable<
 const NO_DEFAULT_POOL = "none";
 const KEEP_TLS_CERTIFICATE = "keep-current";
 const NO_SNI_ADDITION = "no-addition";
+const KEEP_CLIENT_CA = "keep-client-ca";
 
 export function ListenerMutationDialog({
   target,
@@ -108,6 +113,7 @@ export function ListenerMutationDialog({
     listener,
     cidrs: originalCidrs,
     sniRefs: readOctaviaSniRefs(listener?.sni_container_refs),
+    clientAuth: listener ? readListenerClientAuth(listener) : null,
   }));
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
@@ -118,6 +124,10 @@ export function ListenerMutationDialog({
   const [tlsSecretId, setTlsSecretId] = useState("");
   const [sniSecretId, setSniSecretId] = useState("");
   const [removedSniRefs, setRemovedSniRefs] = useState<string[]>([]);
+  const [clientAuthMode, setClientAuthMode] = useState<ListenerClientAuthMode>(
+    initial.clientAuth?.mode ?? "NONE",
+  );
+  const [clientCaSecretId, setClientCaSecretId] = useState("");
   const currentTlsRef = initial.listener?.default_tls_container_ref;
   const currentTlsSecretId = octaviaTlsSecretId(currentTlsRef);
   const editingTerminatedHttps =
@@ -131,6 +141,14 @@ export function ListenerMutationDialog({
     editingTerminatedHttps &&
     initial.sniRefs !== null &&
     (currentTlsRef === null || hasDefaultTlsRef);
+  const clientAuthBlock =
+    editingTerminatedHttps && initial.listener
+      ? listenerClientAuthUnavailable(
+          loadBalancer.provider,
+          initial.listener,
+          capabilities,
+        )
+      : null;
   const tlsSecrets = useQuery({
     queryKey: [
       initial.scope.regionId,
@@ -293,6 +311,39 @@ export function ListenerMutationDialog({
     removedSniRefs.length > 0 &&
     !selectedSniSecret &&
     removedSniRefs.length === sniCertificateChange.before.length;
+  const clientCaId = octaviaTlsSecretId(initial.clientAuth?.caRef);
+  const clientCaOptions = tlsSecrets.isError
+    ? []
+    : tlsOptions.filter(
+        ({ id }) =>
+          id !== clientCaId &&
+          id !== tlsSecretId &&
+          id !== sniSecretId &&
+          !initial.sniRefs?.some((ref) => octaviaTlsSecretId(ref) === id),
+      );
+  const selectedClientCa = clientCaOptions.find(
+    ({ id }) => id === clientCaSecretId,
+  );
+  const clientAuthChange =
+    editingTerminatedHttps &&
+    !clientAuthBlock &&
+    initial.clientAuth &&
+    (clientAuthMode !== initial.clientAuth.mode || clientCaSecretId)
+      ? {
+          before: initial.clientAuth,
+          mode: clientAuthMode,
+          ...(clientCaSecretId ? { caSecretId: clientCaSecretId } : {}),
+        }
+      : undefined;
+  const clientAuthError =
+    clientAuthChange &&
+    (clientCaSecretId && !selectedClientCa
+      ? "The selected client CA is no longer available."
+      : clientAuthMode !== "NONE" &&
+          !initial.clientAuth?.caRef &&
+          !selectedClientCa
+        ? "Select a client CA certificate."
+        : null);
   const poolChoices = poolQuery.isError
     ? []
     : (poolQuery.data ?? []).filter((pool) =>
@@ -418,6 +469,7 @@ export function ListenerMutationDialog({
     adminStateUp !== initial.adminStateUp ||
     advancedChanged ||
     headersChanged ||
+    clientAuthChange !== undefined ||
     sniCertificateChange !== undefined ||
     defaultCertificateChange !== undefined ||
     defaultPoolChange !== undefined;
@@ -429,6 +481,7 @@ export function ListenerMutationDialog({
         quota.issues.length === 0 &&
         (!tlsProtocol || Boolean(selectedTlsSecret))
       : changed &&
+        !clientAuthError &&
         (!defaultCertificateChange || Boolean(selectedTlsSecret)) &&
         (!sniSecretId || Boolean(selectedSniSecret)) &&
         !removesLastSniCertificate &&
@@ -460,6 +513,7 @@ export function ListenerMutationDialog({
         id: target.listener.id,
         ...fields,
         ...(headersChanged ? { insertHeaders } : {}),
+        ...(clientAuthChange ? { clientAuthentication: clientAuthChange } : {}),
         ...(defaultCertificateChange
           ? { defaultCertificate: defaultCertificateChange }
           : {}),
@@ -759,6 +813,123 @@ export function ListenerMutationDialog({
                 <MutationAlert>
                   {OCTAVIA_SNI_CERTIFICATE_REQUIRED}
                 </MutationAlert>
+              ) : null}
+            </fieldset>
+          ) : null}
+          {editingTerminatedHttps ? (
+            <fieldset className="min-w-0 space-y-2" disabled={pending}>
+              <legend className="text-sm font-medium">
+                Client certificates
+              </legend>
+              {clientAuthBlock ? (
+                <p className="text-sm text-muted-foreground">
+                  {clientAuthBlock}
+                </p>
+              ) : initial.clientAuth ? (
+                <>
+                  <Label htmlFor="octavia-listener-client-auth">
+                    Authentication
+                  </Label>
+                  <Select
+                    value={clientAuthMode}
+                    disabled={pending}
+                    onValueChange={(mode: ListenerClientAuthMode) => {
+                      setClientAuthMode(mode);
+                      if (mode === "NONE") setClientCaSecretId("");
+                    }}
+                  >
+                    <SelectTrigger
+                      id="octavia-listener-client-auth"
+                      className="w-full"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(LISTENER_CLIENT_AUTH_LABELS).map(
+                        ([mode, label]) => (
+                          <SelectItem value={mode} key={mode}>
+                            {label}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {clientAuthMode === "NONE" ? (
+                    clientAuthChange && initial.clientAuth.caRef ? (
+                      <p className="text-xs text-muted-foreground">
+                        Disabling authentication keeps the configured client CA.
+                      </p>
+                    ) : null
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        {clientAuthMode === "MANDATORY"
+                          ? "Clients must present a trusted certificate to connect."
+                          : "Clients may connect without a certificate; any certificate presented must be trusted."}
+                      </p>
+                      <Label htmlFor="octavia-listener-client-ca">
+                        Client CA certificate
+                      </Label>
+                      <Select
+                        value={
+                          selectedClientCa?.id ??
+                          (clientCaSecretId ? "" : KEEP_CLIENT_CA)
+                        }
+                        disabled={pending}
+                        onValueChange={(id) =>
+                          setClientCaSecretId(id === KEEP_CLIENT_CA ? "" : id)
+                        }
+                      >
+                        <SelectTrigger
+                          id="octavia-listener-client-ca"
+                          className="w-full"
+                          aria-invalid={Boolean(clientAuthError)}
+                          aria-describedby="octavia-listener-client-ca-help"
+                        >
+                          <SelectValue placeholder="Selected client CA unavailable" />
+                        </SelectTrigger>
+                        <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
+                          <SelectItem value={KEEP_CLIENT_CA}>
+                            {initial.clientAuth.caRef
+                              ? "Keep current client CA"
+                              : "Select a Barbican secret"}
+                          </SelectItem>
+                          {clientCaOptions.map(({ id, name }) => (
+                            <SelectItem
+                              key={id}
+                              value={id}
+                              className="wrap-anywhere"
+                            >
+                              {name ? `${name} (${id.slice(0, 8)})` : id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p
+                        id="octavia-listener-client-ca-help"
+                        className="text-xs text-muted-foreground"
+                      >
+                        PEM-encoded CA certificate, without a private key,
+                        stored as a binary secret in{" "}
+                        <ResourceLink
+                          href="/key-manager/secrets"
+                          target="_blank"
+                        >
+                          Key Manager
+                        </ResourceLink>
+                        .
+                      </p>
+                      {tlsSecrets.isError ? (
+                        <MutationAlert variant="warning">
+                          Could not load client CA secrets.
+                        </MutationAlert>
+                      ) : null}
+                      {clientAuthError ? (
+                        <MutationAlert>{clientAuthError}</MutationAlert>
+                      ) : null}
+                    </>
+                  )}
+                </>
               ) : null}
             </fieldset>
           ) : null}

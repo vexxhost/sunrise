@@ -40,9 +40,11 @@ import {
 } from "@/lib/openstack/octavia";
 import { isL7HttpListener } from "@/lib/openstack/octavia-l7-settings";
 import {
+  LISTENER_CLIENT_AUTH_LABELS,
   LISTENER_NUMERIC_FIELDS,
   LISTENER_NUMERIC_KEYS,
   listenerSettingUnavailable,
+  listenerClientAuthModeSchema,
   octaviaTlsSecretId,
   readListenerInsertHeaders,
   readOctaviaSniRefs,
@@ -101,6 +103,10 @@ export function ListenerDetailClient({
     listener.default_tls_container_ref,
   );
   const sniRefs = readOctaviaSniRefs(listener.sni_container_refs);
+  const clientAuthMode = listenerClientAuthModeSchema.safeParse(
+    listener.client_authentication,
+  );
+  const clientCaId = octaviaTlsSecretId(listener.client_ca_tls_container_ref);
   const supportsRoutingChanges =
     isOctaviaAmphoraProvider(loadBalancer.provider) &&
     isL7HttpListener(listener);
@@ -307,6 +313,36 @@ export function ListenerDetailClient({
                 "Not reported"
               )}
             </DetailField>
+          ) : null}
+          {listener.protocol === "TERMINATED_HTTPS" ? (
+            <>
+              <DetailField label="Client certificate authentication">
+                {clientAuthMode.success
+                  ? LISTENER_CLIENT_AUTH_LABELS[clientAuthMode.data]
+                  : "Not reported"}
+              </DetailField>
+              <DetailField label="Client CA certificate">
+                {clientCaId ? (
+                  <ResourceLink
+                    href={`/key-manager/secrets/${clientCaId}`}
+                    className="wrap-anywhere font-mono"
+                  >
+                    {clientCaId}
+                  </ResourceLink>
+                ) : listener.client_ca_tls_container_ref ? (
+                  "External certificate reference"
+                ) : listener.client_ca_tls_container_ref === null ? (
+                  "None"
+                ) : (
+                  "Not reported"
+                )}
+              </DetailField>
+              {listener.client_crl_container_ref ? (
+                <DetailField label="Client certificate revocation list">
+                  Configured
+                </DetailField>
+              ) : null}
+            </>
           ) : null}
           <DetailField label="Operating status">
             <Badge variant={octaviaStatusVariant(listener.operating_status)}>
