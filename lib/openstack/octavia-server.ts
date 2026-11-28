@@ -11,7 +11,6 @@ import {
   discoverLoadBalancerCapabilities,
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION,
   OCTAVIA_FLAVORS_MICROVERSION,
-  OCTAVIA_TAGS_MICROVERSION,
 } from "@/lib/openstack/capabilities-server";
 import {
   microversionSupport,
@@ -27,6 +26,7 @@ import {
   healthMonitorHttpOptionsMicroversion,
 } from "@/lib/openstack/octavia-health-monitor-settings";
 import { readL7PolicyOrder } from "@/lib/openstack/octavia-l7-settings";
+import { readWithOctaviaLoadBalancerTags } from "@/lib/openstack/octavia-tags-server";
 import {
   isOctaviaBackupMemberPool,
   memberBackupMicroversion,
@@ -459,92 +459,21 @@ async function getProjectResource<T extends { project_id: string }>(
   return resource;
 }
 
-async function loadBalancerTagsApiVersion(
-  scope: OctaviaScope,
-  knownCapabilities?: OpenStackServiceCapabilities,
-) {
-  const capabilities =
-    knownCapabilities ??
-    (await discoverLoadBalancerCapabilities(scope.regionId));
-  const support = microversionSupport(
-    capabilities,
-    OCTAVIA_TAGS_MICROVERSION,
-    "Load balancer tags",
-  );
-  return {
-    apiVersion:
-      support.status === "unsupported"
-        ? undefined
-        : `load-balancer ${support.requestedMicroversion ?? OCTAVIA_TAGS_MICROVERSION}`,
-    fallbackAllowed: support.status === "unknown",
-  };
-}
-
-function isUnsupportedMicroversion(error: unknown) {
-  return (
-    error instanceof OpenStackRequestError &&
-    (error.status === 400 || error.status === 406)
-  );
-}
-
-async function listLoadBalancersWithTags(
-  scope: OctaviaScope,
-  apiVersion?: string,
-  fallbackAllowed = false,
-) {
-  const path = collectionPath("loadbalancers", scope.projectId);
-  try {
-    return await listCollection<OctaviaLoadBalancer>(
-      scope,
-      "loadbalancers",
-      path,
-      apiVersion,
-    );
-  } catch (error) {
-    if (!fallbackAllowed || !apiVersion || !isUnsupportedMicroversion(error)) {
-      throw error;
-    }
-    return listCollection<OctaviaLoadBalancer>(scope, "loadbalancers", path);
-  }
-}
-
-async function getLoadBalancerWithTags(
-  scope: OctaviaScope,
-  id: string,
-  apiVersion?: string,
-  fallbackAllowed = false,
-) {
-  try {
-    return await getProjectResource<OctaviaLoadBalancer>(
-      scope,
-      "loadbalancers",
-      "loadbalancer",
-      id,
-      apiVersion,
-    );
-  } catch (error) {
-    if (!fallbackAllowed || !apiVersion || !isUnsupportedMicroversion(error)) {
-      throw error;
-    }
-    return getProjectResource<OctaviaLoadBalancer>(
-      scope,
-      "loadbalancers",
-      "loadbalancer",
-      id,
-    );
-  }
-}
-
 export async function listLoadBalancers(
   regionId?: string,
   projectId?: string,
 ): Promise<OctaviaLoadBalancer[]> {
   const scope = await resolveScope(regionId, projectId);
-  const tagsRead = await loadBalancerTagsApiVersion(scope);
-  const loadBalancers = await listLoadBalancersWithTags(
-    scope,
-    tagsRead.apiVersion,
-    tagsRead.fallbackAllowed,
+  const path = collectionPath("loadbalancers", scope.projectId);
+  const { data: loadBalancers } = await readWithOctaviaLoadBalancerTags(
+    scope.regionId,
+    (apiVersion) =>
+      listCollection<OctaviaLoadBalancer>(
+        scope,
+        "loadbalancers",
+        path,
+        apiVersion,
+      ),
   );
 
   return loadBalancers
@@ -572,18 +501,23 @@ async function readLoadBalancer(
   loadBalancerId: string,
   listenerCapabilities?: OpenStackServiceCapabilities,
 ) {
-  const tagsRead = await loadBalancerTagsApiVersion(
-    scope,
-    listenerCapabilities,
-  );
   const advancedVersion =
     listenerCapabilities && listenerParentReadApiVersion(listenerCapabilities);
-  return getLoadBalancerWithTags(
-    scope,
-    loadBalancerId,
-    advancedVersion ?? tagsRead.apiVersion,
-    !advancedVersion && tagsRead.fallbackAllowed,
+  const read = (apiVersion?: string) =>
+    getProjectResource<OctaviaLoadBalancer>(
+      scope,
+      "loadbalancers",
+      "loadbalancer",
+      loadBalancerId,
+      apiVersion,
+    );
+  if (advancedVersion) return read(advancedVersion);
+  const { data } = await readWithOctaviaLoadBalancerTags(
+    scope.regionId,
+    read,
+    listenerCapabilities,
   );
+  return data;
 }
 
 export async function getLoadBalancerListener(
