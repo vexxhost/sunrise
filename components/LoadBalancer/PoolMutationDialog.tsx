@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Save } from "lucide-react";
 
+import { PoolTlsReferenceField } from "@/components/LoadBalancer/PoolTlsReferenceField";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
@@ -42,7 +43,7 @@ import {
   availablePoolPersistenceModes,
   availablePoolProtocols,
   canAttachNewOctaviaPool,
-  canEditPoolCrl,
+  canEditPoolTlsReferences,
   describePoolPersistence,
   formatPoolAlgorithm,
   formatPoolPersistence,
@@ -57,6 +58,7 @@ import {
   type OctaviaPoolAlgorithm,
   type OctaviaPoolPersistenceMode,
   type OctaviaPoolProtocol,
+  type PoolTlsReferenceKind,
 } from "@/lib/openstack/octavia-pool-settings";
 import type {
   OctaviaL7Policy,
@@ -96,8 +98,6 @@ type PoolDialogOperations =
 const NO_LISTENER = "none";
 const NO_PERSISTENCE = "none";
 const KEEP_MEMBER_CA = "keep-member-ca";
-const KEEP_CRL = "keep-crl";
-const REMOVE_CRL = "remove-crl";
 
 export function PoolMutationDialog({
   target,
@@ -135,7 +135,10 @@ export function PoolMutationDialog({
   const [protocol, setProtocol] = useState<OctaviaPoolProtocol>("HTTP");
   const [tlsEnabled, setTlsEnabled] = useState(initial.tls?.enabled ?? false);
   const [caSecretId, setCaSecretId] = useState("");
-  const [crlChoice, setCrlChoice] = useState(KEEP_CRL);
+  const [referenceChange, setReferenceChange] = useState<{
+    kind: PoolTlsReferenceKind;
+    after: string | null;
+  } | null>(null);
   const chooseProtocol = (next: OctaviaPoolProtocol) => {
     setProtocol(next);
     if (next !== "HTTP") {
@@ -188,8 +191,10 @@ export function PoolMutationDialog({
         Boolean(poolTlsReadApiVersion(creation.capabilities))
       : target.action === "edit" && backendTlsSupported);
   const tlsBlock = creating ? null : poolTlsEditBlock(initial.tls);
-  const showCrl =
-    target.action === "edit" && showBackendTls && canEditPoolCrl(initial.tls);
+  const showTlsReferences =
+    target.action === "edit" &&
+    showBackendTls &&
+    canEditPoolTlsReferences(initial.tls);
   const tlsSecrets = useQuery({
     queryKey: [
       submission.scope.regionId,
@@ -198,7 +203,9 @@ export function PoolMutationDialog({
       "tls-secrets",
     ],
     queryFn: () => listOctaviaTlsSecretsAction(submission.scope),
-    enabled: Boolean(showCrl || (showBackendTls && !tlsBlock && tlsEnabled)),
+    enabled: Boolean(
+      showTlsReferences || (showBackendTls && !tlsBlock && tlsEnabled),
+    ),
     staleTime: 0,
     retry: false,
   });
@@ -323,15 +330,19 @@ export function PoolMutationDialog({
   const tlsUnavailable = tlsChanged && (!showBackendTls || tlsBlock);
   const currentCaId = octaviaTlsSecretId(initial.tls?.caRef);
   const currentCrlId = octaviaTlsSecretId(initial.tls?.crlRef);
+  const currentClientId = octaviaTlsSecretId(initial.tls?.clientRef);
   const caOptions = tlsSecrets.isError
     ? []
     : (tlsSecrets.data ?? []).filter(({ id }) => id !== currentCaId);
   const selectedCa = caOptions.find(({ id }) => id === caSecretId);
-  const crlOptions = caOptions.filter(({ id }) => id !== currentCrlId);
-  const selectedCrl = crlOptions.find(({ id }) => id === crlChoice);
-  const crlChanged = crlChoice !== KEEP_CRL;
-  const crlUnavailable = crlChanged && (!showCrl || tlsChanged);
-  const crlError = crlChanged && crlChoice !== REMOVE_CRL && !selectedCrl;
+  const referenceOptions = caOptions.filter(
+    ({ id }) => id !== currentCrlId && id !== currentClientId,
+  );
+  const referenceUnavailable =
+    referenceChange && (!showTlsReferences || tlsChanged);
+  const referenceError =
+    referenceChange?.after != null &&
+    !referenceOptions.some(({ id }) => id === referenceChange.after);
   const tlsError =
     tlsChanged && tlsEnabled
       ? caSecretId && !selectedCa
@@ -347,14 +358,14 @@ export function PoolMutationDialog({
     algorithm === initial.algorithm &&
     !persistenceChanged &&
     !tlsChanged &&
-    !crlChanged;
+    !referenceChange;
   const disabled =
     requiresReopen ||
     Boolean(persistenceError) ||
     Boolean(tlsError) ||
     Boolean(tlsUnavailable) ||
-    Boolean(crlUnavailable) ||
-    crlError ||
+    Boolean(referenceUnavailable) ||
+    referenceError ||
     (creating
       ? staleListener ||
         !protocols.includes(protocol) ||
@@ -417,13 +428,13 @@ export function PoolMutationDialog({
                       },
                     }
                   : {}),
-                ...(crlChanged &&
-                initial.tls &&
-                (crlChoice === REMOVE_CRL || selectedCrl)
+                ...(referenceChange && initial.tls
                   ? {
-                      backendCrl: {
+                      [referenceChange.kind === "crl"
+                        ? "backendCrl"
+                        : "backendClientCertificate"]: {
                         before: initial.tls,
-                        after: selectedCrl?.id ?? null,
+                        after: referenceChange.after,
                       },
                     }
                   : {}),
@@ -434,7 +445,7 @@ export function PoolMutationDialog({
           {error ? (
             <MutationAlert variant="error">{error}</MutationAlert>
           ) : null}
-          {tlsUnavailable || crlUnavailable ? (
+          {tlsUnavailable || referenceUnavailable ? (
             <MutationAlert variant="warning">
               Backend TLS settings are no longer available. Reopen the form to
               review your changes.
@@ -573,7 +584,7 @@ export function PoolMutationDialog({
                     <Checkbox
                       id="pool-tls-enabled"
                       checked={tlsEnabled}
-                      disabled={pending || crlChanged}
+                      disabled={pending || referenceChange !== null}
                       onCheckedChange={(checked) => {
                         setTlsEnabled(checked === true);
                         if (checked !== true) setCaSecretId("");
@@ -587,7 +598,7 @@ export function PoolMutationDialog({
                         Member CA certificate
                       </Label>
                       <Select
-                        disabled={pending || crlChanged}
+                        disabled={pending || referenceChange !== null}
                         value={
                           selectedCa?.id ?? (caSecretId ? "" : KEEP_MEMBER_CA)
                         }
@@ -633,11 +644,6 @@ export function PoolMutationDialog({
                         </ResourceLink>
                         .
                       </p>
-                      {tlsSecrets.isError ? (
-                        <MutationAlert variant="warning">
-                          Could not load member CA secrets.
-                        </MutationAlert>
-                      ) : null}
                       {tlsError ? (
                         <MutationAlert>{tlsError}</MutationAlert>
                       ) : null}
@@ -655,73 +661,42 @@ export function PoolMutationDialog({
                   ) : null}
                 </>
               )}
-              {showCrl ? (
-                <div className="space-y-2">
-                  <Label htmlFor="pool-backend-crl">
-                    Certificate revocation list
-                  </Label>
-                  <Select
-                    value={crlError ? "" : crlChoice}
-                    disabled={pending || tlsChanged}
-                    onValueChange={setCrlChoice}
-                  >
-                    <SelectTrigger
-                      id="pool-backend-crl"
-                      className="w-full"
-                      aria-invalid={crlError}
-                      aria-describedby="pool-backend-crl-help"
-                    >
-                      <SelectValue placeholder="Selected revocation list unavailable" />
-                    </SelectTrigger>
-                    <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
-                      <SelectItem value={KEEP_CRL}>
-                        {initial.tls?.crlRef
-                          ? "Keep current revocation list"
-                          : "No revocation list"}
-                      </SelectItem>
-                      {initial.tls?.crlRef ? (
-                        <SelectItem value={REMOVE_CRL}>
-                          Remove revocation list
-                        </SelectItem>
-                      ) : null}
-                      {crlOptions.map(({ id, name }) => (
-                        <SelectItem
-                          key={id}
-                          value={id}
-                          className="wrap-anywhere"
-                        >
-                          {name ? `${name} (${id.slice(0, 8)})` : id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p
-                    id="pool-backend-crl-help"
-                    className="text-xs text-muted-foreground"
-                  >
-                    A PEM revocation list signed by the member CA, stored as a
-                    binary secret in{" "}
-                    <ResourceLink href="/key-manager/secrets" target="_blank">
-                      Key Manager
-                    </ResourceLink>
-                    .
-                  </p>
-                  {crlChoice === REMOVE_CRL ? (
-                    <MutationAlert variant="warning">
-                      Removing the list stops revocation checks. Octavia will
-                      still verify member certificates against the CA.
-                    </MutationAlert>
-                  ) : null}
-                  {tlsSecrets.isError ? (
-                    <MutationAlert variant="warning">
-                      Could not load revocation list secrets.
-                    </MutationAlert>
-                  ) : crlError ? (
-                    <MutationAlert>
-                      The selected revocation list is no longer available.
-                    </MutationAlert>
-                  ) : null}
-                </div>
+              {showTlsReferences
+                ? (["client", "crl"] as const).map((kind) => (
+                    <PoolTlsReferenceField
+                      key={kind}
+                      kind={kind}
+                      configured={Boolean(
+                        kind === "client"
+                          ? initial.tls?.clientRef
+                          : initial.tls?.crlRef,
+                      )}
+                      after={
+                        referenceChange?.kind === kind
+                          ? referenceChange.after
+                          : undefined
+                      }
+                      choices={referenceOptions}
+                      disabled={
+                        pending ||
+                        tlsChanged ||
+                        Boolean(
+                          referenceChange && referenceChange.kind !== kind,
+                        )
+                      }
+                      onChange={(after) =>
+                        setReferenceChange(
+                          after === undefined ? null : { kind, after },
+                        )
+                      }
+                    />
+                  ))
+                : null}
+              {tlsSecrets.isError &&
+              (showTlsReferences || (tlsEnabled && !tlsBlock)) ? (
+                <MutationAlert variant="warning">
+                  Could not load Barbican secrets.
+                </MutationAlert>
               ) : null}
             </fieldset>
           ) : null}
