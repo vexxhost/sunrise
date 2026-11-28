@@ -1,3 +1,4 @@
+import { OctaviaBarbicanReference } from "@/components/LoadBalancer/OctaviaBarbicanReference";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { ResourceLink } from "@/components/resources/ResourceLink";
 import { Label } from "@/components/ui/label";
@@ -8,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { PoolTlsReferenceKind } from "@/lib/openstack/octavia-pool-settings";
+import type { BarbicanReferenceNames } from "@/lib/openstack/barbican-references";
 
 const KEEP = "keep";
 const REMOVE = "remove";
@@ -29,30 +30,53 @@ const descriptions = {
     removalWarning:
       "Removing the list stops revocation checks. Octavia will still verify member certificates against the CA.",
   },
+  listenerCrl: {
+    label: "Client certificate revocation list",
+    name: "revocation list",
+    description:
+      "A PEM revocation list signed by the client CA, stored as a binary secret in",
+    removalWarning:
+      "Removing the list stops revocation checks without changing authentication mode or the client CA.",
+  },
 } as const;
 
-export function PoolTlsReferenceField({
+export function OctaviaTlsReferenceField({
+  id,
   kind,
-  configured,
+  current,
+  names,
   after,
   choices,
   disabled,
   onChange,
 }: {
-  kind: PoolTlsReferenceKind;
-  configured: boolean;
+  id: string;
+  kind: keyof typeof descriptions;
+  current?: string | null;
+  names?: BarbicanReferenceNames;
   after: string | null | undefined;
   choices: { id: string; name?: string | null }[];
   disabled: boolean;
   onChange: (after: string | null | undefined) => void;
 }) {
   const { label, name, description, removalWarning } = descriptions[kind];
-  const id = `pool-backend-${kind}`;
   const unavailable =
     typeof after === "string" && !choices.some((choice) => choice.id === after);
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+        <Label htmlFor={id}>{label}</Label>
+        {current ? (
+          <OctaviaBarbicanReference
+            reference={current}
+            names={names}
+            alternate={`Open current ${name}`}
+            external="External reference"
+            newTab
+            className="text-xs"
+          />
+        ) : null}
+      </div>
       <Select
         value={
           unavailable ? "" : after === undefined ? KEEP : (after ?? REMOVE)
@@ -72,9 +96,9 @@ export function PoolTlsReferenceField({
         </SelectTrigger>
         <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
           <SelectItem value={KEEP}>
-            {configured ? `Keep current ${name}` : `No ${name}`}
+            {current ? `Keep current ${name}` : `No ${name}`}
           </SelectItem>
-          {configured ? (
+          {current ? (
             <SelectItem value={REMOVE}>Remove {name}</SelectItem>
           ) : null}
           {choices.map(({ id, name }) => (

@@ -1,5 +1,12 @@
 "use server";
 
+import { z } from "zod";
+import {
+  BARBICAN_NAME_BATCH_SIZE,
+  barbicanReferenceKey,
+  type BarbicanReference,
+  type BarbicanReferenceNames,
+} from "@/lib/openstack/barbican-references";
 import {
   getBarbicanQuotaSummary,
   getContainer,
@@ -14,6 +21,55 @@ import {
   listSecrets,
   listSecretStores,
 } from "@/lib/openstack/barbican-server";
+import { getSession } from "@/lib/session";
+
+const nameReferencesSchema = z
+  .array(
+    z.object({
+      collection: z.enum(["secrets", "containers"]),
+      id: z.guid().toLowerCase(),
+    }),
+  )
+  .max(BARBICAN_NAME_BATCH_SIZE);
+
+export async function getBarbicanReferenceNamesAction(
+  regionId: string,
+  projectId: string,
+  references: BarbicanReference[],
+): Promise<BarbicanReferenceNames> {
+  const parsed = nameReferencesSchema.safeParse(references);
+  if (!parsed.success || !parsed.data.length) return {};
+  const session = await getSession();
+  if (
+    !session.regionId ||
+    !session.projectId ||
+    session.regionId !== regionId ||
+    session.projectId !== projectId
+  )
+    return {};
+
+  const unique = new Map(
+    parsed.data.map((reference) => [
+      barbicanReferenceKey(reference),
+      reference,
+    ]),
+  );
+  const results = await Promise.allSettled(
+    [...unique.entries()].map(async ([key, { collection, id }]) => {
+      const record = await (collection === "secrets"
+        ? getSecret(id)
+        : getContainer(id));
+      return record.id.toLowerCase() === id && record.name?.trim()
+        ? ([key, record.name.trim()] as const)
+        : null;
+    }),
+  );
+  return Object.fromEntries(
+    results.flatMap((result) =>
+      result.status === "fulfilled" && result.value ? [result.value] : [],
+    ),
+  );
+}
 
 export async function listSecretsAction() {
   return listSecrets();

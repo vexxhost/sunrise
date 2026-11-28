@@ -4,6 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, RefreshCw, Save, Trash2, Undo2 } from "lucide-react";
 
+import { OctaviaBarbicanReference } from "@/components/LoadBalancer/OctaviaBarbicanReference";
+import { OctaviaTlsReferenceField } from "@/components/LoadBalancer/OctaviaTlsReferenceField";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
@@ -29,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { loadBalancerPoolChoicesQueryOptions } from "@/hooks/queries/useLoadBalancers";
+import { useOctaviaBarbicanNames } from "@/hooks/queries/useOctaviaBarbicanNames";
 import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { MutationScope } from "@/lib/mutations";
 import type { OpenStackServiceCapabilities } from "@/lib/openstack/capabilities";
@@ -43,9 +46,11 @@ import {
 } from "@/lib/openstack/octavia";
 import {
   availableListenerProtocols,
+  canEditListenerClientCrl,
   editableListenerInsertHeaders,
   isListenerInsertHeaderEnabled,
   LISTENER_CLIENT_AUTH_LABELS,
+  LISTENER_CLIENT_AUTH_CRL_BLOCK,
   LISTENER_NUMERIC_FIELDS,
   LISTENER_NUMERIC_KEYS,
   listenerCidrError,
@@ -128,6 +133,7 @@ export function ListenerMutationDialog({
     initial.clientAuth?.mode ?? "NONE",
   );
   const [clientCaSecretId, setClientCaSecretId] = useState("");
+  const [clientCrlChoice, setClientCrlChoice] = useState<string | null>();
   const currentTlsRef = initial.listener?.default_tls_container_ref;
   const currentTlsSecretId = octaviaTlsSecretId(currentTlsRef);
   const editingTerminatedHttps =
@@ -141,7 +147,7 @@ export function ListenerMutationDialog({
     editingTerminatedHttps &&
     initial.sniRefs !== null &&
     (currentTlsRef === null || hasDefaultTlsRef);
-  const clientAuthBlock =
+  const clientTlsBlock =
     editingTerminatedHttps && initial.listener
       ? listenerClientAuthUnavailable(
           loadBalancer.provider,
@@ -149,6 +155,25 @@ export function ListenerMutationDialog({
           capabilities,
         )
       : null;
+  const clientAuthBlock =
+    clientTlsBlock ??
+    (initial.clientAuth?.crlRef ? LISTENER_CLIENT_AUTH_CRL_BLOCK : null);
+  const showClientCrl =
+    editingTerminatedHttps &&
+    !clientTlsBlock &&
+    canEditListenerClientCrl(initial.clientAuth);
+  const barbicanNames = useOctaviaBarbicanNames(
+    initial.scope.regionId,
+    initial.scope.projectId,
+    editingTerminatedHttps
+      ? [
+          currentTlsRef,
+          initial.clientAuth?.caRef,
+          initial.clientAuth?.crlRef,
+          ...(initial.sniRefs ?? []),
+        ]
+      : [],
+  );
   const tlsSecrets = useQuery({
     queryKey: [
       initial.scope.regionId,
@@ -344,6 +369,21 @@ export function ListenerMutationDialog({
           !selectedClientCa
         ? "Select a client CA certificate."
         : null);
+  const currentClientCrlId = octaviaTlsSecretId(initial.clientAuth?.crlRef);
+  const clientCrlOptions =
+    initial.clientAuth?.mode === "NONE"
+      ? []
+      : clientCaOptions.filter(({ id }) => id !== currentClientCrlId);
+  const clientCrlChange =
+    clientCrlChoice !== undefined && initial.clientAuth
+      ? { before: initial.clientAuth, after: clientCrlChoice }
+      : undefined;
+  const clientCrlUnavailable =
+    clientCrlChange !== undefined &&
+    (!showClientCrl || Boolean(clientAuthChange));
+  const clientCrlError =
+    typeof clientCrlChoice === "string" &&
+    !clientCrlOptions.some(({ id }) => id === clientCrlChoice);
   const poolChoices = poolQuery.isError
     ? []
     : (poolQuery.data ?? []).filter((pool) =>
@@ -470,6 +510,7 @@ export function ListenerMutationDialog({
     advancedChanged ||
     headersChanged ||
     clientAuthChange !== undefined ||
+    clientCrlChange !== undefined ||
     sniCertificateChange !== undefined ||
     defaultCertificateChange !== undefined ||
     defaultPoolChange !== undefined;
@@ -482,6 +523,8 @@ export function ListenerMutationDialog({
         (!tlsProtocol || Boolean(selectedTlsSecret))
       : changed &&
         !clientAuthError &&
+        !clientCrlError &&
+        !clientCrlUnavailable &&
         (!defaultCertificateChange || Boolean(selectedTlsSecret)) &&
         (!sniSecretId || Boolean(selectedSniSecret)) &&
         !removesLastSniCertificate &&
@@ -514,6 +557,7 @@ export function ListenerMutationDialog({
         ...fields,
         ...(headersChanged ? { insertHeaders } : {}),
         ...(clientAuthChange ? { clientAuthentication: clientAuthChange } : {}),
+        ...(clientCrlChange ? { clientCrl: clientCrlChange } : {}),
         ...(defaultCertificateChange
           ? { defaultCertificate: defaultCertificateChange }
           : {}),
@@ -628,19 +672,13 @@ export function ListenerMutationDialog({
                   <span className="text-muted-foreground">
                     Current certificate
                   </span>
-                  {currentTlsSecretId ? (
-                    <ResourceLink
-                      href={`/key-manager/secrets/${currentTlsSecretId}`}
-                      target="_blank"
-                      className="wrap-anywhere font-mono text-xs"
-                    >
-                      {currentTlsSecretName
-                        ? `${currentTlsSecretName} (${currentTlsSecretId.slice(0, 8)})`
-                        : currentTlsSecretId}
-                    </ResourceLink>
-                  ) : (
-                    <span>External certificate reference</span>
-                  )}
+                  <OctaviaBarbicanReference
+                    reference={currentTlsRef}
+                    name={currentTlsSecretName}
+                    names={barbicanNames}
+                    newTab
+                    className="wrap-anywhere text-xs"
+                  />
                 </div>
               ) : null}
               <Label htmlFor="octavia-listener-tls-secret">
@@ -726,10 +764,9 @@ export function ListenerMutationDialog({
                     const secretName = tlsSecrets.data?.find(
                       (secret) => secret.id === id,
                     )?.name;
-                    const label =
-                      secretName && id
-                        ? `${secretName} (${id.slice(0, 8)})`
-                        : (id ?? `External certificate ${index + 1}`);
+                    const label = secretName
+                      ? `${secretName} (${index + 1})`
+                      : String(index + 1);
                     const removed = removedSniRefs.includes(ref);
                     const command = removed
                       ? `Keep SNI certificate ${label}`
@@ -746,7 +783,14 @@ export function ListenerMutationDialog({
                               : "min-w-0 wrap-anywhere"
                           }
                         >
-                          {label}
+                          <OctaviaBarbicanReference
+                            reference={ref}
+                            name={secretName}
+                            names={barbicanNames}
+                            alternate={`Open SNI certificate ${index + 1}`}
+                            external={`External certificate ${index + 1}`}
+                            newTab
+                          />
                         </span>
                         <Button
                           type="button"
@@ -821,6 +865,15 @@ export function ListenerMutationDialog({
               <legend className="text-sm font-medium">
                 Client certificates
               </legend>
+              {initial.clientAuth?.caRef ? (
+                <OctaviaBarbicanReference
+                  reference={initial.clientAuth.caRef}
+                  names={barbicanNames}
+                  alternate="Open current client CA"
+                  newTab
+                  className="text-xs"
+                />
+              ) : null}
               {clientAuthBlock ? (
                 <p className="text-sm text-muted-foreground">
                   {clientAuthBlock}
@@ -832,7 +885,7 @@ export function ListenerMutationDialog({
                   </Label>
                   <Select
                     value={clientAuthMode}
-                    disabled={pending}
+                    disabled={pending || clientCrlChange !== undefined}
                     onValueChange={(mode: ListenerClientAuthMode) => {
                       setClientAuthMode(mode);
                       if (mode === "NONE") setClientCaSecretId("");
@@ -875,7 +928,7 @@ export function ListenerMutationDialog({
                           selectedClientCa?.id ??
                           (clientCaSecretId ? "" : KEEP_CLIENT_CA)
                         }
-                        disabled={pending}
+                        disabled={pending || clientCrlChange !== undefined}
                         onValueChange={(id) =>
                           setClientCaSecretId(id === KEEP_CLIENT_CA ? "" : id)
                         }
@@ -930,6 +983,31 @@ export function ListenerMutationDialog({
                     </>
                   )}
                 </>
+              ) : null}
+              {showClientCrl ? (
+                <>
+                  <OctaviaTlsReferenceField
+                    id="octavia-listener-client-crl"
+                    kind="listenerCrl"
+                    current={initial.clientAuth?.crlRef}
+                    names={barbicanNames}
+                    after={clientCrlChoice}
+                    choices={clientCrlOptions}
+                    disabled={pending || Boolean(clientAuthChange)}
+                    onChange={setClientCrlChoice}
+                  />
+                  {tlsSecrets.isError && initial.clientAuth?.crlRef ? (
+                    <MutationAlert variant="warning">
+                      Could not load revocation list secrets.
+                    </MutationAlert>
+                  ) : null}
+                </>
+              ) : null}
+              {clientCrlUnavailable ? (
+                <MutationAlert variant="warning">
+                  The revocation list settings are no longer available. Reopen
+                  the form to review your changes.
+                </MutationAlert>
               ) : null}
             </fieldset>
           ) : null}

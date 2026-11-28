@@ -15,6 +15,7 @@ import {
   ListenerMutationDialog,
   type ListenerDialogAction,
 } from "@/components/LoadBalancer/ListenerMutationDialog";
+import { OctaviaBarbicanReference } from "@/components/LoadBalancer/OctaviaBarbicanReference";
 import { TrafficStatistics } from "@/components/LoadBalancer/TrafficStatistics";
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
@@ -28,6 +29,7 @@ import {
   loadBalancerListenerRoutingQueryOptions,
   loadBalancerPoolChoicesQueryOptions,
 } from "@/hooks/queries/useLoadBalancers";
+import { useOctaviaBarbicanNames } from "@/hooks/queries/useOctaviaBarbicanNames";
 import {
   canChangeOctaviaListener,
   canChangeOctaviaListeners,
@@ -45,7 +47,6 @@ import {
   LISTENER_NUMERIC_KEYS,
   listenerSettingUnavailable,
   listenerClientAuthModeSchema,
-  octaviaTlsSecretId,
   readListenerInsertHeaders,
   readOctaviaSniRefs,
 } from "@/lib/openstack/octavia-listener-settings";
@@ -99,14 +100,22 @@ export function ListenerDetailClient({
   });
   const insertedHeaders = readListenerInsertHeaders(listener.insert_headers);
   const defaultPoolId = listener.default_pool_id;
-  const defaultTlsSecretId = octaviaTlsSecretId(
-    listener.default_tls_container_ref,
-  );
   const sniRefs = readOctaviaSniRefs(listener.sni_container_refs);
+  const barbicanNames = useOctaviaBarbicanNames(
+    regionId,
+    projectId,
+    !deletionNotice && listener.protocol === "TERMINATED_HTTPS"
+      ? [
+          listener.default_tls_container_ref,
+          listener.client_ca_tls_container_ref,
+          listener.client_crl_container_ref,
+          ...(sniRefs ?? []),
+        ]
+      : [],
+  );
   const clientAuthMode = listenerClientAuthModeSchema.safeParse(
     listener.client_authentication,
   );
-  const clientCaId = octaviaTlsSecretId(listener.client_ca_tls_container_ref);
   const supportsRoutingChanges =
     isOctaviaAmphoraProvider(loadBalancer.provider) &&
     isL7HttpListener(listener);
@@ -269,43 +278,27 @@ export function ListenerDetailClient({
           <DetailField label="Port">{listener.protocol_port}</DetailField>
           {listener.protocol === "TERMINATED_HTTPS" ? (
             <DetailField label="Default certificate">
-              {defaultTlsSecretId ? (
-                <ResourceLink
-                  href={`/key-manager/secrets/${defaultTlsSecretId}`}
-                  className="wrap-anywhere font-mono"
-                >
-                  {defaultTlsSecretId}
-                </ResourceLink>
-              ) : listener.default_tls_container_ref ? (
-                "External certificate reference"
-              ) : listener.default_tls_container_ref === null ? (
-                "None"
-              ) : (
-                "Not reported"
-              )}
+              <OctaviaBarbicanReference
+                reference={listener.default_tls_container_ref}
+                names={barbicanNames}
+                alternate="Open default certificate"
+              />
             </DetailField>
           ) : null}
           {listener.protocol === "TERMINATED_HTTPS" ? (
             <DetailField label="SNI certificates">
               {sniRefs?.length ? (
                 <ul className="min-w-0 space-y-1">
-                  {sniRefs.map((ref, index) => {
-                    const id = octaviaTlsSecretId(ref);
-                    return (
-                      <li key={ref}>
-                        {id ? (
-                          <ResourceLink
-                            href={`/key-manager/secrets/${id}`}
-                            className="wrap-anywhere font-mono"
-                          >
-                            {id}
-                          </ResourceLink>
-                        ) : (
-                          `External certificate ${index + 1}`
-                        )}
-                      </li>
-                    );
-                  })}
+                  {sniRefs.map((ref, index) => (
+                    <li key={ref}>
+                      <OctaviaBarbicanReference
+                        reference={ref}
+                        names={barbicanNames}
+                        alternate={`Open SNI certificate ${index + 1}`}
+                        external={`External certificate ${index + 1}`}
+                      />
+                    </li>
+                  ))}
                 </ul>
               ) : sniRefs ? (
                 "None"
@@ -322,24 +315,20 @@ export function ListenerDetailClient({
                   : "Not reported"}
               </DetailField>
               <DetailField label="Client CA certificate">
-                {clientCaId ? (
-                  <ResourceLink
-                    href={`/key-manager/secrets/${clientCaId}`}
-                    className="wrap-anywhere font-mono"
-                  >
-                    {clientCaId}
-                  </ResourceLink>
-                ) : listener.client_ca_tls_container_ref ? (
-                  "External certificate reference"
-                ) : listener.client_ca_tls_container_ref === null ? (
-                  "None"
-                ) : (
-                  "Not reported"
-                )}
+                <OctaviaBarbicanReference
+                  reference={listener.client_ca_tls_container_ref}
+                  names={barbicanNames}
+                  alternate="Open client CA"
+                />
               </DetailField>
-              {listener.client_crl_container_ref ? (
+              {clientAuthMode.success || listener.client_crl_container_ref ? (
                 <DetailField label="Client certificate revocation list">
-                  Configured
+                  <OctaviaBarbicanReference
+                    reference={listener.client_crl_container_ref}
+                    names={barbicanNames}
+                    alternate="Open client revocation list"
+                    external="External revocation list reference"
+                  />
                 </DetailField>
               ) : null}
             </>

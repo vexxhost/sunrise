@@ -43,11 +43,13 @@ import {
 } from "@/lib/openstack/octavia-health-monitor-settings";
 import {
   availableListenerProtocols,
+  canEditListenerClientCrl,
   editableListenerInsertHeaders,
   isListenerInsertHeaderEnabled,
   isOctaviaTlsSecretCandidate,
   LISTENER_CIDR_LENGTH_MAX,
   LISTENER_CIDR_MAX,
+  LISTENER_CLIENT_AUTH_CRL_BLOCK,
   LISTENER_INSERT_HEADERS,
   LISTENER_NUMERIC_FIELDS,
   LISTENER_NUMERIC_KEYS,
@@ -251,6 +253,12 @@ const listenerMutationSchema = z.discriminatedUnion("action", [
         before: listenerClientAuthSnapshotSchema,
         mode: listenerClientAuthModeSchema,
         caSecretId: uuidSchema.toLowerCase().optional(),
+      })
+      .optional(),
+    clientCrl: z
+      .object({
+        before: listenerClientAuthSnapshotSchema,
+        after: uuidSchema.toLowerCase().nullable(),
       })
       .optional(),
     defaultPool: z
@@ -971,6 +979,7 @@ export async function mutateLoadBalancerListenerAction(
   let sniUpdate:
     { keep: string[]; add?: string; currentDefault: string | null } | undefined;
   let clientCaSecretId: string | undefined;
+  let clientCrlSecretId: string | undefined;
   let expectedClientAuth: ReturnType<typeof readListenerClientAuth> = null;
   if (value.action === "create") {
     if (
@@ -1024,7 +1033,10 @@ export async function mutateLoadBalancerListenerAction(
         activeScope.regionId,
         activeScope.projectId,
         value.action === "edit" &&
-          (value.settings || value.insertHeaders || value.clientAuthentication)
+          (value.settings ||
+            value.insertHeaders ||
+            value.clientAuthentication ||
+            value.clientCrl)
           ? listenerReadApiVersion(capabilities)
           : undefined,
       );
@@ -1143,8 +1155,9 @@ export async function mutateLoadBalancerListenerAction(
           };
         }
       }
-      if (value.clientAuthentication) {
-        const { before, mode, caSecretId } = value.clientAuthentication;
+      const clientTlsChange = value.clientAuthentication ?? value.clientCrl;
+      if (clientTlsChange) {
+        const { before } = clientTlsChange;
         const current = readListenerClientAuth(listener);
         if (
           !current ||
@@ -1168,23 +1181,68 @@ export async function mutateLoadBalancerListenerAction(
           capabilities,
         );
         if (blocked) return validationFailure(activeScope, blocked);
-        if (mode === "NONE" && caSecretId) {
-          return validationFailure(
-            activeScope,
-            "A replacement client CA is only used with Optional or Required authentication.",
-          );
+        if (value.clientCrl) {
+          const { after } = value.clientCrl;
+          if (value.clientAuthentication)
+            return validationFailure(
+              activeScope,
+              "Change client authentication and the revocation list separately.",
+            );
+          if (
+            !canEditListenerClientCrl(current) ||
+            (after !== null && current.mode === "NONE")
+          )
+            return validationFailure(
+              activeScope,
+              "Adding or replacing a revocation list requires Optional or Required client authentication and a client CA.",
+            );
+          if (after === null) {
+            if (current.crlRef !== null) {
+              body.client_crl_container_ref = null;
+              expectedClientAuth = { ...current, crlRef: null };
+            }
+          } else if (
+            after === octaviaTlsSecretId(current.caRef) ||
+            after === octaviaTlsSecretId(listener.default_tls_container_ref) ||
+            readOctaviaSniRefs(listener.sni_container_refs)?.some(
+              (ref) => octaviaTlsSecretId(ref) === after,
+            ) ||
+            after === tlsSecretId ||
+            after === sniUpdate?.add
+          ) {
+            return validationFailure(
+              activeScope,
+              "Use a different secret for the revocation list than for the certificates.",
+            );
+          } else if (after !== octaviaTlsSecretId(current.crlRef)) {
+            clientCrlSecretId = after;
+            expectedClientAuth = current;
+          }
+        } else if (value.clientAuthentication) {
+          if (current.crlRef !== null)
+            return validationFailure(
+              activeScope,
+              LISTENER_CLIENT_AUTH_CRL_BLOCK,
+            );
+          const { mode, caSecretId } = value.clientAuthentication;
+          if (mode === "NONE" && caSecretId) {
+            return validationFailure(
+              activeScope,
+              "A replacement client CA is only used with Optional or Required authentication.",
+            );
+          }
+          if (mode !== "NONE" && !current.caRef && !caSecretId) {
+            return validationFailure(
+              activeScope,
+              "Select a client CA certificate.",
+            );
+          }
+          if (caSecretId && octaviaTlsSecretId(current.caRef) !== caSecretId)
+            clientCaSecretId = caSecretId;
+          if (mode !== current.mode) body.client_authentication = mode;
+          if (mode !== current.mode || clientCaSecretId)
+            expectedClientAuth = { ...current, mode };
         }
-        if (mode !== "NONE" && !current.caRef && !caSecretId) {
-          return validationFailure(
-            activeScope,
-            "Select a client CA certificate.",
-          );
-        }
-        if (caSecretId && octaviaTlsSecretId(current.caRef) !== caSecretId)
-          clientCaSecretId = caSecretId;
-        if (mode !== current.mode) body.client_authentication = mode;
-        if (mode !== current.mode || clientCaSecretId)
-          expectedClientAuth = { ...current, mode };
       }
       if (value.defaultPool) {
         const { before, after } = value.defaultPool;
@@ -1373,7 +1431,8 @@ export async function mutateLoadBalancerListenerAction(
       Object.keys(body).length === 0 &&
       !tlsSecretId &&
       !sniUpdate &&
-      !clientCaSecretId
+      !clientCaSecretId &&
+      !clientCrlSecretId
     )
       return validationFailure(activeScope, "No listener settings changed.");
   }
@@ -1413,15 +1472,21 @@ export async function mutateLoadBalancerListenerAction(
     }
     body.sni_container_refs = sniReferences;
   }
-  if (clientCaSecretId && expectedClientAuth && body) {
+  const clientAuthSecretId = clientCrlSecretId ?? clientCaSecretId;
+  if (clientAuthSecretId && expectedClientAuth && body) {
     const secret = await resolveOctaviaTlsSecret(
       activeScope,
-      clientCaSecretId,
-      "ca",
+      clientAuthSecretId,
+      clientCrlSecretId ? "crl" : "ca",
     );
     if (!secret.ok) return secret.result;
-    expectedClientAuth.caRef = secret.reference;
-    body.client_ca_tls_container_ref = secret.reference;
+    if (clientCrlSecretId) {
+      expectedClientAuth.crlRef = body.client_crl_container_ref =
+        secret.reference;
+    } else {
+      expectedClientAuth.caRef = body.client_ca_tls_container_ref =
+        secret.reference;
+    }
   }
 
   return executeOpenStackMutation<null>({

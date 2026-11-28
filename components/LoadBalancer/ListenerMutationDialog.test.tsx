@@ -83,7 +83,9 @@ describe("SNI-only listener editing", () => {
   it("renders SNI controls and loads certificate choices without a default certificate", () => {
     const markup = renderEdit(null);
     expect(markup).toContain("Add SNI certificate");
-    expect(markup).toContain(`Remove SNI certificate ${secretId}`);
+    expect(markup).toContain(`href="/key-manager/secrets/${secretId}"`);
+    expect(markup).toContain("Open SNI certificate 1");
+    expect(markup).toContain("Remove SNI certificate 1");
     expect(markup).not.toContain("Replacement certificate");
     expect(mocks.useQuery).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -107,6 +109,7 @@ describe("Listener client certificate authentication", () => {
     });
     expect(markup).toContain('id="octavia-listener-client-auth"');
     expect(markup).toContain('id="octavia-listener-client-ca"');
+    expect(markup).toContain('id="octavia-listener-client-crl"');
     expect(markup).toContain("PEM-encoded CA certificate");
   });
 
@@ -117,7 +120,29 @@ describe("Listener client certificate authentication", () => {
       crlRef: "existing-crl",
     });
     expect(markup).not.toContain('id="octavia-listener-client-auth"');
-    expect(markup).toContain("revocation list");
+    expect(markup).toContain('id="octavia-listener-client-crl"');
+    expect(markup).toContain("read-only while a revocation list is configured");
     expect(markup).toContain("Add SNI certificate");
   });
+
+  it("allows clearing a list on a listener with authentication disabled", () => {
+    const markup = renderEdit(null, {
+      mode: "NONE",
+      caRef: "existing-client-ca",
+      crlRef: "existing-crl",
+    });
+    expect(markup).toContain('id="octavia-listener-client-crl"');
+  });
+
+  it.each([
+    { mode: "NONE", caRef: "existing-client-ca", crlRef: null },
+    { mode: "OPTIONAL", caRef: null, crlRef: null },
+  ])(
+    "requires an active client CA configuration before attaching a CRL",
+    (config) => {
+      expect(renderEdit(null, config)).not.toContain(
+        'id="octavia-listener-client-crl"',
+      );
+    },
+  );
 });

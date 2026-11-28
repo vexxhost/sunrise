@@ -6,6 +6,7 @@ import {
   listenerParentReadApiVersion,
   listenerReadApiVersion,
   listenerSettingUnavailable,
+  parseOctaviaBarbicanReference,
   requiredListenerWriteVersion,
   sameListenerCidrs,
 } from "@/lib/openstack/octavia-listener-settings";
@@ -67,6 +68,24 @@ describe("Octavia listener capability rules", () => {
       null,
     ])
       expect(octaviaTlsSecretId(ref)).toBeNull();
+  });
+
+  it("recognizes legacy containers for navigation but never for secret mutations", () => {
+    const id = "612b9ffa-fbc9-42ea-a78f-600c003c5103";
+    const ref = `http://barbican.example/v1/containers/${id.toUpperCase()}`;
+    expect(parseOctaviaBarbicanReference(ref)).toEqual({
+      collection: "containers",
+      id,
+    });
+    expect(octaviaTlsSecretId(ref)).toBeNull();
+    for (const unsupported of [
+      `https://barbican.example/v1/orders/${id}`,
+      `https://barbican.example/v1/secrets/${id}#fragment`,
+      `javascript:/v1/containers/${id}`,
+      `/v1/containers/${id}`,
+    ]) {
+      expect(parseOctaviaBarbicanReference(unsupported)).toBeNull();
+    }
   });
 
   it("negotiates optional fields separately from the parent VIP data", () => {

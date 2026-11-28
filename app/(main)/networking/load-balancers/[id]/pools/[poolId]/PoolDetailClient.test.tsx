@@ -71,8 +71,13 @@ function renderDetail(
   overrides: Record<string, unknown> = {},
   queryState: { isFetching?: boolean; isRefetchError?: boolean } = {},
   redirects: Record<string, unknown> = { data: [] },
+  barbicanNames: Record<string, string> = {},
 ) {
-  mocks.useQuery.mockReturnValue(redirects);
+  mocks.useQuery.mockImplementation(({ queryKey }) =>
+    queryKey?.[3] === "octavia-reference-names"
+      ? { data: barbicanNames }
+      : redirects,
+  );
   mocks.useSuspenseQuery.mockReturnValue({
     ...queryState,
     data: {
@@ -120,6 +125,50 @@ function deletePoolButton(markup: string) {
 }
 
 describe("pool details view", () => {
+  it("links all configured backend TLS references directly to Key Manager", () => {
+    const id = "aaaa2222-2222-4222-8222-222222222222";
+    const secret = `https://barbican.example/v1/secrets/${id}`;
+    const markup = renderDetail({
+      pool: {
+        ...pool,
+        tls_enabled: true,
+        ca_tls_container_ref: secret,
+        tls_container_ref: `https://barbican.example/v1/containers/${id}`,
+        crl_container_ref: secret,
+      },
+    });
+    expect(markup).toContain(
+      `href="/key-manager/secrets/${id}">Open member CA</a>`,
+    );
+    expect(markup).toContain(
+      `href="/key-manager/containers/${id}">Open backend client certificate</a>`,
+    );
+    expect(markup).toContain(
+      `href="/key-manager/secrets/${id}">Open backend revocation list</a>`,
+    );
+    expect(markup).not.toContain("https://barbican.example");
+  });
+
+  it("shows Barbican names on backend TLS links rather than UUIDs", () => {
+    const id = "aaaa2222-2222-4222-8222-222222222222";
+    const markup = renderDetail(
+      {
+        pool: {
+          ...pool,
+          tls_enabled: true,
+          ca_tls_container_ref: `https://barbican.example/v1/secrets/${id}`,
+        },
+      },
+      {},
+      undefined,
+      { [`secrets/${id}`]: "Backend trust CA" },
+    );
+    expect(markup).toContain(
+      `href="/key-manager/secrets/${id}">Backend trust CA</a>`,
+    );
+    expect(markup).not.toContain(`>${id}</a>`);
+  });
+
   it("offers deletion and loads redirect dependencies for a settled pool", () => {
     const button = deletePoolButton(renderDetail());
     expect(button).toBeDefined();
