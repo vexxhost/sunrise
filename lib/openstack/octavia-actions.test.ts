@@ -1019,6 +1019,8 @@ describe("Octavia pool actions", () => {
   const memberCaRef = `https://barbican.example.test/v1/secrets/${memberCaId}`;
   const crlId = "564c3265-5933-44c7-a8da-3101e2e66a29";
   const crlRef = `https://barbican.example.test/v1/secrets/${crlId}`;
+  const backendClientId = "433cddf1-dd24-43ae-89b0-bda35b058229";
+  const backendClientRef = `https://barbican.example.test/v1/secrets/${backendClientId}`;
   const memberCa = {
     id: memberCaId,
     secret_ref: memberCaRef,
@@ -1262,6 +1264,7 @@ describe("Octavia pool actions", () => {
         tls_enabled: true,
         ca_tls_container_ref: memberCaRef,
         crl_container_ref: previousCrl,
+        tls_container_ref: backendClientRef,
       });
       mocks.getSecret.mockResolvedValueOnce({
         ...memberCa,
@@ -1272,7 +1275,11 @@ describe("Octavia pool actions", () => {
         mutateLoadBalancerPoolAction(scope, loadBalancerId, {
           ...edit,
           backendCrl: {
-            before: { ...tlsConfigured, crlRef: previousCrl },
+            before: {
+              ...tlsConfigured,
+              crlRef: previousCrl,
+              clientRef: backendClientRef,
+            },
             after: crlId,
           },
         }),
@@ -1291,6 +1298,7 @@ describe("Octavia pool actions", () => {
         tls_enabled: true,
         ca_tls_container_ref: memberCaRef,
         crl_container_ref: crlRef,
+        tls_container_ref: backendClientRef,
         project_id: scope.projectId,
         loadbalancers: [{ id: loadBalancerId }],
       };
@@ -1343,11 +1351,7 @@ describe("Octavia pool actions", () => {
       { ...tlsConfigured, caRef: null },
       "validation-failed",
     ],
-    [
-      { tls_container_ref: "client-cert" },
-      { ...tlsConfigured, clientRef: "client-cert" },
-      "validation-failed",
-    ],
+    [{ tls_container_ref: "client-cert" }, tlsConfigured, "conflict"],
     [{ protocol: "HTTPS" }, tlsConfigured, "validation-failed"],
   ] as const)(
     "rejects unsafe or stale revocation list changes (%j)",
@@ -1391,6 +1395,131 @@ describe("Octavia pool actions", () => {
         ...edit,
         backendCrl: { before: tlsConfigured, after: crlId },
         backendTls: { before: tlsConfigured, enabled: false },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation-failed" },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "previous-client-ref"])(
+    "sets only the backend client certificate on a pool with a CRL (previous: %s)",
+    async (previous) => {
+      const before = { ...tlsConfigured, crlRef, clientRef: previous };
+      const originalPool = {
+        ...pool,
+        ...tlsFields,
+        tls_enabled: true,
+        ca_tls_container_ref: memberCaRef,
+        crl_container_ref: crlRef,
+        tls_container_ref: previous,
+        project_id: scope.projectId,
+        loadbalancers: [{ id: loadBalancerId }],
+      };
+      mocks.getLoadBalancerPool.mockResolvedValueOnce(originalPool);
+      mocks.getSecret.mockResolvedValueOnce({
+        ...memberCa,
+        id: backendClientId,
+        secret_ref: backendClientRef,
+      });
+      await expect(
+        mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+          ...edit,
+          backendClientCertificate: { before, after: backendClientId },
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(backendClientId);
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          apiVersion: "load-balancer 2.8",
+          method: "PUT",
+          body: { pool: { tls_container_ref: backendClientRef } },
+        }),
+      );
+      const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+      const updated = { ...originalPool, tls_container_ref: backendClientRef };
+      expect(transform({ pool: updated })).toBeNull();
+      for (const other of [
+        { tls_container_ref: previous },
+        { crl_container_ref: null },
+        { ca_tls_container_ref: null },
+        { tls_enabled: false },
+      ]) {
+        expect(() => transform({ pool: { ...updated, ...other } })).toThrow(
+          "requested backend TLS configuration",
+        );
+      }
+    },
+  );
+
+  it("clears only the backend client certificate without fetching secret metadata", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValueOnce({
+      ...pool,
+      ...tlsFields,
+      tls_enabled: true,
+      ca_tls_container_ref: memberCaRef,
+      crl_container_ref: crlRef,
+      tls_container_ref: backendClientRef,
+    });
+    await mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+      ...edit,
+      backendClientCertificate: {
+        before: { ...tlsConfigured, crlRef, clientRef: backendClientRef },
+        after: null,
+      },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.8",
+        body: { pool: { tls_container_ref: null } },
+      }),
+    );
+  });
+
+  it("blocks stale, mixed, or wrong-purpose client certificate selections", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValueOnce({
+      ...pool,
+      ...tlsFields,
+      tls_enabled: true,
+      ca_tls_container_ref: memberCaRef,
+      crl_container_ref: crlRef,
+    });
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...edit,
+        backendClientCertificate: {
+          before: tlsConfigured,
+          after: backendClientId,
+        },
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    const before = { ...tlsConfigured, crlRef };
+    mocks.getLoadBalancerPool.mockResolvedValue({
+      ...pool,
+      ...tlsFields,
+      tls_enabled: true,
+      ca_tls_container_ref: memberCaRef,
+      crl_container_ref: crlRef,
+    });
+    for (const id of [memberCaId, crlId]) {
+      await expect(
+        mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+          ...edit,
+          backendClientCertificate: { before, after: id },
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+    }
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...edit,
+        backendClientCertificate: { before, after: backendClientId },
+        backendCrl: { before, after: null },
       }),
     ).resolves.toMatchObject({
       ok: false,

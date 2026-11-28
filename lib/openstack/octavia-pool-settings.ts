@@ -67,8 +67,10 @@ export function poolTlsEditBlock(current: ReturnType<typeof readPoolTls>) {
     : null;
 }
 
-export function canEditPoolCrl(current: PoolTlsSnapshot | null) {
-  return Boolean(current?.enabled && current.caRef && !current.clientRef);
+export type PoolTlsReferenceKind = "client" | "crl";
+
+export function canEditPoolTlsReferences(current: PoolTlsSnapshot | null) {
+  return Boolean(current?.enabled && current.caRef);
 }
 
 export function samePoolTls(

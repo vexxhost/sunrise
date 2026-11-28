@@ -73,7 +73,7 @@ import {
 } from "@/lib/openstack/octavia-listener-settings";
 import {
   availablePoolProtocols,
-  canEditPoolCrl,
+  canEditPoolTlsReferences,
   canAttachNewOctaviaPool,
   canChangeOctaviaPoolMembers,
   canUseOctaviaPoolAsDefault,
@@ -94,6 +94,7 @@ import {
   samePoolPersistence,
   samePoolTls,
   type PoolTlsSnapshot,
+  type PoolTlsReferenceKind,
   supportsOctaviaDefaultPoolChanges,
 } from "@/lib/openstack/octavia-pool-settings";
 import {
@@ -288,6 +289,15 @@ const poolPersistenceSnapshotSchema = z
     persistence_granularity: z.string().max(255).nullable(),
   })
   .nullable();
+const poolTlsReferenceChangeSchema = z.object({
+  before: poolTlsSnapshotSchema,
+  after: uuidSchema.toLowerCase().nullable(),
+});
+const poolTlsReferenceFields = {
+  ca: { field: "caRef", apiField: "ca_tls_container_ref" },
+  crl: { field: "crlRef", apiField: "crl_container_ref" },
+  client: { field: "clientRef", apiField: "tls_container_ref" },
+} as const;
 const poolMutationSchema = z.discriminatedUnion("action", [
   poolFields.extend({
     action: z.literal("create"),
@@ -308,12 +318,8 @@ const poolMutationSchema = z.discriminatedUnion("action", [
         caSecretId: uuidSchema.toLowerCase().optional(),
       })
       .optional(),
-    backendCrl: z
-      .object({
-        before: poolTlsSnapshotSchema,
-        after: uuidSchema.toLowerCase().nullable(),
-      })
-      .optional(),
+    backendCrl: poolTlsReferenceChangeSchema.optional(),
+    backendClientCertificate: poolTlsReferenceChangeSchema.optional(),
     persistence: z
       .object({
         before: poolPersistenceSnapshotSchema,
@@ -364,10 +370,14 @@ function validationFailure(scope: MutationScope, message: string) {
 async function resolveOctaviaTlsSecret(
   scope: MutationScope,
   id: string,
-  kind: "server" | "ca" | "crl" = "server",
+  kind: "server" | "ca" | PoolTlsReferenceKind = "server",
 ) {
   const labels = {
     server: { format: "a PKCS#12 bundle", resource: "selected TLS secret" },
+    client: {
+      format: "a PKCS#12 client certificate and key bundle",
+      resource: "selected backend client certificate secret",
+    },
     ca: { format: "a PEM CA certificate", resource: "selected CA secret" },
     crl: {
       format: "a PEM certificate revocation list",
@@ -1549,9 +1559,27 @@ export async function mutateLoadBalancerPoolAction(
   }
 
   const poolId = value.action === "create" ? null : value.id.toLowerCase();
+  const referenceChange =
+    value.action === "edit"
+      ? value.backendCrl
+        ? { ...value.backendCrl, kind: "crl" as const }
+        : value.backendClientCertificate
+          ? { ...value.backendClientCertificate, kind: "client" as const }
+          : undefined
+      : undefined;
+  if (
+    value.action === "edit" &&
+    referenceChange &&
+    (value.backendTls || (value.backendCrl && value.backendClientCertificate))
+  ) {
+    return validationFailure(
+      activeScope,
+      "Change only one backend TLS setting at a time.",
+    );
+  }
   const changesPoolTls =
     (value.action !== "delete" && Boolean(value.backendTls)) ||
-    (value.action === "edit" && Boolean(value.backendCrl));
+    Boolean(referenceChange);
   const tlsVersion = changesPoolTls
     ? poolTlsReadApiVersion(capabilities)
     : undefined;
@@ -1564,8 +1592,8 @@ export async function mutateLoadBalancerPoolAction(
   let body: Record<string, unknown> | undefined;
   let protocol: string;
   let expectedTls: PoolTlsSnapshot | undefined;
-  let caSecretId: string | undefined;
-  let crlSecretId: string | undefined;
+  let requestedTlsSecret:
+    { id: string; kind: "ca" | PoolTlsReferenceKind } | undefined;
   if (value.action === "create") {
     const listenerId = value.listenerId?.toLowerCase();
     let listenerProtocol: string | undefined;
@@ -1631,7 +1659,7 @@ export async function mutateLoadBalancerPoolAction(
           activeScope,
           "Backend TLS is only configurable on HTTP pools in Sunrise.",
         );
-      caSecretId = value.backendTls.caSecretId;
+      requestedTlsSecret = { id: value.backendTls.caSecretId, kind: "ca" };
       expectedTls = {
         enabled: true,
         caRef: null,
@@ -1766,7 +1794,7 @@ export async function mutateLoadBalancerPoolAction(
               : after;
         }
       }
-      const tlsChange = value.backendTls ?? value.backendCrl;
+      const tlsChange = value.backendTls ?? referenceChange;
       if (tlsChange) {
         if (protocol !== "HTTP")
           return validationFailure(
@@ -1785,26 +1813,33 @@ export async function mutateLoadBalancerPoolAction(
             activeScope,
           );
         }
-        if (value.backendCrl) {
-          if (value.backendTls || !canEditPoolCrl(current)) {
+        if (referenceChange) {
+          if (!canEditPoolTlsReferences(current)) {
             return validationFailure(
               activeScope,
-              "A revocation list can only be changed separately on an encrypted HTTP pool with a member CA and no backend client certificate.",
+              "A client certificate or revocation list requires an encrypted HTTP pool with a member CA.",
             );
           }
-          const { after } = value.backendCrl;
+          const { after, kind } = referenceChange;
+          const { field, apiField } = poolTlsReferenceFields[kind];
           if (after === null) {
-            if (current.crlRef !== null) {
-              body.crl_container_ref = null;
-              expectedTls = { ...current, crlRef: null };
+            if (current[field] !== null) {
+              body[apiField] = null;
+              expectedTls = { ...current, [field]: null };
             }
-          } else if (after === octaviaTlsSecretId(current.caRef)) {
+          } else if (
+            after === octaviaTlsSecretId(current.caRef) ||
+            after ===
+              octaviaTlsSecretId(
+                kind === "crl" ? current.clientRef : current.crlRef,
+              )
+          ) {
             return validationFailure(
               activeScope,
-              "The revocation list must be a different secret from the member CA.",
+              "Use a different secret for the member CA, client certificate, and revocation list.",
             );
-          } else if (after !== octaviaTlsSecretId(current.crlRef)) {
-            crlSecretId = after;
+          } else if (after !== octaviaTlsSecretId(current[field])) {
+            requestedTlsSecret = { id: after, kind };
             expectedTls = current;
           }
         } else if (value.backendTls) {
@@ -1824,13 +1859,13 @@ export async function mutateLoadBalancerPoolAction(
             );
           }
           if (requestedCa && octaviaTlsSecretId(current.caRef) !== requestedCa)
-            caSecretId = requestedCa;
+            requestedTlsSecret = { id: requestedCa, kind: "ca" };
           if (enabled !== current.enabled) body.tls_enabled = enabled;
-          if (enabled !== current.enabled || caSecretId)
+          if (enabled !== current.enabled || requestedTlsSecret)
             expectedTls = { ...current, enabled };
         }
       }
-      if (!Object.keys(body).length && !caSecretId && !crlSecretId) {
+      if (!Object.keys(body).length && !requestedTlsSecret) {
         return {
           ok: true,
           status: "success",
@@ -1853,19 +1888,12 @@ export async function mutateLoadBalancerPoolAction(
     capabilities,
   );
   if (!supported.ok) return supported.result;
-  const tlsSecretId = crlSecretId ?? caSecretId;
-  if (tlsSecretId && expectedTls && body) {
-    const secret = await resolveOctaviaTlsSecret(
-      activeScope,
-      tlsSecretId,
-      crlSecretId ? "crl" : "ca",
-    );
+  if (requestedTlsSecret && expectedTls && body) {
+    const { id, kind } = requestedTlsSecret;
+    const secret = await resolveOctaviaTlsSecret(activeScope, id, kind);
     if (!secret.ok) return secret.result;
-    if (crlSecretId) {
-      expectedTls.crlRef = body.crl_container_ref = secret.reference;
-    } else {
-      expectedTls.caRef = body.ca_tls_container_ref = secret.reference;
-    }
+    const { field, apiField } = poolTlsReferenceFields[kind];
+    expectedTls[field] = body[apiField] = secret.reference;
   }
 
   const path = "/v2/lbaas/pools";

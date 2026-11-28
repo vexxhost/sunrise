@@ -119,6 +119,7 @@ describe("Octavia pool dialog", () => {
     const markup = renderDialog({ action: "create" });
     expect(markup).toContain("Encrypt connections to members");
     expect(markup).not.toContain('id="pool-backend-crl"');
+    expect(markup).not.toContain('id="pool-backend-client"');
   });
 
   it("does not offer to overwrite unreported or externally managed TLS settings", () => {
@@ -131,7 +132,7 @@ describe("Octavia pool dialog", () => {
         ...editablePool,
         tls_enabled: true,
         ca_tls_container_ref: "member-ca",
-        tls_container_ref: null,
+        tls_container_ref: "backend-client-cert",
         crl_container_ref: "revocation-list",
       },
     });
@@ -139,9 +140,11 @@ describe("Octavia pool dialog", () => {
     expect(custom).toContain("revocation list is configured");
     expect(custom).toContain('id="pool-backend-crl"');
     expect(custom).toContain("signed by the member CA");
+    expect(custom).toContain('id="pool-backend-client"');
+    expect(custom).toContain("PKCS#12 certificate and key bundle");
   });
 
-  it("does not offer CRL edits on unencrypted pools, missing CAs, or backend mTLS", () => {
+  it("does not offer certificate or CRL edits on unencrypted pools or without a CA", () => {
     const tls = {
       tls_enabled: true,
       ca_tls_container_ref: "member-ca",
@@ -151,14 +154,13 @@ describe("Octavia pool dialog", () => {
     for (const settings of [
       { tls_enabled: false },
       { ca_tls_container_ref: null },
-      { tls_container_ref: "backend-client-cert" },
     ]) {
-      expect(
-        renderDialog({
-          action: "edit",
-          pool: { ...editablePool, ...tls, ...settings },
-        }),
-      ).not.toContain('id="pool-backend-crl"');
+      const markup = renderDialog({
+        action: "edit",
+        pool: { ...editablePool, ...tls, ...settings },
+      });
+      expect(markup).not.toContain('id="pool-backend-crl"');
+      expect(markup).not.toContain('id="pool-backend-client"');
     }
   });
 
