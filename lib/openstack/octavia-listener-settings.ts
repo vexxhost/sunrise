@@ -8,7 +8,11 @@ import {
   isOctaviaAmphoraProvider,
   loadBalancerVipAddresses,
 } from "@/lib/openstack/octavia";
-import type { BarbicanSecret, OctaviaLoadBalancer } from "@/types/openstack";
+import type {
+  BarbicanSecret,
+  OctaviaListener,
+  OctaviaLoadBalancer,
+} from "@/types/openstack";
 
 export const OCTAVIA_LISTENER_PROTOCOLS = [
   "HTTP",
@@ -76,6 +80,7 @@ export function isOctaviaTlsSecretCandidate(
 
 const LISTENER_BASELINE = "2.0";
 const LISTENER_TIMEOUTS = "2.1";
+const LISTENER_CLIENT_AUTH = "2.8";
 const LISTENER_CIDRS = "2.12";
 const LISTENER_UDP = "2.1";
 const FORWARDED_PROTO = "X-Forwarded-Proto";
@@ -85,6 +90,75 @@ export const LISTENER_INSERT_HEADERS = [
   FORWARDED_PROTO,
 ] as const;
 type ListenerInsertHeader = (typeof LISTENER_INSERT_HEADERS)[number];
+
+export const LISTENER_CLIENT_AUTH_LABELS = {
+  NONE: "Disabled",
+  OPTIONAL: "Optional",
+  MANDATORY: "Required",
+} as const;
+export const listenerClientAuthModeSchema = z.enum([
+  "NONE",
+  "OPTIONAL",
+  "MANDATORY",
+]);
+const clientCertificateRefSchema = z
+  .string()
+  .max(255)
+  .refine((ref) => Boolean(ref.trim()))
+  .nullable();
+export const listenerClientAuthSnapshotSchema = z.object({
+  mode: listenerClientAuthModeSchema,
+  caRef: clientCertificateRefSchema,
+  crlRef: clientCertificateRefSchema,
+});
+export type ListenerClientAuthMode = z.infer<
+  typeof listenerClientAuthModeSchema
+>;
+
+export function readListenerClientAuth(listener: Partial<OctaviaListener>) {
+  const result = listenerClientAuthSnapshotSchema.safeParse({
+    mode: listener.client_authentication,
+    caRef: listener.client_ca_tls_container_ref,
+    crlRef: listener.client_crl_container_ref,
+  });
+  return result.success ? result.data : null;
+}
+
+export function listenerClientAuthUnavailable(
+  provider: string | undefined,
+  listener: OctaviaListener,
+  capabilities: OpenStackServiceCapabilities,
+) {
+  if (
+    !isOctaviaAmphoraProvider(provider) ||
+    listener.protocol !== "TERMINATED_HTTPS"
+  ) {
+    return "Client certificate authentication requires a Terminated HTTPS listener on Amphora.";
+  }
+  const support = microversionSupport(
+    capabilities,
+    LISTENER_CLIENT_AUTH,
+    "Client certificate authentication",
+  );
+  if (support.status !== "supported") return support.message;
+  const config = readListenerClientAuth(listener);
+  if (!config)
+    return "Octavia did not report the client authentication configuration.";
+  if (config.crlRef !== null) {
+    return "This listener uses a client certificate revocation list. Manage its authentication settings outside Sunrise.";
+  }
+  const defaultRef = listener.default_tls_container_ref;
+  if (
+    !(typeof defaultRef === "string" && defaultRef.trim()) &&
+    !(
+      defaultRef === null &&
+      readOctaviaSniRefs(listener.sni_container_refs)?.length
+    )
+  ) {
+    return "Octavia did not report a configured server certificate.";
+  }
+  return null;
+}
 
 export const LISTENER_NUMERIC_FIELDS = {
   connection_limit: { label: "Connection limit", min: -1, max: 2_147_483_647 },
@@ -232,7 +306,11 @@ export function listenerSettingUnavailable(
 export function listenerReadApiVersion(
   capabilities: OpenStackServiceCapabilities,
 ) {
-  for (const version of [LISTENER_CIDRS, LISTENER_TIMEOUTS]) {
+  for (const version of [
+    LISTENER_CIDRS,
+    LISTENER_CLIENT_AUTH,
+    LISTENER_TIMEOUTS,
+  ]) {
     const support = microversionSupport(
       capabilities,
       version,
@@ -263,8 +341,10 @@ export function requiredListenerWriteVersion(
   keys: readonly ListenerSettingKey[],
   protocol?: OctaviaListenerProtocol,
   hasForwardedProto = false,
+  hasClientAuthChange = false,
 ) {
   if (keys.includes("allowed_cidrs")) return LISTENER_CIDRS;
+  if (hasClientAuthChange) return LISTENER_CLIENT_AUTH;
   return hasForwardedProto ||
     protocol === "UDP" ||
     keys.some((key) => key.startsWith("timeout_"))

@@ -6,6 +6,7 @@ import {
   listenerParentReadApiVersion,
   listenerReadApiVersion,
   listenerSettingUnavailable,
+  requiredListenerWriteVersion,
   sameListenerCidrs,
 } from "@/lib/openstack/octavia-listener-settings";
 
@@ -78,6 +79,12 @@ describe("Octavia listener capability rules", () => {
         ...capabilities,
         configuredMicroversionMaximum: "2.11",
       }),
+    ).toBe("load-balancer 2.8");
+    expect(
+      listenerReadApiVersion({
+        ...capabilities,
+        configuredMicroversionMaximum: "2.7",
+      }),
     ).toBe("load-balancer 2.1");
     expect(
       listenerParentReadApiVersion({
@@ -85,6 +92,15 @@ describe("Octavia listener capability rules", () => {
         configuredMicroversionMaximum: "2.11",
       }),
     ).toBeUndefined();
+  });
+
+  it("uses the newest API version required by the changed fields", () => {
+    expect(requiredListenerWriteVersion([], undefined, false, true)).toBe(
+      "2.8",
+    );
+    expect(
+      requiredListenerWriteVersion(["allowed_cidrs"], undefined, true, true),
+    ).toBe("2.12");
   });
 
   it("does not offer the Amphora controls on OVN or timeouts for UDP", () => {
