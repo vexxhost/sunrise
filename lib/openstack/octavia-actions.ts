@@ -82,10 +82,17 @@ import {
   OCTAVIA_POOL_ALGORITHMS,
   OCTAVIA_POOL_PERSISTENCE_MODES,
   OCTAVIA_POOL_PROTOCOLS,
+  OCTAVIA_POOL_TLS_MICROVERSION,
   octaviaPoolDeletionBlock,
   poolPersistenceError,
+  poolTlsEditBlock,
+  poolTlsReadApiVersion,
+  poolTlsSnapshotSchema,
   readPoolPersistence,
+  readPoolTls,
   samePoolPersistence,
+  samePoolTls,
+  type PoolTlsSnapshot,
   supportsOctaviaDefaultPoolChanges,
 } from "@/lib/openstack/octavia-pool-settings";
 import {
@@ -287,11 +294,19 @@ const poolMutationSchema = z.discriminatedUnion("action", [
     algorithm: z.enum(OCTAVIA_POOL_ALGORITHMS),
     listenerId: uuidSchema.optional(),
     persistence: poolPersistenceSchema.optional(),
+    backendTls: z.object({ caSecretId: uuidSchema.toLowerCase() }).optional(),
   }),
   poolFields.extend({
     action: z.literal("edit"),
     id: uuidSchema,
     source: poolFields,
+    backendTls: z
+      .object({
+        before: poolTlsSnapshotSchema,
+        enabled: z.boolean(),
+        caSecretId: uuidSchema.toLowerCase().optional(),
+      })
+      .optional(),
     persistence: z
       .object({
         before: poolPersistenceSnapshotSchema,
@@ -339,10 +354,10 @@ function validationFailure(scope: MutationScope, message: string) {
   );
 }
 
-async function resolveListenerTlsSecret(
+async function resolveOctaviaTlsSecret(
   scope: MutationScope,
   id: string,
-  kind: "server" | "client-ca" = "server",
+  kind: "server" | "ca" = "server",
 ) {
   try {
     const secret = await getSecret(id);
@@ -354,8 +369,8 @@ async function resolveListenerTlsSecret(
         ok: false,
         result: validationFailure(
           scope,
-          kind === "client-ca"
-            ? "Select an active, unexpired binary secret containing a PEM client CA certificate."
+          kind === "ca"
+            ? "Select an active, unexpired binary secret containing a PEM CA certificate."
             : "Select an active, unexpired binary secret containing a PKCS#12 bundle.",
         ),
       } as const;
@@ -367,9 +382,7 @@ async function resolveListenerTlsSecret(
       result: preflightFailure(
         error,
         scope,
-        kind === "client-ca"
-          ? "selected client CA secret"
-          : "selected TLS secret",
+        kind === "ca" ? "selected CA secret" : "selected TLS secret",
       ),
     } as const;
   }
@@ -1366,7 +1379,7 @@ export async function mutateLoadBalancerListenerAction(
 
   let tlsReference: string | undefined;
   if (tlsSecretId && body) {
-    const secret = await resolveListenerTlsSecret(activeScope, tlsSecretId);
+    const secret = await resolveOctaviaTlsSecret(activeScope, tlsSecretId);
     if (!secret.ok) return secret.result;
     tlsReference = secret.reference;
     body.default_tls_container_ref = tlsReference;
@@ -1375,17 +1388,17 @@ export async function mutateLoadBalancerListenerAction(
   if (sniUpdate && body) {
     sniReferences = sniUpdate.keep;
     if (sniUpdate.add) {
-      const secret = await resolveListenerTlsSecret(activeScope, sniUpdate.add);
+      const secret = await resolveOctaviaTlsSecret(activeScope, sniUpdate.add);
       if (!secret.ok) return secret.result;
       sniReferences = [...sniReferences, secret.reference];
     }
     body.sni_container_refs = sniReferences;
   }
   if (clientCaSecretId && expectedClientAuth && body) {
-    const secret = await resolveListenerTlsSecret(
+    const secret = await resolveOctaviaTlsSecret(
       activeScope,
       clientCaSecretId,
-      "client-ca",
+      "ca",
     );
     if (!secret.ok) return secret.result;
     expectedClientAuth.caRef = secret.reference;
@@ -1527,8 +1540,20 @@ export async function mutateLoadBalancerPoolAction(
   }
 
   const poolId = value.action === "create" ? null : value.id.toLowerCase();
+  const tlsVersion =
+    value.action !== "delete" && value.backendTls
+      ? poolTlsReadApiVersion(capabilities)
+      : undefined;
+  if (value.action !== "delete" && value.backendTls && !tlsVersion) {
+    return validationFailure(
+      activeScope,
+      "Backend TLS requires Octavia API version 2.8 or later.",
+    );
+  }
   let body: Record<string, unknown> | undefined;
   let protocol: string;
+  let expectedTls: PoolTlsSnapshot | undefined;
+  let caSecretId: string | undefined;
   if (value.action === "create") {
     const listenerId = value.listenerId?.toLowerCase();
     let listenerProtocol: string | undefined;
@@ -1588,6 +1613,21 @@ export async function mutateLoadBalancerPoolAction(
         ? { listener_id: listenerId }
         : { loadbalancer_id: parentId }),
     };
+    if (value.backendTls) {
+      if (protocol !== "HTTP")
+        return validationFailure(
+          activeScope,
+          "Backend TLS is only configurable on HTTP pools in Sunrise.",
+        );
+      caSecretId = value.backendTls.caSecretId;
+      expectedTls = {
+        enabled: true,
+        caRef: null,
+        clientRef: null,
+        crlRef: null,
+      };
+      body.tls_enabled = true;
+    }
   } else {
     const id = value.id.toLowerCase();
     if (
@@ -1606,6 +1646,7 @@ export async function mutateLoadBalancerPoolAction(
         id,
         activeScope.regionId,
         activeScope.projectId,
+        ...(tlsVersion ? [tlsVersion] : []),
       );
     } catch (error) {
       return preflightFailure(error, activeScope, "pool");
@@ -1713,7 +1754,47 @@ export async function mutateLoadBalancerPoolAction(
               : after;
         }
       }
-      if (!Object.keys(body).length) {
+      if (value.backendTls) {
+        if (protocol !== "HTTP")
+          return validationFailure(
+            activeScope,
+            "Backend TLS is only configurable on HTTP pools in Sunrise.",
+          );
+        const { before, enabled, caSecretId: requestedCa } = value.backendTls;
+        const current = readPoolTls(pool);
+        if (!current || !samePoolTls(current, before)) {
+          return mutationFailure(
+            {
+              code: "conflict",
+              message:
+                "The pool's backend TLS settings changed or could not be verified. Refresh and try again.",
+              retryable: true,
+            },
+            activeScope,
+          );
+        }
+        const blocked = poolTlsEditBlock(current);
+        if (blocked) return validationFailure(activeScope, blocked);
+        if (!enabled && requestedCa) {
+          return validationFailure(
+            activeScope,
+            "A replacement member CA can only be selected when backend TLS is enabled.",
+          );
+        }
+        if (enabled && !current.caRef && !requestedCa) {
+          return validationFailure(
+            activeScope,
+            "Select a member CA certificate to verify backend TLS connections.",
+          );
+        }
+        if (requestedCa && octaviaTlsSecretId(current.caRef) !== requestedCa) {
+          caSecretId = requestedCa;
+        }
+        if (enabled !== current.enabled) body.tls_enabled = enabled;
+        if (enabled !== current.enabled || caSecretId)
+          expectedTls = { ...current, enabled };
+      }
+      if (!Object.keys(body).length && !caSecretId) {
         return {
           ok: true,
           status: "success",
@@ -1727,11 +1808,21 @@ export async function mutateLoadBalancerPoolAction(
 
   const supported = await supportedMutationMicroversion(
     activeScope,
-    protocol === "UDP" ? "2.1" : OCTAVIA_BASELINE_MICROVERSION,
+    expectedTls
+      ? OCTAVIA_POOL_TLS_MICROVERSION
+      : protocol === "UDP"
+        ? "2.1"
+        : OCTAVIA_BASELINE_MICROVERSION,
     "Changing load balancer pools",
     capabilities,
   );
   if (!supported.ok) return supported.result;
+  if (caSecretId && expectedTls && body) {
+    const secret = await resolveOctaviaTlsSecret(activeScope, caSecretId, "ca");
+    if (!secret.ok) return secret.result;
+    expectedTls.caRef = secret.reference;
+    body.ca_tls_container_ref = secret.reference;
+  }
 
   const path = "/v2/lbaas/pools";
   const operation = {
@@ -1776,6 +1867,10 @@ export async function mutateLoadBalancerPoolAction(
             id: uuidSchema,
             project_id: z.string(),
             loadbalancers: z.tuple([z.object({ id: uuidSchema })]),
+            tls_enabled: z.unknown().optional(),
+            ca_tls_container_ref: z.unknown().optional(),
+            tls_container_ref: z.unknown().optional(),
+            crl_container_ref: z.unknown().optional(),
           }),
         })
         .safeParse(payload);
@@ -1787,6 +1882,14 @@ export async function mutateLoadBalancerPoolAction(
           normalizeProjectId(activeScope.projectId)
       ) {
         throw new Error("Octavia returned an invalid pool");
+      }
+      if (
+        expectedTls &&
+        !samePoolTls(readPoolTls(response.data.pool), expectedTls)
+      ) {
+        throw new Error(
+          "Octavia did not return the requested backend TLS configuration",
+        );
       }
       return null;
     },

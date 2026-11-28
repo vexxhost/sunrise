@@ -85,6 +85,7 @@ import {
   formatOctaviaMemberRole,
   formatPoolAlgorithm,
   memberBackupMicroversion,
+  poolTlsReadApiVersion,
 } from "@/lib/openstack/octavia-pool-settings";
 import { formatUtcTimestamp } from "@/lib/openstack/time";
 import { healthMonitorHttpOptionsMicroversion } from "@/lib/openstack/octavia-health-monitor-settings";
@@ -950,6 +951,9 @@ export function LoadBalancerDetailClient({
               ? { target: poolAction, l7Policies: data.l7Policies }
               : { target: poolAction })}
           loadBalancerId={loadBalancer.id}
+          backendTlsSupported={Boolean(
+            poolTlsReadApiVersion(octaviaCapabilities),
+          )}
           scope={{ projectId, regionId }}
           onClose={() => setPoolAction(null)}
           onRefresh={refreshTopology}

@@ -85,6 +85,10 @@ export interface OctaviaPool {
   protocol: string;
   lb_algorithm: string;
   session_persistence?: OctaviaPoolSessionPersistence | null;
+  tls_enabled?: boolean;
+  ca_tls_container_ref?: string | null;
+  tls_container_ref?: string | null;
+  crl_container_ref?: string | null;
   loadbalancers?: OctaviaResourceReference[];
   listeners?: OctaviaResourceReference[];
   members?: OctaviaResourceReference[];

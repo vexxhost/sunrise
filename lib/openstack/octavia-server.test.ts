@@ -1459,6 +1459,37 @@ describe("Octavia project scoping", () => {
       expect(mocks.discoverLoadBalancerCapabilities).not.toHaveBeenCalled();
     });
 
+    it.each(["2.7", "2.8"])(
+      "negotiates pool TLS details only when the ceiling allows it (%s)",
+      async (configuredMicroversionMaximum) => {
+        const poolPath = `/v2/lbaas/pools/${poolId}`;
+        const supportsTls = configuredMicroversionMaximum === "2.8";
+        mocks.discoverLoadBalancerCapabilities.mockResolvedValueOnce({
+          discoveryStatus: "available",
+          microversions: { minimum: "2.0", maximum: "2.30" },
+          configuredMicroversionMaximum,
+        });
+        mockDetails({
+          [`/v2/lbaas/loadbalancers/${parentId}`]: {
+            loadbalancer: {
+              ...loadBalancer(parentId, "project-a", "edge"),
+              provider: "amphorav2",
+            },
+          },
+          [poolPath]: { pool: { ...pool, protocol: "HTTP" } },
+        });
+        const details = await getLoadBalancerPoolDetails(parentId, poolId);
+        expect(details.backendTlsSupported).toBe(supportsTls);
+        const versions = mocks.openstackRequest.mock.calls
+          .map(([options]) => options)
+          .filter(({ path }) => path === poolPath)
+          .map(({ apiVersion }) => apiVersion);
+        expect(versions).toEqual(
+          supportsTls ? [undefined, "load-balancer 2.8"] : [undefined],
+        );
+      },
+    );
+
     it.each([true, false])(
       "negotiates the backup field only when allowed (supported: %s)",
       async (supported) => {

@@ -1,11 +1,13 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Plus, Save } from "lucide-react";
 
 import { MutationAlert } from "@/components/mutations/MutationAlert";
 import { MutationConfirmationDialog } from "@/components/mutations/MutationConfirmationDialog";
 import { QuotaImpactPreview } from "@/components/quotas/QuotaImpactPreview";
+import { ResourceLink } from "@/components/resources/ResourceLink";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -30,9 +32,12 @@ import { useProjectQuotaImpact } from "@/hooks/queries/useQuotas";
 import type { MutationScope } from "@/lib/mutations";
 import type { OpenStackServiceCapabilities } from "@/lib/openstack/capabilities";
 import {
+  listOctaviaTlsSecretsAction,
   mutateLoadBalancerPoolAction,
   type OctaviaPoolMutation,
 } from "@/lib/openstack/octavia-actions";
+import { isOctaviaAmphoraProvider } from "@/lib/openstack/octavia";
+import { octaviaTlsSecretId } from "@/lib/openstack/octavia-listener-settings";
 import {
   availablePoolPersistenceModes,
   availablePoolProtocols,
@@ -44,7 +49,10 @@ import {
   octaviaPoolDeletionBlock,
   poolMutationRecovery,
   poolPersistenceError,
+  poolTlsEditBlock,
+  poolTlsReadApiVersion,
   readPoolPersistence,
+  readPoolTls,
   type OctaviaPoolAlgorithm,
   type OctaviaPoolPersistenceMode,
   type OctaviaPoolProtocol,
@@ -86,11 +94,13 @@ type PoolDialogOperations =
 
 const NO_LISTENER = "none";
 const NO_PERSISTENCE = "none";
+const KEEP_MEMBER_CA = "keep-member-ca";
 
 export function PoolMutationDialog({
   target,
   loadBalancerId,
   creation,
+  backendTlsSupported,
   l7Policies,
   scope,
   onClose,
@@ -98,6 +108,7 @@ export function PoolMutationDialog({
   onSuccess,
 }: {
   loadBalancerId: string;
+  backendTlsSupported?: boolean;
   scope: MutationScope;
   onClose: () => void;
   onRefresh: () => void;
@@ -111,6 +122,7 @@ export function PoolMutationDialog({
     adminStateUp: pool?.admin_state_up ?? true,
     algorithm: pool?.lb_algorithm ?? "ROUND_ROBIN",
     persistence: readPoolPersistence(pool?.session_persistence),
+    tls: pool ? readPoolTls(pool) : null,
   }));
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
@@ -118,6 +130,15 @@ export function PoolMutationDialog({
   const [algorithm, setAlgorithm] = useState(initial.algorithm);
   const [listenerId, setListenerId] = useState(NO_LISTENER);
   const [protocol, setProtocol] = useState<OctaviaPoolProtocol>("HTTP");
+  const [tlsEnabled, setTlsEnabled] = useState(initial.tls?.enabled ?? false);
+  const [caSecretId, setCaSecretId] = useState("");
+  const chooseProtocol = (next: OctaviaPoolProtocol) => {
+    setProtocol(next);
+    if (next !== "HTTP") {
+      setTlsEnabled(false);
+      setCaSecretId("");
+    }
+  };
   const initialPersistenceMode = initial.persistence?.type ?? NO_PERSISTENCE;
   const initialCookieName = initial.persistence?.cookie_name ?? "";
   const [persistenceMode, setPersistenceMode] = useState(
@@ -155,6 +176,26 @@ export function PoolMutationDialog({
   );
   const protocols = protocolsFor(selectedListener?.protocol);
   const staleListener = listenerId !== NO_LISTENER && !selectedListener;
+  const activeProtocol = creating ? protocol : (pool?.protocol ?? "");
+  const showBackendTls =
+    activeProtocol === "HTTP" &&
+    (creation
+      ? isOctaviaAmphoraProvider(creation.provider) &&
+        Boolean(poolTlsReadApiVersion(creation.capabilities))
+      : target.action === "edit" && backendTlsSupported);
+  const tlsBlock = creating ? null : poolTlsEditBlock(initial.tls);
+  const tlsSecrets = useQuery({
+    queryKey: [
+      submission.scope.regionId,
+      submission.scope.projectId,
+      "octavia",
+      "tls-secrets",
+    ],
+    queryFn: () => listOctaviaTlsSecretsAction(submission.scope),
+    enabled: Boolean(showBackendTls && !tlsBlock && tlsEnabled),
+    staleTime: 0,
+    retry: false,
+  });
   const close = () => {
     if (!inFlight.current) onClose();
   };
@@ -252,7 +293,6 @@ export function PoolMutationDialog({
   const supportedAlgorithm = OCTAVIA_POOL_ALGORITHMS.includes(
     algorithm as OctaviaPoolAlgorithm,
   );
-  const activeProtocol = creating ? protocol : (pool?.protocol ?? "");
   const persistenceModes = availablePoolPersistenceModes(activeProtocol);
   const canEditPersistence =
     persistenceModes.length > 0 && initial.persistence !== undefined;
@@ -272,15 +312,34 @@ export function PoolMutationDialog({
   const persistenceError = persistenceChanged
     ? poolPersistenceError(activeProtocol, persistence)
     : null;
+  const tlsChanged =
+    tlsEnabled !== (initial.tls?.enabled ?? false) || Boolean(caSecretId);
+  const tlsUnavailable = tlsChanged && (!showBackendTls || tlsBlock);
+  const currentCaId = octaviaTlsSecretId(initial.tls?.caRef);
+  const caOptions = tlsSecrets.isError
+    ? []
+    : (tlsSecrets.data ?? []).filter(({ id }) => id !== currentCaId);
+  const selectedCa = caOptions.find(({ id }) => id === caSecretId);
+  const tlsError =
+    tlsChanged && tlsEnabled
+      ? caSecretId && !selectedCa
+        ? "The selected member CA is no longer available."
+        : !initial.tls?.caRef && !selectedCa
+          ? "Select a member CA certificate."
+          : null
+      : null;
   const unchanged =
     name === initial.name &&
     description === initial.description &&
     adminStateUp === initial.adminStateUp &&
     algorithm === initial.algorithm &&
-    !persistenceChanged;
+    !persistenceChanged &&
+    !tlsChanged;
   const disabled =
     requiresReopen ||
     Boolean(persistenceError) ||
+    Boolean(tlsError) ||
+    Boolean(tlsUnavailable) ||
     (creating
       ? staleListener ||
         !protocols.includes(protocol) ||
@@ -311,6 +370,9 @@ export function PoolMutationDialog({
                 algorithm: algorithm as OctaviaPoolAlgorithm,
                 listenerId: selectedListener?.id,
                 ...(persistence ? { persistence } : {}),
+                ...(tlsChanged && selectedCa
+                  ? { backendTls: { caSecretId: selectedCa.id } }
+                  : {}),
               });
             } else if (target.action === "edit") {
               run({
@@ -331,12 +393,27 @@ export function PoolMutationDialog({
                       },
                     }
                   : {}),
+                ...(tlsChanged && initial.tls
+                  ? {
+                      backendTls: {
+                        before: initial.tls,
+                        enabled: tlsEnabled,
+                        ...(selectedCa ? { caSecretId: selectedCa.id } : {}),
+                      },
+                    }
+                  : {}),
               });
             }
           }}
         >
           {error ? (
             <MutationAlert variant="error">{error}</MutationAlert>
+          ) : null}
+          {tlsUnavailable ? (
+            <MutationAlert variant="warning">
+              Backend TLS settings are no longer available. Reopen the form to
+              review your changes.
+            </MutationAlert>
           ) : null}
           <div className="space-y-2">
             <Label htmlFor="pool-name">Name</Label>
@@ -371,7 +448,7 @@ export function PoolMutationDialog({
                   );
                   const allowed = protocolsFor(listener?.protocol);
                   if (!allowed.includes(protocol) && allowed[0]) {
-                    setProtocol(
+                    chooseProtocol(
                       listener?.protocol === "HTTPS" &&
                         allowed.includes("HTTPS")
                         ? "HTTPS"
@@ -407,7 +484,7 @@ export function PoolMutationDialog({
                 <Select
                   value={protocol}
                   onValueChange={(next) =>
-                    setProtocol(next as OctaviaPoolProtocol)
+                    chooseProtocol(next as OctaviaPoolProtocol)
                   }
                   disabled={pending}
                 >
@@ -457,6 +534,104 @@ export function PoolMutationDialog({
               </Select>
             </div>
           </div>
+          {showBackendTls ? (
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="text-sm font-medium">Backend TLS</legend>
+              {tlsBlock ? (
+                <p className="text-sm text-muted-foreground">{tlsBlock}</p>
+              ) : (
+                <>
+                  <Label
+                    htmlFor="pool-tls-enabled"
+                    className="flex items-center gap-2"
+                  >
+                    <Checkbox
+                      id="pool-tls-enabled"
+                      checked={tlsEnabled}
+                      disabled={pending}
+                      onCheckedChange={(checked) => {
+                        setTlsEnabled(checked === true);
+                        if (checked !== true) setCaSecretId("");
+                      }}
+                    />
+                    Encrypt connections to members
+                  </Label>
+                  {tlsEnabled ? (
+                    <>
+                      <Label htmlFor="pool-member-ca">
+                        Member CA certificate
+                      </Label>
+                      <Select
+                        disabled={pending}
+                        value={
+                          selectedCa?.id ?? (caSecretId ? "" : KEEP_MEMBER_CA)
+                        }
+                        onValueChange={(id) =>
+                          setCaSecretId(id === KEEP_MEMBER_CA ? "" : id)
+                        }
+                      >
+                        <SelectTrigger
+                          id="pool-member-ca"
+                          className="w-full"
+                          aria-invalid={Boolean(tlsError)}
+                          aria-describedby="pool-member-ca-help"
+                        >
+                          <SelectValue placeholder="Selected member CA unavailable" />
+                        </SelectTrigger>
+                        <SelectContent className="max-w-[var(--radix-select-content-available-width)]">
+                          <SelectItem value={KEEP_MEMBER_CA}>
+                            {initial.tls?.caRef
+                              ? "Keep current member CA"
+                              : "Select a Barbican secret"}
+                          </SelectItem>
+                          {caOptions.map(({ id, name }) => (
+                            <SelectItem
+                              key={id}
+                              value={id}
+                              className="wrap-anywhere"
+                            >
+                              {name ? `${name} (${id.slice(0, 8)})` : id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p
+                        id="pool-member-ca-help"
+                        className="text-xs text-muted-foreground"
+                      >
+                        A PEM CA certificate stored as a binary secret in{" "}
+                        <ResourceLink
+                          href="/key-manager/secrets"
+                          target="_blank"
+                        >
+                          Key Manager
+                        </ResourceLink>
+                        .
+                      </p>
+                      {tlsSecrets.isError ? (
+                        <MutationAlert variant="warning">
+                          Could not load member CA secrets.
+                        </MutationAlert>
+                      ) : null}
+                      {tlsError ? (
+                        <MutationAlert>{tlsError}</MutationAlert>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {tlsChanged && !creating && !tlsEnabled ? (
+                    <MutationAlert variant="warning">
+                      Disabling TLS sends member traffic unencrypted. The member
+                      CA stays configured.
+                    </MutationAlert>
+                  ) : tlsChanged && !creating && pool?.members?.length ? (
+                    <MutationAlert variant="warning">
+                      This change affects connections to existing pool members.
+                    </MutationAlert>
+                  ) : null}
+                </>
+              )}
+            </fieldset>
+          ) : null}
           <div className="space-y-2">
             <Label
               htmlFor={

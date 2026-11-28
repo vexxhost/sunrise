@@ -64,6 +64,7 @@ import {
   healthMonitorTypeForPool,
   readHealthMonitorSettings,
 } from "@/lib/openstack/octavia-health-monitor-settings";
+import { octaviaTlsSecretId } from "@/lib/openstack/octavia-listener-settings";
 import {
   canChangeOctaviaPoolMembers,
   formatOctaviaMemberRole,
@@ -140,8 +141,10 @@ export function PoolDetailClient({
     members,
     listeners,
     backupMembersSupported,
+    backendTlsSupported,
   } = data;
   const persistence = readPoolPersistence(pool.session_persistence);
+  const memberCaId = octaviaTlsSecretId(pool.ca_tls_container_ref);
   const parentHref = `/networking/load-balancers/${encodeURIComponent(loadBalancer.id)}#pools`;
   const writesSupported = isOctaviaAmphoraProvider(loadBalancer.provider);
   const canChangePoolChildren =
@@ -309,6 +312,45 @@ export function PoolDetailClient({
             <DetailField label="Cookie name" className="font-mono">
               {persistence.cookie_name}
             </DetailField>
+          ) : null}
+          {pool.protocol === "HTTP" || pool.tls_enabled === true ? (
+            <>
+              <DetailField label="Backend TLS">
+                {pool.tls_enabled === true
+                  ? "Enabled"
+                  : pool.tls_enabled === false
+                    ? "Disabled"
+                    : "Not reported"}
+              </DetailField>
+              {pool.tls_enabled === true || pool.ca_tls_container_ref ? (
+                <DetailField label="Member CA certificate">
+                  {memberCaId ? (
+                    <ResourceLink
+                      href={`/key-manager/secrets/${memberCaId}`}
+                      className="wrap-anywhere font-mono"
+                    >
+                      {memberCaId}
+                    </ResourceLink>
+                  ) : pool.ca_tls_container_ref ? (
+                    "External certificate reference"
+                  ) : pool.ca_tls_container_ref === null ? (
+                    "None (member certificates are not verified)"
+                  ) : (
+                    "Not reported"
+                  )}
+                </DetailField>
+              ) : null}
+              {pool.tls_container_ref ? (
+                <DetailField label="Backend client certificate">
+                  Configured
+                </DetailField>
+              ) : null}
+              {pool.crl_container_ref ? (
+                <DetailField label="Backend certificate revocation list">
+                  Configured
+                </DetailField>
+              ) : null}
+            </>
           ) : null}
           <DetailField label="Operating status">
             <Status status={pool.operating_status} />
@@ -673,6 +715,7 @@ export function PoolDetailClient({
             ? { target: action.target, l7Policies }
             : { target: action.target })}
           loadBalancerId={loadBalancerId}
+          backendTlsSupported={backendTlsSupported && writesSupported}
           scope={{ projectId, regionId }}
           onClose={() => setAction(null)}
           onRefresh={refreshPoolData}
