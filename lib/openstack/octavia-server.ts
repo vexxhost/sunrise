@@ -30,6 +30,8 @@ import { readL7PolicyOrder } from "@/lib/openstack/octavia-l7-settings";
 import {
   isOctaviaBackupMemberPool,
   memberBackupMicroversion,
+  poolTlsReadApiVersion,
+  readPoolTls,
 } from "@/lib/openstack/octavia-pool-settings";
 import { getSession } from "@/lib/session";
 import type {
@@ -667,19 +669,26 @@ export async function getLoadBalancerPool(
   id: string,
   regionId?: string,
   projectId?: string,
+  apiVersion?: string,
 ): Promise<OctaviaPool> {
   const parentId = requireUuid(loadBalancerId, "load balancer ID");
   const poolId = requireUuid(id, "pool ID");
   const scope = await resolveScope(regionId, projectId);
-  return readPool(scope, parentId, poolId);
+  return readPool(scope, parentId, poolId, apiVersion);
 }
 
-async function readPool(scope: OctaviaScope, parentId: string, poolId: string) {
+async function readPool(
+  scope: OctaviaScope,
+  parentId: string,
+  poolId: string,
+  apiVersion?: string,
+) {
   const pool = await getProjectResource<OctaviaPool>(
     scope,
     "pools",
     "pool",
     poolId,
+    apiVersion,
   );
   if (pool.id !== poolId || !poolBelongsToLoadBalancer(pool, parentId)) {
     throw new OpenStackRequestError(
@@ -733,7 +742,7 @@ export async function getLoadBalancerPoolDetails(
   ).toLowerCase();
   const poolId = requireUuid(id, "pool ID").toLowerCase();
   const scope = await resolveScope(regionId, projectId);
-  const [loadBalancer, pool] = await Promise.all([
+  const [loadBalancer, basePool] = await Promise.all([
     getProjectResource<OctaviaLoadBalancer>(
       scope,
       "loadbalancers",
@@ -745,17 +754,25 @@ export async function getLoadBalancerPoolDetails(
   if (loadBalancer.id !== parentId) {
     throw new OpenStackRequestError(404, "Load balancer not found");
   }
+  const capabilities = isOctaviaBackupMemberPool(
+    loadBalancer.provider,
+    basePool.protocol,
+  )
+    ? await discoverLoadBalancerCapabilities(scope.regionId)
+    : undefined;
+  const poolVersion =
+    capabilities && basePool.protocol === "HTTP"
+      ? poolTlsReadApiVersion(capabilities)
+      : undefined;
+  const pool =
+    poolVersion && !readPoolTls(basePool)
+      ? await readPool(scope, parentId, poolId, poolVersion)
+      : basePool;
 
   const monitorId = relatedResourceIds(
     [pool.healthmonitor_id],
     "health monitor",
   )[0];
-  const capabilities = isOctaviaBackupMemberPool(
-    loadBalancer.provider,
-    pool.protocol,
-  )
-    ? await discoverLoadBalancerCapabilities(scope.regionId)
-    : undefined;
   const backupVersion =
     capabilities &&
     memberBackupMicroversion(
@@ -792,6 +809,7 @@ export async function getLoadBalancerPoolDetails(
     healthMonitor,
     backupMembersSupported: Boolean(backupVersion),
     httpMonitorOptionsSupported: Boolean(httpOptionsVersion),
+    backendTlsSupported: Boolean(poolVersion),
   };
 }
 
@@ -1205,6 +1223,7 @@ async function readLoadBalancerDetails(
   capabilities: OpenStackServiceCapabilities,
 ): Promise<OctaviaLoadBalancerDetails> {
   const listenerVersion = listenerReadApiVersion(capabilities);
+  const poolVersion = poolTlsReadApiVersion(capabilities);
   const readParent = () =>
     readLoadBalancer(scope, loadBalancerId, capabilities);
   const readListeners = (parent: OctaviaLoadBalancer) =>
@@ -1259,7 +1278,13 @@ async function readLoadBalancerDetails(
     Promise.all(
       poolIds.map((poolId) =>
         readTopologyResource(
-          getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
+          getProjectResource<OctaviaPool>(
+            scope,
+            "pools",
+            "pool",
+            poolId,
+            poolVersion,
+          ),
         ),
       ),
     ),
@@ -1281,7 +1306,13 @@ async function readLoadBalancerDetails(
   const redirectPools = await Promise.all(
     redirectPoolIds.map((poolId) =>
       readTopologyResource(
-        getProjectResource<OctaviaPool>(scope, "pools", "pool", poolId),
+        getProjectResource<OctaviaPool>(
+          scope,
+          "pools",
+          "pool",
+          poolId,
+          poolVersion,
+        ),
       ),
     ),
   );

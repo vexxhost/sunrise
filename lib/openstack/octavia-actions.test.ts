@@ -1015,6 +1015,23 @@ describe("Octavia member actions", () => {
 
 describe("Octavia pool actions", () => {
   const poolId = "283d1064-329f-4709-a0ae-764fc80cb23e";
+  const memberCaId = "612b9ffa-fbc9-42ea-a78f-600c003c5103";
+  const memberCaRef = `https://barbican.example.test/v1/secrets/${memberCaId}`;
+  const memberCa = {
+    id: memberCaId,
+    secret_ref: memberCaRef,
+    status: "ACTIVE",
+    secret_type: "opaque",
+    content_types: { default: "application/octet-stream" },
+    expiration: null,
+  };
+  const tlsOff = { enabled: false, caRef: null, clientRef: null, crlRef: null };
+  const tlsFields = {
+    tls_enabled: false,
+    ca_tls_container_ref: null,
+    tls_container_ref: null,
+    crl_container_ref: null,
+  };
   const fields = {
     name: "backend",
     description: "",
@@ -1068,6 +1085,169 @@ describe("Octavia pool actions", () => {
     mocks.getLoadBalancerPool.mockResolvedValue(pool);
     mocks.listOctaviaPoolRedirectPolicies.mockResolvedValue([]);
     mocks.executeOpenStackMutation.mockResolvedValue({ ok: true });
+  });
+
+  it("creates a TLS HTTP pool using a scoped CA secret and verifies the response", async () => {
+    mocks.getSecret.mockResolvedValueOnce(memberCa);
+    await mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+      ...create,
+      listenerId,
+      backendTls: { caSecretId: memberCaId },
+    });
+    expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(memberCaId);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.8",
+        body: {
+          pool: {
+            name: fields.name,
+            description: "",
+            admin_state_up: false,
+            lb_algorithm: fields.algorithm,
+            protocol: "HTTP",
+            listener_id: listenerId,
+            tls_enabled: true,
+            ca_tls_container_ref: memberCaRef,
+          },
+        },
+      }),
+    );
+    const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+    const reported = {
+      ...pool,
+      ...tlsFields,
+      loadbalancers: [{ id: loadBalancerId }],
+      project_id: scope.projectId,
+      tls_enabled: true,
+      ca_tls_container_ref: memberCaRef,
+    };
+    expect(transform({ pool: reported })).toBeNull();
+    for (const fields of [
+      { tls_enabled: false },
+      { ca_tls_container_ref: null },
+      { crl_container_ref: undefined },
+    ]) {
+      expect(() => transform({ pool: { ...reported, ...fields } })).toThrow(
+        "requested backend TLS configuration",
+      );
+    }
+  });
+
+  it.each([true, false])(
+    "changes only the TLS flag to %s when a CA is already set",
+    async (enabled) => {
+      mocks.getLoadBalancerPool.mockResolvedValueOnce({
+        ...pool,
+        ...tlsFields,
+        tls_enabled: !enabled,
+        ca_tls_container_ref: memberCaRef,
+      });
+      await mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+        ...edit,
+        backendTls: {
+          before: { ...tlsOff, enabled: !enabled, caRef: memberCaRef },
+          enabled,
+        },
+      });
+      expect(mocks.getLoadBalancerPool).toHaveBeenCalledExactlyOnceWith(
+        loadBalancerId,
+        poolId,
+        scope.regionId,
+        scope.projectId,
+        "load-balancer 2.8",
+      );
+      expect(mocks.getSecret).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          apiVersion: "load-balancer 2.8",
+          body: { pool: { tls_enabled: enabled } },
+        }),
+      );
+    },
+  );
+
+  it("replaces only the CA on an already encrypted pool", async () => {
+    mocks.getLoadBalancerPool.mockResolvedValueOnce({
+      ...pool,
+      ...tlsFields,
+      tls_enabled: true,
+      ca_tls_container_ref: "existing-ca",
+    });
+    mocks.getSecret.mockResolvedValueOnce(memberCa);
+    await mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+      ...edit,
+      backendTls: {
+        before: { ...tlsOff, enabled: true, caRef: "existing-ca" },
+        enabled: true,
+        caSecretId: memberCaId,
+      },
+    });
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        apiVersion: "load-balancer 2.8",
+        body: { pool: { ca_tls_container_ref: memberCaRef } },
+      }),
+    );
+  });
+
+  it.each([
+    [{ tls_enabled: true }, tlsOff, "conflict"],
+    [{ ca_tls_container_ref: undefined }, tlsOff, "conflict"],
+    [
+      { crl_container_ref: "revocation-list" },
+      { ...tlsOff, crlRef: "revocation-list" },
+      "validation-failed",
+    ],
+    [
+      { tls_container_ref: "client" },
+      { ...tlsOff, clientRef: "client" },
+      "validation-failed",
+    ],
+    [{ protocol: "HTTPS" }, tlsOff, "validation-failed"],
+    [{}, tlsOff, "validation-failed"],
+  ] as const)(
+    "does not enable backend TLS with stale or unsupported settings (%j)",
+    async (fields, before, code) => {
+      mocks.getLoadBalancerPool.mockResolvedValueOnce({
+        ...pool,
+        ...tlsFields,
+        ...fields,
+      });
+      await expect(
+        mutateLoadBalancerPoolAction(scope, loadBalancerId, {
+          ...edit,
+          backendTls: { before, enabled: true },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code } });
+      expect(mocks.getSecret).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not send a backend TLS request when the CA is expired or the API cap is too low", async () => {
+    const input = { ...create, backendTls: { caSecretId: memberCaId } };
+    mocks.getSecret.mockResolvedValueOnce({
+      ...memberCa,
+      expiration: "2020-01-01T00:00:00Z",
+    });
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, input),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("unexpired binary secret") },
+    });
+    mocks.discoverLoadBalancerCapabilities.mockResolvedValueOnce({
+      ...capabilities(),
+      configuredMicroversionMaximum: "2.7",
+    });
+    await expect(
+      mutateLoadBalancerPoolAction(scope, loadBalancerId, input),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining("2.8") },
+    });
+    expect(mocks.getSecret).toHaveBeenCalledTimes(1);
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
   it.each([

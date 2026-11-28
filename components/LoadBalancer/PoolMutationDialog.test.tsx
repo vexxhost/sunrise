@@ -9,7 +9,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/hooks/queries/useQuotas", () => ({
   useProjectQuotaImpact: mocks.useProjectQuotaImpact,
 }));
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({ data: [], isError: false }),
+}));
 vi.mock("@/lib/openstack/octavia-actions", () => ({
+  listOctaviaTlsSecretsAction: vi.fn(),
   mutateLoadBalancerPoolAction: vi.fn(),
 }));
 vi.mock("@/components/ui/dialog", () => {
@@ -56,6 +60,7 @@ function renderDialog(
           ? { target, l7Policies }
           : { target })}
       loadBalancerId="11111111-1111-4111-8111-111111111111"
+      backendTlsSupported
       scope={{ projectId: "project-a", regionId: "RegionOne" }}
       onClose={() => {}}
       onRefresh={() => {}}
@@ -109,6 +114,30 @@ describe("Octavia pool dialog", () => {
     admin_state_up: false,
     lb_algorithm: "ROUND_ROBIN",
   };
+
+  it("offers backend TLS at pool creation", () => {
+    expect(renderDialog({ action: "create" })).toContain(
+      "Encrypt connections to members",
+    );
+  });
+
+  it("does not offer to overwrite unreported or externally managed TLS settings", () => {
+    const missing = renderDialog({ action: "edit", pool: editablePool });
+    expect(missing).not.toContain('id="pool-tls-enabled"');
+    expect(missing).toContain("did not report the complete");
+    const custom = renderDialog({
+      action: "edit",
+      pool: {
+        ...editablePool,
+        tls_enabled: true,
+        ca_tls_container_ref: "member-ca",
+        tls_container_ref: null,
+        crl_container_ref: "revocation-list",
+      },
+    });
+    expect(custom).not.toContain('id="pool-tls-enabled"');
+    expect(custom).toContain("revocation list is configured");
+  });
 
   it("loads the configured cookie name without marking an edit dirty", () => {
     const markup = renderDialog({

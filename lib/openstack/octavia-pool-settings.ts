@@ -16,6 +16,69 @@ import type {
 
 export const OCTAVIA_POOL_PROTOCOLS = ["HTTP", "TCP", "HTTPS", "UDP"] as const;
 export type OctaviaPoolProtocol = (typeof OCTAVIA_POOL_PROTOCOLS)[number];
+
+export const OCTAVIA_POOL_TLS_MICROVERSION = "2.8";
+const poolTlsReference = z
+  .string()
+  .max(255)
+  .refine((ref) => Boolean(ref.trim()))
+  .nullable();
+export const poolTlsSnapshotSchema = z.object({
+  enabled: z.boolean(),
+  caRef: poolTlsReference,
+  clientRef: poolTlsReference,
+  crlRef: poolTlsReference,
+});
+export type PoolTlsSnapshot = z.infer<typeof poolTlsSnapshotSchema>;
+
+export function readPoolTls(pool: {
+  tls_enabled?: unknown;
+  ca_tls_container_ref?: unknown;
+  tls_container_ref?: unknown;
+  crl_container_ref?: unknown;
+}) {
+  const result = poolTlsSnapshotSchema.safeParse({
+    enabled: pool.tls_enabled,
+    caRef: pool.ca_tls_container_ref,
+    clientRef: pool.tls_container_ref,
+    crlRef: pool.crl_container_ref,
+  });
+  return result.success ? result.data : null;
+}
+
+export function poolTlsReadApiVersion(
+  capabilities: OpenStackServiceCapabilities,
+) {
+  const support = microversionSupport(
+    capabilities,
+    OCTAVIA_POOL_TLS_MICROVERSION,
+    "Backend TLS",
+  );
+  return support.status === "supported"
+    ? `load-balancer ${support.requestedMicroversion}`
+    : undefined;
+}
+
+export function poolTlsEditBlock(current: ReturnType<typeof readPoolTls>) {
+  if (!current)
+    return "Octavia did not report the complete backend TLS configuration.";
+  return current.clientRef || current.crlRef
+    ? "Backend TLS is read-only when a client certificate or revocation list is configured."
+    : null;
+}
+
+export function samePoolTls(
+  current: PoolTlsSnapshot | null,
+  expected: PoolTlsSnapshot,
+) {
+  return (
+    current?.enabled === expected.enabled &&
+    current.caRef === expected.caRef &&
+    current.clientRef === expected.clientRef &&
+    current.crlRef === expected.crlRef
+  );
+}
+
 export const OCTAVIA_POOL_ALGORITHMS = [
   "ROUND_ROBIN",
   "LEAST_CONNECTIONS",
