@@ -7,13 +7,19 @@ import {
   OCTAVIA_AVAILABILITY_ZONE_MICROVERSION,
   OCTAVIA_TAGS_MICROVERSION,
 } from "@/lib/openstack/capabilities-server";
+import {
+  parseOctaviaTagFilterSearchParams,
+  type OctaviaTagFilterSearchParams,
+} from "@/lib/openstack/octavia-tag-filters";
 import { getSession } from "@/lib/session";
 import { LoadBalancersClient } from "./LoadBalancersClient";
 
 export default async function LoadBalancersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ create?: string | string[] }>;
+  searchParams: Promise<
+    OctaviaTagFilterSearchParams & { create?: string | string[] }
+  >;
 }) {
   const session = await getSession();
   if (!session.projectId || !session.regionId) return null;
@@ -25,6 +31,8 @@ export default async function LoadBalancersPage({
     pageSearchParams.create,
     "load-balancer",
   );
+  const { filter: tagFilter, error: tagFilterError } =
+    parseOctaviaTagFilterSearchParams(pageSearchParams);
   const tagSupport = microversionSupport(
     capabilities,
     OCTAVIA_TAGS_MICROVERSION,
@@ -47,6 +55,8 @@ export default async function LoadBalancersPage({
         key={createRequested ? "create" : "idle"}
         projectId={session.projectId}
         regionId={session.regionId}
+        tagFilter={tagFilter}
+        tagFilterError={tagFilterError}
         tagSupport={tagSupport}
       />
     </DataTableHydrationBoundary>

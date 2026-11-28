@@ -14,6 +14,7 @@ import { OctaviaTagList } from "@/components/LoadBalancer/OctaviaTags";
 import { DataTable } from "@/components/DataTable";
 import { EditActionButton } from "@/components/resources/EditActionButton";
 import { ProgressStatusBadge } from "@/components/resources/ProgressStatusBadge";
+import { ResourceTagFilter } from "@/components/resources/ResourceTagFilter";
 import { ResourceNameCell } from "@/components/DataTable/ResourceNameCell";
 import { resourceDetailHref } from "@/lib/resource-detail-paths";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +31,17 @@ import {
   octaviaStatusVariant,
 } from "@/lib/openstack/octavia";
 import type { OpenStackFeatureSupport } from "@/lib/openstack/capabilities";
+import {
+  loadBalancerMatchesTagFilter,
+  octaviaTagFilterError,
+  octaviaTagFilterShareUrl,
+  type OctaviaTagFilter,
+  withOctaviaTagFilter,
+} from "@/lib/openstack/octavia-tag-filters";
+import { formatOctaviaTag } from "@/lib/openstack/octavia-tags";
 import type { OctaviaLoadBalancer } from "@/types/openstack";
+
+const TAG_FILTER_VISIBLE_COLUMNS = ["tags"];
 
 const baseColumns: ColumnDef<OctaviaLoadBalancer>[] = [
   {
@@ -121,12 +132,16 @@ export function LoadBalancersClient({
   initiallyOpen,
   projectId,
   regionId,
+  tagFilter,
+  tagFilterError,
   tagSupport,
 }: {
   availabilityZoneSupport: OpenStackFeatureSupport;
   initiallyOpen: boolean;
   projectId: string;
   regionId: string;
+  tagFilter?: OctaviaTagFilter;
+  tagFilterError?: string;
   tagSupport: OpenStackFeatureSupport;
 }) {
   const queryClient = useQueryClient();
@@ -141,6 +156,23 @@ export function LoadBalancersClient({
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
+  const tagFilteringUnavailable =
+    tagSupport.status === "unsupported" ||
+    data.some(({ tags }) => !Array.isArray(tags));
+  const filterError =
+    tagFilter && tagFilteringUnavailable
+      ? "This cloud did not provide load balancer tags. The tag filter was not applied."
+      : tagFilterError;
+  const activeTagFilter = tagFilteringUnavailable ? undefined : tagFilter;
+  const displayedLoadBalancers = useMemo(
+    () =>
+      activeTagFilter
+        ? data.filter((loadBalancer) =>
+            loadBalancerMatchesTagFilter(loadBalancer, activeTagFilter),
+          )
+        : data,
+    [activeTagFilter, data],
+  );
   const [action, setAction] = useState<LoadBalancerMutationKind | null>(null);
   const [target, setTarget] = useState<OctaviaLoadBalancer | null>(null);
   const openAction = useCallback(
@@ -257,10 +289,29 @@ export function LoadBalancersClient({
           tagSupport={tagSupport}
         />
       </div>
+      {filterError ? (
+        <p className="mb-3 text-sm text-destructive" role="alert">
+          {filterError}
+        </p>
+      ) : null}
       <DataTable
+        additionalFilters={
+          <ResourceTagFilter
+            filter={activeTagFilter}
+            formatTag={formatOctaviaTag}
+            initialError={filterError}
+            shareUrl={octaviaTagFilterShareUrl}
+            unavailable={tagFilteringUnavailable}
+            validate={octaviaTagFilterError}
+            withFilter={withOctaviaTagFilter}
+          />
+        }
         columns={columns}
-        data={data}
+        data={displayedLoadBalancers}
         emptyIcon={Waypoints}
+        forceVisibleColumnIds={
+          activeTagFilter ? TAG_FILTER_VISIBLE_COLUMNS : undefined
+        }
         getRowId={(loadBalancer) => loadBalancer.id}
         isRefetching={isRefetching}
         refetch={refetch}
