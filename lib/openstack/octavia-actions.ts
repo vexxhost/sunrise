@@ -58,6 +58,7 @@ import {
   octaviaSniRefsSchema,
   octaviaTlsSecretId,
   OCTAVIA_LISTENER_PROTOCOLS,
+  OCTAVIA_SNI_CERTIFICATE_REQUIRED,
   readListenerInsertHeaders,
   readOctaviaSniRefs,
   requiredListenerWriteVersion,
@@ -227,7 +228,7 @@ const listenerMutationSchema = z.discriminatedUnion("action", [
     sniCertificates: z
       .object({
         before: octaviaSniRefsSchema,
-        beforeDefault: z.string().min(1).max(255),
+        beforeDefault: z.string().min(1).max(255).nullable(),
         remove: octaviaSniRefsSchema,
         add: uuidSchema.toLowerCase().optional(),
       })
@@ -913,7 +914,7 @@ export async function mutateLoadBalancerListenerAction(
   let listener: OctaviaListener | undefined;
   let tlsSecretId: string | undefined;
   let sniUpdate:
-    { keep: string[]; add?: string; currentDefault: string } | undefined;
+    { keep: string[]; add?: string; currentDefault: string | null } | undefined;
   if (value.action === "create") {
     if (
       !availableListenerProtocols(
@@ -1044,7 +1045,7 @@ export async function mutateLoadBalancerListenerAction(
         if (
           !configured ||
           !sameOctaviaSniRefs(configured, before) ||
-          !beforeDefault.trim() ||
+          (beforeDefault !== null && !beforeDefault.trim()) ||
           beforeDefault !== listener.default_tls_container_ref
         ) {
           return mutationFailure(
@@ -1070,8 +1071,15 @@ export async function mutateLoadBalancerListenerAction(
         }
         if (remove.length || add) {
           const removed = new Set(remove);
+          const keep = configured.filter((ref) => !removed.has(ref));
+          if (beforeDefault === null && !keep.length && !add) {
+            return validationFailure(
+              activeScope,
+              OCTAVIA_SNI_CERTIFICATE_REQUIRED,
+            );
+          }
           sniUpdate = {
-            keep: configured.filter((ref) => !removed.has(ref)),
+            keep,
             add,
             currentDefault: beforeDefault,
           };

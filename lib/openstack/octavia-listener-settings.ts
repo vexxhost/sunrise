@@ -48,6 +48,9 @@ export const octaviaSniRefsSchema = z
   .array(z.string().min(1).max(255))
   .refine((refs) => new Set(refs).size === refs.length);
 
+export const OCTAVIA_SNI_CERTIFICATE_REQUIRED =
+  "Keep at least one SNI certificate or select a replacement. This listener has no default certificate.";
+
 export function readOctaviaSniRefs(value: unknown) {
   const parsed = octaviaSniRefsSchema.safeParse(value);
   return parsed.success ? parsed.data : null;

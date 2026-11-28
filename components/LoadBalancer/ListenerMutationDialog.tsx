@@ -50,6 +50,7 @@ import {
   listenerCidrError,
   listenerSettingUnavailable,
   octaviaTlsSecretId,
+  OCTAVIA_SNI_CERTIFICATE_REQUIRED,
   readListenerInsertHeaders,
   readOctaviaSniRefs,
   sameListenerCidrs,
@@ -119,12 +120,17 @@ export function ListenerMutationDialog({
   const [removedSniRefs, setRemovedSniRefs] = useState<string[]>([]);
   const currentTlsRef = initial.listener?.default_tls_container_ref;
   const currentTlsSecretId = octaviaTlsSecretId(currentTlsRef);
-  const canRotateTls =
+  const editingTerminatedHttps =
     target.action === "edit" &&
     initial.listener?.protocol === "TERMINATED_HTTPS" &&
-    isOctaviaAmphoraProvider(loadBalancer.provider) &&
-    typeof currentTlsRef === "string" &&
-    Boolean(currentTlsRef.trim());
+    isOctaviaAmphoraProvider(loadBalancer.provider);
+  const hasDefaultTlsRef =
+    typeof currentTlsRef === "string" && Boolean(currentTlsRef.trim());
+  const canRotateTls = editingTerminatedHttps && hasDefaultTlsRef;
+  const canManageSni =
+    editingTerminatedHttps &&
+    initial.sniRefs !== null &&
+    (currentTlsRef === null || hasDefaultTlsRef);
   const tlsSecrets = useQuery({
     queryKey: [
       initial.scope.regionId,
@@ -135,6 +141,7 @@ export function ListenerMutationDialog({
     queryFn: () => listOctaviaTlsSecretsAction(initial.scope),
     enabled:
       canRotateTls ||
+      canManageSni ||
       (creating && isOctaviaAmphoraProvider(loadBalancer.provider)),
     staleTime: 0,
     retry: false,
@@ -260,7 +267,7 @@ export function ListenerMutationDialog({
       ? { before: currentTlsRef, after: tlsSecretId }
       : undefined;
   const sniOptions =
-    canRotateTls && initial.sniRefs
+    canManageSni && initial.sniRefs
       ? tlsOptions.filter(
           ({ id }) =>
             id !== tlsSecretId &&
@@ -269,8 +276,8 @@ export function ListenerMutationDialog({
       : [];
   const selectedSniSecret = sniOptions.find(({ id }) => id === sniSecretId);
   const sniCertificateChange =
-    canRotateTls &&
-    currentTlsRef &&
+    canManageSni &&
+    currentTlsRef !== undefined &&
     initial.sniRefs &&
     (sniSecretId || removedSniRefs.length)
       ? {
@@ -280,6 +287,12 @@ export function ListenerMutationDialog({
           add: sniSecretId || undefined,
         }
       : undefined;
+  const removesLastSniCertificate =
+    currentTlsRef === null &&
+    sniCertificateChange !== undefined &&
+    removedSniRefs.length > 0 &&
+    !selectedSniSecret &&
+    removedSniRefs.length === sniCertificateChange.before.length;
   const poolChoices = poolQuery.isError
     ? []
     : (poolQuery.data ?? []).filter((pool) =>
@@ -418,6 +431,7 @@ export function ListenerMutationDialog({
       : changed &&
         (!defaultCertificateChange || Boolean(selectedTlsSecret)) &&
         (!sniSecretId || Boolean(selectedSniSecret)) &&
+        !removesLastSniCertificate &&
         (!defaultPoolChange ||
           defaultPoolChange.after === null ||
           Boolean(selectedPool)));
@@ -648,7 +662,7 @@ export function ListenerMutationDialog({
               ) : null}
             </div>
           ) : null}
-          {canRotateTls && initial.sniRefs ? (
+          {canManageSni && initial.sniRefs ? (
             <fieldset className="min-w-0 space-y-2">
               <legend className="text-sm font-medium">SNI certificates</legend>
               {initial.sniRefs.length ? (
@@ -739,6 +753,11 @@ export function ListenerMutationDialog({
               {sniSecretId && !selectedSniSecret ? (
                 <MutationAlert>
                   Select a different SNI certificate or clear the selection.
+                </MutationAlert>
+              ) : null}
+              {removesLastSniCertificate ? (
+                <MutationAlert>
+                  {OCTAVIA_SNI_CERTIFICATE_REQUIRED}
                 </MutationAlert>
               ) : null}
             </fieldset>

@@ -272,6 +272,8 @@ export function ListenerDetailClient({
                 </ResourceLink>
               ) : listener.default_tls_container_ref ? (
                 "External certificate reference"
+              ) : listener.default_tls_container_ref === null ? (
+                "None"
               ) : (
                 "Not reported"
               )}

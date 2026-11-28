@@ -1839,6 +1839,116 @@ describe("Octavia listener actions", () => {
     );
   });
 
+  it.each([false, true])(
+    "supports adding or atomically replacing a certificate on an SNI-only listener (replace=%s)",
+    async (replace) => {
+      const original = {
+        ...tlsListener,
+        default_tls_container_ref: null,
+        sni_container_refs: [existingSni],
+      };
+      mocks.getLoadBalancerListener.mockResolvedValueOnce(original);
+      const sniCertificates = {
+        ...sniEdit.sniCertificates,
+        beforeDefault: null,
+        remove: replace ? [existingSni] : [],
+      };
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...sniEdit,
+          sniCertificates,
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      const refs = replace
+        ? [tlsSecret.secret_ref]
+        : [existingSni, tlsSecret.secret_ref];
+      expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(secretId);
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          body: { listener: { sni_container_refs: refs } },
+        }),
+      );
+      const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+      expect(
+        transform({ listener: { ...original, sni_container_refs: refs } }),
+      ).toBeNull();
+      expect(() =>
+        transform({
+          listener: {
+            ...original,
+            default_tls_container_ref: undefined,
+            sni_container_refs: refs,
+          },
+        }),
+      ).toThrow("requested SNI certificates");
+    },
+  );
+
+  it("prevents clearing the last certificate on an SNI-only listener without a replacement", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      default_tls_container_ref: null,
+      sni_container_refs: [existingSni],
+    });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...sniEdit,
+        sniCertificates: {
+          ...sniEdit.sniCertificates,
+          beforeDefault: null,
+          add: undefined,
+          remove: [existingSni],
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("at least one SNI certificate"),
+      },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("removes a certificate on an SNI-only listener when another remains", async () => {
+    const before = [existingSni, tlsSecret.secret_ref];
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      default_tls_container_ref: null,
+      sni_container_refs: before,
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...sniEdit,
+      sniCertificates: { before, beforeDefault: null, remove: [existingSni] },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        body: { listener: { sni_container_refs: [tlsSecret.secret_ref] } },
+      }),
+    );
+  });
+
+  it.each([undefined, currentTlsRef])(
+    "distinguishes a missing or newly configured default from explicit null: %s",
+    async (actual) => {
+      mocks.getLoadBalancerListener.mockResolvedValueOnce({
+        ...tlsListener,
+        default_tls_container_ref: actual,
+        sni_container_refs: [existingSni],
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...sniEdit,
+          sniCertificates: { ...sniEdit.sniCertificates, beforeDefault: null },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(mocks.getSecret).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     { sni_container_refs: undefined },
     { sni_container_refs: null },
