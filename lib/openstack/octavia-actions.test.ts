@@ -1543,6 +1543,17 @@ describe("Octavia listener actions", () => {
     name: current.name,
     defaultCertificate: { before: currentTlsRef, after: secretId },
   };
+  const existingSni = `https://barbican.example.test/v1/containers/${previousPoolId}`;
+  const sniEdit = {
+    ...edit,
+    name: current.name,
+    sniCertificates: {
+      before: [existingSni],
+      beforeDefault: currentTlsRef,
+      remove: [],
+      add: secretId,
+    },
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1775,6 +1786,222 @@ describe("Octavia listener actions", () => {
         error: { code },
       });
     }
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("adds a scoped SNI secret while preserving the existing references and default", async () => {
+    const original = { ...tlsListener, sni_container_refs: [existingSni] };
+    mocks.getLoadBalancerListener.mockResolvedValueOnce(original);
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, sniEdit);
+    expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(secretId);
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: "PUT",
+        apiVersion: "load-balancer 2.0",
+        path: `/v2/lbaas/listeners/${listenerId}`,
+        body: {
+          listener: { sni_container_refs: [existingSni, tlsSecret.secret_ref] },
+        },
+      }),
+    );
+    const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+    const updated = {
+      ...original,
+      sni_container_refs: [tlsSecret.secret_ref, existingSni],
+    };
+    expect(transform({ listener: updated })).toBeNull();
+    expect(() => transform({ listener: original })).toThrow(
+      "requested SNI certificates",
+    );
+    expect(() =>
+      transform({ listener: { ...updated, default_tls_container_ref: null } }),
+    ).toThrow("requested SNI certificates");
+  });
+
+  it("clears the last SNI reference without touching the default or fetching a secret", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      sni_container_refs: [existingSni],
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...sniEdit,
+      sniCertificates: {
+        ...sniEdit.sniCertificates,
+        remove: [existingSni],
+        add: undefined,
+      },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        body: { listener: { sni_container_refs: [] } },
+      }),
+    );
+  });
+
+  it.each([false, true])(
+    "supports adding or atomically replacing a certificate on an SNI-only listener (replace=%s)",
+    async (replace) => {
+      const original = {
+        ...tlsListener,
+        default_tls_container_ref: null,
+        sni_container_refs: [existingSni],
+      };
+      mocks.getLoadBalancerListener.mockResolvedValueOnce(original);
+      const sniCertificates = {
+        ...sniEdit.sniCertificates,
+        beforeDefault: null,
+        remove: replace ? [existingSni] : [],
+      };
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...sniEdit,
+          sniCertificates,
+        }),
+      ).resolves.toMatchObject({ ok: true });
+      const refs = replace
+        ? [tlsSecret.secret_ref]
+        : [existingSni, tlsSecret.secret_ref];
+      expect(mocks.getSecret).toHaveBeenCalledExactlyOnceWith(secretId);
+      expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          body: { listener: { sni_container_refs: refs } },
+        }),
+      );
+      const [{ transform }] = mocks.executeOpenStackMutation.mock.calls[0];
+      expect(
+        transform({ listener: { ...original, sni_container_refs: refs } }),
+      ).toBeNull();
+      expect(() =>
+        transform({
+          listener: {
+            ...original,
+            default_tls_container_ref: undefined,
+            sni_container_refs: refs,
+          },
+        }),
+      ).toThrow("requested SNI certificates");
+    },
+  );
+
+  it("prevents clearing the last certificate on an SNI-only listener without a replacement", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      default_tls_container_ref: null,
+      sni_container_refs: [existingSni],
+    });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+        ...sniEdit,
+        sniCertificates: {
+          ...sniEdit.sniCertificates,
+          beforeDefault: null,
+          add: undefined,
+          remove: [existingSni],
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "validation-failed",
+        message: expect.stringContaining("at least one SNI certificate"),
+      },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("removes a certificate on an SNI-only listener when another remains", async () => {
+    const before = [existingSni, tlsSecret.secret_ref];
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      default_tls_container_ref: null,
+      sni_container_refs: before,
+    });
+    await mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+      ...sniEdit,
+      sniCertificates: { before, beforeDefault: null, remove: [existingSni] },
+    });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        body: { listener: { sni_container_refs: [tlsSecret.secret_ref] } },
+      }),
+    );
+  });
+
+  it.each([undefined, currentTlsRef])(
+    "distinguishes a missing or newly configured default from explicit null: %s",
+    async (actual) => {
+      mocks.getLoadBalancerListener.mockResolvedValueOnce({
+        ...tlsListener,
+        default_tls_container_ref: actual,
+        sni_container_refs: [existingSni],
+      });
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...sniEdit,
+          sniCertificates: { ...sniEdit.sniCertificates, beforeDefault: null },
+        }),
+      ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+      expect(mocks.getSecret).not.toHaveBeenCalled();
+      expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { sni_container_refs: undefined },
+    { sni_container_refs: null },
+    { sni_container_refs: [] },
+    { default_tls_container_ref: null },
+    { default_tls_container_ref: tlsSecret.secret_ref },
+  ])("rejects stale or unavailable SNI snapshots: %j", async (changes) => {
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      sni_container_refs: [existingSni],
+      ...changes,
+    });
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, sniEdit),
+    ).resolves.toMatchObject({ ok: false, error: { code: "conflict" } });
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("rejects removing unknown refs and adding the default as an additional cert", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValue({
+      ...tlsListener,
+      sni_container_refs: [existingSni],
+    });
+    for (const changes of [
+      { remove: [tlsSecret.secret_ref] },
+      { add: currentSecretId },
+    ]) {
+      await expect(
+        mutateLoadBalancerListenerAction(scope, loadBalancerId, {
+          ...sniEdit,
+          sniCertificates: { ...sniEdit.sniCertificates, ...changes },
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation-failed" },
+      });
+    }
+    expect(mocks.getSecret).not.toHaveBeenCalled();
+    expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
+  });
+
+  it("does not write an unavailable additional SNI secret", async () => {
+    mocks.getLoadBalancerListener.mockResolvedValueOnce({
+      ...tlsListener,
+      sni_container_refs: [existingSni],
+    });
+    mocks.getSecret.mockRejectedValueOnce(
+      new OpenStackRequestError(404, "Secret not found"),
+    );
+    await expect(
+      mutateLoadBalancerListenerAction(scope, loadBalancerId, sniEdit),
+    ).resolves.toMatchObject({ ok: false, error: { code: "not-found" } });
     expect(mocks.executeOpenStackMutation).not.toHaveBeenCalled();
   });
 
